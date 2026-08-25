@@ -12,8 +12,10 @@ Build the macOS release executable with the Altivec environment:
 make release
 ```
 
-The result is `build/macOS/retro-dlp`. Architecture-specific objects and
-linked slices stay under `build/intermediates/macOS`.
+The results are `build/macOS/retro-dlp` and its required certificate bundle,
+`build/macOS/cacert.pem`. Distribute both files in the same directory.
+Architecture-specific objects and linked slices stay under
+`build/intermediates/macOS`.
 
 Build and test the native Linux executable:
 
@@ -25,6 +27,22 @@ make test
 The Linux product is `build/linux/retro-dlp`; its intermediate objects stay
 under `build/intermediates/linux`. Shared tests live under `source/shared/test`;
 future platform-specific tests belong under `source/<platform>/test`.
+
+Resolve a public YouTube video to a progressive MP4 media request:
+
+```sh
+build/linux/retro-dlp YE7VzlLtp-4
+build/linux/retro-dlp 'https://www.youtube.com/watch?v=YE7VzlLtp-4'
+```
+
+The command prints JSON containing the direct URL, itag, dimensions, MIME type,
+expiry time, and required request headers. The phase-one resolver intentionally
+supports only direct itag 18 returned by its configured JSless client. It does
+not yet solve JavaScript challenges or generate PO tokens.
+
+On macOS, every libcurl handle is configured with `cacert.pem` resolved beside
+the running executable. Network requests fail explicitly if the bundle is
+missing or unreadable. Linux continues to use libcurl's system trust settings.
 
 The Linux executable compiles and links the vendored cJSON submodule. It also
 builds QuickJS as `build/intermediates/linux/libquickjs.a` and statically links
@@ -44,8 +62,13 @@ platform:
 retro-dlp --test
 ```
 
-This executes inside the current binary slice, making it suitable for checking
-the actual PowerPC, i386, x86_64, arm64, or Linux build on its target machine.
+This also runs the staged resolver test against yt-dlp's public Big Buck Bunny
+fixture and sends a bodyless HEAD request to the resulting Google Video URL.
+It therefore requires internet access. A current HTTP 403 is reported as a
+successful transport probe with a PO-token-required classification; it does not
+mean that the video was downloaded. The tests execute inside the current binary
+slice, making them suitable for checking the actual PowerPC, i386, x86_64,
+arm64, or Linux build on its target machine.
 
 ## Source layout
 

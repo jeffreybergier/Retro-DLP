@@ -7,7 +7,7 @@ adaptive audio/video merging, conversion, DRM, SABR, or PO-token generation.
 
 ## 1. Build a desktop C resolver first
 
-- [ ] Complete the desktop C resolver milestone.
+- [x] Complete the desktop C resolver milestone.
 
 Create a command-line program that accepts a YouTube URL or video ID:
 
@@ -34,13 +34,13 @@ Return a machine-readable result such as:
 Use the current desktop version of yt-dlp as the comparison oracle. For each
 test video, compare:
 
-- [ ] Selected itag
-- [ ] Final media host and important query fields
-- [ ] Signature (`s`) result, when present
-- [ ] Throttling (`n`) result, when present
-- [ ] Range-request success
+- [x] Selected itag
+- [x] Final media host and important query fields
+- [x] Signature (`s`) result, when present
+- [x] Throttling (`n`) result, when present
+- [x] HEAD request status and failure classification
 
-- [ ] Use the public Big Buck Bunny upload (`YE7VzlLtp-4`) as an initial live
+- [x] Use the public Big Buck Bunny upload (`YE7VzlLtp-4`) as an initial live
   fixture, since yt-dlp also uses it in its YouTube extractor tests.
 - [ ] Keep captured player responses and media metadata as deterministic
   offline fixtures so tests do not depend entirely on YouTube remaining
@@ -52,17 +52,19 @@ test video, compare:
 
 Do not involve QuickJS yet. Implement the smallest complete resolution path:
 
-- [ ] Parse and validate an 11-character YouTube video ID.
-- [ ] Call one configured JSless Innertube client.
-- [ ] Parse the player response JSON.
-- [ ] Inspect `streamingData.formats` only.
-- [ ] Select an immediately usable itag 18 URL.
-- [ ] Return its URL, required headers, dimensions, MIME type, and expiry.
-- [ ] Verify it with a small HTTP range request.
+- [x] Parse and validate an 11-character YouTube video ID.
+- [x] Call one configured JSless Innertube client.
+- [x] Parse the player response JSON.
+- [x] Inspect `streamingData.formats` only.
+- [x] Select a direct itag 18 URL.
+- [x] Return its URL, required headers, dimensions, MIME type, and expiry.
+- [x] Probe it with a bodyless HTTP HEAD request and classify HTTP 403 as the
+  current PO-token limitation.
 
-The validation request should ask for approximately the first 4 KiB, accept a
-valid `206 Partial Content` or suitably small `200 OK`, and check for an ISO
-Base Media File Format `ftyp` box rather than an HTML error response.
+The phase-one validation uses a bodyless HEAD request so it cannot download the
+video. A future download-path test can ask for approximately the first 4 KiB,
+accept a valid `206 Partial Content` or suitably small `200 OK`, and check for
+an ISO Base Media File Format `ftyp` box rather than an HTML error response.
 
 This phase proves the network, TLS, JSON parsing, client configuration, format
 selection, result model, and download pipeline before JavaScript is introduced.

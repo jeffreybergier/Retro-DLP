@@ -13,6 +13,8 @@ nm "$binary" | grep -q ' cJSON_Parse$' || \
   fail "Linux binary does not contain cJSON"
 nm "$binary" | grep -q ' JS_NewRuntime$' || \
   fail "Linux binary does not contain QuickJS"
+nm -D "$binary" | grep -q ' U curl_easy_perform' || \
+  fail "Linux binary is not linked to libcurl"
 
 help_output=$($binary --help)
 printf '%s\n' "$help_output" | grep -q '^Usage: retro-dlp' || \
@@ -27,8 +29,20 @@ printf '%s\n' "$self_test_output" | grep -q '^PASS: cJSON$' || \
   fail "--test did not pass cJSON"
 printf '%s\n' "$self_test_output" | grep -q '^PASS: QuickJS$' || \
   fail "--test did not pass QuickJS"
+printf '%s\n' "$self_test_output" | grep -q '^PASS: video ID parsing' || \
+  fail "--test did not pass video ID parsing"
+printf '%s\n' "$self_test_output" | grep -q '^PASS: player API response' || \
+  fail "--test did not pass the live player API test"
+printf '%s\n' "$self_test_output" | grep -q '^PASS: media HEAD' || \
+  fail "--test did not pass the media HEAD test"
 printf '%s\n' "$self_test_output" | grep -q '^PASS: retro-dlp self-test$' || \
   fail "--test did not report success"
+
+resolve_output=$($binary "https://youtu.be/YE7VzlLtp-4")
+printf '%s\n' "$resolve_output" | grep -q '"itag":[[:space:]]*18' || \
+  fail "video resolution did not return itag 18 JSON"
+printf '%s\n' "$resolve_output" | grep -q 'googlevideo.com' || \
+  fail "video resolution did not return a Google Video URL"
 
 error_file=${TMPDIR:-/tmp}/retro-dlp-cli-test.$$
 trap 'rm -f "$error_file"' EXIT HUP INT TERM

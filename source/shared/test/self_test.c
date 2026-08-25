@@ -2,10 +2,15 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "cJSON.h"
+#include "curl/curl.h"
 #include "quickjs.h"
 #include "self_test_data.h"
+#include "yt_resolver.h"
+
+#define SELF_TEST_VIDEO_ID "YE7VzlLtp-4"
 
 static int test_cjson(void) {
   cJSON *document;
@@ -68,11 +73,118 @@ static int test_quickjs(void) {
   return 0;
 }
 
+static int test_video_id(void) {
+  char video_id[12];
+
+  if (yt_extract_video_id(
+          "https://www.youtube.com/watch?feature=test&v=" SELF_TEST_VIDEO_ID,
+          video_id) != YT_OK || strcmp(video_id, SELF_TEST_VIDEO_ID) != 0) {
+    fprintf(stderr, "FAIL: YouTube video ID parsing\n");
+    return 1;
+  }
+  if (yt_extract_video_id("not-video", video_id) !=
+      YT_ERR_INVALID_VIDEO_ID) {
+    fprintf(stderr, "FAIL: invalid YouTube video ID was accepted\n");
+    return 1;
+  }
+  printf("PASS: video ID parsing (%s)\n", SELF_TEST_VIDEO_ID);
+  return 0;
+}
+
+static int has_googlevideo_host(const char *url) {
+  const char *host;
+  const char *host_end;
+  const char *suffix;
+  size_t host_length;
+  size_t suffix_length;
+
+  host = strstr(url, "://");
+  if (host == NULL)
+    return 0;
+  host += 3;
+  host_end = strchr(host, '/');
+  if (host_end == NULL)
+    return 0;
+  host_length = (size_t)(host_end - host);
+  suffix = ".googlevideo.com";
+  suffix_length = strlen(suffix);
+  return host_length > suffix_length &&
+         memcmp(host + host_length - suffix_length, suffix, suffix_length) ==
+             0;
+}
+
+static int test_live_resolver(void) {
+  const curl_version_info_data *curl_version;
+  YTMediaRequest media;
+  YTStatus status;
+  long http_status;
+  int failed;
+
+  curl_version = curl_version_info(CURLVERSION_NOW);
+  if (curl_version == NULL || curl_version->version == NULL) {
+    fprintf(stderr, "FAIL: libcurl version unavailable\n");
+    return 1;
+  }
+  printf("PASS: libcurl %s\n", curl_version->version);
+
+  status = yt_resolve_video(SELF_TEST_VIDEO_ID, &media);
+  if (status != YT_OK) {
+    fprintf(stderr, "FAIL: player API resolution: %s\n",
+            yt_status_string(status));
+    return 1;
+  }
+  printf("PASS: player API response (%s)\n", SELF_TEST_VIDEO_ID);
+
+  failed = 0;
+  if (media.itag != 18 || media.width != 640 || media.height != 360 ||
+      media.mime_type == NULL ||
+      strncmp(media.mime_type, "video/mp4", 9) != 0) {
+    fprintf(stderr, "FAIL: yt-dlp oracle metadata comparison\n");
+    failed = 1;
+  } else {
+    printf("PASS: yt-dlp oracle metadata (itag 18, 640x360 MP4)\n");
+  }
+
+  if (!has_googlevideo_host(media.url) ||
+      strstr(media.url, "itag=18") == NULL ||
+      strstr(media.url, "expire=") == NULL || media.expires_unix <= 0) {
+    fprintf(stderr, "FAIL: resolved media URL fields\n");
+    failed = 1;
+  } else {
+    printf("PASS: Google Video host and required query fields\n");
+  }
+
+  if (strstr(media.url, "sig=") == NULL || strstr(media.url, "&n=") != NULL) {
+    fprintf(stderr, "FAIL: direct URL challenge classification\n");
+    failed = 1;
+  } else {
+    printf("PASS: direct URL requires no s/n challenge solving\n");
+  }
+
+  http_status = 0;
+  status = yt_probe_media_head(&media, &http_status);
+  if (status != YT_OK ||
+      !((http_status >= 200 && http_status < 400) || http_status == 403)) {
+    fprintf(stderr, "FAIL: media HEAD request: %s (HTTP %ld)\n",
+            yt_status_string(status), http_status);
+    failed = 1;
+  } else if (http_status == 403) {
+    printf("PASS: media HEAD reached GVS (HTTP 403: PO token required)\n");
+  } else {
+    printf("PASS: media HEAD (HTTP %ld)\n", http_status);
+  }
+
+  yt_media_request_free(&media);
+  return failed;
+}
+
 int retro_dlp_run_self_tests(void) {
   int failures;
 
   failures = test_cjson();
   failures += test_quickjs();
+  failures += test_video_id();
+  failures += test_live_resolver();
   if (failures != 0)
     return 1;
 

@@ -2,6 +2,7 @@ PROGRAM := retro-dlp
 VERSION := 0.1.0
 
 SHARED_SOURCES := source/shared/main.c source/shared/cli.c \
+	source/shared/yt_http.c source/shared/yt_resolver.c \
 	source/shared/test/self_test.c source/shared/test/self_test_data.c
 MACOS_COMMON_SOURCES := $(SHARED_SOURCES) source/macOS/platform.c
 CJSON_DIR := source/deps/cJSON
@@ -22,6 +23,8 @@ include $(ALTIVEC_ROOT)/altivec_toolchains.mk
 
 ALTIVECCORE_DIR ?= $(ALTIVEC_ROOT)/libs/core/build-mac
 ALTIVECCORE := $(ALTIVECCORE_DIR)/lib/libAltivecCore.a
+MACOS_CA_SOURCE := $(ALTIVECCORE_DIR)/lib/cacert.pem
+MACOS_CA_BUNDLE := $(MACOS_BUILD_DIR)/cacert.pem
 
 SDK_MAC_OLD := 10.5
 SDK_MAC_NEW := 11.3
@@ -51,7 +54,7 @@ QUICKJS_OBJECTS := $(addprefix $(QUICKJS_INT_DIR)/, \
 	$(QUICKJS_SOURCE_NAMES:.c=.o))
 QUICKJS_LIBRARY := $(LINUX_INT_DIR)/libquickjs.a
 LINUX_LIBRARIES := -Wl,--whole-archive $(QUICKJS_LIBRARY) \
-	-Wl,--no-whole-archive -lm -ldl -lpthread
+	-Wl,--no-whole-archive -lcurl -lm -ldl -lpthread
 LINUX_OBJECTS := $(LINUX_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
 
 include source/make/apple-gcc4.mk
@@ -70,7 +73,7 @@ $(MACOS_INT_DIR)/arm64/source/shared/test/self_test.o: \
 
 release: macOS
 
-macOS: validate $(MACOS_BUILD_DIR)/$(PROGRAM)
+macOS: validate $(MACOS_BUILD_DIR)/$(PROGRAM) $(MACOS_CA_BUNDLE)
 
 linux: $(LINUX_BUILD_DIR)/$(PROGRAM)
 
@@ -85,6 +88,11 @@ $(MACOS_BUILD_DIR)/$(PROGRAM): $(PPC_BINARY) $(I386_BINARY) \
 	@mkdir -p $(dir $@)
 	@$(LIPO) -create $^ -output $@
 	@echo "  > $@"
+
+$(MACOS_CA_BUNDLE): $(MACOS_CA_SOURCE)
+	@echo "  > copying macOS CA certificate bundle"
+	@mkdir -p $(dir $@)
+	@cp $< $@
 
 $(LINUX_BUILD_DIR)/$(PROGRAM): $(LINUX_OBJECTS) $(QUICKJS_LIBRARY)
 	@echo "--- Building retro-dlp Linux Release (-O3) ---"
