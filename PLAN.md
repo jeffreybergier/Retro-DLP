@@ -85,28 +85,79 @@ Integrate a pinned yt-dlp-ejs bundle behind a small native adapter. Test it
 independently of HTTP first:
 
 ```text
-captured base.js + known s/n challenges
+reduced player-shaped base.js fixture + known s/n challenges
     -> C + QuickJS + EJS
     -> expected transformed values
 ```
 
-- [ ] Integrate a pinned yt-dlp-ejs bundle behind a small native adapter.
-- [ ] Maintain golden fixtures generated with matching desktop yt-dlp and EJS
-  versions.
-- [ ] Pass captured `base.js` and known `s`/`n` fixture tests.
-- [ ] Connect the adapter to live player responses containing `signatureCipher`
-  or an `n` query parameter.
+### Phase 3 implementation sequence
 
-- [ ] Ensure the production QuickJS embed exposes no native networking,
-  filesystem, process, or dynamic-module APIs.
-- [ ] Apply memory, stack, and execution deadlines.
-- [ ] Recreate the runtime after an interruption, out-of-memory condition, or
-  unexpected uncaught exception.
-- [ ] Measure cold and warm EJS execution time and peak memory on an actual
-  iPhone 4.
-- [ ] Run the EJS fixtures on an actual PowerPC Mac.
+1. [x] **Pin and vendor EJS.** Match the EJS version required by the vendored
+   desktop yt-dlp, record its version, source hash, and license, and embed the
+   required EJS source as a build asset.
+2. [x] **Build a narrow native adapter.** Add a C module that uses the existing
+   embedded QuickJS library, loads EJS, submits JSON requests containing batched
+   `s` and `n` challenges, and parses the JSON result. Do not expose native
+   networking, filesystem, process, or dynamic-module APIs to JavaScript.
+3. [x] **Establish deterministic correctness first.** Maintain golden fixtures
+   generated with matching desktop yt-dlp and EJS versions. Test a reduced,
+   deterministic player-shaped `base.js` fixture, known `s` and `n` challenges,
+   batching, malformed results, exceptions, and timeouts without depending on
+   HTTP.
+4. [x] **Add resource containment and validate it on PowerPC.**
+   - [x] Apply memory and stack limits plus an execution deadline.
+   - [x] Recreate the runtime after a timeout, out-of-memory condition, or
+     unexpected JavaScript exception by using a fresh runtime for each solve.
+   - [x] Compile and link the EJS adapter and fixtures into the PowerPC slice.
+   - [x] Run the EJS fixtures in a PowerPC Tiger environment. Validated on
+     Darwin 8.11.0 PowerPC: the complete embedded self-test and live resolver
+     passed; the media probe reached GVS and returned the expected PO-token
+     `403` classification.
+5. [ ] **Integrate with format parsing.** Retain itag 18 candidates containing
+   `signatureCipher` or `n`, collect all required transformations, invoke EJS
+   once, rewrite the final URL, and reject any unresolved challenge.
+6. [ ] **Retrieve the player JavaScript.** Prefer a player URL supplied by the
+   Innertube response, add the smallest necessary watch-page fallback, and fetch
+   `base.js` in native C so JavaScript receives only its source text.
+7. [ ] **Validate end to end.** Preserve the direct-URL fast path, compare final
+   `s` and `n` values with the pinned yt-dlp oracle, probe the resulting media
+   URL, and keep PO-token failures distinct from EJS failures.
 
-## 4. Add caches
+## 4. Make EJS assets downloadable on demand by the CLI
+
+- [ ] Complete the on-demand EJS asset milestone.
+
+Keep QuickJS compiled into the native executable, but stop embedding the EJS
+`core` and `lib` JavaScript in release binaries once the asset loader is ready.
+Direct itag 18 resolution must continue to work without EJS being installed.
+
+- [ ] Ship a small built-in bootstrap manifest containing the pinned EJS
+  version, HTTPS download URLs, expected sizes, SHA-256 hashes, and license
+  metadata.
+- [ ] Add `retro-dlp assets status`, `retro-dlp assets install`, and
+  `retro-dlp assets remove` commands with machine-readable output.
+- [ ] Download through the existing native HTTP/TLS layer with strict response
+  size limits and no JavaScript-visible networking APIs.
+- [ ] Verify every asset's size and SHA-256 hash before installation, then use
+  atomic writes so an interruption cannot replace a working installation with
+  a partial one.
+- [ ] Store assets in an appropriate per-user data directory rather than beside
+  the executable, and reject unsupported or unsafe filesystem layouts.
+- [ ] When a selected format needs EJS but the assets are absent, return a
+  distinct `ejs_assets_missing` classification that names the install command;
+  do not download implicitly during ordinary video resolution.
+- [ ] Exercise the production asset loader in deterministic tests, including
+  missing, truncated, oversized, corrupt, wrong-version, and interrupted
+  installations. Test builds may inject the pinned vendored assets, but release
+  builds must demonstrate that the EJS source is not embedded.
+- [ ] Retain complete EJS and bundled-dependency license notices with the
+  installed assets.
+
+This phase installs only the EJS version pinned by the native executable. A new
+version still requires rebuilding the executable until the signed update
+channel is implemented.
+
+## 5. Add caches
 
 - [ ] Complete the caching milestone.
 
@@ -123,14 +174,16 @@ Add bounded, versioned caches for:
 - [ ] Safely discard corrupt or incompatible entries.
 - [ ] Do not use downloaded QuickJS bytecode as a cache or update format.
 
-## 5. Cross-compile for ARMv7 and iOS 4.3
+## 6. Package and validate for ARMv7 and iOS 5
 
-- [ ] Complete the ARMv7/iOS 4.3 milestone.
+- [ ] Complete the ARMv7/iOS 5 packaging and validation milestone.
 
-Once the desktop resolver and EJS fixtures work, add the iOS target. The main
-platform work is expected to be:
+Once the desktop resolver and EJS fixtures work, package the existing portable
+resolver for iOS 5. QuickJS already works in the PowerPC build, so treat this
+as platform integration and real-device validation rather than a separate
+engine-porting effort. The remaining work is expected to be:
 
-- [ ] QuickJS compilation and compatibility changes
+- [ ] An ARMv7/iOS 5 build target
 - [ ] A current libcurl/TLS stack and CA bundle
 - [ ] Filesystem cache locations and storage limits
 - [ ] Memory and latency instrumentation
@@ -138,11 +191,14 @@ platform work is expected to be:
 - [ ] An Objective-C wrapper and user interface
 
 - [ ] Test on a physical iPhone 4 throughout this phase. Simulator or successful
-  cross-compilation alone cannot establish acceptable memory use and latency.
+  cross-compilation alone cannot establish acceptable memory use, latency, or
+  integration with iOS 5 platform services.
+- [ ] Run the EJS fixtures and measure cold and warm execution time and peak
+  memory on the physical iPhone 4.
 - [ ] Keep the native resolver independent of UIKit so the same C API and
   fixtures remain usable by Linux, macOS, Tiger, and iOS front ends.
 
-## 6. Add a signed update channel
+## 7. Add a signed update channel
 
 - [ ] Complete the signed-update-channel milestone.
 

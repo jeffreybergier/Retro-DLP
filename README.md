@@ -49,11 +49,17 @@ missing or unreadable. Linux continues to use libcurl's system trust settings.
 
 The Linux executable compiles and links the vendored cJSON submodule. It also
 builds QuickJS as `build/intermediates/linux/libquickjs.a` and statically links
-the complete engine into the executable. The macOS executable links the
-quad-fat static AltivecCore archive, which supplies cJSON and the rest of
-AltivecCore on each supported Mac architecture. QuickJS is compiled into a
-separate static archive for each of the PowerPC, i386, x86_64, and arm64
-macOS slices.
+the complete engine into the executable. A pinned `yt-dlp-ejs` 0.8.0 bundle is
+embedded as a build asset and exercised through a resource-limited native
+adapter. The resolver does not use that adapter for live formats yet; that
+connection belongs to the remaining Phase 3 format and player-JavaScript work.
+The macOS executable links the quad-fat static AltivecCore archive, which
+supplies cJSON and the rest of AltivecCore on each supported Mac architecture.
+QuickJS is compiled into a separate static archive for each of the PowerPC,
+i386, x86_64, and arm64 macOS slices.
+
+Python 3 is required at build time to convert the pinned EJS text assets into
+portable C string literals.
 
 Run `make clean` to empty the three build output directories without deleting
 the directories themselves.
@@ -65,20 +71,21 @@ platform:
 retro-dlp --test
 ```
 
-This runs deterministic embedded player-response fixtures first, followed by a
-staged resolver test against yt-dlp's public Big Buck Bunny fixture and a
-bodyless HEAD request to the resulting Google Video URL. The live portion
-therefore requires internet access. A current HTTP 403 is reported as a
-successful transport probe with a PO-token-required classification; it does not
-mean that the video was downloaded. The tests execute inside the current binary
-slice, making them suitable for checking the actual PowerPC, i386, x86_64,
-arm64, or Linux build on its target machine.
+This runs deterministic embedded player-response fixtures and EJS `s`/`n`
+fixtures first, followed by a staged resolver test against yt-dlp's public Big
+Buck Bunny fixture and a bodyless HEAD request to the resulting Google Video
+URL. The EJS tests cover batching, preprocessed-player reuse, malformed output,
+exceptions, execution deadlines, memory limits, and runtime recovery. The live
+portion therefore requires internet access. A current HTTP 403 is reported as
+a successful transport probe with a PO-token-required classification; it does
+not mean that the video was downloaded. The tests execute inside the current
+binary slice, making them suitable for checking the actual PowerPC, i386,
+x86_64, arm64, or Linux build on its target machine.
 
 `make test` additionally runs the pinned vendored yt-dlp with the same
 `android_vr` client. It compares selected format metadata, the Google Video
 media service and stable query fields, direct signature parameter choice,
-absence of an unsolved `n`, and the HEAD result/classification. Python 3 is
-required for this Linux integration comparison.
+absence of an unsolved `n`, and the HEAD result/classification.
 
 ## Source layout
 

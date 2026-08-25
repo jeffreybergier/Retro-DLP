@@ -6,6 +6,7 @@
 
 #include "cJSON.h"
 #include "curl/curl.h"
+#include "ejs_test.h"
 #include "quickjs.h"
 #include "self_test_data.h"
 #include "yt_resolver.h"
@@ -263,6 +264,7 @@ int retro_dlp_run_self_tests(void) {
 
   failures = test_cjson();
   failures += test_quickjs();
+  failures += retro_dlp_run_ejs_tests();
   failures += test_video_id();
   failures += test_offline_player_fixtures();
   failures += test_live_resolver();
