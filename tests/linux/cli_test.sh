@@ -9,6 +9,9 @@ fail() {
   exit 1
 }
 
+nm "$binary" | grep -q ' cJSON_Parse$' || \
+  fail "Linux binary does not contain cJSON"
+
 help_output=$($binary --help)
 printf '%s\n' "$help_output" | grep -q '^Usage: retro-dlp' || \
   fail "--help did not print usage"

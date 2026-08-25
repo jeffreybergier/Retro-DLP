@@ -1,0 +1,6 @@
+[submodule "source/deps/cJSON"]
+	path = source/deps/cJSON
+	url = https://github.com/DaveGamble/cJSON.git
+[submodule "source/deps/QuickJS"]
+	path = source/deps/QuickJS
+	url = https://github.com/bellard/quickjs.git
