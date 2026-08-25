@@ -11,6 +11,8 @@ fail() {
 
 nm "$binary" | grep -q ' cJSON_Parse$' || \
   fail "Linux binary does not contain cJSON"
+nm "$binary" | grep -q ' JS_NewRuntime$' || \
+  fail "Linux binary does not contain QuickJS"
 
 help_output=$($binary --help)
 printf '%s\n' "$help_output" | grep -q '^Usage: retro-dlp' || \

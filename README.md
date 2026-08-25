@@ -26,9 +26,13 @@ The Linux product is `build/linux/retro-dlp`; its intermediate objects stay
 under `build/intermediates/linux`. Platform tests belong under the matching
 directory in `tests` (currently `tests/linux`).
 
-The Linux executable compiles and links the vendored cJSON submodule. The
-macOS executable links the quad-fat static AltivecCore archive, which supplies
-cJSON and the rest of AltivecCore on each supported Mac architecture.
+The Linux executable compiles and links the vendored cJSON submodule. It also
+builds QuickJS as `build/intermediates/linux/libquickjs.a` and statically links
+the complete engine into the executable. The macOS executable links the
+quad-fat static AltivecCore archive, which supplies cJSON and the rest of
+AltivecCore on each supported Mac architecture. QuickJS is also compiled into
+separate x86_64 and arm64 static archives and linked only into those two modern
+macOS slices; the PowerPC and i386 slices do not contain QuickJS.
 
 Run `make clean` to empty the three build output directories without deleting
 the directories themselves.
