@@ -36,9 +36,12 @@ build/linux/retro-dlp 'https://www.youtube.com/watch?v=YE7VzlLtp-4'
 ```
 
 The command prints JSON containing the direct URL, itag, dimensions, MIME type,
-expiry time, and required request headers. The phase-one resolver intentionally
-supports only direct itag 18 returned by its configured JSless client. It does
-not yet solve JavaScript challenges or generate PO tokens.
+expiry time, required request headers, and the result of a bodyless media HEAD
+probe. HTTP 403 is represented as the machine-readable classification
+`po_token_required`. The phase-one resolver intentionally supports only direct
+itag 18 returned by its configured JSless client. It rejects URLs containing
+an unsolved `n` challenge and does not yet solve JavaScript challenges or
+generate PO tokens.
 
 On macOS, every libcurl handle is configured with `cacert.pem` resolved beside
 the running executable. Network requests fail explicitly if the bundle is
@@ -62,13 +65,20 @@ platform:
 retro-dlp --test
 ```
 
-This also runs the staged resolver test against yt-dlp's public Big Buck Bunny
-fixture and sends a bodyless HEAD request to the resulting Google Video URL.
-It therefore requires internet access. A current HTTP 403 is reported as a
+This runs deterministic embedded player-response fixtures first, followed by a
+staged resolver test against yt-dlp's public Big Buck Bunny fixture and a
+bodyless HEAD request to the resulting Google Video URL. The live portion
+therefore requires internet access. A current HTTP 403 is reported as a
 successful transport probe with a PO-token-required classification; it does not
 mean that the video was downloaded. The tests execute inside the current binary
 slice, making them suitable for checking the actual PowerPC, i386, x86_64,
 arm64, or Linux build on its target machine.
+
+`make test` additionally runs the pinned vendored yt-dlp with the same
+`android_vr` client. It compares selected format metadata, the Google Video
+media service and stable query fields, direct signature parameter choice,
+absence of an unsolved `n`, and the HEAD result/classification. Python 3 is
+required for this Linux integration comparison.
 
 ## Source layout
 

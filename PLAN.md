@@ -27,6 +27,10 @@ Return a machine-readable result such as:
   "expires": 1785580000,
   "headers": {
     "User-Agent": "..."
+  },
+  "probe": {
+    "httpStatus": 403,
+    "classification": "po_token_required"
   }
 }
 ```
@@ -35,20 +39,24 @@ Use the current desktop version of yt-dlp as the comparison oracle. For each
 test video, compare:
 
 - [x] Selected itag
-- [x] Final media host and important query fields
-- [x] Signature (`s`) result, when present
-- [x] Throttling (`n`) result, when present
+- [x] Final Google Video media service and stable important query fields
+- [x] Direct signature parameter choice and absence of an unsolved `n`
+- [ ] Transformed signature (`s`) and throttling (`n`) results when present;
+  these require the EJS milestone and matching golden fixtures
 - [x] HEAD request status and failure classification
 
 - [x] Use the public Big Buck Bunny upload (`YE7VzlLtp-4`) as an initial live
   fixture, since yt-dlp also uses it in its YouTube extractor tests.
-- [ ] Keep captured player responses and media metadata as deterministic
-  offline fixtures so tests do not depend entirely on YouTube remaining
-  unchanged.
+- [x] Keep sanitized captured player responses and media metadata as
+  deterministic embedded fixtures so the core parser and classifications can
+  run without the network.
+- [x] Keep a live integration test so tests do not depend entirely on captured
+  responses remaining representative of YouTube.
 
 ## 2. Implement direct itag 18 only
 
-- [ ] Complete the direct-itag-18 milestone without QuickJS.
+- [x] Complete the direct-itag-18 milestone without invoking QuickJS in the
+  resolver path.
 
 Do not involve QuickJS yet. Implement the smallest complete resolution path:
 

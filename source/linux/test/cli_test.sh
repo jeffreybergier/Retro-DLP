@@ -31,6 +31,9 @@ printf '%s\n' "$self_test_output" | grep -q '^PASS: QuickJS$' || \
   fail "--test did not pass QuickJS"
 printf '%s\n' "$self_test_output" | grep -q '^PASS: video ID parsing' || \
   fail "--test did not pass video ID parsing"
+printf '%s\n' "$self_test_output" | \
+  grep -q '^PASS: deterministic player and HTTP classification fixtures$' || \
+  fail "--test did not pass deterministic player fixtures"
 printf '%s\n' "$self_test_output" | grep -q '^PASS: player API response' || \
   fail "--test did not pass the live player API test"
 printf '%s\n' "$self_test_output" | grep -q '^PASS: media HEAD' || \
@@ -43,6 +46,12 @@ printf '%s\n' "$resolve_output" | grep -q '"itag":[[:space:]]*18' || \
   fail "video resolution did not return itag 18 JSON"
 printf '%s\n' "$resolve_output" | grep -q 'googlevideo.com' || \
   fail "video resolution did not return a Google Video URL"
+printf '%s\n' "$resolve_output" | \
+  grep -Eq '"classification":[[:space:]]*"(ok|po_token_required)"' || \
+  fail "video resolution did not classify the media probe"
+
+python3 source/linux/test/yt_dlp_oracle.py "$binary" \
+  inspiration/yt-dlp/yt_dlp/__main__.py
 
 error_file=${TMPDIR:-/tmp}/retro-dlp-cli-test.$$
 trap 'rm -f "$error_file"' EXIT HUP INT TERM

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include <curl/curl.h>
 
@@ -52,39 +53,83 @@ static int copy_candidate(const char *candidate, char video_id[12]) {
   return 1;
 }
 
-YTStatus yt_extract_video_id(const char *input, char video_id[12]) {
+static int host_equals(const char *host, size_t host_length,
+                       const char *expected) {
+  size_t expected_length;
+
+  expected_length = strlen(expected);
+  return host_length == expected_length &&
+         strncasecmp(host, expected, host_length) == 0;
+}
+
+static int is_youtube_host(const char *host, size_t host_length) {
+  static const char suffix[] = ".youtube.com";
+  size_t suffix_length;
+
+  if (host_equals(host, host_length, "youtube.com") ||
+      host_equals(host, host_length, "youtube-nocookie.com") ||
+      host_equals(host, host_length, "www.youtube-nocookie.com"))
+    return 1;
+  suffix_length = sizeof(suffix) - 1;
+  return host_length > suffix_length &&
+         strncasecmp(host + host_length - suffix_length, suffix,
+                     suffix_length) == 0;
+}
+
+static int copy_query_video_id(const char *query, char video_id[12]) {
   const char *candidate;
-  const char *value;
+
+  while (query != NULL && *query != '\0' && *query != '#') {
+    if ((query[0] == '?' || query[0] == '&') && query[1] == 'v' &&
+        query[2] == '=' && copy_candidate(query + 3, video_id))
+      return 1;
+    candidate = strchr(query + 1, '&');
+    query = candidate;
+  }
+  return 0;
+}
+
+YTStatus yt_extract_video_id(const char *input, char video_id[12]) {
+  const char *authority;
+  const char *host_end;
+  const char *path;
+  const char *port;
+  size_t host_length;
 
   if (input == NULL || video_id == NULL)
     return YT_ERR_INVALID_VIDEO_ID;
   if (copy_candidate(input, video_id))
     return YT_OK;
 
-  candidate = strstr(input, "youtu.be/");
-  if (candidate != NULL && copy_candidate(candidate + 9, video_id))
-    return YT_OK;
+  if (strncmp(input, "https://", 8) == 0)
+    authority = input + 8;
+  else if (strncmp(input, "http://", 7) == 0)
+    authority = input + 7;
+  else
+    return YT_ERR_INVALID_VIDEO_ID;
 
-  candidate = strstr(input, "/shorts/");
-  if (candidate != NULL && copy_candidate(candidate + 8, video_id))
-    return YT_OK;
+  path = strpbrk(authority, "/?#");
+  if (path == NULL || path == authority || memchr(authority, '@',
+                                                   (size_t)(path - authority)))
+    return YT_ERR_INVALID_VIDEO_ID;
+  host_end = path;
+  port = (const char *)memchr(authority, ':', (size_t)(path - authority));
+  if (port != NULL)
+    host_end = port;
+  host_length = (size_t)(host_end - authority);
 
-  candidate = strstr(input, "/embed/");
-  if (candidate != NULL && copy_candidate(candidate + 7, video_id))
+  if (host_equals(authority, host_length, "youtu.be") && path[0] == '/' &&
+      copy_candidate(path + 1, video_id))
     return YT_OK;
-
-  candidate = strchr(input, '?');
-  if (candidate == NULL)
-    candidate = strchr(input, '&');
-  while (candidate != NULL) {
-    ++candidate;
-    if (candidate[0] == 'v' && candidate[1] == '=') {
-      value = candidate + 2;
-      if (copy_candidate(value, video_id))
-        return YT_OK;
-    }
-    candidate = strchr(candidate, '&');
-  }
+  if (!is_youtube_host(authority, host_length))
+    return YT_ERR_INVALID_VIDEO_ID;
+  if (strncmp(path, "/shorts/", 8) == 0 &&
+      copy_candidate(path + 8, video_id))
+    return YT_OK;
+  if (strncmp(path, "/embed/", 7) == 0 && copy_candidate(path + 7, video_id))
+    return YT_OK;
+  if (copy_query_video_id(strchr(path, '?'), video_id))
+    return YT_OK;
   return YT_ERR_INVALID_VIDEO_ID;
 }
 
@@ -225,6 +270,23 @@ static int64_t url_query_integer(const char *url, const char *name) {
   return 0;
 }
 
+static int url_has_query_parameter(const char *url, const char *name) {
+  size_t name_length;
+  const char *cursor;
+
+  if (url == NULL || name == NULL)
+    return 0;
+  name_length = strlen(name);
+  cursor = strchr(url, '?');
+  while (cursor != NULL) {
+    ++cursor;
+    if (strncmp(cursor, name, name_length) == 0 && cursor[name_length] == '=')
+      return 1;
+    cursor = strchr(cursor, '&');
+  }
+  return 0;
+}
+
 static YTStatus select_itag_18(cJSON *document, YTMediaRequest *result) {
   cJSON *streaming_data;
   cJSON *formats;
@@ -243,7 +305,7 @@ static YTStatus select_itag_18(cJSON *document, YTMediaRequest *result) {
       continue;
     url = json_string(format, "url");
     mime_type = json_string(format, "mimeType");
-    if (url == NULL || mime_type == NULL ||
+    if (url == NULL || mime_type == NULL || url_has_query_parameter(url, "n") ||
         strncmp(mime_type, "video/mp4", 9) != 0)
       continue;
     result->url = copy_string(url);
@@ -265,13 +327,43 @@ static YTStatus select_itag_18(cJSON *document, YTMediaRequest *result) {
   return YT_ERR_NO_PROGRESSIVE_MP4;
 }
 
+static YTStatus parse_player_document(cJSON *document,
+                                      YTMediaRequest *result) {
+  cJSON *playability;
+  const char *playability_status;
+
+  if (document == NULL || result == NULL)
+    return YT_ERR_INVALID_RESPONSE;
+  memset(result, 0, sizeof(*result));
+  playability = cJSON_GetObjectItemCaseSensitive(document,
+                                                 "playabilityStatus");
+  playability_status = json_string(playability, "status");
+  if (playability_status == NULL || strcmp(playability_status, "OK") != 0)
+    return YT_ERR_UNAVAILABLE;
+  return select_itag_18(document, result);
+}
+
+YTStatus yt_parse_player_response(const char *json, size_t length,
+                                  YTMediaRequest *result) {
+  cJSON *document;
+  YTStatus status;
+
+  if (json == NULL || result == NULL)
+    return YT_ERR_INVALID_RESPONSE;
+  memset(result, 0, sizeof(*result));
+  document = cJSON_ParseWithLength(json, length);
+  if (document == NULL)
+    return YT_ERR_INVALID_RESPONSE;
+  status = parse_player_document(document, result);
+  cJSON_Delete(document);
+  return status;
+}
+
 YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
   char video_id[12];
   cJSON *document;
   cJSON *response_context;
-  cJSON *playability;
   const char *visitor_data;
-  const char *playability_status;
   char *visitor_copy;
   YTStatus status;
 
@@ -305,23 +397,28 @@ YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
       return status;
   }
 
-  playability = cJSON_GetObjectItemCaseSensitive(document,
-                                                 "playabilityStatus");
-  playability_status = json_string(playability, "status");
-  if (playability_status == NULL || strcmp(playability_status, "OK") != 0) {
-    cJSON_Delete(document);
-    return YT_ERR_UNAVAILABLE;
-  }
-
-  status = select_itag_18(document, result);
+  status = parse_player_document(document, result);
   cJSON_Delete(document);
   return status;
 }
 
+YTStatus yt_classify_media_http_status(long http_status) {
+  if (http_status == 403)
+    return YT_ERR_PO_TOKEN_REQUIRED;
+  if (http_status >= 200 && http_status < 400)
+    return YT_OK;
+  return YT_ERR_HTTP;
+}
+
 YTStatus yt_probe_media_head(const YTMediaRequest *media, long *http_status) {
+  YTStatus status;
+
   if (media == NULL || media->url == NULL)
     return YT_ERR_INVALID_RESPONSE;
-  return yt_http_head(media->url, media->user_agent, http_status);
+  status = yt_http_head(media->url, media->user_agent, http_status);
+  if (status != YT_OK)
+    return status;
+  return yt_classify_media_http_status(*http_status);
 }
 
 void yt_media_request_free(YTMediaRequest *media) {
@@ -353,6 +450,8 @@ const char *yt_status_string(YTStatus status) {
     return "video unavailable";
   case YT_ERR_NO_PROGRESSIVE_MP4:
     return "no direct progressive MP4 available";
+  case YT_ERR_PO_TOKEN_REQUIRED:
+    return "PO token required";
   }
   return "unknown error";
 }

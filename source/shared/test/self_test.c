@@ -76,6 +76,25 @@ static int test_quickjs(void) {
 static int test_video_id(void) {
   char video_id[12];
 
+  if (yt_extract_video_id(SELF_TEST_VIDEO_ID, video_id) != YT_OK ||
+      strcmp(video_id, SELF_TEST_VIDEO_ID) != 0 ||
+      yt_extract_video_id("https://youtu.be/" SELF_TEST_VIDEO_ID "?feature=x",
+                          video_id) != YT_OK ||
+      strcmp(video_id, SELF_TEST_VIDEO_ID) != 0 ||
+      yt_extract_video_id("https://www.youtube.com/shorts/" SELF_TEST_VIDEO_ID,
+                          video_id) != YT_OK ||
+      strcmp(video_id, SELF_TEST_VIDEO_ID) != 0 ||
+      yt_extract_video_id("https://www.youtube.com/embed/" SELF_TEST_VIDEO_ID,
+                          video_id) != YT_OK ||
+      strcmp(video_id, SELF_TEST_VIDEO_ID) != 0 ||
+      yt_extract_video_id("https://www.youtube-nocookie.com/embed/"
+                          SELF_TEST_VIDEO_ID,
+                          video_id) != YT_OK ||
+      strcmp(video_id, SELF_TEST_VIDEO_ID) != 0) {
+    fprintf(stderr, "FAIL: YouTube video ID forms\n");
+    return 1;
+  }
+
   if (yt_extract_video_id(
           "https://www.youtube.com/watch?feature=test&v=" SELF_TEST_VIDEO_ID,
           video_id) != YT_OK || strcmp(video_id, SELF_TEST_VIDEO_ID) != 0) {
@@ -83,11 +102,72 @@ static int test_video_id(void) {
     return 1;
   }
   if (yt_extract_video_id("not-video", video_id) !=
-      YT_ERR_INVALID_VIDEO_ID) {
+          YT_ERR_INVALID_VIDEO_ID ||
+      yt_extract_video_id(SELF_TEST_VIDEO_ID "x", video_id) !=
+          YT_ERR_INVALID_VIDEO_ID ||
+      yt_extract_video_id("YE7VzlLtp!4", video_id) !=
+          YT_ERR_INVALID_VIDEO_ID ||
+      yt_extract_video_id("https://example.com/watch?v=" SELF_TEST_VIDEO_ID,
+                          video_id) != YT_ERR_INVALID_VIDEO_ID ||
+      yt_extract_video_id("https://example.com/youtu.be/" SELF_TEST_VIDEO_ID,
+                          video_id) != YT_ERR_INVALID_VIDEO_ID ||
+      yt_extract_video_id("https://youtube.com.example/watch?v="
+                          SELF_TEST_VIDEO_ID,
+                          video_id) !=
+          YT_ERR_INVALID_VIDEO_ID) {
     fprintf(stderr, "FAIL: invalid YouTube video ID was accepted\n");
     return 1;
   }
   printf("PASS: video ID parsing (%s)\n", SELF_TEST_VIDEO_ID);
+  return 0;
+}
+
+static int test_offline_player_fixtures(void) {
+  YTMediaRequest media;
+  YTStatus status;
+
+  status = yt_parse_player_response(retro_dlp_player_itag18_fixture,
+                                    retro_dlp_player_itag18_fixture_length,
+                                    &media);
+  if (status != YT_OK || media.itag != 18 || media.width != 640 ||
+      media.height != 360 || media.expires_unix != 1900000000LL ||
+      media.content_length != 12345678LL || media.url == NULL ||
+      strstr(media.url, "itag=18") == NULL || media.mime_type == NULL ||
+      strncmp(media.mime_type, "video/mp4", 9) != 0) {
+    fprintf(stderr, "FAIL: deterministic itag 18 player fixture\n");
+    if (status == YT_OK)
+      yt_media_request_free(&media);
+    return 1;
+  }
+  yt_media_request_free(&media);
+
+  status = yt_parse_player_response(
+      retro_dlp_player_n_challenge_fixture,
+      retro_dlp_player_n_challenge_fixture_length, &media);
+  if (status != YT_ERR_NO_PROGRESSIVE_MP4) {
+    fprintf(stderr, "FAIL: unresolved s/n challenge fixture was accepted\n");
+    if (status == YT_OK)
+      yt_media_request_free(&media);
+    return 1;
+  }
+
+  status = yt_parse_player_response(retro_dlp_player_unavailable_fixture,
+                                    retro_dlp_player_unavailable_fixture_length,
+                                    &media);
+  if (status != YT_ERR_UNAVAILABLE) {
+    fprintf(stderr, "FAIL: unavailable player fixture classification\n");
+    return 1;
+  }
+
+  if (yt_classify_media_http_status(204) != YT_OK ||
+      yt_classify_media_http_status(302) != YT_OK ||
+      yt_classify_media_http_status(403) != YT_ERR_PO_TOKEN_REQUIRED ||
+      yt_classify_media_http_status(404) != YT_ERR_HTTP) {
+    fprintf(stderr, "FAIL: media HTTP status classification fixture\n");
+    return 1;
+  }
+
+  printf("PASS: deterministic player and HTTP classification fixtures\n");
   return 0;
 }
 
@@ -139,10 +219,10 @@ static int test_live_resolver(void) {
   if (media.itag != 18 || media.width != 640 || media.height != 360 ||
       media.mime_type == NULL ||
       strncmp(media.mime_type, "video/mp4", 9) != 0) {
-    fprintf(stderr, "FAIL: yt-dlp oracle metadata comparison\n");
+    fprintf(stderr, "FAIL: live fixture metadata\n");
     failed = 1;
   } else {
-    printf("PASS: yt-dlp oracle metadata (itag 18, 640x360 MP4)\n");
+    printf("PASS: live fixture metadata (itag 18, 640x360 MP4)\n");
   }
 
   if (!has_googlevideo_host(media.url) ||
@@ -163,12 +243,12 @@ static int test_live_resolver(void) {
 
   http_status = 0;
   status = yt_probe_media_head(&media, &http_status);
-  if (status != YT_OK ||
+  if ((status != YT_OK && status != YT_ERR_PO_TOKEN_REQUIRED) ||
       !((http_status >= 200 && http_status < 400) || http_status == 403)) {
     fprintf(stderr, "FAIL: media HEAD request: %s (HTTP %ld)\n",
             yt_status_string(status), http_status);
     failed = 1;
-  } else if (http_status == 403) {
+  } else if (status == YT_ERR_PO_TOKEN_REQUIRED) {
     printf("PASS: media HEAD reached GVS (HTTP 403: PO token required)\n");
   } else {
     printf("PASS: media HEAD (HTTP %ld)\n", http_status);
@@ -184,6 +264,7 @@ int retro_dlp_run_self_tests(void) {
   failures = test_cjson();
   failures += test_quickjs();
   failures += test_video_id();
+  failures += test_offline_player_fixtures();
   failures += test_live_resolver();
   if (failures != 0)
     return 1;

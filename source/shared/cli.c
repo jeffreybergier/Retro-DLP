@@ -27,9 +27,19 @@ static void print_usage(FILE *stream) {
           "      --test       Run embedded dependency tests.\n");
 }
 
-static int print_media_request(const YTMediaRequest *media) {
+static const char *probe_classification(YTStatus status) {
+  if (status == YT_OK)
+    return "ok";
+  if (status == YT_ERR_PO_TOKEN_REQUIRED)
+    return "po_token_required";
+  return "failed";
+}
+
+static int print_media_request(const YTMediaRequest *media,
+                               YTStatus probe_status, long http_status) {
   cJSON *document;
   cJSON *headers;
+  cJSON *probe;
   char *json;
 
   document = cJSON_CreateObject();
@@ -51,6 +61,14 @@ static int print_media_request(const YTMediaRequest *media) {
     cJSON_Delete(document);
     return 1;
   }
+  probe = cJSON_AddObjectToObject(document, "probe");
+  if (probe == NULL ||
+      !cJSON_AddNumberToObject(probe, "httpStatus", (double)http_status) ||
+      !cJSON_AddStringToObject(probe, "classification",
+                              probe_classification(probe_status))) {
+    cJSON_Delete(document);
+    return 1;
+  }
   json = cJSON_Print(document);
   cJSON_Delete(document);
   if (json == NULL)
@@ -63,6 +81,8 @@ static int print_media_request(const YTMediaRequest *media) {
 static int resolve_argument(const char *input) {
   YTMediaRequest media;
   YTStatus status;
+  YTStatus probe_status;
+  long http_status;
   int failed;
 
   if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
@@ -75,7 +95,16 @@ static int resolve_argument(const char *input) {
     curl_global_cleanup();
     return 1;
   }
-  failed = print_media_request(&media);
+  http_status = 0;
+  probe_status = yt_probe_media_head(&media, &http_status);
+  if (probe_status != YT_OK && probe_status != YT_ERR_PO_TOKEN_REQUIRED) {
+    fprintf(stderr, "retro-dlp: media probe failed: %s (HTTP %ld)\n",
+            yt_status_string(probe_status), http_status);
+    yt_media_request_free(&media);
+    curl_global_cleanup();
+    return 1;
+  }
+  failed = print_media_request(&media, probe_status, http_status);
   yt_media_request_free(&media);
   curl_global_cleanup();
   if (failed) {
