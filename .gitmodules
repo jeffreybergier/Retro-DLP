@@ -4,3 +4,6 @@
 [submodule "source/deps/QuickJS"]
 	path = source/deps/QuickJS
 	url = https://github.com/bellard/quickjs.git
+[submodule "inspiration/yt-dlp"]
+	path = inspiration/yt-dlp
+	url = https://github.com/yt-dlp/yt-dlp.git
