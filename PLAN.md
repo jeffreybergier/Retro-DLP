@@ -110,7 +110,7 @@ reduced player-shaped base.js fixture + known s/n challenges
      unexpected JavaScript exception by using a fresh runtime for each solve.
    - [x] Compile and link the EJS adapter and fixtures into the PowerPC slice.
    - [x] Run the EJS fixtures in a PowerPC Tiger environment. Validated on
-     Darwin 8.11.0 PowerPC: the complete embedded self-test and live resolver
+     Darwin 8.11.0 PowerPC: the complete self-test and live resolver
      passed; the media probe reached GVS and returned the expected PO-token
      `403` classification.
 5. [ ] **Integrate with format parsing.** Retain itag 18 candidates containing
@@ -125,32 +125,32 @@ reduced player-shaped base.js fixture + known s/n challenges
 
 ## 4. Make EJS assets downloadable on demand by the CLI
 
-- [ ] Complete the on-demand EJS asset milestone.
+- [x] Complete the on-demand EJS asset milestone.
 
 Keep QuickJS compiled into the native executable, but stop embedding the EJS
 `core` and `lib` JavaScript in release binaries once the asset loader is ready.
 Direct itag 18 resolution must continue to work without EJS being installed.
 
-- [ ] Ship a small built-in bootstrap manifest containing the pinned EJS
+- [x] Ship a small built-in bootstrap manifest containing the pinned EJS
   version, HTTPS download URLs, expected sizes, SHA-256 hashes, and license
   metadata.
-- [ ] Add `retro-dlp assets status`, `retro-dlp assets install`, and
+- [x] Add `retro-dlp assets status`, `retro-dlp assets install`, and
   `retro-dlp assets remove` commands with machine-readable output.
-- [ ] Download through the existing native HTTP/TLS layer with strict response
+- [x] Download through the existing native HTTP/TLS layer with strict response
   size limits and no JavaScript-visible networking APIs.
-- [ ] Verify every asset's size and SHA-256 hash before installation, then use
+- [x] Verify every asset's size and SHA-256 hash before installation, then use
   atomic writes so an interruption cannot replace a working installation with
   a partial one.
-- [ ] Store assets in an appropriate per-user data directory rather than beside
-  the executable, and reject unsupported or unsafe filesystem layouts.
-- [ ] When a selected format needs EJS but the assets are absent, return a
+- [x] Store assets under `~/.retro-dlp/cache/assets` rather than beside the
+  executable. Use the same `~/.retro-dlp/cache` root on Linux, macOS, and iOS.
+- [x] When EJS execution is requested but the assets are absent, return a
   distinct `ejs_assets_missing` classification that names the install command;
   do not download implicitly during ordinary video resolution.
-- [ ] Exercise the production asset loader in deterministic tests, including
+- [x] Exercise the production asset loader in deterministic tests, including
   missing, truncated, oversized, corrupt, wrong-version, and interrupted
   installations. Test builds may inject the pinned vendored assets, but release
   builds must demonstrate that the EJS source is not embedded.
-- [ ] Retain complete EJS and bundled-dependency license notices with the
+- [x] Retain complete EJS and bundled-dependency license notices with the
   installed assets.
 
 This phase installs only the EJS version pinned by the native executable. A new
@@ -159,20 +159,28 @@ channel is implemented.
 
 ## 5. Add caches
 
-- [ ] Complete the caching milestone.
+- [x] Complete the caching milestone.
 
 Add bounded, versioned caches for:
 
-- [ ] The client manifest
-- [ ] Raw player JavaScript
-- [ ] EJS `preprocessed_player` output
-- [ ] The most recently successful client, for a limited period
-- [ ] Failure classifications, with short and error-specific lifetimes
+Use `~/.retro-dlp/cache/v1` as the common cache root on Linux, macOS, and iOS.
 
-- [ ] Key player artifacts by canonical player URL and/or a cryptographic hash.
-- [ ] Make cache writes atomic.
-- [ ] Safely discard corrupt or incompatible entries.
-- [ ] Do not use downloaded QuickJS bytecode as a cache or update format.
+- [x] The client manifest
+- [x] Raw player JavaScript
+- [x] EJS `preprocessed_player` output
+- [x] The most recently successful client, for a limited period
+- [x] Failure classifications, with short and error-specific lifetimes
+
+- [x] Key player artifacts by canonical player URL and/or an OpenSSL SHA-256
+  hash.
+- [x] Make cache writes atomic.
+- [x] Safely discard corrupt or incompatible entries.
+- [x] Do not use downloaded QuickJS bytecode as a cache or update format.
+
+The preprocessed-player cache is connected to the EJS adapter now. The other
+bounded namespaces and expiry policies are ready for the Phase 3 client
+manifest, player-download, client-selection, and failure-classification paths
+as those producers are connected.
 
 ## 6. Package and validate for ARMv7 and iOS 5
 

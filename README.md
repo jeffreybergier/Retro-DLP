@@ -49,17 +49,23 @@ missing or unreadable. Linux continues to use libcurl's system trust settings.
 
 The Linux executable compiles and links the vendored cJSON submodule. It also
 builds QuickJS as `build/intermediates/linux/libquickjs.a` and statically links
-the complete engine into the executable. A pinned `yt-dlp-ejs` 0.8.0 bundle is
-embedded as a build asset and exercised through a resource-limited native
-adapter. The resolver does not use that adapter for live formats yet; that
-connection belongs to the remaining Phase 3 format and player-JavaScript work.
+the complete engine into the executable. The resource-limited native adapter
+loads the pinned `yt-dlp-ejs` 0.8.0 JavaScript assets from
+`~/.retro-dlp/cache/assets`; release binaries do not embed those assets. The
+resolver does not use that adapter for live formats yet; that connection belongs
+to the remaining Phase 3 format and player-JavaScript work.
 The macOS executable links the quad-fat static AltivecCore archive, which
 supplies cJSON and the rest of AltivecCore on each supported Mac architecture.
 QuickJS is compiled into a separate static archive for each of the PowerPC,
 i386, x86_64, and arm64 macOS slices.
 
-Python 3 is required at build time to convert the pinned EJS text assets into
-portable C string literals.
+Install, inspect, or remove the EJS assets with:
+
+```sh
+retro-dlp assets install
+retro-dlp assets status
+retro-dlp assets remove
+```
 
 Run `make clean` to empty the three build output directories without deleting
 the directories themselves.
@@ -71,16 +77,17 @@ platform:
 retro-dlp --test
 ```
 
-This runs deterministic embedded player-response fixtures and EJS `s`/`n`
-fixtures first, followed by a staged resolver test against yt-dlp's public Big
-Buck Bunny fixture and a bodyless HEAD request to the resulting Google Video
-URL. The EJS tests cover batching, preprocessed-player reuse, malformed output,
-exceptions, execution deadlines, memory limits, and runtime recovery. The live
-portion therefore requires internet access. A current HTTP 403 is reported as
-a successful transport probe with a PO-token-required classification; it does
-not mean that the video was downloaded. The tests execute inside the current
-binary slice, making them suitable for checking the actual PowerPC, i386,
-x86_64, arm64, or Linux build on its target machine.
+This runs deterministic cache and player-response fixtures first, followed by a
+staged resolver test against yt-dlp's public Big Buck Bunny fixture and a
+bodyless HEAD request to the resulting Google Video URL. When EJS assets are
+installed, it also runs the `s`/`n` tests for batching, preprocessed-player
+reuse, malformed output, exceptions, execution deadlines, memory limits, and
+runtime recovery. Otherwise that section reports a skip with the installation
+command. The live portion requires internet access. A current HTTP 403 is
+reported as a successful transport probe with a PO-token-required
+classification; it does not mean that the video was downloaded. The tests
+execute inside the current binary slice, making them suitable for checking the
+actual PowerPC, i386, x86_64, arm64, or Linux build on its target machine.
 
 `make test` additionally runs the pinned vendored yt-dlp with the same
 `android_vr` client. It compares selected format metadata, the Google Video
@@ -119,3 +126,24 @@ Initialize cJSON and QuickJS after cloning:
 ```sh
 git submodule update --init --recursive
 ```
+
+# License
+
+Retro-DLP is licensed under the [MIT License](https://opensource.org/license/mit/).
+It includes, links against, downloads, or uses for testing components that
+remain subject to their own licenses:
+
+- [QuickJS](https://github.com/bellard/quickjs/blob/master/LICENSE) — MIT
+- [cJSON](https://github.com/DaveGamble/cJSON/blob/master/LICENSE) — MIT
+- AltivecCore — [MIT](https://opensource.org/license/mit/)
+- [libcurl](https://curl.se/docs/copyright.html) — curl license
+- [OpenSSL](https://www.openssl.org/source/license.html) — OpenSSL licenses
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE) — Unlicense
+- [yt-dlp-ejs](https://github.com/yt-dlp/ejs/blob/main/LICENSE) — Unlicense;
+  its prebuilt assets also contain
+  [Meriyah](https://github.com/meriyah/meriyah/blob/master/LICENSE.md) under ISC
+  and [Astring](https://github.com/davidbonnet/astring/blob/main/LICENSE) under
+  MIT
+
+Each third-party component is provided under its respective license, and those
+licenses apply independently of Retro-DLP's MIT license.

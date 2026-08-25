@@ -450,6 +450,8 @@ const char *yt_status_string(YTStatus status) {
     return "video unavailable";
   case YT_ERR_NO_PROGRESSIVE_MP4:
     return "no direct progressive MP4 available";
+  case YT_ERR_EJS_ASSETS_MISSING:
+    return "EJS assets missing; run: retro-dlp assets install";
   case YT_ERR_PO_TOKEN_REQUIRED:
     return "PO token required";
   }

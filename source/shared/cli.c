@@ -9,6 +9,7 @@
 #include "cJSON.h"
 #include "platform.h"
 #include "test/self_test.h"
+#include "yt_ejs_assets.h"
 #include "yt_resolver.h"
 
 #ifndef RETRO_DLP_VERSION
@@ -17,7 +18,7 @@
 
 static void print_usage(FILE *stream) {
   fprintf(stream,
-          "Usage: retro-dlp [OPTION] | VIDEO_ID_OR_URL\n"
+          "Usage: retro-dlp [OPTION] | assets COMMAND | VIDEO_ID_OR_URL\n"
           "\n"
           "Retro-DLP command line tool.\n"
           "\n"
@@ -25,6 +26,73 @@ static void print_usage(FILE *stream) {
           "  -h, --help       Show this help.\n"
           "  -V, --version    Show version and build platform.\n"
           "      --test       Run embedded dependency tests.\n");
+  fprintf(stream,
+          "\n"
+          "Asset commands:\n"
+          "  assets status    Show EJS asset state.\n"
+          "  assets install   Download and verify the pinned EJS assets.\n"
+          "  assets remove    Remove the installed EJS assets.\n");
+}
+
+static int print_asset_result(const char *action, YTEJSAssetsStatus status) {
+  YTEJSAssetsInfo info;
+  YTEJSAssetsStatus inspect_status;
+  cJSON *document;
+  char *json;
+
+  inspect_status = yt_ejs_assets_inspect(&info);
+  document = cJSON_CreateObject();
+  if (document == NULL)
+    return 1;
+  if (!cJSON_AddStringToObject(document, "action", action) ||
+      !cJSON_AddStringToObject(document, "status",
+                              yt_ejs_assets_status_string(status)) ||
+      !cJSON_AddStringToObject(document, "version", YT_EJS_ASSET_VERSION) ||
+      !cJSON_AddBoolToObject(document, "installed", info.installed) ||
+      !cJSON_AddBoolToObject(document, "coreValid", info.core_valid) ||
+      !cJSON_AddBoolToObject(document, "libValid", info.lib_valid) ||
+      !cJSON_AddStringToObject(document, "root", info.root[0] == '\0' ? "" :
+                                                               info.root) ||
+      !cJSON_AddStringToObject(document, "inspection",
+                              yt_ejs_assets_status_string(inspect_status))) {
+    cJSON_Delete(document);
+    return 1;
+  }
+  json = cJSON_Print(document);
+  cJSON_Delete(document);
+  if (json == NULL)
+    return 1;
+  printf("%s\n", json);
+  free(json);
+  return 0;
+}
+
+static int run_asset_command(const char *command) {
+  YTEJSAssetsStatus status;
+  YTEJSAssetsInfo info;
+  int failed;
+
+  if (strcmp(command, "status") == 0) {
+    status = yt_ejs_assets_inspect(&info);
+    return print_asset_result("status", status);
+  }
+  if (strcmp(command, "remove") == 0) {
+    status = yt_ejs_assets_remove();
+    failed = print_asset_result("remove", status);
+    return failed || status != YT_EJS_ASSETS_OK;
+  }
+  if (strcmp(command, "install") == 0) {
+    if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
+      fprintf(stderr, "retro-dlp: could not initialize libcurl\n");
+      return 1;
+    }
+    status = yt_ejs_assets_install();
+    curl_global_cleanup();
+    failed = print_asset_result("install", status);
+    return failed || status != YT_EJS_ASSETS_OK;
+  }
+  fprintf(stderr, "retro-dlp: unsupported asset command\n");
+  return 2;
 }
 
 static const char *probe_classification(YTStatus status) {
@@ -142,6 +210,9 @@ int retro_dlp_run(int argc, char **argv) {
     curl_global_cleanup();
     return result;
   }
+
+  if (argc == 3 && strcmp(argv[1], "assets") == 0)
+    return run_asset_command(argv[2]);
 
   if (argc == 2 && argv[1][0] != '-')
     return resolve_argument(argv[1]);

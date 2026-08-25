@@ -9,7 +9,7 @@ LEGACY_MACOS_EXTRA_CPPFLAGS ?=
 LEGACY_MACOS_EXTRA_CFLAGS ?=
 LEGACY_MACOS_EXTRA_LIBRARIES ?=
 LEGACY_MACOS_CPPFLAGS := $(MACOS_BASE_CPPFLAGS) \
-	$(LEGACY_MACOS_EXTRA_CPPFLAGS)
+	-D_NONSTD_SOURCE $(LEGACY_MACOS_EXTRA_CPPFLAGS)
 LEGACY_MACOS_CFLAGS := $(COMMON_CFLAGS) -fno-stack-protector \
 	-fno-common -fno-zero-initialized-in-bss $(LEGACY_MACOS_EXTRA_CFLAGS)
 LEGACY_MACOS_LIBRARIES := $(MACOS_BASE_LIBRARIES) \
@@ -46,6 +46,10 @@ $(PPC_BINARY): $(PPC_OBJECTS) $(ALTIVECCORE) $(PPC_QUICKJS_LIBRARY)
 		-arch ppc -isysroot $(SDK_PPC_PATH) $(PPC_OBJECTS) \
 		$(LEGACY_MACOS_LIBRARIES) -Wl,-force_load,$(PPC_QUICKJS_LIBRARY) \
 		$(LEGACY_QUICKJS_LIBRARIES) -lgcc_s.10.4 -o $@
+	@if $(NM) -u $@ | grep -E '\$$(UNIX2003|NOCANCEL|INODE64|1050)' \
+		>/dev/null; then \
+		echo "Tiger-incompatible suffixed symbol in $@" >&2; exit 1; \
+	fi
 
 $(I386_BINARY): $(I386_OBJECTS) $(ALTIVECCORE) $(I386_QUICKJS_LIBRARY)
 	@echo "  > linking i386 binary"
@@ -53,6 +57,10 @@ $(I386_BINARY): $(I386_OBJECTS) $(ALTIVECCORE) $(I386_QUICKJS_LIBRARY)
 		-arch i386 -isysroot $(SDK_X86_PATH) $(I386_OBJECTS) \
 		$(LEGACY_MACOS_LIBRARIES) -Wl,-force_load,$(I386_QUICKJS_LIBRARY) \
 		$(LEGACY_QUICKJS_LIBRARIES) -lgcc_s.10.4 -o $@
+	@if $(NM) -u $@ | grep -E '\$$(UNIX2003|NOCANCEL|INODE64|1050)' \
+		>/dev/null; then \
+		echo "Tiger-incompatible suffixed symbol in $@" >&2; exit 1; \
+	fi
 
 $(MACOS_INT_DIR)/ppc/%.o: %.c
 	@echo " [1/5] Compiling ppc: $<"

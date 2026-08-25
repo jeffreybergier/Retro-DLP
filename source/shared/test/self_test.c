@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "cJSON.h"
+#include "cache_test.h"
 #include "curl/curl.h"
 #include "ejs_test.h"
 #include "quickjs.h"
@@ -263,6 +264,7 @@ int retro_dlp_run_self_tests(void) {
   int failures;
 
   failures = test_cjson();
+  failures += retro_dlp_run_cache_tests();
   failures += test_quickjs();
   failures += retro_dlp_run_ejs_tests();
   failures += test_video_id();

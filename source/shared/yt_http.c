@@ -14,7 +14,9 @@
 typedef struct {
   char *data;
   size_t length;
+  size_t maximum_size;
   int failed;
+  int too_large;
 } YTWriteBuffer;
 
 static size_t write_response(void *contents, size_t size, size_t count,
@@ -29,9 +31,10 @@ static size_t write_response(void *contents, size_t size, size_t count,
     return 0;
   }
   incoming = size * count;
-  if (incoming > YT_HTTP_MAX_RESPONSE ||
-      buffer->length > YT_HTTP_MAX_RESPONSE - incoming) {
+  if (incoming > buffer->maximum_size ||
+      buffer->length > buffer->maximum_size - incoming) {
     buffer->failed = 1;
+    buffer->too_large = 1;
     return 0;
   }
 
@@ -76,6 +79,7 @@ YTStatus yt_http_post_json(const char *url, const char *json,
     return YT_ERR_INVALID_RESPONSE;
   memset(response, 0, sizeof(*response));
   memset(&buffer, 0, sizeof(buffer));
+  buffer.maximum_size = YT_HTTP_MAX_RESPONSE;
 
   curl = curl_easy_init();
   if (curl == NULL)
@@ -113,6 +117,56 @@ YTStatus yt_http_post_json(const char *url, const char *json,
   if (code != CURLE_OK) {
     free(buffer.data);
     return buffer.failed ? YT_ERR_OUT_OF_MEMORY : YT_ERR_NETWORK;
+  }
+  response->data = buffer.data;
+  response->length = buffer.length;
+  if (response->data == NULL) {
+    response->data = (char *)malloc(1);
+    if (response->data == NULL)
+      return YT_ERR_OUT_OF_MEMORY;
+    response->data[0] = '\0';
+  }
+  return YT_OK;
+}
+
+YTStatus yt_http_get(const char *url, size_t maximum_size,
+                     YTHttpResponse *response) {
+  CURL *curl;
+  CURLcode code;
+  YTWriteBuffer buffer;
+  YTStatus status;
+
+  if (url == NULL || response == NULL || maximum_size == 0)
+    return YT_ERR_INVALID_RESPONSE;
+  memset(response, 0, sizeof(*response));
+  memset(&buffer, 0, sizeof(buffer));
+  buffer.maximum_size = maximum_size;
+  curl = curl_easy_init();
+  if (curl == NULL)
+    return YT_ERR_NETWORK;
+  status = configure_common(curl, url);
+  if (status != YT_OK) {
+    curl_easy_cleanup(curl);
+    return status;
+  }
+#if LIBCURL_VERSION_NUM >= 0x075500
+  curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "https");
+  curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "https");
+#else
+  curl_easy_setopt(curl, CURLOPT_PROTOCOLS, (long)CURLPROTO_HTTPS);
+  curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS, (long)CURLPROTO_HTTPS);
+#endif
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, "retro-dlp/" RETRO_DLP_VERSION);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_response);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
+  code = curl_easy_perform(curl);
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response->status);
+  curl_easy_cleanup(curl);
+  if (code != CURLE_OK) {
+    free(buffer.data);
+    return buffer.too_large ? YT_ERR_INVALID_RESPONSE
+                            : (buffer.failed ? YT_ERR_OUT_OF_MEMORY
+                                             : YT_ERR_NETWORK);
   }
   response->data = buffer.data;
   response->length = buffer.length;

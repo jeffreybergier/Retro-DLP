@@ -6,6 +6,7 @@
 
 #include "ejs_test_data.h"
 #include "yt_ejs.h"
+#include "yt_ejs_assets.h"
 #include "yt_ejs_internal.h"
 
 static const char *const signature_challenges[] = {
@@ -162,6 +163,19 @@ static int test_timeout_and_memory_limit(void) {
 
 int retro_dlp_run_ejs_tests(void) {
   int failures;
+  YTEJSAssetsInfo info;
+  YTEJSAssetsStatus assets_status;
+
+  assets_status = yt_ejs_assets_inspect(&info);
+  if (assets_status == YT_EJS_ASSETS_MISSING) {
+    printf("SKIP: EJS assets missing (run: retro-dlp assets install)\n");
+    return 0;
+  }
+  if (assets_status != YT_EJS_ASSETS_OK) {
+    fprintf(stderr, "FAIL: EJS assets: %s\n",
+            yt_ejs_assets_status_string(assets_status));
+    return 1;
+  }
 
   failures = test_player_and_preprocessed_solver();
   failures += test_malformed_result();

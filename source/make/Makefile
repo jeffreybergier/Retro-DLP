@@ -7,7 +7,9 @@ LINUX_BUILD_DIR := $(BUILD_DIR)/linux
 
 SHARED_SOURCES := source/shared/main.c source/shared/cli.c \
 	source/shared/yt_http.c source/shared/yt_resolver.c \
-	source/shared/yt_ejs.c source/shared/yt_ejs_bundle.c \
+	source/shared/yt_cache.c source/shared/yt_crypto.c \
+	source/shared/yt_ejs.c source/shared/yt_ejs_assets.c \
+	source/shared/test/cache_test.c \
 	source/shared/test/ejs_test.c source/shared/test/ejs_test_data.c \
 	source/shared/test/self_test.c source/shared/test/self_test_data.c
 MACOS_COMMON_SOURCES := $(SHARED_SOURCES) source/macOS/platform.c
@@ -15,13 +17,6 @@ CJSON_DIR := source/deps/cJSON
 CJSON_SOURCE := $(CJSON_DIR)/cJSON.c
 QUICKJS_DIR := source/deps/QuickJS
 QUICKJS_VERSION := $(shell cat $(QUICKJS_DIR)/VERSION 2>/dev/null)
-EJS_DIR := source/deps/yt-dlp-ejs
-EJS_GENERATED_DIR := $(BUILD_DIR)/intermediates/generated/yt-dlp-ejs
-EJS_CORE_INCLUDE := $(EJS_GENERATED_DIR)/yt_ejs_core.inc
-EJS_LIB_INCLUDE := $(EJS_GENERATED_DIR)/yt_ejs_lib.inc
-EJS_GENERATED_INCLUDES := $(EJS_CORE_INCLUDE) $(EJS_LIB_INCLUDE)
-EMBED_TEXT := source/make/embed_text.py
-PYTHON3 ?= python3
 QUICKJS_SOURCE_NAMES := quickjs.c dtoa.c libregexp.c libunicode.c cutils.c \
 	quickjs-libc.c
 LINUX_SOURCES := $(SHARED_SOURCES) source/linux/platform.c $(CJSON_SOURCE)
@@ -31,6 +26,7 @@ include $(ALTIVEC_ROOT)/altivec_toolchains.mk
 
 ALTIVECCORE_DIR ?= $(ALTIVEC_ROOT)/libs/core/build-mac
 ALTIVECCORE := $(ALTIVECCORE_DIR)/lib/libAltivecCore.a
+ALTIVEC_CRYPTO := $(ALTIVECCORE_DIR)/lib/libcrypto.a
 MACOS_CA_SOURCE := $(ALTIVECCORE_DIR)/lib/cacert.pem
 MACOS_CA_BUNDLE := $(MACOS_BUILD_DIR)/cacert.pem
 
@@ -40,7 +36,7 @@ MAC_MIN_OLD := 10.4
 MAC_MIN_X64 := 10.9
 MAC_MIN_ARM64 := 11.0
 
-CPPFLAGS := -Isource/shared -I$(QUICKJS_DIR) -I$(EJS_GENERATED_DIR) \
+CPPFLAGS := -Isource/shared -I$(QUICKJS_DIR) \
 	-DRETRO_DLP_VERSION=\"$(VERSION)\"
 MACOS_BASE_CPPFLAGS := $(CPPFLAGS) -I$(ALTIVECCORE_DIR)/include
 LINUX_CPPFLAGS := $(CPPFLAGS) -I$(CJSON_DIR)
@@ -53,7 +49,8 @@ QUICKJS_CFLAGS := $(CFLAGS) -std=gnu11 -Wall -Wextra -funsigned-char \
 	-Wno-unused-parameter -Wno-discarded-qualifiers \
 	-Wno-implicit-fallthrough
 MACOS_BASE_LIBRARIES := $(ALTIVECCORE) -framework Foundation \
-	-framework CoreFoundation -framework SystemConfiguration -lobjc
+	-framework CoreFoundation -framework SystemConfiguration -lobjc \
+	$(ALTIVEC_CRYPTO)
 
 MACOS_INT_DIR := $(INTERMEDIATE_DIR)/macOS
 LINUX_INT_DIR := $(INTERMEDIATE_DIR)/linux
@@ -62,19 +59,12 @@ QUICKJS_OBJECTS := $(addprefix $(QUICKJS_INT_DIR)/, \
 	$(QUICKJS_SOURCE_NAMES:.c=.o))
 QUICKJS_LIBRARY := $(LINUX_INT_DIR)/libquickjs.a
 LINUX_LIBRARIES := -Wl,--whole-archive $(QUICKJS_LIBRARY) \
-	-Wl,--no-whole-archive -lcurl -lm -ldl -lpthread
+	-Wl,--no-whole-archive -lcurl -lcrypto -lm -ldl -lpthread
 LINUX_OBJECTS := $(LINUX_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
 
 include source/make/apple-gcc4.mk
 include source/make/clang.mk
 
-EJS_BUNDLE_OBJECTS := \
-	$(LINUX_INT_DIR)/source/shared/yt_ejs_bundle.o \
-	$(MACOS_INT_DIR)/ppc/source/shared/yt_ejs_bundle.o \
-	$(MACOS_INT_DIR)/i386/source/shared/yt_ejs_bundle.o \
-	$(MACOS_INT_DIR)/x86_64/source/shared/yt_ejs_bundle.o \
-	$(MACOS_INT_DIR)/arm64/source/shared/yt_ejs_bundle.o
-$(EJS_BUNDLE_OBJECTS): $(EJS_GENERATED_INCLUDES)
 $(LINUX_INT_DIR)/source/shared/yt_ejs.o \
 $(MACOS_INT_DIR)/ppc/source/shared/yt_ejs.o \
 $(MACOS_INT_DIR)/i386/source/shared/yt_ejs.o: \
@@ -83,12 +73,6 @@ $(MACOS_INT_DIR)/i386/source/shared/yt_ejs.o: \
 $(MACOS_INT_DIR)/x86_64/source/shared/yt_ejs.o \
 $(MACOS_INT_DIR)/arm64/source/shared/yt_ejs.o: \
 	SOURCE_WARNING_FLAGS := -Wno-unused-parameter -Wno-sign-conversion
-
-$(EJS_CORE_INCLUDE): $(EJS_DIR)/core.min.js $(EMBED_TEXT)
-	@$(PYTHON3) $(EMBED_TEXT) $< $@
-
-$(EJS_LIB_INCLUDE): $(EJS_DIR)/lib.min.js $(EMBED_TEXT)
-	@$(PYTHON3) $(EMBED_TEXT) $< $@
 
 $(LINUX_INT_DIR)/source/shared/test/self_test.o \
 $(MACOS_INT_DIR)/ppc/source/shared/test/self_test.o \
@@ -158,6 +142,8 @@ validate:
 		{ echo "Missing arm64 compiler" >&2; exit 1; }
 	@test -f "$(ALTIVECCORE)" || \
 		{ echo "Missing AltivecCore: $(ALTIVECCORE)" >&2; exit 1; }
+	@test -f "$(ALTIVEC_CRYPTO)" || \
+		{ echo "Missing libcrypto: $(ALTIVEC_CRYPTO)" >&2; exit 1; }
 
 clean:
 	@echo "Cleaning retro-dlp build artifacts..."

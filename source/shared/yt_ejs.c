@@ -8,7 +8,8 @@
 
 #include "cJSON.h"
 #include "quickjs.h"
-#include "yt_ejs_bundle.h"
+#include "yt_cache.h"
+#include "yt_ejs_assets.h"
 #include "yt_ejs_internal.h"
 
 #define YT_EJS_DEFAULT_MEMORY_LIMIT (128U * 1024U * 1024U)
@@ -349,12 +350,19 @@ YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
       "JSON.stringify(jsc(JSON.parse(globalThis.__retro_dlp_ejs_input)))";
   YTEJSConfig effective_config;
   YTEJSDeadline deadline;
+  YTEJSAssets assets;
+  YTEJSAssetsStatus assets_status;
   JSRuntime *runtime;
   JSContext *context;
   JSValue value;
   JSValue global;
   char *request_json;
   const char *result_json;
+  const char *effective_player_source;
+  char *cached_player_source;
+  char cache_key[65];
+  size_t cached_player_length;
+  YTEJSSourceType effective_source_type;
   YTEJSStatus status;
   size_t request_index;
 
@@ -374,14 +382,50 @@ YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
   if (effective_config.memory_limit_bytes == 0 ||
       effective_config.stack_limit_bytes == 0)
     return YT_EJS_ERR_INVALID_ARGUMENT;
-  request_json =
-      build_request_json(source_type, player_source, requests, request_count);
-  if (request_json == NULL)
+  effective_source_type = source_type;
+  effective_player_source = player_source;
+  cached_player_source = NULL;
+  cached_player_length = 0;
+  cache_key[0] = '\0';
+  if (source_type == YT_EJS_SOURCE_PLAYER) {
+    yt_cache_key_for_string(player_source, cache_key);
+    if (cache_key[0] != '\0' &&
+        yt_cache_get(YT_CACHE_PREPROCESSED_PLAYER, cache_key,
+                     (int64_t)time(NULL), &cached_player_source,
+                     &cached_player_length) == YT_CACHE_OK) {
+      effective_source_type = YT_EJS_SOURCE_PREPROCESSED;
+      effective_player_source = cached_player_source;
+    }
+  }
+  request_json = build_request_json(effective_source_type,
+                                    effective_player_source, requests,
+                                    request_count);
+  if (request_json == NULL) {
+    free(cached_player_source);
     return YT_EJS_ERR_OUT_OF_MEMORY;
+  }
+
+  memset(&assets, 0, sizeof(assets));
+  assets_status = yt_ejs_assets_load(&assets);
+  if (assets_status != YT_EJS_ASSETS_OK) {
+    free(cached_player_source);
+    free(request_json);
+    if (assets_status == YT_EJS_ASSETS_MISSING) {
+      set_error_message(result,
+                        "EJS assets are missing; run: retro-dlp assets install");
+      return YT_EJS_ERR_ASSETS_MISSING;
+    }
+    if (assets_status == YT_EJS_ASSETS_OUT_OF_MEMORY)
+      return YT_EJS_ERR_OUT_OF_MEMORY;
+    set_error_message(result, "installed EJS assets are invalid");
+    return YT_EJS_ERR_ASSETS_INVALID;
+  }
 
   runtime = JS_NewRuntime();
   if (runtime == NULL) {
+    yt_ejs_assets_free(&assets);
     free(request_json);
+    free(cached_player_source);
     return YT_EJS_ERR_OUT_OF_MEMORY;
   }
   JS_SetMemoryLimit(runtime, effective_config.memory_limit_bytes);
@@ -395,7 +439,9 @@ YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
   context = JS_NewContext(runtime);
   if (context == NULL) {
     JS_FreeRuntime(runtime);
+    yt_ejs_assets_free(&assets);
     free(request_json);
+    free(cached_player_source);
     return YT_EJS_ERR_OUT_OF_MEMORY;
   }
 
@@ -411,7 +457,7 @@ YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
   }
   JS_FreeValue(context, value);
 
-  status = evaluate(context, retro_dlp_ejs_lib, retro_dlp_ejs_lib_length,
+  status = evaluate(context, assets.lib, assets.lib_length,
                     "<yt-dlp-ejs-lib-0.8.0>", &deadline, result, &value);
   if (status != YT_EJS_OK)
     goto cleanup;
@@ -421,7 +467,7 @@ YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
   if (status != YT_EJS_OK)
     goto cleanup;
   JS_FreeValue(context, value);
-  status = evaluate(context, retro_dlp_ejs_core, retro_dlp_ejs_core_length,
+  status = evaluate(context, assets.core, assets.core_length,
                     "<yt-dlp-ejs-core-0.8.0>", &deadline, result, &value);
   if (status != YT_EJS_OK)
     goto cleanup;
@@ -449,11 +495,30 @@ YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
       yt_ejs_parse_result_json(result_json, requests, request_count, result);
   JS_FreeCString(context, result_json);
   JS_FreeValue(context, value);
+  if (status == YT_EJS_OK && source_type == YT_EJS_SOURCE_PLAYER &&
+      effective_source_type == YT_EJS_SOURCE_PREPROCESSED &&
+      result->preprocessed_player == NULL) {
+    result->preprocessed_player = copy_string(effective_player_source);
+    if (result->preprocessed_player == NULL)
+      status = YT_EJS_ERR_OUT_OF_MEMORY;
+  }
+  if (status == YT_EJS_OK && source_type == YT_EJS_SOURCE_PLAYER &&
+      effective_source_type == YT_EJS_SOURCE_PLAYER &&
+      result->preprocessed_player != NULL && cache_key[0] != '\0') {
+    time_t now = time(NULL);
+    int64_t expires =
+        now == (time_t)-1 ? 0 : (int64_t)now + 30LL * 24LL * 60LL * 60LL;
+    yt_cache_put(YT_CACHE_PREPROCESSED_PLAYER, cache_key,
+                 result->preprocessed_player,
+                 strlen(result->preprocessed_player), expires);
+  }
 
 cleanup:
   JS_FreeContext(context);
   JS_FreeRuntime(runtime);
+  yt_ejs_assets_free(&assets);
   free(request_json);
+  free(cached_player_source);
   return status;
 }
 
@@ -471,6 +536,10 @@ const char *yt_ejs_status_string(YTEJSStatus status) {
       return "timeout";
     case YT_EJS_ERR_INVALID_RESULT:
       return "invalid_result";
+    case YT_EJS_ERR_ASSETS_MISSING:
+      return "ejs_assets_missing";
+    case YT_EJS_ERR_ASSETS_INVALID:
+      return "ejs_assets_invalid";
   }
   return "unknown";
 }
