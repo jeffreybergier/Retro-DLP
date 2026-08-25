@@ -44,6 +44,17 @@ the directories themselves.
 - `source/linux`: Linux-specific implementations
 - `source/iOS`: reserved for a future iOS target
 - `source/deps`: vendored dependencies, when needed
+- `source/make/Makefile`: complete cross-platform build graph
+- `source/make/apple-gcc4.mk`: isolated PowerPC/i386 and Tiger build profile
+- `source/make/clang.mk`: isolated x86_64/arm64 and pristine QuickJS profile
+
+Tiger-specific compatibility sources can be added with
+`LEGACY_MACOS_EXTRA_SOURCES`; legacy-only flags and libraries can be added with
+`LEGACY_MACOS_EXTRA_CPPFLAGS`, `LEGACY_MACOS_EXTRA_CFLAGS`, and
+`LEGACY_MACOS_EXTRA_LIBRARIES`. These inputs are not used by the modern Clang
+build. QuickJS source-level compatibility work should likewise be staged as a
+legacy-only source or forced-include compatibility header rather than changing
+the vendored submodule used by `source/make/clang.mk`.
 
 Initialize cJSON and QuickJS after cloning:
 
