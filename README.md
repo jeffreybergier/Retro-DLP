@@ -23,23 +23,35 @@ make test
 ```
 
 The Linux product is `build/linux/retro-dlp`; its intermediate objects stay
-under `build/intermediates/linux`. Platform tests belong under the matching
-directory in `tests` (currently `tests/linux`).
+under `build/intermediates/linux`. Shared tests live under `source/shared/test`;
+future platform-specific tests belong under `source/<platform>/test`.
 
 The Linux executable compiles and links the vendored cJSON submodule. It also
 builds QuickJS as `build/intermediates/linux/libquickjs.a` and statically links
 the complete engine into the executable. The macOS executable links the
 quad-fat static AltivecCore archive, which supplies cJSON and the rest of
-AltivecCore on each supported Mac architecture. QuickJS is also compiled into
-separate x86_64 and arm64 static archives and linked only into those two modern
-macOS slices; the PowerPC and i386 slices do not contain QuickJS.
+AltivecCore on each supported Mac architecture. QuickJS is compiled into a
+separate static archive for each of the PowerPC, i386, x86_64, and arm64
+macOS slices.
 
 Run `make clean` to empty the three build output directories without deleting
 the directories themselves.
 
+Run the embedded cJSON and QuickJS smoke tests directly on any supported
+platform:
+
+```sh
+retro-dlp --test
+```
+
+This executes inside the current binary slice, making it suitable for checking
+the actual PowerPC, i386, x86_64, arm64, or Linux build on its target machine.
+
 ## Source layout
 
 - `source/shared`: portable CLI code
+- `source/shared/test`: tests embedded into every platform binary
+- `source/linux/test`: Linux-only CLI integration tests
 - `source/macOS`: macOS-specific implementations
 - `source/linux`: Linux-specific implementations
 - `source/iOS`: reserved for a future iOS target
@@ -55,6 +67,12 @@ Tiger-specific compatibility sources can be added with
 build. QuickJS source-level compatibility work should likewise be staged as a
 legacy-only source or forced-include compatibility header rather than changing
 the vendored submodule used by `source/make/clang.mk`.
+
+The current Apple GCC 4 profile uses an isolated compatibility layer under
+`source/macOS/apple-gcc4/QuickJS`. It provides C11-style atomics—including a
+mutex-backed 64-bit implementation for 32-bit CPUs—and a Tiger-compatible
+`clock_gettime` implementation. The Clang profile compiles the unmodified
+QuickJS submodule without this layer.
 
 Initialize cJSON and QuickJS after cloning:
 

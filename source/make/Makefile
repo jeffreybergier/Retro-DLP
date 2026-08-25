@@ -1,7 +1,8 @@
 PROGRAM := retro-dlp
 VERSION := 0.1.0
 
-SHARED_SOURCES := source/shared/main.c source/shared/cli.c
+SHARED_SOURCES := source/shared/main.c source/shared/cli.c \
+	source/shared/test/self_test.c source/shared/test/self_test_data.c
 MACOS_COMMON_SOURCES := $(SHARED_SOURCES) source/macOS/platform.c
 CJSON_DIR := source/deps/cJSON
 CJSON_SOURCE := $(CJSON_DIR)/cJSON.c
@@ -28,7 +29,8 @@ MAC_MIN_OLD := 10.4
 MAC_MIN_X64 := 10.9
 MAC_MIN_ARM64 := 11.0
 
-CPPFLAGS := -Isource/shared -DRETRO_DLP_VERSION=\"$(VERSION)\"
+CPPFLAGS := -Isource/shared -I$(QUICKJS_DIR) \
+	-DRETRO_DLP_VERSION=\"$(VERSION)\"
 MACOS_BASE_CPPFLAGS := $(CPPFLAGS) -I$(ALTIVECCORE_DIR)/include
 LINUX_CPPFLAGS := $(CPPFLAGS) -I$(CJSON_DIR)
 QUICKJS_CPPFLAGS := -I$(QUICKJS_DIR) -D_GNU_SOURCE \
@@ -55,6 +57,15 @@ LINUX_OBJECTS := $(LINUX_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
 include source/make/apple-gcc4.mk
 include source/make/clang.mk
 
+$(LINUX_INT_DIR)/source/shared/test/self_test.o \
+$(MACOS_INT_DIR)/ppc/source/shared/test/self_test.o \
+$(MACOS_INT_DIR)/i386/source/shared/test/self_test.o: \
+	SOURCE_WARNING_FLAGS := -Wno-unused-parameter
+
+$(MACOS_INT_DIR)/x86_64/source/shared/test/self_test.o \
+$(MACOS_INT_DIR)/arm64/source/shared/test/self_test.o: \
+	SOURCE_WARNING_FLAGS := -Wno-unused-parameter -Wno-sign-conversion
+
 .DEFAULT_GOAL := release
 
 release: macOS
@@ -65,7 +76,8 @@ linux: $(LINUX_BUILD_DIR)/$(PROGRAM)
 
 test: linux
 	@echo "--- Running retro-dlp Linux tests ---"
-	@tests/linux/cli_test.sh "$(abspath $(LINUX_BUILD_DIR)/$(PROGRAM))"
+	@source/linux/test/cli_test.sh \
+		"$(abspath $(LINUX_BUILD_DIR)/$(PROGRAM))"
 
 $(MACOS_BUILD_DIR)/$(PROGRAM): $(PPC_BINARY) $(I386_BINARY) \
 		$(X86_64_BINARY) $(ARM64_BINARY)
@@ -90,7 +102,8 @@ $(QUICKJS_INT_DIR)/%.o: $(QUICKJS_DIR)/%.c
 
 $(LINUX_INT_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
-	@$(CC) $(LINUX_CPPFLAGS) $(COMMON_CFLAGS) -c $< -o $@
+	@$(CC) $(LINUX_CPPFLAGS) $(COMMON_CFLAGS) $(SOURCE_WARNING_FLAGS) \
+		-c $< -o $@
 
 validate:
 	@test -d "$(SDK_PPC_PATH)" || \

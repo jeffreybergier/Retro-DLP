@@ -22,6 +22,14 @@ version_output=$($binary --version)
 [ "$version_output" = "retro-dlp 0.1.0 (Linux)" ] || \
   fail "unexpected --version output: $version_output"
 
+self_test_output=$($binary --test)
+printf '%s\n' "$self_test_output" | grep -q '^PASS: cJSON$' || \
+  fail "--test did not pass cJSON"
+printf '%s\n' "$self_test_output" | grep -q '^PASS: QuickJS$' || \
+  fail "--test did not pass QuickJS"
+printf '%s\n' "$self_test_output" | grep -q '^PASS: retro-dlp self-test$' || \
+  fail "--test did not report success"
+
 error_file=${TMPDIR:-/tmp}/retro-dlp-cli-test.$$
 trap 'rm -f "$error_file"' EXIT HUP INT TERM
 if $binary --not-an-option 2>"$error_file"; then
