@@ -106,9 +106,9 @@ static int exercise_cache(const char *temporary_home) {
       ++failures;
     }
   }
-  if (yt_cache_put(YT_CACHE_SUCCESSFUL_CLIENT, "last", "ANDROID_VR", 10,
-                   2000) != YT_CACHE_OK ||
-      yt_cache_get(YT_CACHE_SUCCESSFUL_CLIENT, "last", 1000, &loaded,
+  if (yt_cache_put(YT_CACHE_SUCCESSFUL_CLIENT, "last-anonymous", "ANDROID_VR",
+                   10, 2000) != YT_CACHE_OK ||
+      yt_cache_get(YT_CACHE_SUCCESSFUL_CLIENT, "last-anonymous", 1000, &loaded,
                    &loaded_length) != YT_CACHE_OK ||
       loaded_length != 10 || memcmp(loaded, "ANDROID_VR", 10) != 0) {
     fprintf(stderr, "FAIL: successful-client cache\n");

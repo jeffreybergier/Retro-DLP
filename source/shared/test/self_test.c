@@ -7,6 +7,7 @@
 
 #include "cJSON.h"
 #include "cache_test.h"
+#include "cookie_test.h"
 #include "curl/curl.h"
 #include "ejs_test.h"
 #include "quickjs.h"
@@ -237,7 +238,8 @@ static int has_googlevideo_host(const char *url) {
              0;
 }
 
-static int test_media_byte_range(const YTMediaRequest *media,
+static int test_media_byte_range(YTHttpSession *session,
+                                 const YTMediaRequest *media,
                                  const char *video_id) {
   YTHttpResponse response;
   YTStatus status;
@@ -245,8 +247,8 @@ static int test_media_byte_range(const YTMediaRequest *media,
   printf("RUN: request first 10,241 bytes of media (%s)\n", video_id);
   fflush(stdout);
   memset(&response, 0, sizeof(response));
-  status = yt_http_get_range(media->url, SELF_TEST_MEDIA_RANGE_LENGTH,
-                             &response);
+  status = yt_http_session_get_range(session, media->url,
+                                     SELF_TEST_MEDIA_RANGE_LENGTH, &response);
   if (status == YT_OK)
     status = yt_classify_media_http_status(response.status);
   if (status != YT_OK || response.status < 200 || response.status >= 300 ||
@@ -268,17 +270,24 @@ static int test_media_byte_range(const YTMediaRequest *media,
   return 0;
 }
 
-static int test_live_video(const char *video_id, int check_fixture_metadata) {
+static int test_live_video(const char *video_id, int check_fixture_metadata,
+                           const char *cookie_file) {
   YTMediaRequest media;
   YTStatus status;
   int failed;
+  YTHttpSession *session;
 
   printf("RUN: resolve live video (%s)\n", video_id);
   fflush(stdout);
-  status = yt_resolve_video(video_id, &media);
+  session = NULL;
+  status = yt_http_session_create(cookie_file, &session);
+  if (status == YT_OK)
+    status = yt_resolve_video_with_http_session_and_progress(
+        session, video_id, cookie_file, &media, NULL, NULL);
   if (status != YT_OK) {
     fprintf(stderr, "FAIL: player API resolution (%s): %s\n", video_id,
             yt_status_string(status));
+    yt_http_session_destroy(session);
     return 1;
   }
   printf("PASS: player API response (%s)\n", video_id);
@@ -317,9 +326,10 @@ static int test_live_video(const char *video_id, int check_fixture_metadata) {
            video_id);
   }
 
-  failed += test_media_byte_range(&media, video_id);
+  failed += test_media_byte_range(session, &media, video_id);
 
   yt_media_request_free(&media);
+  yt_http_session_destroy(session);
   return failed;
 }
 
@@ -335,15 +345,15 @@ static int test_libcurl(void) {
   return 0;
 }
 
-static int test_live_resolver(void) {
+static int test_live_resolver(const char *cookie_file) {
   int failures;
 
-  failures = test_live_video(SELF_TEST_VIDEO_ID, 1);
-  failures += test_live_video(SECOND_SELF_TEST_VIDEO_ID, 0);
+  failures = test_live_video(SELF_TEST_VIDEO_ID, 1, cookie_file);
+  failures += test_live_video(SECOND_SELF_TEST_VIDEO_ID, 0, cookie_file);
   return failures;
 }
 
-int retro_dlp_run_self_tests(void) {
+int retro_dlp_run_self_tests_with_cookies(const char *cookie_file) {
   int failures;
 
   setvbuf(stdout, NULL, _IONBF, 0);
@@ -362,13 +372,19 @@ int retro_dlp_run_self_tests(void) {
   failures += test_quickjs();
   announce_test("cache and SHA-256 fixtures");
   failures += retro_dlp_run_cache_tests();
+  announce_test("cookie authentication fixtures");
+  failures += retro_dlp_run_cookie_tests();
   announce_test("EJS fixtures and runtime limits");
   failures += retro_dlp_run_ejs_tests();
   announce_test("live network fixtures");
-  failures += test_live_resolver();
+  failures += test_live_resolver(cookie_file);
   if (failures != 0)
     return 1;
 
   printf("PASS: retro-dlp self-test\n");
   return 0;
+}
+
+int retro_dlp_run_self_tests(void) {
+  return retro_dlp_run_self_tests_with_cookies(NULL);
 }

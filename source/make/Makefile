@@ -1,5 +1,6 @@
 PROGRAM := retro-dlp
 VERSION := 0.1.0
+TEST_COOKIES ?=
 BUILD_DIR := build
 INTERMEDIATE_DIR := $(BUILD_DIR)/intermediates
 MACOS_BUILD_DIR := $(BUILD_DIR)/macOS
@@ -8,9 +9,9 @@ LINUX_BUILD_DIR := $(BUILD_DIR)/linux
 
 SHARED_SOURCES := source/shared/main.c source/shared/cli.c \
 	source/shared/yt_http.c source/shared/yt_resolver.c \
-	source/shared/yt_cache.c source/shared/yt_crypto.c \
+	source/shared/yt_cache.c source/shared/yt_crypto.c source/shared/yt_cookies.c \
 	source/shared/yt_ejs.c source/shared/yt_ejs_assets.c \
-	source/shared/test/cache_test.c \
+	source/shared/test/cache_test.c source/shared/test/cookie_test.c \
 	source/shared/test/ejs_test.c source/shared/test/ejs_test_data.c \
 	source/shared/test/self_test.c source/shared/test/self_test_data.c
 MACOS_COMMON_SOURCES := $(SHARED_SOURCES) source/macOS/platform.c
@@ -119,7 +120,7 @@ linux: $(LINUX_BUILD_DIR)/$(PROGRAM)
 test: linux
 	@echo "--- Running retro-dlp Linux tests ---"
 	@source/linux/test/cli_test.sh \
-		"$(abspath $(LINUX_BUILD_DIR)/$(PROGRAM))"
+		"$(abspath $(LINUX_BUILD_DIR)/$(PROGRAM))" "$(TEST_COOKIES)"
 
 $(MACOS_BUILD_DIR)/$(PROGRAM): $(PPC_BINARY) $(I386_BINARY) \
 		$(X86_64_BINARY) $(ARM64_BINARY)

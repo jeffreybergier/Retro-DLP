@@ -3,8 +3,11 @@
 """Compare Retro-DLP's live result with the pinned yt-dlp extractor."""
 
 import json
+import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -74,14 +77,18 @@ def classification(status):
 
 
 def main():
-    if len(sys.argv) != 3:
-        fail("usage: yt_dlp_oracle.py RETRO_DLP YT_DLP_MAIN")
-    binary, yt_dlp_main = sys.argv[1:]
+    if len(sys.argv) not in (3, 4):
+        fail("usage: yt_dlp_oracle.py RETRO_DLP YT_DLP_MAIN [COOKIES]")
+    binary, yt_dlp_main = sys.argv[1:3]
+    cookie_file = sys.argv[3] if len(sys.argv) == 4 else None
     video_url = f"https://www.youtube.com/watch?v={VIDEO_ID}"
 
-    retro = run_json([binary, "--no-download", VIDEO_ID])
-    oracle = run_json(
-        [
+    retro_command = [binary]
+    if cookie_file:
+        retro_command.extend(["--cookies", cookie_file])
+    retro_command.extend(["--no-download", VIDEO_ID])
+    retro = run_json(retro_command)
+    oracle_command = [
             sys.executable,
             yt_dlp_main,
             "--ignore-config",
@@ -99,7 +106,20 @@ def main():
             "--dump-single-json",
             video_url,
         ]
-    )
+    oracle_cookie_file = None
+    try:
+        if cookie_file:
+            descriptor, oracle_cookie_file = tempfile.mkstemp(
+                prefix="retro-dlp-yt-dlp-cookies."
+            )
+            os.close(descriptor)
+            shutil.copyfile(cookie_file, oracle_cookie_file)
+            os.chmod(oracle_cookie_file, 0o600)
+            oracle_command[2:2] = ["--cookies", oracle_cookie_file]
+        oracle = run_json(oracle_command)
+    finally:
+        if oracle_cookie_file:
+            os.unlink(oracle_cookie_file)
 
     expected_metadata = {
         "itag": int(oracle["format_id"]),

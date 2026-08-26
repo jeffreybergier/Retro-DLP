@@ -190,9 +190,10 @@ player JavaScript is keyed by its canonical URL hash, successful-client entries
 expire after one day, and failure lifetimes range from 15 seconds to five
 minutes by classification.
 
-## 6. Add GVS PO-token support
+## 6. Add authenticated tokenless playback and GVS PO-token fallback
 
-- [ ] Complete the GVS PO-token milestone.
+- [ ] Complete the authenticated tokenless playback and GVS PO-token fallback
+  milestone.
 
 Keep PO-token failures distinct from signature and throttling challenge
 failures. The former built-in `android_vr` 1.65.10 client is no longer a viable
@@ -207,9 +208,13 @@ More importantly, the native PowerPC build subsequently downloaded the complete
 and media requests. The implementation now applies that same iPad/Safari user
 agent to every native HTTP request. PO-token generation is therefore a fallback
 for videos, sessions, networks, or future enforcement that reject this path,
-rather than a blocker for the first working release.
+rather than a blocker for the first working release. Current yt-dlp policy also
+exempts YouTube Premium subscribers from the GVS PO-token requirement for HTTPS
+and DASH media. Implement authenticated tokenless playback before investing
+further in token generation, while retaining PO-token support for non-Premium
+accounts, subtitles, rejected sessions, and future enforcement.
 
-### Phase 6A: Explicit token ingestion and request binding
+### Phase 6A: Cookie authentication and tokenless GVS playback
 
 - [x] Add an `mweb` client definition to the updateable client manifest with
   numeric ID 2 and the current iPad/Safari user agent. Bootstrap each
@@ -227,6 +232,68 @@ rather than a blocker for the first working release.
   URL themselves with curl.
 - [x] Validate a complete tokenless `mweb` itag 18 download on PowerPC Tiger:
   `EYBBXG8eyo0.mp4`, 7,227,427 bytes, on Darwin 8.11.0 PowerPC.
+- [x] Add `--cookies FILE` with Mozilla/Netscape `cookies.txt` support. Keep
+  browser-database discovery and decryption out of the portable resolver;
+  export the YouTube session on a modern browser and transfer it securely.
+- [x] Let `--cookies` omit its file argument and load
+  `~/.retro-dlp/cookies.txt`. Distinguish the omitted path by reusing the
+  strict parser for 11-character video IDs and supported YouTube URLs, while
+  preserving `--cookies FILE` for explicit paths.
+- [x] Introduce a resolution-scoped native HTTP session shared by webpage,
+  Innertube, player-JavaScript, probe, and media-download requests. Use
+  libcurl's cookie engine and domain rules rather than constructing raw
+  `Cookie` headers manually, and preserve `Set-Cookie` updates for the life of
+  the resolution.
+- [x] Treat a session as authenticated only when it contains `LOGIN_INFO` and
+  at least one of `SAPISID`, `__Secure-1PAPISID`, or
+  `__Secure-3PAPISID`, matching current yt-dlp behavior. Return a distinct
+  stale/invalid-cookie classification when an imported session stops meeting
+  this condition.
+- [x] Implement yt-dlp-compatible timestamped SHA-1 Innertube authorization
+  for every available SAPISID-family cookie. Bind the hash to the exact API
+  origin and add the corresponding `SAPISIDHASH`, `SAPISID1PHASH`, and
+  `SAPISID3PHASH` authorization values without logging their inputs or output.
+- [x] Extract and preserve authenticated account-selection state from webpage
+  configuration and initial data, including `SESSION_INDEX`, `DATASYNC_ID`,
+  delegated/user session IDs, `LOGGED_IN`, and visitor data. Generate
+  `X-Origin`, `X-Goog-AuthUser`, `X-Goog-PageId`, and
+  `X-Youtube-Bootstrap-Logged-In` consistently with yt-dlp.
+- [x] Use the authenticated `mweb` player request for itag 18 and attempt the
+  GVS media request without a PO token. Let the media response be authoritative:
+  continue on success and route HTTP 403 to the PO-token fallback. Do not gate
+  this path on brittle Premium-logo or tooltip detection.
+- [x] Isolate authenticated and anonymous success/failure cache entries. Do not
+  allow an anonymous cached 403 to suppress an authenticated attempt, and do
+  not persist account cookies, authorization headers, data-sync IDs, media
+  URLs, or other session secrets in ordinary resolver caches.
+- [x] Keep authenticated downloads inside Retro-DLP by default. Never print a
+  raw cookie or authorization header in normal, debug, error, or
+  `--no-download` JSON output; document that exported cookies are equivalent
+  to account credentials and should be stored with owner-only permissions.
+- [x] Add deterministic tests for Netscape parsing, cookie domain/path/expiry
+  handling, SAPISID hash vectors, account/session fields, stale and malformed
+  cookies, redaction, and authenticated/anonymous cache separation.
+- [x] Validate the same exported session first with the pinned desktop yt-dlp
+  using an explicit `mweb` client, itag 18, and `--test`; then compare Retro-DLP
+  metadata, final URL structure, 10,241-byte MP4 probe, and complete download
+  on Linux and PowerPC Tiger. Include non-Premium and deliberately incomplete
+  cookies as negative fixtures that verify HTTP 403 fallback and invalid-session
+  handling without relying on local subscription detection.
+  - [x] Linux: pinned yt-dlp oracle returned HTTP 200; authenticated Retro-DLP
+    returned HTTP 206 for both 10,241-byte fixtures and downloaded the complete
+    7,227,427-byte `EYBBXG8eyo0` itag 18 MP4 without a PO token.
+  - [x] Negative fixtures: anonymous media requests reproduced HTTP 403, and
+    incomplete Netscape cookies returned the distinct invalid-authentication
+    classification without making a network request.
+  - [x] Cross-build the authenticated implementation in the quad-fat macOS
+    PowerPC/i386/x86_64/arm64 binary and universal iOS ARMv7/ARM64 binary.
+  - [x] PowerPC Tiger hardware (Darwin 8.11.0): both authenticated 10,241-byte
+    fixtures returned HTTP 206, `YE7VzlLtp-4` downloaded as a 25,333,815-byte
+    MP4, and `jdP8ZXSflqg` downloaded as a 12,836,383-byte MP4. The same binary
+    reproduced anonymous HTTP 403 responses without cookies.
+
+### Phase 6B: Explicit token ingestion and request binding
+
 - [ ] Define a native PO-token request/response interface carrying at least:
   client family, token context (`gvs` initially), content-binding type and
   value, video ID, visitor/session data, expiry, and network identity where
@@ -256,7 +323,7 @@ rather than a blocker for the first working release.
   binding mismatches, expiry, cache isolation, header preservation, and token
   redaction.
 
-### Phase 6B: Companion WebPO provider
+### Phase 6C: Companion WebPO provider
 
 Use the maintained BgUtils/BotGuard implementation on a modern companion
 system first when tokenless `mweb` access is rejected. This provides a fallback
@@ -293,7 +360,7 @@ a native interface that can later receive an embedded provider.
   Tiger, then retain both the successful token-backed fixture and the no-token
   HTTP 403 fixture.
 
-### Phase 6C: Embedded QuickJS WebPO generation
+### Phase 6D: Embedded QuickJS WebPO generation
 
 Treat standalone generation as a separate research and implementation
 milestone. The existing EJS bundle solves `s` and `n`; it does not generate PO
@@ -319,7 +386,7 @@ current content binding.
   reusable WebPO minter.
 - [ ] Mint a fresh GVS content token for the detected binding, return it through
   the same native provider interface used by explicit and HTTP providers, and
-  attach it through the already-tested Phase 6A path.
+  attach it through the already-tested Phase 6B path.
 - [ ] Apply strict memory, stack, response-size, and execution deadlines. Destroy
   and recreate the QuickJS runtime after timeout, out-of-memory, interpreter,
   or unexpected attestation failures.

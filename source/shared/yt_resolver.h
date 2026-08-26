@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+typedef struct YTHttpSession YTHttpSession;
+
 typedef enum {
   YT_OK = 0,
   YT_ERR_INVALID_VIDEO_ID,
@@ -19,7 +21,9 @@ typedef enum {
   YT_ERR_FILE_EXISTS,
   YT_ERR_STORAGE,
   YT_ERR_INVALID_MEDIA,
-  YT_ERR_PO_TOKEN_REQUIRED
+  YT_ERR_PO_TOKEN_REQUIRED,
+  YT_ERR_COOKIE_FILE,
+  YT_ERR_AUTH_COOKIES_INVALID
 } YTStatus;
 
 typedef struct {
@@ -47,6 +51,13 @@ YTStatus yt_resolve_video_with_progress(const char *input,
                                         YTMediaRequest *result,
                                         YTProgressCallback progress,
                                         void *progress_opaque);
+YTStatus yt_resolve_video_with_cookies_and_progress(
+    const char *input, const char *cookie_file, YTMediaRequest *result,
+    YTProgressCallback progress, void *progress_opaque);
+YTStatus yt_resolve_video_with_http_session_and_progress(
+    YTHttpSession *session, const char *input, const char *cookie_file,
+    YTMediaRequest *result, YTProgressCallback progress,
+    void *progress_opaque);
 YTStatus yt_probe_media_head(const YTMediaRequest *media, long *http_status);
 YTStatus yt_classify_media_http_status(long http_status);
 const char *yt_resolver_user_agent(void);

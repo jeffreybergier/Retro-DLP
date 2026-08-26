@@ -62,6 +62,42 @@ Resolve without downloading or probing the media URL with:
 build/linux/retro-dlp --no-download YE7VzlLtp-4
 ```
 
+Use an authenticated YouTube session exported in Mozilla/Netscape
+`cookies.txt` format with:
+
+```sh
+build/linux/retro-dlp --cookies /path/to/youtube-cookies.txt YE7VzlLtp-4
+build/linux/retro-dlp --cookies /path/to/youtube-cookies.txt \
+  --no-download YE7VzlLtp-4
+```
+
+If the exported file is stored at `~/.retro-dlp/cookies.txt`, omit the path:
+
+```sh
+retro-dlp --cookies YE7VzlLtp-4
+retro-dlp --cookies --no-download YE7VzlLtp-4
+```
+
+The argument following `--cookies` is treated as the video when it is a valid
+11-character YouTube ID or supported YouTube URL. Otherwise, it is treated as
+an explicit cookie-file path.
+
+Retro-DLP accepts a cookie file as authenticated only when it contains a
+current `LOGIN_INFO` cookie and at least one current `SAPISID`,
+`__Secure-1PAPISID`, or `__Secure-3PAPISID` cookie for YouTube. It uses those
+cookies to generate the timestamped SHA-1 authorization required by Innertube
+and preserves the same in-memory libcurl cookie session through webpage,
+player, JavaScript, probe, and media requests. An authenticated `mweb` media
+request is attempted without a GVS PO token; HTTP 403 remains the authoritative
+`po_token_required` result and will feed the future PO-token fallback.
+
+Cookie files grant access to the associated YouTube account. Store them outside
+the repository with owner-only permissions (`chmod 600`), never commit or share
+them, and avoid using an active browser session whose cookies YouTube may
+rotate. Retro-DLP never includes cookies, SAPISID authorization, account sync
+IDs, or other session secrets in result JSON or resolver caches. Authenticated
+and anonymous success/failure cache entries are separate.
+
 This prints JSON containing the direct URL, itag, dimensions, MIME type, expiry
 time, and required request headers. Retro-DLP supports itag 18 returned by its
 configured client and does not yet generate PO tokens.
@@ -100,6 +136,15 @@ platform:
 
 ```sh
 retro-dlp --test
+```
+
+Supply authenticated cookies to run the same fixtures through the tokenless
+authenticated media path:
+
+```sh
+retro-dlp --cookies /path/to/youtube-cookies.txt --test
+retro-dlp --cookies --test
+make test TEST_COOKIES=/absolute/path/to/youtube-cookies.txt
 ```
 
 This runs deterministic cache, player-response, and batched `s`/`n` resolver

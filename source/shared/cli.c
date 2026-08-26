@@ -1,5 +1,6 @@
 #include "cli.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,6 +18,10 @@
 #define RETRO_DLP_VERSION "development"
 #endif
 
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
 static void print_usage(FILE *stream) {
   fprintf(stream,
           "Usage: retro-dlp [OPTION] | assets COMMAND | VIDEO_ID_OR_URL\n"
@@ -26,6 +31,9 @@ static void print_usage(FILE *stream) {
           "Options:\n"
           "  -h, --help       Show this help.\n"
           "  -V, --version    Show version and build platform.\n"
+          "      --cookies [FILE]\n"
+          "                   Read YouTube login cookies in Netscape format.\n"
+          "                   Defaults to ~/.retro-dlp/cookies.txt.\n"
           "      --no-download VIDEO_ID_OR_URL\n"
           "                   Resolve and print media JSON without downloading.\n"
           "      --test       Run embedded dependency tests.\n");
@@ -158,7 +166,8 @@ static void print_progress(const char *message, void *opaque) {
   fprintf(stream, "retro-dlp: %s\n", message);
 }
 
-static int resolve_argument(const char *input, int no_download) {
+static int resolve_argument(const char *input, int no_download,
+                            const char *cookie_file) {
   YTMediaRequest media;
   YTStatus status;
   char video_id[12];
@@ -166,22 +175,32 @@ static int resolve_argument(const char *input, int no_download) {
   long http_status;
   int64_t bytes_written;
   int failed;
+  YTHttpSession *request_session;
 
   if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
     fprintf(stderr, "retro-dlp: could not initialize libcurl\n");
     return 1;
   }
-  fprintf(stderr, "retro-dlp: resolving video information\n");
-  status = yt_resolve_video_with_progress(input, &media, print_progress,
-                                          stderr);
+  request_session = NULL;
+  status = yt_http_session_create(cookie_file, &request_session);
   if (status != YT_OK) {
     fprintf(stderr, "retro-dlp: %s\n", yt_status_string(status));
+    curl_global_cleanup();
+    return 1;
+  }
+  fprintf(stderr, "retro-dlp: resolving video information\n");
+  status = yt_resolve_video_with_http_session_and_progress(
+      request_session, input, cookie_file, &media, print_progress, stderr);
+  if (status != YT_OK) {
+    fprintf(stderr, "retro-dlp: %s\n", yt_status_string(status));
+    yt_http_session_destroy(request_session);
     curl_global_cleanup();
     return 1;
   }
   if (no_download) {
     failed = print_media_request(&media);
     yt_media_request_free(&media);
+    yt_http_session_destroy(request_session);
     curl_global_cleanup();
     if (failed)
       fprintf(stderr, "retro-dlp: could not create result JSON\n");
@@ -191,14 +210,18 @@ static int resolve_argument(const char *input, int no_download) {
       snprintf(destination, sizeof(destination), "%s.mp4", video_id) >=
           (int)sizeof(destination)) {
     yt_media_request_free(&media);
+    yt_http_session_destroy(request_session);
     curl_global_cleanup();
     return 1;
   }
   fprintf(stderr, "retro-dlp: selected itag %d (%dx%d, %s)\n", media.itag,
           media.width, media.height, media.mime_type);
   fprintf(stderr, "retro-dlp: starting download to %s\n", destination);
-  status = yt_http_download(media.url, destination, &http_status,
-                            &bytes_written);
+  http_status = 0;
+  bytes_written = 0;
+  status = yt_http_session_download(request_session, media.url, destination,
+                                    &http_status, &bytes_written);
+  yt_http_session_destroy(request_session);
   yt_media_request_free(&media);
   curl_global_cleanup();
   if (status != YT_OK) {
@@ -212,7 +235,46 @@ static int resolve_argument(const char *input, int no_download) {
   return failed;
 }
 
+static int run_self_tests(const char *cookie_file) {
+  int result;
+  if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
+    fprintf(stderr, "retro-dlp: could not initialize libcurl\n");
+    return 1;
+  }
+  result = retro_dlp_run_self_tests_with_cookies(cookie_file);
+  curl_global_cleanup();
+  return result;
+}
+
+static int default_cookie_path(char *buffer, size_t buffer_size) {
+  const char *home;
+  size_t home_length;
+  static const char suffix[] = "/.retro-dlp/cookies.txt";
+
+  if (buffer == NULL || buffer_size == 0)
+    return 0;
+  buffer[0] = '\0';
+  home = getenv("HOME");
+  if (home == NULL || home[0] != '/')
+    return 0;
+  home_length = strlen(home);
+  while (home_length > 1 && home[home_length - 1] == '/')
+    --home_length;
+  if (home_length + sizeof(suffix) > buffer_size)
+    return 0;
+  memcpy(buffer, home, home_length);
+  memcpy(buffer + home_length, suffix, sizeof(suffix));
+  return 1;
+}
+
 int retro_dlp_run(int argc, char **argv) {
+  char default_cookie_file[PATH_MAX];
+  const char *cookie_file;
+  const char *input;
+  int cookies_requested;
+  int no_download;
+  int test_mode;
+  int index;
   if (argc == 1) {
     print_usage(stdout);
     return 0;
@@ -230,29 +292,56 @@ int retro_dlp_run(int argc, char **argv) {
     return 0;
   }
 
-  if (argc == 2 && strcmp(argv[1], "--test") == 0) {
-    int result;
-    if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
-      fprintf(stderr, "retro-dlp: could not initialize libcurl\n");
-      return 1;
-    }
-    result = retro_dlp_run_self_tests();
-    curl_global_cleanup();
-    return result;
-  }
-
   if (argc == 3 && strcmp(argv[1], "assets") == 0)
     return run_asset_command(argv[2]);
 
-  if (argc == 3 && strcmp(argv[1], "--no-download") == 0)
-    return resolve_argument(argv[2], 1);
-
-  if (argc == 2) {
-    char video_id[12];
-
-    if (argv[1][0] != '-' ||
-        yt_extract_video_id(argv[1], video_id) == YT_OK)
-      return resolve_argument(argv[1], 0);
+  cookie_file = NULL;
+  input = NULL;
+  cookies_requested = 0;
+  no_download = 0;
+  test_mode = 0;
+  for (index = 1; index < argc; ++index) {
+    if (strcmp(argv[index], "--cookies") == 0) {
+      char video_id[12];
+      if (cookies_requested)
+        break;
+      cookies_requested = 1;
+      if (index + 1 < argc &&
+          yt_extract_video_id(argv[index + 1], video_id) != YT_OK &&
+          argv[index + 1][0] != '-')
+        cookie_file = argv[++index];
+    } else if (strcmp(argv[index], "--no-download") == 0) {
+      if (no_download)
+        break;
+      no_download = 1;
+    } else if (strcmp(argv[index], "--test") == 0) {
+      if (test_mode)
+        break;
+      test_mode = 1;
+    } else if (input == NULL) {
+      char video_id[12];
+      if (argv[index][0] == '-' &&
+          yt_extract_video_id(argv[index], video_id) != YT_OK)
+        break;
+      input = argv[index];
+    } else {
+      break;
+    }
+  }
+  if (index == argc) {
+    if (cookies_requested && cookie_file == NULL) {
+      if (!default_cookie_path(default_cookie_file,
+                               sizeof(default_cookie_file))) {
+        fprintf(stderr,
+                "retro-dlp: could not determine the default cookie path\n");
+        return 1;
+      }
+      cookie_file = default_cookie_file;
+    }
+    if (test_mode && input == NULL && !no_download)
+      return run_self_tests(cookie_file);
+    if (!test_mode && input != NULL)
+      return resolve_argument(input, no_download, cookie_file);
   }
 
   fprintf(stderr, "retro-dlp: unsupported arguments\n");

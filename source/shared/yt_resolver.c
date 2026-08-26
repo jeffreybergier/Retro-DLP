@@ -12,6 +12,7 @@
 
 #include "cJSON.h"
 #include "yt_cache.h"
+#include "yt_cookies.h"
 #include "yt_ejs.h"
 #include "yt_http.h"
 
@@ -53,6 +54,17 @@ typedef struct {
   int height;
   int64_t content_length;
 } YTFormatCandidate;
+
+typedef struct {
+  YTAuthCookies cookies;
+  char *data_sync_id;
+  char *delegated_session_id;
+  char *user_session_id;
+  int authenticated;
+  int logged_in;
+  int has_session_index;
+  int session_index;
+} YTAccountContext;
 
 static char *copy_string(const char *value) {
   size_t length;
@@ -147,25 +159,32 @@ static YTStatus load_client(YTClient *client) {
   return YT_OK;
 }
 
-static void prefer_recent_client(YTClient *client) {
+static const char *successful_client_key(int authenticated) {
+  return authenticated ? "last-authenticated" : "last-anonymous";
+}
+
+static void prefer_recent_client(YTClient *client, int authenticated) {
   char *cached;
   size_t length;
+  const char *key = successful_client_key(authenticated);
   cached = NULL;
   length = 0;
-  if (yt_cache_get(YT_CACHE_SUCCESSFUL_CLIENT, "last", current_time(), &cached,
+  if (yt_cache_get(YT_CACHE_SUCCESSFUL_CLIENT, key, current_time(), &cached,
                    &length) == YT_CACHE_OK) {
     /* There is currently one client. Validate the cache now so adding more
      * clients later cannot select an unknown or stale definition. */
     if (length != strlen(client->name) ||
         memcmp(cached, client->name, length) != 0)
-      yt_cache_remove(YT_CACHE_SUCCESSFUL_CLIENT, "last");
+      yt_cache_remove(YT_CACHE_SUCCESSFUL_CLIENT, key);
     free(cached);
   }
 }
 
-static void remember_successful_client(const YTClient *client) {
+static void remember_successful_client(const YTClient *client,
+                                       int authenticated) {
   int64_t now = current_time();
-  yt_cache_put(YT_CACHE_SUCCESSFUL_CLIENT, "last", client->name,
+  yt_cache_put(YT_CACHE_SUCCESSFUL_CLIENT,
+               successful_client_key(authenticated), client->name,
                strlen(client->name),
                now == 0 ? 0 : now + YT_SUCCESSFUL_CLIENT_TTL);
 }
@@ -186,15 +205,31 @@ int yt_failure_cache_ttl(YTStatus status) {
   }
 }
 
-static void failure_cache_key(const char *video_id, const YTClient *client,
-                              char key[65]) {
+void yt_failure_cache_key_for_session(const char *video_id,
+                                      const char *client_name,
+                                      const char *client_version,
+                                      int authenticated, char key[65]) {
   char material[128];
-  if (snprintf(material, sizeof(material), "%s:%s:%s", video_id, client->name,
-               client->version) >= (int)sizeof(material)) {
+  if (video_id == NULL || client_name == NULL || client_version == NULL ||
+      key == NULL) {
+    if (key != NULL)
+      key[0] = '\0';
+    return;
+  }
+  if (snprintf(material, sizeof(material), "%s:%s:%s:%s", video_id,
+               client_name, client_version,
+               authenticated ? "authenticated" : "anonymous") >=
+      (int)sizeof(material)) {
     key[0] = '\0';
     return;
   }
   yt_cache_key_for_string(material, key);
+}
+
+static void failure_cache_key(const char *video_id, const YTClient *client,
+                              int authenticated, char key[65]) {
+  yt_failure_cache_key_for_session(video_id, client->name, client->version,
+                                   authenticated, key);
 }
 
 int yt_load_cached_failure(const char *key, YTStatus *status) {
@@ -210,7 +245,7 @@ int yt_load_cached_failure(const char *key, YTStatus *status) {
     return 0;
   parsed = strtol(value, &end, 10);
   if (end != value + length || parsed <= YT_OK ||
-      parsed > YT_ERR_PO_TOKEN_REQUIRED ||
+      parsed > YT_ERR_AUTH_COOKIES_INVALID ||
       yt_failure_cache_ttl((YTStatus)parsed) == 0) {
     free(value);
     yt_cache_remove(YT_CACHE_FAILURE, key);
@@ -386,16 +421,22 @@ failed:
   return NULL;
 }
 
-static YTStatus call_player(const char *video_id, const char *visitor_data,
+static YTStatus call_player(YTHttpSession *session,
+                            const YTAccountContext *account,
+                            const char *video_id, const char *visitor_data,
                             const YTClient *client, int signature_timestamp,
                             cJSON **document_out) {
   static const char *const fixed_headers[] = {
-      "Content-Type: application/json", "Origin: https://m.youtube.com"};
+      "Content-Type: application/json", "Origin: https://www.youtube.com"};
   char client_name_header[64];
   char client_version_header[96];
   char user_agent_header[320];
   char visitor_header[1024];
-  const char *headers[6];
+  char authorization_value[1024];
+  char authorization_header[1100];
+  char auth_user_header[64];
+  char page_id_header[1024];
+  const char *headers[12];
   size_t header_count;
   cJSON *request;
   char *json;
@@ -437,8 +478,50 @@ static YTStatus call_player(const char *video_id, const char *visitor_data,
     headers[header_count++] = visitor_header;
   }
 
-  status = yt_http_post_json(YT_PLAYER_ENDPOINT, json, headers, header_count,
-                             &response);
+  if (account != NULL && account->authenticated) {
+    status = yt_auth_cookies_make_authorization(
+        &account->cookies, "https://www.youtube.com",
+        account->user_session_id, current_time(), authorization_value,
+        sizeof(authorization_value));
+    if (status != YT_OK ||
+        snprintf(authorization_header, sizeof(authorization_header),
+                 "Authorization: %s", authorization_value) >=
+            (int)sizeof(authorization_header)) {
+      free(json);
+      memset(authorization_value, 0, sizeof(authorization_value));
+      return status == YT_OK ? YT_ERR_INVALID_RESPONSE : status;
+    }
+    headers[header_count++] = authorization_header;
+    headers[header_count++] = "X-Origin: https://www.youtube.com";
+    if (account->has_session_index || account->delegated_session_id != NULL) {
+      if (snprintf(auth_user_header, sizeof(auth_user_header),
+                   "X-Goog-AuthUser: %d",
+                   account->has_session_index ? account->session_index : 0) >=
+          (int)sizeof(auth_user_header)) {
+        free(json);
+        memset(authorization_value, 0, sizeof(authorization_value));
+        return YT_ERR_INVALID_RESPONSE;
+      }
+      headers[header_count++] = auth_user_header;
+    }
+    if (account->delegated_session_id != NULL) {
+      if (snprintf(page_id_header, sizeof(page_id_header),
+                   "X-Goog-PageId: %s", account->delegated_session_id) >=
+          (int)sizeof(page_id_header)) {
+        free(json);
+        memset(authorization_value, 0, sizeof(authorization_value));
+        return YT_ERR_INVALID_RESPONSE;
+      }
+      headers[header_count++] = page_id_header;
+    }
+    if (account->logged_in)
+      headers[header_count++] = "X-Youtube-Bootstrap-Logged-In: true";
+  }
+
+  status = yt_http_session_post_json(session, YT_PLAYER_ENDPOINT, json,
+                                     headers, header_count, &response);
+  memset(authorization_value, 0, sizeof(authorization_value));
+  memset(authorization_header, 0, sizeof(authorization_header));
   free(json);
   if (status != YT_OK)
     return status;
@@ -970,7 +1053,93 @@ static int json_integer_after_marker(const char *text, const char *marker) {
   return end != start && value > 0 && value <= INT_MAX ? (int)value : 0;
 }
 
-static YTStatus load_mweb_bootstrap(const char *video_id, YTClient *client,
+static int json_nonnegative_integer_after_marker(const char *text,
+                                                 const char *marker,
+                                                 int *found) {
+  const char *start;
+  char *end;
+  long value;
+  *found = 0;
+  start = strstr(text, marker);
+  if (start == NULL)
+    return 0;
+  start += strlen(marker);
+  while (*start == ' ' || *start == '\t' || *start == ':')
+    ++start;
+  value = strtol(start, &end, 10);
+  if (end == start || value < 0 || value > INT_MAX)
+    return 0;
+  *found = 1;
+  return (int)value;
+}
+
+static int json_true_after_marker(const char *text, const char *marker) {
+  const char *start = strstr(text, marker);
+  if (start == NULL)
+    return 0;
+  start += strlen(marker);
+  while (*start == ' ' || *start == '\t' || *start == ':')
+    ++start;
+  return strncmp(start, "true", 4) == 0;
+}
+
+static void account_context_free(YTAccountContext *account) {
+  if (account == NULL)
+    return;
+  yt_auth_cookies_free(&account->cookies);
+  free(account->data_sync_id);
+  free(account->delegated_session_id);
+  free(account->user_session_id);
+  memset(account, 0, sizeof(*account));
+}
+
+static int account_context_load_page(YTAccountContext *account,
+                                     const char *page) {
+  char *data_sync_id;
+  char *delegated_session_id;
+  char *user_session_id;
+  int has_session_index;
+
+  if (account == NULL || page == NULL)
+    return 0;
+  account->logged_in = json_true_after_marker(page, "\"LOGGED_IN\"");
+  account->session_index = json_nonnegative_integer_after_marker(
+      page, "\"SESSION_INDEX\"", &has_session_index);
+  account->has_session_index = has_session_index;
+  data_sync_id = json_string_after_marker(page, "\"DATASYNC_ID\"");
+  delegated_session_id =
+      json_string_after_marker(page, "\"DELEGATED_SESSION_ID\"");
+  user_session_id =
+      json_string_after_marker(page, "\"USER_SESSION_ID\"");
+  if (data_sync_id != NULL && user_session_id == NULL) {
+    char *separator = strstr(data_sync_id, "||");
+    if (separator != NULL) {
+      if (separator[2] != '\0') {
+        user_session_id = copy_string(separator + 2);
+        if (separator != data_sync_id && delegated_session_id == NULL) {
+          *separator = '\0';
+          delegated_session_id = copy_string(data_sync_id);
+          *separator = '|';
+        }
+      } else {
+        *separator = '\0';
+        user_session_id = copy_string(data_sync_id);
+        *separator = '|';
+      }
+    }
+  }
+  free(account->data_sync_id);
+  free(account->delegated_session_id);
+  free(account->user_session_id);
+  account->data_sync_id = data_sync_id;
+  account->delegated_session_id = delegated_session_id;
+  account->user_session_id = user_session_id;
+  return 1;
+}
+
+static YTStatus load_mweb_bootstrap(YTHttpSession *session,
+                                    YTAccountContext *account,
+                                    const char *video_id, YTClient *client,
                                     int *signature_timestamp,
                                     char **player_url) {
   char watch_url[96];
@@ -985,7 +1154,8 @@ static YTStatus load_mweb_bootstrap(const char *video_id, YTClient *client,
                "https://m.youtube.com/watch?v=%s", video_id) >=
       (int)sizeof(watch_url))
     return YT_ERR_INVALID_RESPONSE;
-  status = yt_http_get(watch_url, 2U * 1024U * 1024U, &response);
+  status = yt_http_session_get(session, watch_url, 2U * 1024U * 1024U,
+                               &response);
   if (status != YT_OK)
     return status;
   if (response.status < 200 || response.status >= 300) {
@@ -1004,6 +1174,15 @@ static YTStatus load_mweb_bootstrap(const char *video_id, YTClient *client,
   *player_url = absolute_player_url(relative_player_url);
   free(relative_player_url);
 
+  if (account != NULL && account->authenticated &&
+      !account_context_load_page(account, response.data)) {
+    free(client_version);
+    free(*player_url);
+    *player_url = NULL;
+    yt_http_response_free(&response);
+    return YT_ERR_OUT_OF_MEMORY;
+  }
+
   if (client_version == NULL ||
       !copy_field(client->version, sizeof(client->version), client_version) ||
       *signature_timestamp == 0 || *player_url == NULL) {
@@ -1018,7 +1197,8 @@ static YTStatus load_mweb_bootstrap(const char *video_id, YTClient *client,
   return YT_OK;
 }
 
-static YTStatus player_url_from_watch_page(const char *video_id,
+static YTStatus player_url_from_watch_page(YTHttpSession *session,
+                                           const char *video_id,
                                            char **player_url) {
   char watch_url[96];
   YTHttpResponse response;
@@ -1028,7 +1208,8 @@ static YTStatus player_url_from_watch_page(const char *video_id,
                "https://www.youtube.com/watch?v=%s", video_id) >=
       (int)sizeof(watch_url))
     return YT_ERR_INVALID_RESPONSE;
-  status = yt_http_get(watch_url, 2U * 1024U * 1024U, &response);
+  status = yt_http_session_get(session, watch_url, 2U * 1024U * 1024U,
+                               &response);
   if (status != YT_OK)
     return status;
   if (response.status < 200 || response.status >= 300) {
@@ -1044,7 +1225,9 @@ static YTStatus player_url_from_watch_page(const char *video_id,
   return *player_url == NULL ? YT_ERR_JS_CHALLENGE : YT_OK;
 }
 
-YTStatus yt_load_player_javascript(const char *player_url, char **source) {
+static YTStatus load_player_javascript(YTHttpSession *session,
+                                       const char *player_url,
+                                       char **source) {
   char key[65];
   char *cached;
   size_t cached_length;
@@ -1069,7 +1252,8 @@ YTStatus yt_load_player_javascript(const char *player_url, char **source) {
     free(cached);
     yt_cache_remove(YT_CACHE_PLAYER_JAVASCRIPT, key);
   }
-  status = yt_http_get(player_url, 8U * 1024U * 1024U, &response);
+  status = yt_http_session_get(session, player_url, 8U * 1024U * 1024U,
+                               &response);
   if (status != YT_OK)
     return status;
   if (response.status != 200 || response.length == 0) {
@@ -1085,13 +1269,18 @@ YTStatus yt_load_player_javascript(const char *player_url, char **source) {
   return YT_OK;
 }
 
+YTStatus yt_load_player_javascript(const char *player_url, char **source) {
+  return load_player_javascript(NULL, player_url, source);
+}
+
 static void report_progress(YTProgressCallback progress, void *opaque,
                             const char *message) {
   if (progress != NULL)
     progress(message, opaque);
 }
 
-static YTStatus resolve_player_document(cJSON *document, const char *video_id,
+static YTStatus resolve_player_document(YTHttpSession *session,
+                                        cJSON *document, const char *video_id,
                                         const char *bootstrap_player_url,
                                         const YTClient *client,
                                         YTMediaRequest *result,
@@ -1109,14 +1298,14 @@ static YTStatus resolve_player_document(cJSON *document, const char *video_id,
   if (player_url == NULL) {
     report_progress(progress, progress_opaque,
                     "fetching fallback player information");
-    status = player_url_from_watch_page(video_id, &player_url);
+    status = player_url_from_watch_page(session, video_id, &player_url);
     if (status != YT_OK)
       return status;
   }
   player_source = NULL;
   report_progress(progress, progress_opaque,
                   "loading player JavaScript for URL challenges");
-  status = yt_load_player_javascript(player_url, &player_source);
+  status = load_player_javascript(session, player_url, &player_source);
   free(player_url);
   if (status != YT_OK)
     return status;
@@ -1127,10 +1316,11 @@ static YTStatus resolve_player_document(cJSON *document, const char *video_id,
   return status;
 }
 
-YTStatus yt_resolve_video_with_progress(const char *input,
-                                        YTMediaRequest *result,
-                                        YTProgressCallback progress,
-                                        void *progress_opaque) {
+static YTStatus resolve_video(YTHttpSession *provided_session,
+                              const char *input, const char *cookie_file,
+                              YTMediaRequest *result,
+                              YTProgressCallback progress,
+                              void *progress_opaque) {
   char video_id[12];
   char failure_key[65];
   YTClient client;
@@ -1141,39 +1331,57 @@ YTStatus yt_resolve_video_with_progress(const char *input,
   char *bootstrap_player_url;
   int signature_timestamp;
   YTStatus status;
+  YTHttpSession *session;
+  YTAccountContext account;
+  int owns_session;
 
   if (result == NULL)
     return YT_ERR_INVALID_RESPONSE;
   memset(result, 0, sizeof(*result));
+  memset(&account, 0, sizeof(account));
+  session = provided_session;
+  owns_session = provided_session == NULL;
+  document = NULL;
+  bootstrap_player_url = NULL;
   status = yt_extract_video_id(input, video_id);
   if (status != YT_OK)
     return status;
+  if (cookie_file != NULL) {
+    status = yt_auth_cookies_load(cookie_file, current_time(),
+                                  &account.cookies);
+    if (status != YT_OK)
+      return status;
+    account.authenticated = 1;
+    report_progress(progress, progress_opaque,
+                    "using authenticated YouTube cookies");
+  }
+  if (owns_session) {
+    status = yt_http_session_create(cookie_file, &session);
+    if (status != YT_OK)
+      goto finished;
+  }
   report_progress(progress, progress_opaque, "loading client configuration");
   status = load_client(&client);
   if (status != YT_OK)
-    return status;
-  bootstrap_player_url = NULL;
+    goto finished;
   signature_timestamp = 0;
   report_progress(progress, progress_opaque,
                   "fetching web player configuration");
-  status = load_mweb_bootstrap(video_id, &client, &signature_timestamp,
-                               &bootstrap_player_url);
+  status = load_mweb_bootstrap(session, &account, video_id, &client,
+                               &signature_timestamp, &bootstrap_player_url);
   if (status != YT_OK)
-    return status;
-  prefer_recent_client(&client);
-  failure_cache_key(video_id, &client, failure_key);
-  if (yt_load_cached_failure(failure_key, &status)) {
-    free(bootstrap_player_url);
-    return status;
-  }
+    goto finished;
+  prefer_recent_client(&client, account.authenticated);
+  failure_cache_key(video_id, &client, account.authenticated, failure_key);
+  if (yt_load_cached_failure(failure_key, &status))
+    goto finished;
 
-  document = NULL;
   report_progress(progress, progress_opaque, "requesting video metadata");
-  status = call_player(video_id, NULL, &client, signature_timestamp, &document);
+  status = call_player(session, &account, video_id, NULL, &client,
+                       signature_timestamp, &document);
   if (status != YT_OK) {
-    free(bootstrap_player_url);
     yt_remember_failure(failure_key, status);
-    return status;
+    goto finished;
   }
 
   response_context = cJSON_GetObjectItemCaseSensitive(document,
@@ -1181,9 +1389,8 @@ YTStatus yt_resolve_video_with_progress(const char *input,
   visitor_data = json_string(response_context, "visitorData");
   visitor_copy = copy_string(visitor_data);
   if (visitor_data != NULL && visitor_copy == NULL) {
-    cJSON_Delete(document);
-    free(bootstrap_player_url);
-    return YT_ERR_OUT_OF_MEMORY;
+    status = YT_ERR_OUT_OF_MEMORY;
+    goto finished;
   }
 
   if (visitor_copy != NULL) {
@@ -1191,29 +1398,60 @@ YTStatus yt_resolve_video_with_progress(const char *input,
     document = NULL;
     report_progress(progress, progress_opaque,
                     "refreshing video metadata with visitor data");
-    status = call_player(video_id, visitor_copy, &client, signature_timestamp,
-                         &document);
+    status = call_player(session, &account, video_id, visitor_copy, &client,
+                         signature_timestamp, &document);
     free(visitor_copy);
     if (status != YT_OK) {
-      free(bootstrap_player_url);
       yt_remember_failure(failure_key, status);
-      return status;
+      goto finished;
     }
   }
 
   report_progress(progress, progress_opaque,
                   "selecting a progressive MP4 stream");
-  status = resolve_player_document(document, video_id, bootstrap_player_url,
-                                   &client, result, progress, progress_opaque);
-  cJSON_Delete(document);
-  free(bootstrap_player_url);
+  status = resolve_player_document(session, document, video_id,
+                                   bootstrap_player_url, &client, result,
+                                   progress, progress_opaque);
   if (status == YT_OK) {
-    remember_successful_client(&client);
+    remember_successful_client(&client, account.authenticated);
     yt_cache_remove(YT_CACHE_FAILURE, failure_key);
   } else {
     yt_remember_failure(failure_key, status);
   }
+
+finished:
+  cJSON_Delete(document);
+  free(bootstrap_player_url);
+  if (owns_session)
+    yt_http_session_destroy(session);
+  account_context_free(&account);
   return status;
+}
+
+YTStatus yt_resolve_video_with_progress(const char *input,
+                                        YTMediaRequest *result,
+                                        YTProgressCallback progress,
+                                        void *progress_opaque) {
+  return resolve_video(NULL, input, NULL, result, progress, progress_opaque);
+}
+
+YTStatus yt_resolve_video_with_cookies_and_progress(
+    const char *input, const char *cookie_file, YTMediaRequest *result,
+    YTProgressCallback progress, void *progress_opaque) {
+  if (cookie_file == NULL || cookie_file[0] == '\0')
+    return YT_ERR_COOKIE_FILE;
+  return resolve_video(NULL, input, cookie_file, result, progress,
+                       progress_opaque);
+}
+
+YTStatus yt_resolve_video_with_http_session_and_progress(
+    YTHttpSession *session, const char *input, const char *cookie_file,
+    YTMediaRequest *result, YTProgressCallback progress,
+    void *progress_opaque) {
+  if (session == NULL || (cookie_file != NULL && cookie_file[0] == '\0'))
+    return YT_ERR_INVALID_RESPONSE;
+  return resolve_video(session, input, cookie_file, result, progress,
+                       progress_opaque);
 }
 
 YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
@@ -1280,6 +1518,10 @@ const char *yt_status_string(YTStatus status) {
     return "download response is not an MP4 file";
   case YT_ERR_PO_TOKEN_REQUIRED:
     return "PO token required";
+  case YT_ERR_COOKIE_FILE:
+    return "invalid or unreadable Netscape cookie file";
+  case YT_ERR_AUTH_COOKIES_INVALID:
+    return "YouTube authentication cookies are missing, expired, or invalid";
   }
   return "unknown error";
 }

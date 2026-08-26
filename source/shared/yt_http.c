@@ -41,6 +41,55 @@ typedef struct {
   int64_t bytes_written;
 } YTDownloadWriter;
 
+struct YTHttpSession {
+  CURLSH *share;
+  char *cookie_file;
+};
+
+YTStatus yt_http_session_create(const char *cookie_file,
+                                YTHttpSession **session) {
+  YTHttpSession *created;
+  if (session == NULL)
+    return YT_ERR_INVALID_RESPONSE;
+  *session = NULL;
+  created = (YTHttpSession *)calloc(1, sizeof(*created));
+  if (created == NULL)
+    return YT_ERR_OUT_OF_MEMORY;
+  created->share = curl_share_init();
+  if (created->share == NULL ||
+      curl_share_setopt(created->share, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE) !=
+          CURLSHE_OK) {
+    if (created->share != NULL)
+      curl_share_cleanup(created->share);
+    free(created);
+    return YT_ERR_NETWORK;
+  }
+  if (cookie_file != NULL) {
+    size_t cookie_file_length = strlen(cookie_file);
+    created->cookie_file = (char *)malloc(cookie_file_length + 1);
+    if (created->cookie_file == NULL) {
+      curl_share_cleanup(created->share);
+      free(created);
+      return YT_ERR_OUT_OF_MEMORY;
+    }
+    memcpy(created->cookie_file, cookie_file, cookie_file_length + 1);
+  }
+  *session = created;
+  return YT_OK;
+}
+
+void yt_http_session_destroy(YTHttpSession *session) {
+  if (session == NULL)
+    return;
+  if (session->cookie_file != NULL) {
+    memset(session->cookie_file, 0, strlen(session->cookie_file));
+    free(session->cookie_file);
+  }
+  if (session->share != NULL)
+    curl_share_cleanup(session->share);
+  free(session);
+}
+
 static size_t write_response(void *contents, size_t size, size_t count,
                              void *opaque) {
   YTWriteBuffer *buffer;
@@ -108,7 +157,8 @@ int yt_http_has_mp4_ftyp(const unsigned char *prefix, size_t length) {
   return prefix != NULL && length >= 8 && memcmp(prefix + 4, "ftyp", 4) == 0;
 }
 
-static YTStatus configure_common(CURL *curl, const char *url) {
+static YTStatus configure_common(CURL *curl, YTHttpSession *session,
+                                 const char *url) {
   if (retro_dlp_configure_curl(curl) != 0)
     return YT_ERR_CERTIFICATE_BUNDLE;
   curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -121,12 +171,19 @@ static YTStatus configure_common(CURL *curl, const char *url) {
   curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
   curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
   curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+  if (session != NULL) {
+    curl_easy_setopt(curl, CURLOPT_SHARE, session->share);
+    if (session->cookie_file != NULL)
+      curl_easy_setopt(curl, CURLOPT_COOKIEFILE, session->cookie_file);
+  }
   return YT_OK;
 }
 
-YTStatus yt_http_post_json(const char *url, const char *json,
-                           const char *const *headers, size_t header_count,
-                           YTHttpResponse *response) {
+YTStatus yt_http_session_post_json(YTHttpSession *session, const char *url,
+                                   const char *json,
+                                   const char *const *headers,
+                                   size_t header_count,
+                                   YTHttpResponse *response) {
   CURL *curl;
   CURLcode code;
   struct curl_slist *header_list;
@@ -156,7 +213,7 @@ YTStatus yt_http_post_json(const char *url, const char *json,
     header_list = grown;
   }
 
-  status = configure_common(curl, url);
+  status = configure_common(curl, session, url);
   if (status != YT_OK) {
     curl_slist_free_all(header_list);
     curl_easy_cleanup(curl);
@@ -188,7 +245,15 @@ YTStatus yt_http_post_json(const char *url, const char *json,
   return YT_OK;
 }
 
-static YTStatus http_get(const char *url, size_t maximum_size,
+YTStatus yt_http_post_json(const char *url, const char *json,
+                           const char *const *headers, size_t header_count,
+                           YTHttpResponse *response) {
+  return yt_http_session_post_json(NULL, url, json, headers, header_count,
+                                   response);
+}
+
+static YTStatus http_get(YTHttpSession *session, const char *url,
+                         size_t maximum_size,
                          const char *range, YTHttpResponse *response) {
   CURL *curl;
   CURLcode code;
@@ -203,7 +268,7 @@ static YTStatus http_get(const char *url, size_t maximum_size,
   curl = curl_easy_init();
   if (curl == NULL)
     return YT_ERR_NETWORK;
-  status = configure_common(curl, url);
+  status = configure_common(curl, session, url);
   if (status != YT_OK) {
     curl_easy_cleanup(curl);
     return status;
@@ -241,7 +306,12 @@ static YTStatus http_get(const char *url, size_t maximum_size,
 
 YTStatus yt_http_get(const char *url, size_t maximum_size,
                      YTHttpResponse *response) {
-  return http_get(url, maximum_size, NULL, response);
+  return http_get(NULL, url, maximum_size, NULL, response);
+}
+
+YTStatus yt_http_session_get(YTHttpSession *session, const char *url,
+                             size_t maximum_size, YTHttpResponse *response) {
+  return http_get(session, url, maximum_size, NULL, response);
 }
 
 YTStatus yt_http_get_range(const char *url, size_t length,
@@ -252,10 +322,21 @@ YTStatus yt_http_get_range(const char *url, size_t length,
       snprintf(range, sizeof(range), "0-%lu", (unsigned long)(length - 1)) >=
           (int)sizeof(range))
     return YT_ERR_INVALID_RESPONSE;
-  return http_get(url, length, range, response);
+  return http_get(NULL, url, length, range, response);
 }
 
-YTStatus yt_http_head(const char *url, long *http_status) {
+YTStatus yt_http_session_get_range(YTHttpSession *session, const char *url,
+                                   size_t length, YTHttpResponse *response) {
+  char range[64];
+  if (length == 0 || length > (size_t)ULONG_MAX ||
+      snprintf(range, sizeof(range), "0-%lu", (unsigned long)(length - 1)) >=
+          (int)sizeof(range))
+    return YT_ERR_INVALID_RESPONSE;
+  return http_get(session, url, length, range, response);
+}
+
+YTStatus yt_http_session_head(YTHttpSession *session, const char *url,
+                              long *http_status) {
   CURL *curl;
   CURLcode code;
   long status;
@@ -268,7 +349,7 @@ YTStatus yt_http_head(const char *url, long *http_status) {
   if (curl == NULL)
     return YT_ERR_NETWORK;
 
-  configure_status = configure_common(curl, url);
+  configure_status = configure_common(curl, session, url);
   if (configure_status != YT_OK) {
     curl_easy_cleanup(curl);
     return configure_status;
@@ -285,9 +366,13 @@ YTStatus yt_http_head(const char *url, long *http_status) {
   return YT_OK;
 }
 
-YTStatus yt_http_download(const char *url, const char *destination,
-                          long *http_status,
-                          int64_t *bytes_written) {
+YTStatus yt_http_head(const char *url, long *http_status) {
+  return yt_http_session_head(NULL, url, http_status);
+}
+
+YTStatus yt_http_session_download(YTHttpSession *session, const char *url,
+                                  const char *destination, long *http_status,
+                                  int64_t *bytes_written) {
   char temporary[PATH_MAX];
   struct stat information;
   int descriptor;
@@ -326,7 +411,7 @@ YTStatus yt_http_download(const char *url, const char *destination,
     unlink(temporary);
     return YT_ERR_NETWORK;
   }
-  status = configure_common(curl, url);
+  status = configure_common(curl, session, url);
   if (status != YT_OK) {
     curl_easy_cleanup(curl);
     fclose(writer.file);
@@ -372,6 +457,12 @@ YTStatus yt_http_download(const char *url, const char *destination,
   if (unlink(temporary) != 0)
     return YT_ERR_STORAGE;
   return YT_OK;
+}
+
+YTStatus yt_http_download(const char *url, const char *destination,
+                          long *http_status, int64_t *bytes_written) {
+  return yt_http_session_download(NULL, url, destination, http_status,
+                                  bytes_written);
 }
 
 void yt_http_response_free(YTHttpResponse *response) {

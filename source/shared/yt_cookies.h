@@ -1,0 +1,25 @@
+#ifndef RETRO_DLP_YT_COOKIES_H
+#define RETRO_DLP_YT_COOKIES_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include "yt_resolver.h"
+
+typedef struct {
+  char *sapisid;
+  char *sapisid_1p;
+  char *sapisid_3p;
+  int has_login_info;
+} YTAuthCookies;
+
+YTStatus yt_auth_cookies_load(const char *path, int64_t now_unix,
+                              YTAuthCookies *cookies);
+int yt_auth_cookies_is_authenticated(const YTAuthCookies *cookies);
+YTStatus yt_auth_cookies_make_authorization(
+    const YTAuthCookies *cookies, const char *origin,
+    const char *user_session_id, int64_t now_unix, char *buffer,
+    size_t buffer_size);
+void yt_auth_cookies_free(YTAuthCookies *cookies);
+
+#endif
