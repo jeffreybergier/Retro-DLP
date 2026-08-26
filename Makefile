@@ -2,7 +2,9 @@ BUILD_MAKEFILE := source/make/Makefile
 
 .DEFAULT_GOAL := release
 
-release macOS iOS linux test validate validate-iOS clean:
+release macOS iOS linux test validate validate-iOS clean \
+		clean-macOS clean-iOS clean-linux:
 	@$(MAKE) --no-print-directory -f $(BUILD_MAKEFILE) $@
 
-.PHONY: release macOS iOS linux test validate validate-iOS clean
+.PHONY: release macOS iOS linux test validate validate-iOS clean \
+	clean-macOS clean-iOS clean-linux

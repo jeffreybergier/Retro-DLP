@@ -143,6 +143,28 @@ retro-dlp assets remove
 Run `make clean` to empty the three build output directories without deleting
 the directories themselves.
 
+## Releases
+
+Release versions are managed by `altivec-release` using
+`source/shared/Info.plist` as the source of truth. The current version is
+`1.0.0`. From the repository root, use commands such as:
+
+```sh
+altivec-release current
+altivec-release bump patch --no-push
+altivec-release bump --set 2.0.0 --dry-run
+```
+
+Pushing a matching version tag (for example, `v1.0.0`) runs the GitHub Actions
+release workflow. It builds both Apple targets and publishes
+`Retro-DLP-1.0.0-macOS.zip` and `Retro-DLP-1.0.0-iOS.zip`. Each archive contains
+the platform's `retro-dlp` executable and the required `cacert.pem` beside it.
+The workflow can also be run manually for an existing version tag.
+
+The repository must define `ALTIVEC_SDK_MACOS_105_URL`,
+`ALTIVEC_SDK_MACOS_113_URL`, and `ALTIVEC_SDK_IPHONEOS_84_URL` as GitHub Actions
+repository secrets containing HTTPS URLs for the private SDK archives.
+
 Run the embedded cJSON and QuickJS smoke tests directly on any supported
 platform:
 

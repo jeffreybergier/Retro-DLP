@@ -1,0 +1,32 @@
+app_name: Retro-DLP
+tag_prefix: v
+
+version:
+  source: source/shared/Info.plist
+  keys:
+    - CFBundleShortVersionString
+    - CFBundleVersion
+  plists:
+    - source/shared/Info.plist
+
+release:
+  commit_message: "Version {version}"
+
+targets:
+  - name: macOS
+    workdir: .
+    build:
+      - make clean-macOS
+      - make macOS
+      - cd build/macOS && zip -9 retro-dlp-macOS.zip retro-dlp cacert.pem
+    artifact: build/macOS/retro-dlp-macOS.zip
+    asset_name: Retro-DLP-{version}-macOS.zip
+
+  - name: iOS
+    workdir: .
+    build:
+      - make clean-iOS
+      - make iOS
+      - cd build/iOS && zip -9 retro-dlp-iOS.zip retro-dlp cacert.pem
+    artifact: build/iOS/retro-dlp-iOS.zip
+    asset_name: Retro-DLP-{version}-iOS.zip

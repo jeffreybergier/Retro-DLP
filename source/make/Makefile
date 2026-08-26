@@ -1,5 +1,6 @@
 PROGRAM := retro-dlp
-VERSION := 0.1.0
+VERSION_PLIST := source/shared/Info.plist
+VERSION ?= $(shell awk '/<key>CFBundleShortVersionString<\/key>/{getline; gsub(/.*<string>|<\/string>.*/, ""); print; exit}' $(VERSION_PLIST))
 TEST_COOKIES ?=
 BUILD_DIR := build
 INTERMEDIATE_DIR := $(BUILD_DIR)/intermediates
@@ -188,10 +189,34 @@ validate-iOS:
 	@test -f "$(IOS_CA_SOURCE)" || \
 		{ echo "Missing iOS CA bundle: $(IOS_CA_SOURCE)" >&2; exit 1; }
 
-clean:
-	@echo "Cleaning retro-dlp build artifacts..."
-	@find $(INTERMEDIATE_DIR) $(MACOS_BUILD_DIR) $(IOS_BUILD_DIR) \
-		$(LINUX_BUILD_DIR) \
-		-mindepth 1 -maxdepth 1 ! -name .gitkeep -exec rm -rf {} +
+clean: clean-macOS clean-iOS clean-linux
 
-.PHONY: release macOS iOS linux test validate validate-iOS clean
+clean-macOS:
+	@echo "Cleaning retro-dlp macOS build artifacts..."
+	@for dir in $(MACOS_INT_DIR) $(MACOS_BUILD_DIR); do \
+		if [ -d "$$dir" ]; then \
+			find "$$dir" -mindepth 1 -maxdepth 1 ! -name .gitkeep \
+				-exec rm -rf {} +; \
+		fi; \
+	done
+
+clean-iOS:
+	@echo "Cleaning retro-dlp iOS build artifacts..."
+	@for dir in $(IOS_INT_DIR) $(IOS_BUILD_DIR); do \
+		if [ -d "$$dir" ]; then \
+			find "$$dir" -mindepth 1 -maxdepth 1 ! -name .gitkeep \
+				-exec rm -rf {} +; \
+		fi; \
+	done
+
+clean-linux:
+	@echo "Cleaning retro-dlp Linux build artifacts..."
+	@for dir in $(LINUX_INT_DIR) $(LINUX_BUILD_DIR); do \
+		if [ -d "$$dir" ]; then \
+			find "$$dir" -mindepth 1 -maxdepth 1 ! -name .gitkeep \
+				-exec rm -rf {} +; \
+		fi; \
+	done
+
+.PHONY: release macOS iOS linux test validate validate-iOS clean \
+	clean-macOS clean-iOS clean-linux
