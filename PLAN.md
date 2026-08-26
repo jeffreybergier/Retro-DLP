@@ -338,7 +338,7 @@ resolver for iOS 5. QuickJS already works in the PowerPC build, so treat this
 as platform integration and real-device validation rather than a separate
 engine-porting effort. The remaining work is expected to be:
 
-- [ ] An ARMv7/iOS 5 build target
+- [x] A universal ARMv7/iOS 5 and ARM64/iOS 7 build target
 - [ ] A current libcurl/TLS stack and CA bundle
 - [ ] Filesystem cache locations and storage limits
 - [ ] Memory and latency instrumentation

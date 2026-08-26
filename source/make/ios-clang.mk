@@ -1,0 +1,69 @@
+# Universal armv7 and arm64 rules for Clang and the iPhoneOS 8.4 SDK.
+# Like the modern macOS profile, this compiles the pristine QuickJS submodule.
+# Clang emits both architectures in one compile and link invocation, matching
+# the Altivec phone build convention.
+
+IOS_EXTRA_SOURCES ?=
+IOS_SOURCES := $(IOS_COMMON_SOURCES) $(IOS_EXTRA_SOURCES)
+IOS_EXTRA_CPPFLAGS ?=
+IOS_EXTRA_CFLAGS ?=
+IOS_EXTRA_LIBRARIES ?=
+IOS_CPPFLAGS := $(CPPFLAGS) -I$(IOS_ALTIVECCORE_DIR)/include \
+	$(IOS_EXTRA_CPPFLAGS)
+IOS_CFLAGS := $(COMMON_CFLAGS) -Wsign-conversion -Wfloat-conversion \
+	-Wno-unused-command-line-argument $(IOS_EXTRA_CFLAGS)
+IOS_LIBRARIES := $(IOS_ALTIVECCORE) -framework Foundation \
+	-framework CoreFoundation -framework SystemConfiguration \
+	-framework Security -lobjc $(IOS_ALTIVEC_CRYPTO) \
+	$(IOS_EXTRA_LIBRARIES)
+
+IOS_ARCH_FLAGS := -target arm64-apple-ios -arch armv7 -arch arm64 \
+	-Xarch_armv7 -miphoneos-version-min=$(IOS_MIN_ARMV7) \
+	-Xarch_arm64 -miphoneos-version-min=$(IOS_MIN_ARM64)
+IOS_TOOLCHAIN_FLAGS := -isysroot $(SDK_IOS_PATH) -B$(MODERN_BIN)
+
+IOS_QUICKJS_COMPAT_DIR := source/iOS/clang/QuickJS
+IOS_QUICKJS_CPPFLAGS := -I$(IOS_QUICKJS_COMPAT_DIR) \
+	-include $(IOS_QUICKJS_COMPAT_DIR)/quickjs_compat.h \
+	$(MODERN_QUICKJS_CPPFLAGS)
+IOS_QUICKJS_CFLAGS := $(MODERN_QUICKJS_CFLAGS) \
+	-Wno-unused-command-line-argument
+IOS_QUICKJS_LIBRARIES := $(MODERN_QUICKJS_LIBRARIES)
+IOS_QUICKJS_SOURCE_NAMES := $(filter-out quickjs-libc.c, \
+	$(QUICKJS_SOURCE_NAMES))
+
+IOS_OBJECTS := $(IOS_SOURCES:%.c=$(IOS_INT_DIR)/%.o)
+IOS_BINARY := $(IOS_BUILD_DIR)/$(PROGRAM)
+IOS_QUICKJS_INT_DIR := $(IOS_INT_DIR)/QuickJS
+IOS_QUICKJS_OBJECTS := $(addprefix $(IOS_QUICKJS_INT_DIR)/, \
+	$(IOS_QUICKJS_SOURCE_NAMES:.c=.o)) \
+	$(IOS_QUICKJS_INT_DIR)/quickjs_compat.o
+
+$(IOS_BINARY): $(IOS_OBJECTS) $(IOS_ALTIVECCORE) \
+		$(IOS_QUICKJS_OBJECTS)
+	@echo "--- Building retro-dlp iOS Release (-O3) ---"
+	@echo " [2/2] Linking universal iOS binary (armv7, arm64)..."
+	@mkdir -p $(dir $@)
+	@$(COMPILER_IOS) $(IOS_ARCH_FLAGS) $(IOS_TOOLCHAIN_FLAGS) \
+		$(IOS_OBJECTS) $(IOS_LIBRARIES) \
+		$(IOS_QUICKJS_OBJECTS) \
+		$(IOS_QUICKJS_LIBRARIES) -o $@
+	@echo "  > $@"
+
+$(IOS_INT_DIR)/%.o: %.c
+	@echo " [1/2] Compiling universal iOS: $<"
+	@mkdir -p $(dir $@)
+	@$(COMPILER_IOS) $(IOS_ARCH_FLAGS) $(IOS_TOOLCHAIN_FLAGS) \
+		$(IOS_CPPFLAGS) $(IOS_CFLAGS) $(SOURCE_WARNING_FLAGS) \
+		-MMD -MP -MF $(@:.o=.d) -c $< -o $@
+
+$(IOS_QUICKJS_INT_DIR)/%.o: $(QUICKJS_DIR)/%.c
+	@mkdir -p $(dir $@)
+	@$(COMPILER_IOS) $(IOS_ARCH_FLAGS) $(IOS_TOOLCHAIN_FLAGS) \
+		$(IOS_QUICKJS_CPPFLAGS) $(IOS_QUICKJS_CFLAGS) -c $< -o $@
+
+$(IOS_QUICKJS_INT_DIR)/quickjs_compat.o: \
+		$(IOS_QUICKJS_COMPAT_DIR)/quickjs_compat.c
+	@mkdir -p $(dir $@)
+	@$(COMPILER_IOS) $(IOS_ARCH_FLAGS) $(IOS_TOOLCHAIN_FLAGS) \
+		$(IOS_QUICKJS_CFLAGS) -I$(IOS_QUICKJS_COMPAT_DIR) -c $< -o $@

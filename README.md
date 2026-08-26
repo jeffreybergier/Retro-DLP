@@ -24,6 +24,18 @@ make linux
 make test
 ```
 
+Build the universal iOS command-line executable with the Altivec environment:
+
+```sh
+make iOS
+```
+
+The result is `build/iOS/retro-dlp`, containing an ARMv7 slice with an iOS 5.0
+deployment target and an ARM64 slice with an iOS 7.0 deployment target. Its
+required `build/iOS/cacert.pem` must be installed beside the executable. This
+is the UIKit-independent resolver build intended for the future Objective-C
+wrapper; it is not yet an application bundle.
+
 The Linux product is `build/linux/retro-dlp`; its intermediate objects stay
 under `build/intermediates/linux`. Shared tests live under `source/shared/test`;
 future platform-specific tests belong under `source/<platform>/test`.
@@ -121,11 +133,12 @@ Player artifacts use SHA-256 keys, and corrupt or expired entries are discarded.
 - `source/linux/test`: Linux-only CLI integration tests
 - `source/macOS`: macOS-specific implementations
 - `source/linux`: Linux-specific implementations
-- `source/iOS`: reserved for a future iOS target
+- `source/iOS`: iOS platform integration and Clang compatibility sources
 - `source/deps`: vendored dependencies, when needed
 - `source/make/Makefile`: complete cross-platform build graph
 - `source/make/apple-gcc4.mk`: isolated PowerPC/i386 and Tiger build profile
 - `source/make/clang.mk`: isolated x86_64/arm64 and pristine QuickJS profile
+- `source/make/ios-clang.mk`: universal ARMv7/ARM64 iOS Clang profile
 
 Tiger-specific compatibility sources can be added with
 `LEGACY_MACOS_EXTRA_SOURCES`; legacy-only flags and libraries can be added with

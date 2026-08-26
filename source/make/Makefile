@@ -3,6 +3,7 @@ VERSION := 0.1.0
 BUILD_DIR := build
 INTERMEDIATE_DIR := $(BUILD_DIR)/intermediates
 MACOS_BUILD_DIR := $(BUILD_DIR)/macOS
+IOS_BUILD_DIR := $(BUILD_DIR)/iOS
 LINUX_BUILD_DIR := $(BUILD_DIR)/linux
 
 SHARED_SOURCES := source/shared/main.c source/shared/cli.c \
@@ -13,6 +14,7 @@ SHARED_SOURCES := source/shared/main.c source/shared/cli.c \
 	source/shared/test/ejs_test.c source/shared/test/ejs_test_data.c \
 	source/shared/test/self_test.c source/shared/test/self_test_data.c
 MACOS_COMMON_SOURCES := $(SHARED_SOURCES) source/macOS/platform.c
+IOS_COMMON_SOURCES := $(SHARED_SOURCES) source/iOS/platform.c
 CJSON_DIR := source/deps/cJSON
 CJSON_SOURCE := $(CJSON_DIR)/cJSON.c
 QUICKJS_DIR := source/deps/QuickJS
@@ -30,11 +32,19 @@ ALTIVEC_CRYPTO := $(ALTIVECCORE_DIR)/lib/libcrypto.a
 MACOS_CA_SOURCE := $(ALTIVECCORE_DIR)/lib/cacert.pem
 MACOS_CA_BUNDLE := $(MACOS_BUILD_DIR)/cacert.pem
 
+IOS_ALTIVECCORE_DIR ?= $(ALTIVEC_ROOT)/libs/core/build-phone
+IOS_ALTIVECCORE := $(IOS_ALTIVECCORE_DIR)/lib/libAltivecCore.a
+IOS_ALTIVEC_CRYPTO := $(IOS_ALTIVECCORE_DIR)/lib/libcrypto.a
+IOS_CA_SOURCE := $(IOS_ALTIVECCORE_DIR)/lib/cacert.pem
+IOS_CA_BUNDLE := $(IOS_BUILD_DIR)/cacert.pem
+
 SDK_MAC_OLD := 10.5
 SDK_MAC_NEW := 11.3
 MAC_MIN_OLD := 10.4
 MAC_MIN_X64 := 10.9
 MAC_MIN_ARM64 := 11.0
+IOS_MIN_ARMV7 := 5.0
+IOS_MIN_ARM64 := 7.0
 
 CPPFLAGS := -Isource/shared -I$(QUICKJS_DIR) \
 	-DRETRO_DLP_VERSION=\"$(VERSION)\"
@@ -53,6 +63,7 @@ MACOS_BASE_LIBRARIES := $(ALTIVECCORE) -framework Foundation \
 	$(ALTIVEC_CRYPTO)
 
 MACOS_INT_DIR := $(INTERMEDIATE_DIR)/macOS
+IOS_INT_DIR := $(INTERMEDIATE_DIR)/iOS
 LINUX_INT_DIR := $(INTERMEDIATE_DIR)/linux
 QUICKJS_INT_DIR := $(LINUX_INT_DIR)/QuickJS
 QUICKJS_OBJECTS := $(addprefix $(QUICKJS_INT_DIR)/, \
@@ -64,9 +75,11 @@ LINUX_OBJECTS := $(LINUX_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
 
 include source/make/apple-gcc4.mk
 include source/make/clang.mk
+include source/make/ios-clang.mk
 
 APPLICATION_DEPENDENCIES := $(LINUX_OBJECTS:.o=.d) $(PPC_OBJECTS:.o=.d) \
-	$(I386_OBJECTS:.o=.d) $(X86_64_OBJECTS:.o=.d) $(ARM64_OBJECTS:.o=.d)
+	$(I386_OBJECTS:.o=.d) $(X86_64_OBJECTS:.o=.d) $(ARM64_OBJECTS:.o=.d) \
+	$(IOS_OBJECTS:.o=.d)
 -include $(APPLICATION_DEPENDENCIES)
 
 $(LINUX_INT_DIR)/source/shared/yt_ejs.o \
@@ -78,6 +91,9 @@ $(MACOS_INT_DIR)/x86_64/source/shared/yt_ejs.o \
 $(MACOS_INT_DIR)/arm64/source/shared/yt_ejs.o: \
 	SOURCE_WARNING_FLAGS := -Wno-unused-parameter -Wno-sign-conversion
 
+$(IOS_INT_DIR)/source/shared/yt_ejs.o: \
+	SOURCE_WARNING_FLAGS := -Wno-unused-parameter -Wno-sign-conversion
+
 $(LINUX_INT_DIR)/source/shared/test/self_test.o \
 $(MACOS_INT_DIR)/ppc/source/shared/test/self_test.o \
 $(MACOS_INT_DIR)/i386/source/shared/test/self_test.o: \
@@ -87,11 +103,16 @@ $(MACOS_INT_DIR)/x86_64/source/shared/test/self_test.o \
 $(MACOS_INT_DIR)/arm64/source/shared/test/self_test.o: \
 	SOURCE_WARNING_FLAGS := -Wno-unused-parameter -Wno-sign-conversion
 
+$(IOS_INT_DIR)/source/shared/test/self_test.o: \
+	SOURCE_WARNING_FLAGS := -Wno-unused-parameter -Wno-sign-conversion
+
 .DEFAULT_GOAL := release
 
 release: macOS
 
 macOS: validate $(MACOS_BUILD_DIR)/$(PROGRAM) $(MACOS_CA_BUNDLE)
+
+iOS: validate-iOS $(IOS_BUILD_DIR)/$(PROGRAM) $(IOS_CA_BUNDLE)
 
 linux: $(LINUX_BUILD_DIR)/$(PROGRAM)
 
@@ -109,6 +130,11 @@ $(MACOS_BUILD_DIR)/$(PROGRAM): $(PPC_BINARY) $(I386_BINARY) \
 
 $(MACOS_CA_BUNDLE): $(MACOS_CA_SOURCE)
 	@echo "  > copying macOS CA certificate bundle"
+	@mkdir -p $(dir $@)
+	@cp $< $@
+
+$(IOS_CA_BUNDLE): $(IOS_CA_SOURCE)
+	@echo "  > copying iOS CA certificate bundle"
 	@mkdir -p $(dir $@)
 	@cp $< $@
 
@@ -149,9 +175,22 @@ validate:
 	@test -f "$(ALTIVEC_CRYPTO)" || \
 		{ echo "Missing libcrypto: $(ALTIVEC_CRYPTO)" >&2; exit 1; }
 
+validate-iOS:
+	@test -d "$(SDK_IOS_PATH)" || \
+		{ echo "Missing SDK: $(SDK_IOS_PATH)" >&2; exit 1; }
+	@test -n "$(COMPILER_IOS)" -a -x "$(COMPILER_IOS)" || \
+		{ echo "Missing iOS compiler" >&2; exit 1; }
+	@test -f "$(IOS_ALTIVECCORE)" || \
+		{ echo "Missing iOS AltivecCore: $(IOS_ALTIVECCORE)" >&2; exit 1; }
+	@test -f "$(IOS_ALTIVEC_CRYPTO)" || \
+		{ echo "Missing iOS libcrypto: $(IOS_ALTIVEC_CRYPTO)" >&2; exit 1; }
+	@test -f "$(IOS_CA_SOURCE)" || \
+		{ echo "Missing iOS CA bundle: $(IOS_CA_SOURCE)" >&2; exit 1; }
+
 clean:
 	@echo "Cleaning retro-dlp build artifacts..."
-	@find $(INTERMEDIATE_DIR) $(MACOS_BUILD_DIR) $(LINUX_BUILD_DIR) \
+	@find $(INTERMEDIATE_DIR) $(MACOS_BUILD_DIR) $(IOS_BUILD_DIR) \
+		$(LINUX_BUILD_DIR) \
 		-mindepth 1 -maxdepth 1 ! -name .gitkeep -exec rm -rf {} +
 
-.PHONY: release macOS linux test validate clean
+.PHONY: release macOS iOS linux test validate validate-iOS clean
