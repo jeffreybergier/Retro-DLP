@@ -1157,6 +1157,12 @@ const char *yt_status_string(YTStatus status) {
     return "EJS assets missing; run: retro-dlp assets install";
   case YT_ERR_JS_CHALLENGE:
     return "JavaScript challenge resolution failed";
+  case YT_ERR_FILE_EXISTS:
+    return "destination or partial download already exists";
+  case YT_ERR_STORAGE:
+    return "download storage error";
+  case YT_ERR_INVALID_MEDIA:
+    return "download response is not an MP4 file";
   case YT_ERR_PO_TOKEN_REQUIRED:
     return "PO token required";
   }

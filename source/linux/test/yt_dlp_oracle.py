@@ -79,7 +79,7 @@ def main():
     binary, yt_dlp_main = sys.argv[1:]
     video_url = f"https://www.youtube.com/watch?v={VIDEO_ID}"
 
-    retro = run_json([binary, VIDEO_ID])
+    retro = run_json([binary, "--no-download", VIDEO_ID])
     oracle = run_json(
         [
             sys.executable,
@@ -138,19 +138,13 @@ def main():
     if "n" in retro_query or "n" in oracle_query:
         fail("a resolver returned an unsolved n challenge")
 
+    retro_status = head_status(retro["url"], retro.get("headers", {}))
     oracle_status = head_status(oracle["url"], oracle.get("http_headers", {}))
     oracle_classification = classification(oracle_status)
-    retro_probe = retro["probe"]
-    if retro_probe["httpStatus"] != oracle_status:
+    if retro_status != oracle_status:
         fail(
-            f"HEAD status differs: Retro-DLP={retro_probe['httpStatus']}, "
+            f"HEAD status differs: Retro-DLP={retro_status}, "
             f"yt-dlp={oracle_status}"
-        )
-    if retro_probe["classification"] != oracle_classification:
-        fail(
-            "HEAD classification differs: "
-            f"Retro-DLP={retro_probe['classification']}, "
-            f"yt-dlp={oracle_classification}"
         )
 
     print(

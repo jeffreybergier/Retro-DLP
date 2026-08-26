@@ -28,20 +28,27 @@ The Linux product is `build/linux/retro-dlp`; its intermediate objects stay
 under `build/intermediates/linux`. Shared tests live under `source/shared/test`;
 future platform-specific tests belong under `source/<platform>/test`.
 
-Resolve a public YouTube video to a progressive MP4 media request:
+Download a public YouTube video to the current directory:
 
 ```sh
 build/linux/retro-dlp YE7VzlLtp-4
 build/linux/retro-dlp 'https://www.youtube.com/watch?v=YE7VzlLtp-4'
 ```
 
-The command prints JSON containing the direct URL, itag, dimensions, MIME type,
-expiry time, required request headers, and the result of a bodyless media HEAD
-probe. HTTP 403 is represented as the machine-readable classification
-`po_token_required`. The phase-one resolver intentionally supports only direct
-itag 18 returned by its configured JSless client. It rejects URLs containing
-an unsolved `n` challenge and does not yet solve JavaScript challenges or
-generate PO tokens.
+The default command streams into `VIDEO_ID.mp4.part`, validates the MP4 `ftyp`
+box, and atomically publishes `VIDEO_ID.mp4` after success. It refuses to
+overwrite an existing final or partial file and removes partial output after a
+handled failure. A full-download HTTP 403 is reported as `po_token_required`.
+
+Resolve without downloading or probing the media URL with:
+
+```sh
+build/linux/retro-dlp --no-download YE7VzlLtp-4
+```
+
+This prints JSON containing the direct URL, itag, dimensions, MIME type, expiry
+time, and required request headers. Retro-DLP supports itag 18 returned by its
+configured client and does not yet generate PO tokens.
 
 On macOS, every libcurl handle is configured with `cacert.pem` resolved beside
 the running executable. Network requests fail explicitly if the bundle is
@@ -81,8 +88,8 @@ retro-dlp --test
 
 This runs deterministic cache, player-response, and batched `s`/`n` resolver
 fixtures first, followed by a staged resolver test against yt-dlp's public Big
-Buck Bunny fixture and a
-bodyless HEAD request to the resulting Google Video URL. When EJS assets are
+Buck Bunny fixture and a bodyless HEAD request to the resulting Google Video
+URL. When EJS assets are
 installed, it also runs the `s`/`n` tests for batching, preprocessed-player
 reuse, malformed output, exceptions, execution deadlines, memory limits, and
 runtime recovery. Otherwise that section reports a skip with the installation

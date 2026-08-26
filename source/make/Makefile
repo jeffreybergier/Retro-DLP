@@ -65,6 +65,10 @@ LINUX_OBJECTS := $(LINUX_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
 include source/make/apple-gcc4.mk
 include source/make/clang.mk
 
+APPLICATION_DEPENDENCIES := $(LINUX_OBJECTS:.o=.d) $(PPC_OBJECTS:.o=.d) \
+	$(I386_OBJECTS:.o=.d) $(X86_64_OBJECTS:.o=.d) $(ARM64_OBJECTS:.o=.d)
+-include $(APPLICATION_DEPENDENCIES)
+
 $(LINUX_INT_DIR)/source/shared/yt_ejs.o \
 $(MACOS_INT_DIR)/ppc/source/shared/yt_ejs.o \
 $(MACOS_INT_DIR)/i386/source/shared/yt_ejs.o: \
@@ -125,7 +129,7 @@ $(QUICKJS_INT_DIR)/%.o: $(QUICKJS_DIR)/%.c
 $(LINUX_INT_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	@$(CC) $(LINUX_CPPFLAGS) $(COMMON_CFLAGS) $(SOURCE_WARNING_FLAGS) \
-		-c $< -o $@
+		-MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 validate:
 	@test -d "$(SDK_PPC_PATH)" || \

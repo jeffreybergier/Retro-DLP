@@ -1,12 +1,26 @@
+#if !defined(__APPLE__)
+#define _POSIX_C_SOURCE 200112L
+#endif
+
 #include "yt_http.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <curl/curl.h>
 
 #include "platform.h"
+
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 
 #define YT_HTTP_MAX_RESPONSE (8U * 1024U * 1024U)
 #define YT_HTTP_TIMEOUT_SECONDS 20L
@@ -18,6 +32,14 @@ typedef struct {
   int failed;
   int too_large;
 } YTWriteBuffer;
+
+typedef struct {
+  FILE *file;
+  unsigned char prefix[16];
+  size_t prefix_length;
+  int failed;
+  int64_t bytes_written;
+} YTDownloadWriter;
 
 static size_t write_response(void *contents, size_t size, size_t count,
                              void *opaque) {
@@ -48,6 +70,42 @@ static size_t write_response(void *contents, size_t size, size_t count,
   buffer->length += incoming;
   buffer->data[buffer->length] = '\0';
   return incoming;
+}
+
+static size_t write_download(void *contents, size_t size, size_t count,
+                             void *opaque) {
+  YTDownloadWriter *writer;
+  size_t incoming;
+  size_t copy_length;
+  size_t written;
+  writer = (YTDownloadWriter *)opaque;
+  if (count != 0 && size > ((size_t)-1) / count) {
+    writer->failed = 1;
+    return 0;
+  }
+  incoming = size * count;
+  copy_length = sizeof(writer->prefix) - writer->prefix_length;
+  if (copy_length > incoming)
+    copy_length = incoming;
+  if (copy_length != 0) {
+    memcpy(writer->prefix + writer->prefix_length, contents, copy_length);
+    writer->prefix_length += copy_length;
+  }
+  written = fwrite(contents, 1, incoming, writer->file);
+  if (written != incoming) {
+    writer->failed = 1;
+    return written;
+  }
+  if (incoming > (size_t)(INT64_MAX - writer->bytes_written)) {
+    writer->failed = 1;
+    return 0;
+  }
+  writer->bytes_written += (int64_t)incoming;
+  return incoming;
+}
+
+int yt_http_has_mp4_ftyp(const unsigned char *prefix, size_t length) {
+  return prefix != NULL && length >= 8 && memcmp(prefix + 4, "ftyp", 4) == 0;
 }
 
 static YTStatus configure_common(CURL *curl, const char *url) {
@@ -209,6 +267,94 @@ YTStatus yt_http_head(const char *url, const char *user_agent,
 
   if (code != CURLE_OK)
     return YT_ERR_NETWORK;
+  return YT_OK;
+}
+
+YTStatus yt_http_download(const char *url, const char *user_agent,
+                          const char *destination, long *http_status,
+                          int64_t *bytes_written) {
+  char temporary[PATH_MAX];
+  struct stat information;
+  int descriptor;
+  CURL *curl;
+  CURLcode code;
+  YTStatus status;
+  YTDownloadWriter writer;
+  long response_status;
+  int close_failed;
+
+  if (url == NULL || destination == NULL || destination[0] == '\0' ||
+      http_status == NULL || bytes_written == NULL)
+    return YT_ERR_INVALID_RESPONSE;
+  *http_status = 0;
+  *bytes_written = 0;
+  if (lstat(destination, &information) == 0)
+    return YT_ERR_FILE_EXISTS;
+  if (errno != ENOENT)
+    return YT_ERR_STORAGE;
+  if (snprintf(temporary, sizeof(temporary), "%s.part", destination) >=
+      (int)sizeof(temporary))
+    return YT_ERR_STORAGE;
+  descriptor = open(temporary, O_WRONLY | O_CREAT | O_EXCL, 0600);
+  if (descriptor < 0)
+    return errno == EEXIST ? YT_ERR_FILE_EXISTS : YT_ERR_STORAGE;
+  memset(&writer, 0, sizeof(writer));
+  writer.file = fdopen(descriptor, "wb");
+  if (writer.file == NULL) {
+    close(descriptor);
+    unlink(temporary);
+    return YT_ERR_STORAGE;
+  }
+  curl = curl_easy_init();
+  if (curl == NULL) {
+    fclose(writer.file);
+    unlink(temporary);
+    return YT_ERR_NETWORK;
+  }
+  status = configure_common(curl, url);
+  if (status != YT_OK) {
+    curl_easy_cleanup(curl);
+    fclose(writer.file);
+    unlink(temporary);
+    return status;
+  }
+  if (user_agent != NULL)
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, user_agent);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_download);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &writer);
+  code = curl_easy_perform(curl);
+  response_status = 0;
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_status);
+  curl_easy_cleanup(curl);
+  *http_status = response_status;
+  *bytes_written = writer.bytes_written;
+  close_failed = fflush(writer.file) != 0 || fsync(descriptor) != 0;
+  if (fclose(writer.file) != 0)
+    close_failed = 1;
+  if (code != CURLE_OK || writer.failed || close_failed) {
+    unlink(temporary);
+    return writer.failed || close_failed ? YT_ERR_STORAGE : YT_ERR_NETWORK;
+  }
+  if (response_status == 403) {
+    unlink(temporary);
+    return YT_ERR_PO_TOKEN_REQUIRED;
+  }
+  if (response_status < 200 || response_status >= 300) {
+    unlink(temporary);
+    return YT_ERR_HTTP;
+  }
+  if (!yt_http_has_mp4_ftyp(writer.prefix, writer.prefix_length)) {
+    unlink(temporary);
+    return YT_ERR_INVALID_MEDIA;
+  }
+  if (link(temporary, destination) != 0) {
+    int link_error = errno;
+    unlink(temporary);
+    return link_error == EEXIST ? YT_ERR_FILE_EXISTS : YT_ERR_STORAGE;
+  }
+  if (unlink(temporary) != 0)
+    return YT_ERR_STORAGE;
   return YT_OK;
 }
 

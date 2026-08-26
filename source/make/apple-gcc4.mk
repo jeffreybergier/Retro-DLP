@@ -67,14 +67,16 @@ $(MACOS_INT_DIR)/ppc/%.o: %.c
 	@mkdir -p $(dir $@)
 	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_PPC) \
 		$(LEGACY_MACOS_CPPFLAGS) $(LEGACY_MACOS_CFLAGS) -arch ppc \
-		-isysroot $(SDK_PPC_PATH) $(SOURCE_WARNING_FLAGS) -c $< -o $@
+		-isysroot $(SDK_PPC_PATH) $(SOURCE_WARNING_FLAGS) \
+		-MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 $(MACOS_INT_DIR)/i386/%.o: %.c
 	@echo " [2/5] Compiling i386: $<"
 	@mkdir -p $(dir $@)
 	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_X86) \
 		$(LEGACY_MACOS_CPPFLAGS) $(LEGACY_MACOS_CFLAGS) -arch i386 \
-		-isysroot $(SDK_X86_PATH) $(SOURCE_WARNING_FLAGS) -c $< -o $@
+		-isysroot $(SDK_X86_PATH) $(SOURCE_WARNING_FLAGS) \
+		-MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 $(PPC_QUICKJS_LIBRARY): $(PPC_QUICKJS_OBJECTS)
 	@echo "  > archiving ppc QuickJS static library"

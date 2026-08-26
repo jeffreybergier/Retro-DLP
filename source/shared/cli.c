@@ -10,6 +10,7 @@
 #include "platform.h"
 #include "test/self_test.h"
 #include "yt_ejs_assets.h"
+#include "yt_http.h"
 #include "yt_resolver.h"
 
 #ifndef RETRO_DLP_VERSION
@@ -25,6 +26,8 @@ static void print_usage(FILE *stream) {
           "Options:\n"
           "  -h, --help       Show this help.\n"
           "  -V, --version    Show version and build platform.\n"
+          "      --no-download VIDEO_ID_OR_URL\n"
+          "                   Resolve and print media JSON without downloading.\n"
           "      --test       Run embedded dependency tests.\n");
   fprintf(stream,
           "\n"
@@ -95,19 +98,9 @@ static int run_asset_command(const char *command) {
   return 2;
 }
 
-static const char *probe_classification(YTStatus status) {
-  if (status == YT_OK)
-    return "ok";
-  if (status == YT_ERR_PO_TOKEN_REQUIRED)
-    return "po_token_required";
-  return "failed";
-}
-
-static int print_media_request(const YTMediaRequest *media,
-                               YTStatus probe_status, long http_status) {
+static int print_media_request(const YTMediaRequest *media) {
   cJSON *document;
   cJSON *headers;
-  cJSON *probe;
   char *json;
 
   document = cJSON_CreateObject();
@@ -129,11 +122,24 @@ static int print_media_request(const YTMediaRequest *media,
     cJSON_Delete(document);
     return 1;
   }
-  probe = cJSON_AddObjectToObject(document, "probe");
-  if (probe == NULL ||
-      !cJSON_AddNumberToObject(probe, "httpStatus", (double)http_status) ||
-      !cJSON_AddStringToObject(probe, "classification",
-                              probe_classification(probe_status))) {
+  json = cJSON_Print(document);
+  cJSON_Delete(document);
+  if (json == NULL)
+    return 1;
+  printf("%s\n", json);
+  free(json);
+  return 0;
+}
+
+static int print_download_result(const char *path, int64_t bytes_written) {
+  cJSON *document;
+  char *json;
+  document = cJSON_CreateObject();
+  if (document == NULL)
+    return 1;
+  if (!cJSON_AddStringToObject(document, "status", "downloaded") ||
+      !cJSON_AddStringToObject(document, "path", path) ||
+      !cJSON_AddNumberToObject(document, "bytes", (double)bytes_written)) {
     cJSON_Delete(document);
     return 1;
   }
@@ -146,11 +152,13 @@ static int print_media_request(const YTMediaRequest *media,
   return 0;
 }
 
-static int resolve_argument(const char *input) {
+static int resolve_argument(const char *input, int no_download) {
   YTMediaRequest media;
   YTStatus status;
-  YTStatus probe_status;
+  char video_id[12];
+  char destination[32];
   long http_status;
+  int64_t bytes_written;
   int failed;
 
   if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
@@ -163,23 +171,35 @@ static int resolve_argument(const char *input) {
     curl_global_cleanup();
     return 1;
   }
-  http_status = 0;
-  probe_status = yt_probe_media_head(&media, &http_status);
-  if (probe_status != YT_OK && probe_status != YT_ERR_PO_TOKEN_REQUIRED) {
-    fprintf(stderr, "retro-dlp: media probe failed: %s (HTTP %ld)\n",
-            yt_status_string(probe_status), http_status);
+  if (no_download) {
+    failed = print_media_request(&media);
+    yt_media_request_free(&media);
+    curl_global_cleanup();
+    if (failed)
+      fprintf(stderr, "retro-dlp: could not create result JSON\n");
+    return failed;
+  }
+  if (yt_extract_video_id(input, video_id) != YT_OK ||
+      snprintf(destination, sizeof(destination), "%s.mp4", video_id) >=
+          (int)sizeof(destination)) {
     yt_media_request_free(&media);
     curl_global_cleanup();
     return 1;
   }
-  failed = print_media_request(&media, probe_status, http_status);
+  fprintf(stderr, "retro-dlp: downloading to %s\n", destination);
+  status = yt_http_download(media.url, media.user_agent, destination,
+                            &http_status, &bytes_written);
   yt_media_request_free(&media);
   curl_global_cleanup();
-  if (failed) {
-    fprintf(stderr, "retro-dlp: could not create result JSON\n");
+  if (status != YT_OK) {
+    fprintf(stderr, "retro-dlp: download failed: %s (HTTP %ld)\n",
+            yt_status_string(status), http_status);
     return 1;
   }
-  return 0;
+  failed = print_download_result(destination, bytes_written);
+  if (failed)
+    fprintf(stderr, "retro-dlp: download completed but result JSON failed\n");
+  return failed;
 }
 
 int retro_dlp_run(int argc, char **argv) {
@@ -214,8 +234,11 @@ int retro_dlp_run(int argc, char **argv) {
   if (argc == 3 && strcmp(argv[1], "assets") == 0)
     return run_asset_command(argv[2]);
 
+  if (argc == 3 && strcmp(argv[1], "--no-download") == 0)
+    return resolve_argument(argv[2], 1);
+
   if (argc == 2 && argv[1][0] != '-')
-    return resolve_argument(argv[1]);
+    return resolve_argument(argv[1], 0);
 
   fprintf(stderr, "retro-dlp: unsupported arguments\n");
   print_usage(stderr);

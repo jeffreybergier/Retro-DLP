@@ -10,6 +10,7 @@
 #include "ejs_test.h"
 #include "quickjs.h"
 #include "self_test_data.h"
+#include "yt_http.h"
 #include "yt_resolver.h"
 
 #define SELF_TEST_VIDEO_ID "YE7VzlLtp-4"
@@ -125,6 +126,8 @@ static int test_video_id(void) {
 }
 
 static int test_offline_player_fixtures(void) {
+  static const unsigned char mp4_prefix[] = {0, 0, 0, 24, 'f', 't', 'y', 'p',
+                                              'i', 's', 'o', 'm'};
   static const char direct_after_challenge[] =
       "{\"playabilityStatus\":{\"status\":\"OK\"},\"streamingData\":{"
       "\"formats\":[{\"itag\":18,\"url\":\"https://fixture.googlevideo.com/"
@@ -134,6 +137,12 @@ static int test_offline_player_fixtures(void) {
       "\"mimeType\":\"video/mp4\",\"width\":640,\"height\":360}]}}";
   YTMediaRequest media;
   YTStatus status;
+
+  if (!yt_http_has_mp4_ftyp(mp4_prefix, sizeof(mp4_prefix)) ||
+      yt_http_has_mp4_ftyp((const unsigned char *)"<html>error", 11)) {
+    fprintf(stderr, "FAIL: MP4 download prefix validation\n");
+    return 1;
+  }
 
   status = yt_parse_player_response(retro_dlp_player_itag18_fixture,
                                     retro_dlp_player_itag18_fixture_length,

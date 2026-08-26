@@ -12,7 +12,7 @@ adaptive audio/video merging, conversion, DRM, SABR, or PO-token generation.
 Create a command-line program that accepts a YouTube URL or video ID:
 
 ```sh
-retro-dlp VIDEO_ID
+retro-dlp --no-download VIDEO_ID
 ```
 
 Return a machine-readable result such as:
@@ -27,10 +27,6 @@ Return a machine-readable result such as:
   "expires": 1785580000,
   "headers": {
     "User-Agent": "..."
-  },
-  "probe": {
-    "httpStatus": 403,
-    "classification": "po_token_required"
   }
 }
 ```
@@ -68,11 +64,18 @@ Do not involve QuickJS yet. Implement the smallest complete resolution path:
 - [x] Return its URL, required headers, dimensions, MIME type, and expiry.
 - [x] Probe it with a bodyless HTTP HEAD request and classify HTTP 403 as the
   current PO-token limitation.
+- [x] Make `retro-dlp VIDEO_ID_OR_URL` stream the complete itag 18 MP4 into the
+  current directory by default.
+- [x] Make `--no-download` return resolver JSON without probing or downloading.
+- [x] Write through an exclusive `.part` file, validate the MP4 `ftyp` box,
+  refuse overwrites, remove handled failures, and publish atomically.
+- [x] Classify a full-download HTTP 403 independently of the diagnostic HEAD
+  request. The first Linux live download reached GVS and confirmed the current
+  `po_token_required` limitation without leaving a partial file.
 
-The phase-one validation uses a bodyless HEAD request so it cannot download the
-video. A future download-path test can ask for approximately the first 4 KiB,
-accept a valid `206 Partial Content` or suitably small `200 OK`, and check for
-an ISO Base Media File Format `ftyp` box rather than an HTML error response.
+The embedded live test retains its bodyless HEAD comparison so routine tests do
+not download the fixture. Normal CLI use performs the complete streaming GET,
+and that result is authoritative for actual download capability.
 
 This phase proves the network, TLS, JSON parsing, client configuration, format
 selection, result model, and download pipeline before JavaScript is introduced.
@@ -182,7 +185,25 @@ player JavaScript is keyed by its canonical URL hash, successful-client entries
 expire after one day, and failure lifetimes range from 15 seconds to five
 minutes by classification.
 
-## 6. Package and validate for ARMv7 and iOS 5
+## 6. Add GVS PO-token support
+
+- [ ] Complete the GVS PO-token milestone.
+
+The complete download path now establishes that current itag 18 URLs can reach
+GVS but receive HTTP 403 without attestation. Keep PO-token failures distinct
+from signature and throttling challenge failures.
+
+- [ ] Define a native provider interface that binds tokens to the correct
+  client, visitor/session, video ID, and token lifetime.
+- [ ] Add explicit token ingestion first so provider output can be tested
+  independently of token generation.
+- [ ] Attach the token only to the matching GVS media request and never reuse a
+  Web, Android, or iOS token across client families.
+- [ ] Cache tokens only within their binding and expiry constraints.
+- [ ] Add a provider implementation suitable for the selected client.
+- [ ] Validate a complete MP4 download and retain the no-token 403 fixture.
+
+## 7. Package and validate for ARMv7 and iOS 5
 
 - [ ] Complete the ARMv7/iOS 5 packaging and validation milestone.
 
@@ -206,7 +227,7 @@ engine-porting effort. The remaining work is expected to be:
 - [ ] Keep the native resolver independent of UIKit so the same C API and
   fixtures remain usable by Linux, macOS, Tiger, and iOS front ends.
 
-## 7. Add a signed update channel
+## 8. Add a signed update channel
 
 - [ ] Complete the signed-update-channel milestone.
 

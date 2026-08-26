@@ -94,14 +94,14 @@ printf '%s\n' "$self_test_output" | grep -q '^PASS: media HEAD' || \
 printf '%s\n' "$self_test_output" | grep -q '^PASS: retro-dlp self-test$' || \
   fail "--test did not report success"
 
-resolve_output=$($binary "https://youtu.be/YE7VzlLtp-4")
+resolve_output=$($binary --no-download "https://youtu.be/YE7VzlLtp-4")
 printf '%s\n' "$resolve_output" | grep -q '"itag":[[:space:]]*18' || \
   fail "video resolution did not return itag 18 JSON"
 printf '%s\n' "$resolve_output" | grep -q 'googlevideo.com' || \
   fail "video resolution did not return a Google Video URL"
-printf '%s\n' "$resolve_output" | \
-  grep -Eq '"classification":[[:space:]]*"(ok|po_token_required)"' || \
-  fail "video resolution did not classify the media probe"
+if printf '%s\n' "$resolve_output" | grep -q '"probe"'; then
+  fail "--no-download unexpectedly performed a probe"
+fi
 [ -f "$test_home/.retro-dlp/cache/v1/client-manifest/builtin-v1.entry" ] || \
   fail "resolver did not populate the client-manifest cache"
 [ -f "$test_home/.retro-dlp/cache/v1/successful-client/last.entry" ] || \

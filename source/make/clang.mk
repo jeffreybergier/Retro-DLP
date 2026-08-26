@@ -62,7 +62,7 @@ $(MACOS_INT_DIR)/x86_64/%.o: %.c
 	@$(COMPILER_X64) -target x86_64-apple-macos$(MAC_MIN_X64) \
 		-arch x86_64 -isysroot $(SDK_X64_PATH) \
 		$(MODERN_MACOS_CPPFLAGS) $(MODERN_MACOS_CFLAGS) \
-		$(SOURCE_WARNING_FLAGS) -c $< -o $@
+		$(SOURCE_WARNING_FLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 $(MACOS_INT_DIR)/arm64/%.o: %.c
 	@echo " [4/5] Compiling arm64: $<"
@@ -70,7 +70,7 @@ $(MACOS_INT_DIR)/arm64/%.o: %.c
 	@$(COMPILER_ARM64) -target arm64-apple-macos$(MAC_MIN_ARM64) \
 		-arch arm64 -isysroot $(SDK_ARM64_PATH) \
 		$(MODERN_MACOS_CPPFLAGS) $(MODERN_MACOS_CFLAGS) \
-		$(SOURCE_WARNING_FLAGS) -c $< -o $@
+		$(SOURCE_WARNING_FLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 $(X86_64_QUICKJS_LIBRARY): $(X86_64_QUICKJS_OBJECTS)
 	@echo "  > archiving x86_64 QuickJS static library"

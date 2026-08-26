@@ -18,6 +18,10 @@ YTStatus yt_http_get(const char *url, size_t maximum_size,
                      YTHttpResponse *response);
 YTStatus yt_http_head(const char *url, const char *user_agent,
                       long *http_status);
+YTStatus yt_http_download(const char *url, const char *user_agent,
+                          const char *destination, long *http_status,
+                          int64_t *bytes_written);
+int yt_http_has_mp4_ftyp(const unsigned char *prefix, size_t length);
 void yt_http_response_free(YTHttpResponse *response);
 
 #endif
