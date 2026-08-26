@@ -88,8 +88,12 @@ def main():
             "--no-warnings",
             "--no-playlist",
             "--skip-download",
+            "--js-runtimes",
+            "node",
+            "--remote-components",
+            "ejs:github",
             "--extractor-args",
-            "youtube:player_client=android_vr",
+            "youtube:player_client=mweb",
             "-f",
             "18",
             "--dump-single-json",
@@ -121,9 +125,8 @@ def main():
                 f"yt-dlp={oracle_query.get(field)}"
             )
 
-    # This JSless fixture has server-provided signatures, not an encrypted `s`
-    # challenge. The signature bytes vary per player request, so compare the
-    # parameter choice and ensure neither resolver returned an unsolved `n`.
+    # Signature and transformed n bytes vary per player request, so compare the
+    # signature parameter choice and the presence of an n query parameter.
     retro_signature_names = {
         name for name in ("sig", "signature") if name in retro_query
     }
@@ -135,8 +138,11 @@ def main():
             "direct signature parameters differ: "
             f"Retro-DLP={retro_signature_names}, yt-dlp={oracle_signature_names}"
         )
-    if "n" in retro_query or "n" in oracle_query:
-        fail("a resolver returned an unsolved n challenge")
+    if ("n" in retro_query) != ("n" in oracle_query):
+        fail(
+            "n parameter presence differs: "
+            f"Retro-DLP={'n' in retro_query}, yt-dlp={'n' in oracle_query}"
+        )
 
     retro_status = head_status(retro["url"], retro.get("headers", {}))
     oracle_status = head_status(oracle["url"], oracle.get("http_headers", {}))

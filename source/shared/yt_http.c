@@ -112,6 +112,7 @@ static YTStatus configure_common(CURL *curl, const char *url) {
   if (retro_dlp_configure_curl(curl) != 0)
     return YT_ERR_CERTIFICATE_BUNDLE;
   curl_easy_setopt(curl, CURLOPT_URL, url);
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, yt_resolver_user_agent());
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
   curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, YT_HTTP_TIMEOUT_SECONDS);
@@ -214,7 +215,6 @@ YTStatus yt_http_get(const char *url, size_t maximum_size,
   curl_easy_setopt(curl, CURLOPT_PROTOCOLS, (long)CURLPROTO_HTTPS);
   curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS, (long)CURLPROTO_HTTPS);
 #endif
-  curl_easy_setopt(curl, CURLOPT_USERAGENT, "retro-dlp/" RETRO_DLP_VERSION);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_response);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
   code = curl_easy_perform(curl);
@@ -237,8 +237,7 @@ YTStatus yt_http_get(const char *url, size_t maximum_size,
   return YT_OK;
 }
 
-YTStatus yt_http_head(const char *url, const char *user_agent,
-                      long *http_status) {
+YTStatus yt_http_head(const char *url, long *http_status) {
   CURL *curl;
   CURLcode code;
   long status;
@@ -257,8 +256,6 @@ YTStatus yt_http_head(const char *url, const char *user_agent,
     return configure_status;
   }
   curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
-  if (user_agent != NULL)
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, user_agent);
   code = curl_easy_perform(curl);
   status = 0;
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
@@ -270,8 +267,8 @@ YTStatus yt_http_head(const char *url, const char *user_agent,
   return YT_OK;
 }
 
-YTStatus yt_http_download(const char *url, const char *user_agent,
-                          const char *destination, long *http_status,
+YTStatus yt_http_download(const char *url, const char *destination,
+                          long *http_status,
                           int64_t *bytes_written) {
   char temporary[PATH_MAX];
   struct stat information;
@@ -318,8 +315,6 @@ YTStatus yt_http_download(const char *url, const char *user_agent,
     unlink(temporary);
     return status;
   }
-  if (user_agent != NULL)
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, user_agent);
   curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_download);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &writer);

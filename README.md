@@ -99,10 +99,11 @@ classification; it does not mean that the video was downloaded. The tests
 execute inside the current binary slice, making them suitable for checking the
 actual PowerPC, i386, x86_64, arm64, or Linux build on its target machine.
 
-`make test` additionally runs the pinned vendored yt-dlp with the same
-`android_vr` client. It compares selected format metadata, the Google Video
+`make test` additionally runs the pinned vendored yt-dlp with the same `mweb`
+client. It compares selected format metadata, the Google Video
 media service and stable query fields, direct signature parameter choice,
-absence of an unsolved `n`, and the HEAD result/classification.
+matching transformed-`n` parameter presence, and the HEAD
+result/classification.
 
 The resolver keeps bounded, versioned caches under `~/.retro-dlp/cache/v1` for
 the active client manifest, raw player JavaScript, EJS preprocessed players,

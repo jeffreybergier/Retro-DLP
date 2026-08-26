@@ -1,6 +1,7 @@
 #include "yt_resolver.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,13 +17,13 @@
 
 #define YT_PLAYER_ENDPOINT                                                   \
   "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
-#define YT_CLIENT_NAME "ANDROID_VR"
-#define YT_CLIENT_NAME_ID "28"
-#define YT_CLIENT_VERSION "1.65.10"
+#define YT_CLIENT_NAME "MWEB"
+#define YT_CLIENT_NAME_ID "2"
+#define YT_CLIENT_VERSION "2.20260708.05.00"
 #define YT_USER_AGENT                                                       \
-  "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android "   \
-  "12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
-#define YT_CLIENT_MANIFEST_KEY "builtin-v1"
+  "Mozilla/5.0 (iPad; CPU OS 16_7_10 like Mac OS X) AppleWebKit/605.1.15 "  \
+  "(KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1,gzip(gfe)"
+#define YT_CLIENT_MANIFEST_KEY "builtin-v2"
 #define YT_CLIENT_MANIFEST_TTL (30LL * 24LL * 60LL * 60LL)
 #define YT_SUCCESSFUL_CLIENT_TTL (24LL * 60LL * 60LL)
 #define YT_PLAYER_JAVASCRIPT_TTL (7LL * 24LL * 60LL * 60LL)
@@ -31,6 +32,8 @@ static const char builtin_client_manifest[] =
     "{\"version\":1,\"clients\":[{\"name\":\"" YT_CLIENT_NAME
     "\",\"id\":\"" YT_CLIENT_NAME_ID "\",\"version\":\""
     YT_CLIENT_VERSION "\",\"userAgent\":\"" YT_USER_AGENT "\"}]}";
+
+const char *yt_resolver_user_agent(void) { return YT_USER_AGENT; }
 
 typedef struct {
   char name[32];
@@ -334,7 +337,8 @@ YTStatus yt_extract_video_id(const char *input, char video_id[12]) {
 
 static cJSON *create_player_request(const char *video_id,
                                     const char *visitor_data,
-                                    const YTClient *configured_client) {
+                                    const YTClient *configured_client,
+                                    int signature_timestamp) {
   cJSON *root;
   cJSON *context;
   cJSON *client;
@@ -356,13 +360,8 @@ static cJSON *create_player_request(const char *video_id,
   if (!cJSON_AddStringToObject(client, "clientName", configured_client->name) ||
       !cJSON_AddStringToObject(client, "clientVersion",
                               configured_client->version) ||
-      !cJSON_AddStringToObject(client, "deviceMake", "Oculus") ||
-      !cJSON_AddStringToObject(client, "deviceModel", "Quest 3") ||
-      !cJSON_AddNumberToObject(client, "androidSdkVersion", 32) ||
       !cJSON_AddStringToObject(client, "userAgent",
                               configured_client->user_agent) ||
-      !cJSON_AddStringToObject(client, "osName", "Android") ||
-      !cJSON_AddStringToObject(client, "osVersion", "12L") ||
       !cJSON_AddStringToObject(client, "hl", "en") ||
       !cJSON_AddStringToObject(client, "timeZone", "UTC") ||
       !cJSON_AddNumberToObject(client, "utcOffsetMinutes", 0) ||
@@ -376,6 +375,10 @@ static cJSON *create_player_request(const char *video_id,
   if (!cJSON_AddStringToObject(content_playback_context, "html5Preference",
                                "HTML5_PREF_WANTS"))
     goto failed;
+  if (signature_timestamp > 0 &&
+      !cJSON_AddNumberToObject(content_playback_context, "signatureTimestamp",
+                              signature_timestamp))
+    goto failed;
   return root;
 
 failed:
@@ -384,9 +387,10 @@ failed:
 }
 
 static YTStatus call_player(const char *video_id, const char *visitor_data,
-                            const YTClient *client, cJSON **document_out) {
+                            const YTClient *client, int signature_timestamp,
+                            cJSON **document_out) {
   static const char *const fixed_headers[] = {
-      "Content-Type: application/json", "Origin: https://www.youtube.com"};
+      "Content-Type: application/json", "Origin: https://m.youtube.com"};
   char client_name_header[64];
   char client_version_header[96];
   char user_agent_header[320];
@@ -398,7 +402,8 @@ static YTStatus call_player(const char *video_id, const char *visitor_data,
   YTHttpResponse response;
   YTStatus status;
 
-  request = create_player_request(video_id, visitor_data, client);
+  request = create_player_request(video_id, visitor_data, client,
+                                  signature_timestamp);
   if (request == NULL)
     return YT_ERR_OUT_OF_MEMORY;
   json = cJSON_PrintUnformatted(request);
@@ -951,6 +956,68 @@ static char *json_string_after_marker(const char *text, const char *marker) {
   return result;
 }
 
+static int json_integer_after_marker(const char *text, const char *marker) {
+  const char *start;
+  char *end;
+  long value;
+  start = strstr(text, marker);
+  if (start == NULL)
+    return 0;
+  start += strlen(marker);
+  while (*start == ' ' || *start == '\t' || *start == ':')
+    ++start;
+  value = strtol(start, &end, 10);
+  return end != start && value > 0 && value <= INT_MAX ? (int)value : 0;
+}
+
+static YTStatus load_mweb_bootstrap(const char *video_id, YTClient *client,
+                                    int *signature_timestamp,
+                                    char **player_url) {
+  char watch_url[96];
+  YTHttpResponse response;
+  YTStatus status;
+  char *client_version;
+  char *relative_player_url;
+
+  *signature_timestamp = 0;
+  *player_url = NULL;
+  if (snprintf(watch_url, sizeof(watch_url),
+               "https://m.youtube.com/watch?v=%s", video_id) >=
+      (int)sizeof(watch_url))
+    return YT_ERR_INVALID_RESPONSE;
+  status = yt_http_get(watch_url, 2U * 1024U * 1024U, &response);
+  if (status != YT_OK)
+    return status;
+  if (response.status < 200 || response.status >= 300) {
+    yt_http_response_free(&response);
+    return YT_ERR_HTTP;
+  }
+
+  client_version = json_string_after_marker(
+      response.data, "\"INNERTUBE_CONTEXT_CLIENT_VERSION\"");
+  *signature_timestamp =
+      json_integer_after_marker(response.data, "\"STS\"");
+  relative_player_url = json_string_after_marker(response.data, "\"jsUrl\"");
+  if (relative_player_url == NULL)
+    relative_player_url =
+        json_string_after_marker(response.data, "\"PLAYER_JS_URL\"");
+  *player_url = absolute_player_url(relative_player_url);
+  free(relative_player_url);
+
+  if (client_version == NULL ||
+      !copy_field(client->version, sizeof(client->version), client_version) ||
+      *signature_timestamp == 0 || *player_url == NULL) {
+    free(client_version);
+    free(*player_url);
+    *player_url = NULL;
+    yt_http_response_free(&response);
+    return YT_ERR_INVALID_RESPONSE;
+  }
+  free(client_version);
+  yt_http_response_free(&response);
+  return YT_OK;
+}
+
 static YTStatus player_url_from_watch_page(const char *video_id,
                                            char **player_url) {
   char watch_url[96];
@@ -1019,6 +1086,7 @@ YTStatus yt_load_player_javascript(const char *player_url, char **source) {
 }
 
 static YTStatus resolve_player_document(cJSON *document, const char *video_id,
+                                        const char *bootstrap_player_url,
                                         const YTClient *client,
                                         YTMediaRequest *result) {
   YTStatus status;
@@ -1028,6 +1096,8 @@ static YTStatus resolve_player_document(cJSON *document, const char *video_id,
   if (status != YT_ERR_JS_CHALLENGE)
     return status;
   player_url = player_url_from_document(document);
+  if (player_url == NULL)
+    player_url = copy_string(bootstrap_player_url);
   if (player_url == NULL) {
     status = player_url_from_watch_page(video_id, &player_url);
     if (status != YT_OK)
@@ -1051,6 +1121,8 @@ YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
   cJSON *response_context;
   const char *visitor_data;
   char *visitor_copy;
+  char *bootstrap_player_url;
+  int signature_timestamp;
   YTStatus status;
 
   if (result == NULL)
@@ -1062,14 +1134,23 @@ YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
   status = load_client(&client);
   if (status != YT_OK)
     return status;
+  bootstrap_player_url = NULL;
+  signature_timestamp = 0;
+  status = load_mweb_bootstrap(video_id, &client, &signature_timestamp,
+                               &bootstrap_player_url);
+  if (status != YT_OK)
+    return status;
   prefer_recent_client(&client);
   failure_cache_key(video_id, &client, failure_key);
-  if (yt_load_cached_failure(failure_key, &status))
+  if (yt_load_cached_failure(failure_key, &status)) {
+    free(bootstrap_player_url);
     return status;
+  }
 
   document = NULL;
-  status = call_player(video_id, NULL, &client, &document);
+  status = call_player(video_id, NULL, &client, signature_timestamp, &document);
   if (status != YT_OK) {
+    free(bootstrap_player_url);
     yt_remember_failure(failure_key, status);
     return status;
   }
@@ -1080,22 +1161,27 @@ YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
   visitor_copy = copy_string(visitor_data);
   if (visitor_data != NULL && visitor_copy == NULL) {
     cJSON_Delete(document);
+    free(bootstrap_player_url);
     return YT_ERR_OUT_OF_MEMORY;
   }
 
   if (visitor_copy != NULL) {
     cJSON_Delete(document);
     document = NULL;
-    status = call_player(video_id, visitor_copy, &client, &document);
+    status = call_player(video_id, visitor_copy, &client, signature_timestamp,
+                         &document);
     free(visitor_copy);
     if (status != YT_OK) {
+      free(bootstrap_player_url);
       yt_remember_failure(failure_key, status);
       return status;
     }
   }
 
-  status = resolve_player_document(document, video_id, &client, result);
+  status = resolve_player_document(document, video_id, bootstrap_player_url,
+                                   &client, result);
   cJSON_Delete(document);
+  free(bootstrap_player_url);
   if (status == YT_OK) {
     remember_successful_client(&client);
     yt_cache_remove(YT_CACHE_FAILURE, failure_key);
@@ -1118,7 +1204,7 @@ YTStatus yt_probe_media_head(const YTMediaRequest *media, long *http_status) {
 
   if (media == NULL || media->url == NULL)
     return YT_ERR_INVALID_RESPONSE;
-  status = yt_http_head(media->url, media->user_agent, http_status);
+  status = yt_http_head(media->url, http_status);
   if (status != YT_OK)
     return status;
   return yt_classify_media_http_status(*http_status);

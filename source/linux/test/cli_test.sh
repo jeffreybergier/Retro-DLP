@@ -102,7 +102,7 @@ printf '%s\n' "$resolve_output" | grep -q 'googlevideo.com' || \
 if printf '%s\n' "$resolve_output" | grep -q '"probe"'; then
   fail "--no-download unexpectedly performed a probe"
 fi
-[ -f "$test_home/.retro-dlp/cache/v1/client-manifest/builtin-v1.entry" ] || \
+[ -f "$test_home/.retro-dlp/cache/v1/client-manifest/builtin-v2.entry" ] || \
   fail "resolver did not populate the client-manifest cache"
 [ -f "$test_home/.retro-dlp/cache/v1/successful-client/last.entry" ] || \
   fail "resolver did not populate the successful-client cache"

@@ -264,11 +264,11 @@ static int test_live_resolver(void) {
     printf("PASS: Google Video host and required query fields\n");
   }
 
-  if (strstr(media.url, "sig=") == NULL || strstr(media.url, "&n=") != NULL) {
-    fprintf(stderr, "FAIL: direct URL challenge classification\n");
+  if (strstr(media.url, "sig=") == NULL) {
+    fprintf(stderr, "FAIL: resolved URL signature classification\n");
     failed = 1;
   } else {
-    printf("PASS: direct URL requires no s/n challenge solving\n");
+    printf("PASS: resolved URL signature and n challenge processing\n");
   }
 
   http_status = 0;

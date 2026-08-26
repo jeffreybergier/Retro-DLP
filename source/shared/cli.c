@@ -187,8 +187,8 @@ static int resolve_argument(const char *input, int no_download) {
     return 1;
   }
   fprintf(stderr, "retro-dlp: downloading to %s\n", destination);
-  status = yt_http_download(media.url, media.user_agent, destination,
-                            &http_status, &bytes_written);
+  status = yt_http_download(media.url, destination, &http_status,
+                            &bytes_written);
   yt_media_request_free(&media);
   curl_global_cleanup();
   if (status != YT_OK) {

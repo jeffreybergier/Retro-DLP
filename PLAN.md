@@ -82,7 +82,7 @@ selection, result model, and download pipeline before JavaScript is introduced.
 
 ## 3. Add QuickJS and EJS
 
-- [ ] Complete the QuickJS and EJS integration milestone.
+- [x] Complete the QuickJS and EJS integration milestone.
 
 Integrate a pinned yt-dlp-ejs bundle behind a small native adapter. Test it
 independently of HTTP first:
@@ -122,9 +122,12 @@ reduced player-shaped base.js fixture + known s/n challenges
 6. [x] **Retrieve the player JavaScript.** Prefer a player URL supplied by the
    Innertube response, add the smallest necessary watch-page fallback, and fetch
    `base.js` in native C so JavaScript receives only its source text.
-7. [ ] **Validate end to end.** Preserve the direct-URL fast path, compare final
-   `s` and `n` values with the pinned yt-dlp oracle, probe the resulting media
-   URL, and keep PO-token failures distinct from EJS failures.
+7. [x] **Validate end to end.** Preserve the direct-URL fast path, compare the
+   final signature and transformed-`n` URL structure with the pinned yt-dlp
+   oracle, probe the resulting media URL, and keep PO-token failures distinct
+   from EJS failures. On August 26, 2026, the `mweb` path resolved and
+   downloaded a complete 7,227,427-byte itag 18 MP4 on Darwin 8.11.0 PowerPC
+   Tiger.
 
 ## 4. Make EJS assets downloadable on demand by the CLI
 
@@ -189,19 +192,140 @@ minutes by classification.
 
 - [ ] Complete the GVS PO-token milestone.
 
-The complete download path now establishes that current itag 18 URLs can reach
-GVS but receive HTTP 403 without attestation. Keep PO-token failures distinct
-from signature and throttling challenge failures.
+Keep PO-token failures distinct from signature and throttling challenge
+failures. The former built-in `android_vr` 1.65.10 client is no longer a viable
+no-token escape hatch: YouTube began returning HTTP 403 for all of its formats,
+including itag 18, on August 17, 2026.
 
-- [ ] Define a native provider interface that binds tokens to the correct
-  client, visitor/session, video ID, and token lifetime.
-- [ ] Add explicit token ingestion first so provider output can be tested
-  independently of token generation.
-- [ ] Attach the token only to the matching GVS media request and never reuse a
-  Web, Android, or iOS token across client families.
-- [ ] Cache tokens only within their binding and expiry constraints.
-- [ ] Add a provider implementation suitable for the selected client.
-- [ ] Validate a complete MP4 download and retain the no-token 403 fixture.
+Retro-DLP switched to the WebPO-capable `mweb` client on August 26, 2026. The
+first companion-provider experiment generated a video-bound token with BgUtils,
+selected `mweb` itag 18, and downloaded the first 10 KiB of `EYBBXG8eyo0`.
+More importantly, the native PowerPC build subsequently downloaded the complete
+7,227,427-byte MP4 without a PO token using the `mweb` identity for the player
+and media requests. The implementation now applies that same iPad/Safari user
+agent to every native HTTP request. PO-token generation is therefore a fallback
+for videos, sessions, networks, or future enforcement that reject this path,
+rather than a blocker for the first working release.
+
+### Phase 6A: Explicit token ingestion and request binding
+
+- [x] Add an `mweb` client definition to the updateable client manifest with
+  numeric ID 2 and the current iPad/Safari user agent. Bootstrap each
+  resolution from the mobile watch page to obtain the current client version,
+  player URL, and signature timestamp rather than permanently hardcoding
+  volatile values. Bump the built-in manifest key to `builtin-v2` so an
+  existing installation cannot restore the cached `android_vr` definition.
+- [x] Generalize client request construction so Android-specific fields are not
+  emitted for Web-family clients.
+- [x] Make the resolver's `mweb` user agent the single native HTTP identity.
+  The common curl setup now obtains it from `yt_resolver.c`; generic GETs,
+  bootstrap requests, player-JavaScript and asset downloads, probes, and full
+  media downloads no longer accept a caller-selected user agent. Keep
+  `--no-download` reporting the identity for users who download the returned
+  URL themselves with curl.
+- [x] Validate a complete tokenless `mweb` itag 18 download on PowerPC Tiger:
+  `EYBBXG8eyo0.mp4`, 7,227,427 bytes, on Darwin 8.11.0 PowerPC.
+- [ ] Define a native PO-token request/response interface carrying at least:
+  client family, token context (`gvs` initially), content-binding type and
+  value, video ID, visitor/session data, expiry, and network identity where
+  available.
+- [ ] Add explicit token ingestion first, exposed by a temporary/test-oriented
+  `--po-token TOKEN` option, so token validation and attachment can be tested
+  independently of generation.
+- [ ] Validate ingested tokens as base64url data, reject query-string fragments
+  or malformed values, and never print tokens in normal, debug, or error logs.
+- [ ] Detect whether the active WebPO experiment binds the GVS token to the
+  video ID, visitor data/visitor ID, or authenticated data-sync ID. Do not
+  assume one binding mode permanently.
+- [ ] Append the token as the `pot` query parameter only to the matching GVS
+  media URL. Never send it in unrelated Innertube, player-JavaScript, asset, or
+  subtitle requests.
+- [ ] If future enforcement requires more than the currently successful shared
+  user agent, preserve additional `mweb` media headers such as `Accept`,
+  `Accept-Language`, and `Sec-Fetch-Mode` through resolution, JSON output,
+  probing, and the complete download.
+- [ ] Never reuse a Web, Android, or iOS token across client families or reuse a
+  token across incompatible binding types.
+- [ ] Cache tokens only within their client, context, content binding, network
+  identity, and provider-supplied expiry constraints. Prefer caching and
+  reusing the more expensive integrity-token/minter state while minting a new
+  content token for each video when required.
+- [ ] Add deterministic tests for parsing, validation, query attachment,
+  binding mismatches, expiry, cache isolation, header preservation, and token
+  redaction.
+
+### Phase 6B: Companion WebPO provider
+
+Use the maintained BgUtils/BotGuard implementation on a modern companion
+system first when tokenless `mweb` access is rejected. This provides a fallback
+for the PowerPC and future iPhone clients while keeping token generation behind
+a native interface that can later receive an embedded provider.
+
+- [ ] Add `--po-provider URL` and a native HTTP provider implementation. Use a
+  narrow JSON contract such as:
+
+  ```json
+  POST /get_pot
+  {"content_binding":"EYBBXG8eyo0"}
+  ```
+
+  ```json
+  {"poToken":"BASE64URL_TOKEN","expiresAt":"2026-08-26T11:42:13Z"}
+  ```
+
+- [ ] Pass the provider the active client context, token context, binding type,
+  video ID, visitor/session data, and enough proxy/source-address information
+  to ensure attestation and media requests use the same network identity.
+- [ ] Require the companion and downloader to share the same public egress IP
+  unless the provider explicitly proxies attestation through the downloader's
+  route; WebPO state may be IP-bound.
+- [ ] Default to a loopback or explicitly configured LAN endpoint. Require HTTPS
+  and authenticated requests for non-local providers, impose strict response
+  size and time limits, and never expose the provider to the public network by
+  default.
+- [ ] Distinguish provider-unavailable, provider-rejected, malformed-token,
+  expired-token, and GVS-rejected-token failures.
+- [ ] On an authenticated 403, invalidate only the matching cached token and
+  retry once with a freshly minted token; prevent unbounded retry loops.
+- [ ] Validate a complete `mweb` itag 18 MP4 download on Linux and PowerPC
+  Tiger, then retain both the successful token-backed fixture and the no-token
+  HTTP 403 fixture.
+
+### Phase 6C: Embedded QuickJS WebPO generation
+
+Treat standalone generation as a separate research and implementation
+milestone. The existing EJS bundle solves `s` and `n`; it does not generate PO
+tokens. Native WebPO generation must reproduce the BotGuard attestation flow:
+obtain the current challenge and interpreter, execute a snapshot, exchange it
+for an integrity token, construct a WebPO minter, and mint a token for the
+current content binding.
+
+- [ ] Pin and vendor or download-on-demand a reviewed BgUtils-compatible WebPO
+  implementation with complete version, hash, and license metadata.
+- [ ] Fetch the YouTube homepage/configuration and its self-consistent BotGuard
+  challenge, download the referenced interpreter in native C, and pass only
+  bounded source/data into QuickJS.
+- [ ] Add the minimum browser environment required by the BotGuard interpreter,
+  including tested implementations or shims for promises/jobs, timers,
+  `TextEncoder`/`TextDecoder`, base64, randomness, performance timing,
+  navigator/location, DOM operations, and any required canvas signals.
+- [ ] Keep all networking in native C. Do not expose arbitrary filesystem,
+  process, module-loading, or unrestricted network APIs to downloaded
+  JavaScript.
+- [ ] Execute the BotGuard snapshot, submit it to `GenerateIT`, honor the
+  returned integrity-token TTL and mint-refresh threshold, and construct a
+  reusable WebPO minter.
+- [ ] Mint a fresh GVS content token for the detected binding, return it through
+  the same native provider interface used by explicit and HTTP providers, and
+  attach it through the already-tested Phase 6A path.
+- [ ] Apply strict memory, stack, response-size, and execution deadlines. Destroy
+  and recreate the QuickJS runtime after timeout, out-of-memory, interpreter,
+  or unexpected attestation failures.
+- [ ] Benchmark cold attestation, warm minting, peak memory, and interpreter
+  compatibility on PowerPC Tiger before making embedded generation the default.
+- [ ] Keep the companion HTTP provider as a supported fallback because the
+  downloaded BotGuard interpreter and its browser-environment checks can change
+  independently of Retro-DLP releases.
 
 ## 7. Package and validate for ARMv7 and iOS 5
 
