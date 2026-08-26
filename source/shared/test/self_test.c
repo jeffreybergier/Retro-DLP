@@ -125,6 +125,13 @@ static int test_video_id(void) {
 }
 
 static int test_offline_player_fixtures(void) {
+  static const char direct_after_challenge[] =
+      "{\"playabilityStatus\":{\"status\":\"OK\"},\"streamingData\":{"
+      "\"formats\":[{\"itag\":18,\"url\":\"https://fixture.googlevideo.com/"
+      "videoplayback?itag=18&n=challenge\",\"mimeType\":\"video/mp4\"},"
+      "{\"itag\":18,\"url\":\"https://fixture.googlevideo.com/"
+      "videoplayback?expire=1900000000&itag=18&sig=direct\","
+      "\"mimeType\":\"video/mp4\",\"width\":640,\"height\":360}]}}";
   YTMediaRequest media;
   YTStatus status;
 
@@ -137,6 +144,18 @@ static int test_offline_player_fixtures(void) {
       strstr(media.url, "itag=18") == NULL || media.mime_type == NULL ||
       strncmp(media.mime_type, "video/mp4", 9) != 0) {
     fprintf(stderr, "FAIL: deterministic itag 18 player fixture\n");
+    if (status == YT_OK)
+      yt_media_request_free(&media);
+    return 1;
+  }
+  yt_media_request_free(&media);
+
+  status = yt_parse_player_response(direct_after_challenge,
+                                    sizeof(direct_after_challenge) - 1, &media);
+  if (status != YT_OK || media.url == NULL ||
+      strstr(media.url, "sig=direct") == NULL ||
+      strstr(media.url, "n=challenge") != NULL) {
+    fprintf(stderr, "FAIL: direct format was not preferred over EJS fallback\n");
     if (status == YT_OK)
       yt_media_request_free(&media);
     return 1;

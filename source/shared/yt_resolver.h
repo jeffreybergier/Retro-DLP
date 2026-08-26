@@ -15,6 +15,7 @@ typedef enum {
   YT_ERR_UNAVAILABLE,
   YT_ERR_NO_PROGRESSIVE_MP4,
   YT_ERR_EJS_ASSETS_MISSING,
+  YT_ERR_JS_CHALLENGE,
   YT_ERR_PO_TOKEN_REQUIRED
 } YTStatus;
 
@@ -32,6 +33,10 @@ typedef struct {
 YTStatus yt_extract_video_id(const char *input, char video_id[12]);
 YTStatus yt_parse_player_response(const char *json, size_t length,
                                   YTMediaRequest *result);
+YTStatus yt_parse_player_response_with_javascript(const char *json,
+                                                  size_t length,
+                                                  const char *player_source,
+                                                  YTMediaRequest *result);
 YTStatus yt_resolve_video(const char *input, YTMediaRequest *result);
 YTStatus yt_probe_media_head(const YTMediaRequest *media, long *http_status);
 YTStatus yt_classify_media_http_status(long http_status);

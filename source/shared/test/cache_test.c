@@ -12,6 +12,7 @@
 
 #include "yt_cache.h"
 #include "yt_crypto.h"
+#include "yt_resolver_internal.h"
 
 static int test_sha256(void) {
   char digest[65];
@@ -37,6 +38,7 @@ static int exercise_cache(const char *temporary_home) {
   YTCacheStatus status;
   int failures;
   int retained;
+  char *player_source;
 
   failures = 0;
   if (snprintf(expected_root, sizeof(expected_root), "%s/.retro-dlp/cache",
@@ -67,6 +69,49 @@ static int exercise_cache(const char *temporary_home) {
     ++failures;
   }
   free(loaded);
+  yt_cache_key_for_string("https://www.youtube.com/s/player/fixture/base.js",
+                          key);
+  if (yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, key, "fixture-player-js", 17,
+                   0) != YT_CACHE_OK) {
+    fprintf(stderr, "FAIL: raw player cache setup\n");
+    ++failures;
+  } else {
+    player_source = NULL;
+    if (yt_load_player_javascript(
+            "https://www.youtube.com/s/player/fixture/base.js",
+            &player_source) != YT_OK || player_source == NULL ||
+        strcmp(player_source, "fixture-player-js") != 0) {
+      fprintf(stderr, "FAIL: production raw player cache lookup\n");
+      ++failures;
+    }
+    free(player_source);
+  }
+  if (yt_failure_cache_ttl(YT_ERR_UNAVAILABLE) <=
+          yt_failure_cache_ttl(YT_ERR_INVALID_RESPONSE) ||
+      yt_failure_cache_ttl(YT_ERR_NETWORK) != 0 ||
+      yt_failure_cache_ttl(YT_ERR_NO_PROGRESSIVE_MP4) <= 0) {
+    fprintf(stderr, "FAIL: error-specific failure cache lifetimes\n");
+    ++failures;
+  }
+  {
+    YTStatus cached_failure = YT_OK;
+    yt_remember_failure("failure-fixture", YT_ERR_UNAVAILABLE);
+    if (!yt_load_cached_failure("failure-fixture", &cached_failure) ||
+        cached_failure != YT_ERR_UNAVAILABLE) {
+      fprintf(stderr, "FAIL: production failure cache round trip\n");
+      ++failures;
+    }
+  }
+  if (yt_cache_put(YT_CACHE_SUCCESSFUL_CLIENT, "last", "ANDROID_VR", 10,
+                   2000) != YT_CACHE_OK ||
+      yt_cache_get(YT_CACHE_SUCCESSFUL_CLIENT, "last", 1000, &loaded,
+                   &loaded_length) != YT_CACHE_OK ||
+      loaded_length != 10 || memcmp(loaded, "ANDROID_VR", 10) != 0) {
+    fprintf(stderr, "FAIL: successful-client cache\n");
+    ++failures;
+  }
+  free(loaded);
+  loaded = NULL;
   if (yt_cache_put(YT_CACHE_CLIENT_MANIFEST, "one", payload,
                    sizeof(payload) - 1, 0) != YT_CACHE_OK ||
       yt_cache_put(YT_CACHE_CLIENT_MANIFEST, "two", payload,
@@ -97,6 +142,7 @@ static int exercise_cache(const char *temporary_home) {
     ++failures;
   }
   loaded = NULL;
+  yt_cache_key_for_string("fixture-player", key);
   if (yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, key, 2000, &loaded,
                    &loaded_length) != YT_CACHE_EXPIRED) {
     fprintf(stderr, "FAIL: cache expiry\n");
@@ -117,6 +163,7 @@ static int exercise_cache(const char *temporary_home) {
   yt_cache_clear(YT_CACHE_CLIENT_MANIFEST);
   yt_cache_clear(YT_CACHE_PLAYER_JAVASCRIPT);
   yt_cache_clear(YT_CACHE_FAILURE);
+  yt_cache_clear(YT_CACHE_SUCCESSFUL_CLIENT);
   if (failures == 0)
     printf("PASS: ~/.retro-dlp/cache atomic, versioned, bounded entries\n");
   return failures;
@@ -126,6 +173,7 @@ static void cleanup_cache_test(const char *temporary_home) {
   static const char *const suffixes[] = {
       "/.retro-dlp/cache/v1/player-javascript",
       "/.retro-dlp/cache/v1/client-manifest",
+      "/.retro-dlp/cache/v1/successful-client",
       "/.retro-dlp/cache/v1/failures",
       "/.retro-dlp/cache/v1",
       "/.retro-dlp/cache",

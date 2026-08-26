@@ -41,8 +41,8 @@ test video, compare:
 - [x] Selected itag
 - [x] Final Google Video media service and stable important query fields
 - [x] Direct signature parameter choice and absence of an unsolved `n`
-- [ ] Transformed signature (`s`) and throttling (`n`) results when present;
-  these require the EJS milestone and matching golden fixtures
+- [x] Transformed signature (`s`) and throttling (`n`) results when present;
+  covered by the matching deterministic EJS golden fixtures
 - [x] HEAD request status and failure classification
 
 - [x] Use the public Big Buck Bunny upload (`YE7VzlLtp-4`) as an initial live
@@ -113,10 +113,10 @@ reduced player-shaped base.js fixture + known s/n challenges
      Darwin 8.11.0 PowerPC: the complete self-test and live resolver
      passed; the media probe reached GVS and returned the expected PO-token
      `403` classification.
-5. [ ] **Integrate with format parsing.** Retain itag 18 candidates containing
+5. [x] **Integrate with format parsing.** Retain itag 18 candidates containing
    `signatureCipher` or `n`, collect all required transformations, invoke EJS
    once, rewrite the final URL, and reject any unresolved challenge.
-6. [ ] **Retrieve the player JavaScript.** Prefer a player URL supplied by the
+6. [x] **Retrieve the player JavaScript.** Prefer a player URL supplied by the
    Innertube response, add the smallest necessary watch-page fallback, and fetch
    `base.js` in native C so JavaScript receives only its source text.
 7. [ ] **Validate end to end.** Preserve the direct-URL fast path, compare final
@@ -177,10 +177,10 @@ Use `~/.retro-dlp/cache/v1` as the common cache root on Linux, macOS, and iOS.
 - [x] Safely discard corrupt or incompatible entries.
 - [x] Do not use downloaded QuickJS bytecode as a cache or update format.
 
-The preprocessed-player cache is connected to the EJS adapter now. The other
-bounded namespaces and expiry policies are ready for the Phase 3 client
-manifest, player-download, client-selection, and failure-classification paths
-as those producers are connected.
+All five cache namespaces are connected to production resolver behavior. Raw
+player JavaScript is keyed by its canonical URL hash, successful-client entries
+expire after one day, and failure lifetimes range from 15 seconds to five
+minutes by classification.
 
 ## 6. Package and validate for ARMv7 and iOS 5
 
@@ -244,12 +244,12 @@ cases that Retro-DLP can intentionally omit.
 On the iPhone 4, the likely expensive cold operation is Meriyah parsing a
 complete modern YouTube player script into an AST. Track these mitigations:
 
-- [ ] Bypass JavaScript entirely for direct URLs.
-- [ ] Invoke EJS only when a selected format requires it.
-- [ ] Solve all collected challenges in one batch.
-- [ ] Cache and reuse `preprocessed_player`.
-- [ ] Keep only the chosen progressive format.
-- [ ] Release raw player source and temporary results promptly.
+- [x] Bypass JavaScript entirely for direct URLs.
+- [x] Invoke EJS only when a selected format requires it.
+- [x] Solve all collected challenges in one batch.
+- [x] Cache and reuse `preprocessed_player`.
+- [x] Keep only the chosen progressive format.
+- [x] Release raw player source and temporary results promptly.
 - [ ] Run resolution away from the UI thread.
 - [ ] Enforce measured memory, stack, and execution limits.
 

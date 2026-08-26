@@ -102,6 +102,10 @@ printf '%s\n' "$resolve_output" | grep -q 'googlevideo.com' || \
 printf '%s\n' "$resolve_output" | \
   grep -Eq '"classification":[[:space:]]*"(ok|po_token_required)"' || \
   fail "video resolution did not classify the media probe"
+[ -f "$test_home/.retro-dlp/cache/v1/client-manifest/builtin-v1.entry" ] || \
+  fail "resolver did not populate the client-manifest cache"
+[ -f "$test_home/.retro-dlp/cache/v1/successful-client/last.entry" ] || \
+  fail "resolver did not populate the successful-client cache"
 
 python3 source/linux/test/yt_dlp_oracle.py "$binary" \
   inspiration/yt-dlp/yt_dlp/__main__.py

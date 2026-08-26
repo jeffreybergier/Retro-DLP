@@ -8,6 +8,7 @@
 #include "yt_ejs.h"
 #include "yt_ejs_assets.h"
 #include "yt_ejs_internal.h"
+#include "yt_resolver.h"
 
 static const char *const signature_challenges[] = {
     RETRO_DLP_EJS_SIG_INPUT_1, RETRO_DLP_EJS_SIG_INPUT_2};
@@ -73,6 +74,28 @@ static int test_player_and_preprocessed_solver(void) {
   yt_ejs_result_free(&warm_result);
   free(preprocessed);
   printf("PASS: EJS 0.8.0 sig/n batch and preprocessed fixtures\n");
+  return 0;
+}
+
+static int test_resolver_cipher_wiring(void) {
+  YTMediaRequest media;
+  YTStatus status;
+  status = yt_parse_player_response_with_javascript(
+      retro_dlp_ejs_cipher_response_fixture,
+      (size_t)retro_dlp_ejs_cipher_response_fixture_length,
+      retro_dlp_ejs_player_fixture, &media);
+  if (status != YT_OK || media.url == NULL ||
+      strstr(media.url, "n=xyz-n") == NULL ||
+      strstr(media.url, "sig=cba") == NULL || media.itag != 18 ||
+      media.expires_unix != 1900000000LL) {
+    fprintf(stderr, "FAIL: resolver EJS s/n wiring: %s\n",
+            yt_status_string(status));
+    if (status == YT_OK)
+      yt_media_request_free(&media);
+    return 1;
+  }
+  yt_media_request_free(&media);
+  printf("PASS: resolver batched signatureCipher and n transformation\n");
   return 0;
 }
 
@@ -178,6 +201,7 @@ int retro_dlp_run_ejs_tests(void) {
   }
 
   failures = test_player_and_preprocessed_solver();
+  failures += test_resolver_cipher_wiring();
   failures += test_malformed_result();
   failures += test_exception_and_recovery();
   failures += test_timeout_and_memory_limit();

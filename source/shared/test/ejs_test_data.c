@@ -23,3 +23,14 @@ const char retro_dlp_ejs_player_fixture[] =
     "return f"
     "};"
     "}).call(this);";
+
+const char retro_dlp_ejs_cipher_response_fixture[] =
+    "{\"playabilityStatus\":{\"status\":\"OK\"},\"streamingData\":{"
+    "\"formats\":[{\"itag\":18,\"signatureCipher\":\"url="
+    "https%3A%2F%2Ffixture.googlevideo.com%2Fvideoplayback%3F"
+    "expire%3D1900000000%26itag%3D18%26n%3Dxyz&s=abc&sp=sig\","
+    "\"mimeType\":\"video/mp4; codecs=\\\"avc1.42001E, mp4a.40.2\\\"\","
+    "\"width\":640,\"height\":360,\"contentLength\":\"12345678\"}]}}";
+
+const size_t retro_dlp_ejs_cipher_response_fixture_length =
+    sizeof(retro_dlp_ejs_cipher_response_fixture) - 1;

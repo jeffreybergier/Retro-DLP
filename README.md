@@ -52,8 +52,10 @@ builds QuickJS as `build/intermediates/linux/libquickjs.a` and statically links
 the complete engine into the executable. The resource-limited native adapter
 loads the pinned `yt-dlp-ejs` 0.8.0 JavaScript assets from
 `~/.retro-dlp/cache/assets`; release binaries do not embed those assets. The
-resolver does not use that adapter for live formats yet; that connection belongs
-to the remaining Phase 3 format and player-JavaScript work.
+resolver preserves a no-JavaScript fast path for direct itag 18 URLs. When the
+selected itag 18 contains `signatureCipher` or an `n` parameter, it obtains and
+caches the player JavaScript, submits all required transformations to EJS in
+one batch, and rejects an unresolved challenge.
 The macOS executable links the quad-fat static AltivecCore archive, which
 supplies cJSON and the rest of AltivecCore on each supported Mac architecture.
 QuickJS is compiled into a separate static archive for each of the PowerPC,
@@ -77,8 +79,9 @@ platform:
 retro-dlp --test
 ```
 
-This runs deterministic cache and player-response fixtures first, followed by a
-staged resolver test against yt-dlp's public Big Buck Bunny fixture and a
+This runs deterministic cache, player-response, and batched `s`/`n` resolver
+fixtures first, followed by a staged resolver test against yt-dlp's public Big
+Buck Bunny fixture and a
 bodyless HEAD request to the resulting Google Video URL. When EJS assets are
 installed, it also runs the `s`/`n` tests for batching, preprocessed-player
 reuse, malformed output, exceptions, execution deadlines, memory limits, and
@@ -93,6 +96,11 @@ actual PowerPC, i386, x86_64, arm64, or Linux build on its target machine.
 `android_vr` client. It compares selected format metadata, the Google Video
 media service and stable query fields, direct signature parameter choice,
 absence of an unsolved `n`, and the HEAD result/classification.
+
+The resolver keeps bounded, versioned caches under `~/.retro-dlp/cache/v1` for
+the active client manifest, raw player JavaScript, EJS preprocessed players,
+the most recently successful client, and short-lived failure classifications.
+Player artifacts use SHA-256 keys, and corrupt or expired entries are discarded.
 
 ## Source layout
 

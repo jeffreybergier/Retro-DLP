@@ -1,7 +1,11 @@
 #ifndef RETRO_DLP_EJS_TEST_DATA_H
 #define RETRO_DLP_EJS_TEST_DATA_H
 
+#include <stddef.h>
+
 extern const char retro_dlp_ejs_player_fixture[];
+extern const char retro_dlp_ejs_cipher_response_fixture[];
+extern const size_t retro_dlp_ejs_cipher_response_fixture_length;
 
 #define RETRO_DLP_EJS_SIG_INPUT_1 "abc"
 #define RETRO_DLP_EJS_SIG_OUTPUT_1 "cba"
