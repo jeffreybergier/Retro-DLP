@@ -102,7 +102,7 @@ def main():
             "--extractor-args",
             "youtube:player_client=mweb",
             "-f",
-            "18",
+            "best[height<=720][ext=mp4]",
             "--dump-single-json",
             video_url,
         ]
@@ -175,7 +175,7 @@ def main():
 
     print(
         "PASS: live yt-dlp oracle "
-        f"(itag 18, Google Video media service, HTTP {oracle_status} "
+        f"(itag {retro['itag']}, Google Video media service, HTTP {oracle_status} "
         f"{oracle_classification})"
     )
 

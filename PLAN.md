@@ -472,3 +472,32 @@ complete modern YouTube player script into an AST. Track these mitigations:
 - [ ] If the results are unacceptable, investigate preprocessing on a newer
   companion system as an optional fallback without changing the resolver's
   public C interface.
+
+## 9. Add adaptive 720p downloads with native MP4 muxing
+
+- [ ] Complete the adaptive-download and native-muxing milestone.
+
+Keep this as the final, optional expansion after the progressive download path
+and real-device application are stable. YouTube commonly exposes only itag 18
+as a directly downloadable MP4 containing both video and audio; higher-quality
+entries are normally separate video-only and audio-only streams in
+`streamingData.adaptiveFormats`.
+
+- [ ] Inspect `streamingData.adaptiveFormats` only for this path and retain the
+  existing progressive `streamingData.formats` path as the first fallback.
+- [ ] Select an H.264 video stream at or below 720p and a compatible AAC/M4A
+  audio stream. Prefer formats suitable for PowerPC Tiger and iPhone 4 playback.
+- [ ] Download both streams through the existing native HTTP/TLS, cookie,
+  challenge-solving, PO-token, expiry, and atomic-file infrastructure.
+- [ ] Add or integrate a small, reviewed native ISO Base Media File Format muxer
+  that combines the existing encoded tracks without decoding or re-encoding.
+- [ ] Do not require FFmpeg, MP4Box, or another external executable at runtime.
+- [ ] Bound parser input, allocation sizes, sample counts, and arithmetic; reject
+  malformed or unsupported MP4 structures without publishing partial output.
+- [ ] Preserve timestamps, duration, orientation, aspect ratio, and audio/video
+  synchronization in the final MP4.
+- [ ] Fall back cleanly to the best progressive MP4 at or below the requested
+  size when adaptive selection, download, or muxing is unavailable.
+- [ ] Validate the resulting 720p H.264/AAC MP4 on PowerPC Tiger and a physical
+  iPhone 4, including long videos, unusual aspect ratios, interrupted transfers,
+  expired URL recovery, and A/V synchronization.

@@ -150,6 +150,18 @@ static int test_offline_player_fixtures(void) {
       "{\"itag\":18,\"url\":\"https://fixture.googlevideo.com/"
       "videoplayback?expire=1900000000&itag=18&sig=direct\","
       "\"mimeType\":\"video/mp4\",\"width\":640,\"height\":360}]}}";
+  static const char progressive_sizes[] =
+      "{\"playabilityStatus\":{\"status\":\"OK\"},\"streamingData\":{"
+      "\"formats\":["
+      "{\"itag\":18,\"url\":\"https://fixture.googlevideo.com/360\","
+      "\"mimeType\":\"video/mp4\",\"width\":640,\"height\":360},"
+      "{\"itag\":22,\"url\":\"https://fixture.googlevideo.com/720\","
+      "\"mimeType\":\"video/mp4\",\"width\":1280,\"height\":720},"
+      "{\"itag\":37,\"url\":\"https://fixture.googlevideo.com/1080\","
+      "\"mimeType\":\"video/mp4\",\"width\":1920,\"height\":1080}],"
+      "\"adaptiveFormats\":["
+      "{\"itag\":999,\"url\":\"https://fixture.googlevideo.com/ignored\","
+      "\"mimeType\":\"video/mp4\",\"width\":3840,\"height\":2160}]}}";
   YTMediaRequest media;
   YTStatus status;
 
@@ -162,12 +174,56 @@ static int test_offline_player_fixtures(void) {
   status = yt_parse_player_response(retro_dlp_player_itag18_fixture,
                                     retro_dlp_player_itag18_fixture_length,
                                     &media);
+  if (status != YT_OK || media.itag != 22 || media.width != 1280 ||
+      media.height != 720 || media.expires_unix != 1900000000LL ||
+      media.url == NULL || strstr(media.url, "itag=22") == NULL ||
+      media.mime_type == NULL ||
+      strncmp(media.mime_type, "video/mp4", 9) != 0) {
+    fprintf(stderr, "FAIL: deterministic default player fixture\n");
+    if (status == YT_OK)
+      yt_media_request_free(&media);
+    return 1;
+  }
+  yt_media_request_free(&media);
+
+  status = yt_parse_player_response_with_max_height(
+      retro_dlp_player_itag18_fixture,
+      retro_dlp_player_itag18_fixture_length, 480, &media);
   if (status != YT_OK || media.itag != 18 || media.width != 640 ||
       media.height != 360 || media.expires_unix != 1900000000LL ||
       media.content_length != 12345678LL || media.url == NULL ||
-      strstr(media.url, "itag=18") == NULL || media.mime_type == NULL ||
-      strncmp(media.mime_type, "video/mp4", 9) != 0) {
-    fprintf(stderr, "FAIL: deterministic itag 18 player fixture\n");
+      strstr(media.url, "itag=18") == NULL) {
+    fprintf(stderr, "FAIL: deterministic 480p fallback fixture\n");
+    if (status == YT_OK)
+      yt_media_request_free(&media);
+    return 1;
+  }
+  yt_media_request_free(&media);
+
+  status = yt_parse_player_response(progressive_sizes,
+                                    sizeof(progressive_sizes) - 1, &media);
+  if (status != YT_OK || media.itag != 22 || media.height != 720) {
+    fprintf(stderr, "FAIL: default 720p progressive format selection\n");
+    if (status == YT_OK)
+      yt_media_request_free(&media);
+    return 1;
+  }
+  yt_media_request_free(&media);
+
+  status = yt_parse_player_response_with_max_height(
+      progressive_sizes, sizeof(progressive_sizes) - 1, 480, &media);
+  if (status != YT_OK || media.itag != 18 || media.height != 360) {
+    fprintf(stderr, "FAIL: 480p progressive format fallback\n");
+    if (status == YT_OK)
+      yt_media_request_free(&media);
+    return 1;
+  }
+  yt_media_request_free(&media);
+
+  status = yt_parse_player_response_with_max_height(
+      progressive_sizes, sizeof(progressive_sizes) - 1, 1080, &media);
+  if (status != YT_OK || media.itag != 37 || media.height != 1080) {
+    fprintf(stderr, "FAIL: 1080p progressive format selection\n");
     if (status == YT_OK)
       yt_media_request_free(&media);
     return 1;
@@ -275,6 +331,7 @@ static int test_live_video(const char *video_id, int check_fixture_metadata,
   YTMediaRequest media;
   YTStatus status;
   int failed;
+  char itag_query[32];
   YTHttpSession *session;
 
   printf("RUN: resolve live video (%s)\n", video_id);
@@ -293,22 +350,22 @@ static int test_live_video(const char *video_id, int check_fixture_metadata,
   printf("PASS: player API response (%s)\n", video_id);
 
   failed = 0;
-  if (media.itag != 18 || media.mime_type == NULL ||
+  if (media.itag <= 0 || media.width <= 0 || media.height <= 0 ||
+      media.height > YT_DEFAULT_MAX_HEIGHT || media.mime_type == NULL ||
       strncmp(media.mime_type, "video/mp4", 9) != 0) {
     fprintf(stderr, "FAIL: live video metadata (%s)\n", video_id);
     failed = 1;
-  } else if (check_fixture_metadata &&
-             (media.width != 640 || media.height != 360)) {
-    fprintf(stderr, "FAIL: live fixture metadata (%s)\n", video_id);
-    failed = 1;
   } else if (check_fixture_metadata) {
-    printf("PASS: live fixture metadata (itag 18, 640x360 MP4)\n");
+    printf("PASS: live fixture metadata (itag %d, %dx%d MP4)\n", media.itag,
+           media.width, media.height);
   } else {
-    printf("PASS: live video metadata (%s, itag 18 MP4)\n", video_id);
+    printf("PASS: live video metadata (%s, itag %d, %dx%d MP4)\n", video_id,
+           media.itag, media.width, media.height);
   }
 
+  snprintf(itag_query, sizeof(itag_query), "itag=%d", media.itag);
   if (!has_googlevideo_host(media.url) ||
-      strstr(media.url, "itag=18") == NULL ||
+      strstr(media.url, itag_query) == NULL ||
       strstr(media.url, "expire=") == NULL || media.expires_unix <= 0) {
     fprintf(stderr, "FAIL: resolved media URL fields (%s)\n", video_id);
     failed = 1;

@@ -43,6 +43,19 @@ printf '%s\n' "$help_output" | grep -q -- '--cookies \[FILE\]' || \
   fail "--help did not document --cookies"
 printf '%s\n' "$help_output" | grep -q -- '~/.retro-dlp/cookies.txt' || \
   fail "--help did not document the default cookie path"
+printf '%s\n' "$help_output" | grep -q -- '--size SIZE' || \
+  fail "--help did not document --size"
+printf '%s\n' "$help_output" | grep -q -- 'default: 720p' || \
+  fail "--help did not document the default size"
+
+if $binary --size 480p 2>"$error_file"; then
+  fail "--size without a video returned success"
+fi
+if $binary --size 480 YE7VzlLtp-4 2>"$error_file"; then
+  fail "invalid --size returned success"
+fi
+grep -q '^retro-dlp: unsupported arguments$' "$error_file" || \
+  fail "invalid --size was not rejected"
 
 version_output=$($binary --version)
 [ "$version_output" = "retro-dlp 0.1.0 (Linux)" ] || \
@@ -122,8 +135,10 @@ grep -q '^retro-dlp: requesting video metadata$' "$error_file" || \
   fail "video resolution did not report its metadata request"
 grep -q '^retro-dlp: selecting a progressive MP4 stream$' "$error_file" || \
   fail "video resolution did not report format selection"
-printf '%s\n' "$resolve_output" | grep -q '"itag":[[:space:]]*18' || \
-  fail "video resolution did not return itag 18 JSON"
+printf '%s\n' "$resolve_output" | grep -q '"itag":[[:space:]]*[0-9]' || \
+  fail "video resolution did not return an itag"
+printf '%s\n' "$resolve_output" | grep -Eq '"height":[[:space:]]*(360|480|720)' || \
+  fail "default video resolution exceeded 720p"
 printf '%s\n' "$resolve_output" | grep -q 'googlevideo.com' || \
   fail "video resolution did not return a Google Video URL"
 if printf '%s\n' "$resolve_output" | grep -q '"probe"'; then

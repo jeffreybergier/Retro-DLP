@@ -47,6 +47,18 @@ build/linux/retro-dlp YE7VzlLtp-4
 build/linux/retro-dlp 'https://www.youtube.com/watch?v=YE7VzlLtp-4'
 ```
 
+Retro-DLP selects the highest progressive MP4 resolution at or below 720p by
+default. Set a different upper limit with `--size 480p`, `--size 720p`, or
+`--size 1080p`:
+
+```sh
+build/linux/retro-dlp --size 1080p YE7VzlLtp-4
+```
+
+Only muxed entries from `streamingData.formats` are considered, so a 1080p
+request may select 720p or a lower available resolution. Retro-DLP does not
+download separate adaptive video and audio streams or require FFmpeg.
+
 The default command streams into `VIDEO_ID.mp4.part`, validates the MP4 `ftyp`
 box, and atomically publishes `VIDEO_ID.mp4` after success. It refuses to
 overwrite an existing final or partial file and removes partial output after a
@@ -99,8 +111,8 @@ IDs, or other session secrets in result JSON or resolver caches. Authenticated
 and anonymous success/failure cache entries are separate.
 
 This prints JSON containing the direct URL, itag, dimensions, MIME type, expiry
-time, and required request headers. Retro-DLP supports itag 18 returned by its
-configured client and does not yet generate PO tokens.
+time, and required request headers. Retro-DLP supports progressive MP4 formats
+returned by its configured client and does not yet generate PO tokens.
 
 On macOS, every libcurl handle is configured with `cacert.pem` resolved beside
 the running executable. Network requests fail explicitly if the bundle is
@@ -111,8 +123,8 @@ builds QuickJS as `build/intermediates/linux/libquickjs.a` and statically links
 the complete engine into the executable. The resource-limited native adapter
 loads the pinned `yt-dlp-ejs` 0.8.0 JavaScript assets from
 `~/.retro-dlp/cache/assets`; release binaries do not embed those assets. The
-resolver preserves a no-JavaScript fast path for direct itag 18 URLs. When the
-selected itag 18 contains `signatureCipher` or an `n` parameter, it obtains and
+resolver preserves a no-JavaScript fast path for direct media URLs. When the
+selected format contains `signatureCipher` or an `n` parameter, it obtains and
 caches the player JavaScript, submits all required transformations to EJS in
 one batch, and rejects an unresolved challenge.
 The macOS executable links the quad-fat static AltivecCore archive, which

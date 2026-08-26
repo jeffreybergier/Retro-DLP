@@ -24,7 +24,7 @@
 
 static void print_usage(FILE *stream) {
   fprintf(stream,
-          "Usage: retro-dlp [OPTION] | assets COMMAND | VIDEO_ID_OR_URL\n"
+          "Usage: retro-dlp [OPTIONS] VIDEO_ID_OR_URL | assets COMMAND\n"
           "\n"
           "Retro-DLP command line tool.\n"
           "\n"
@@ -36,6 +36,8 @@ static void print_usage(FILE *stream) {
           "                   Defaults to ~/.retro-dlp/cookies.txt.\n"
           "      --no-download VIDEO_ID_OR_URL\n"
           "                   Resolve and print media JSON without downloading.\n"
+          "      --size SIZE   Select the best progressive MP4 no larger than\n"
+          "                   480p, 720p, or 1080p (default: 720p).\n"
           "      --test       Run embedded dependency tests.\n");
   fprintf(stream,
           "\n"
@@ -166,8 +168,22 @@ static void print_progress(const char *message, void *opaque) {
   fprintf(stream, "retro-dlp: %s\n", message);
 }
 
+static int parse_size(const char *value, int *max_height) {
+  if (value == NULL || max_height == NULL)
+    return 0;
+  if (strcmp(value, "480p") == 0)
+    *max_height = 480;
+  else if (strcmp(value, "720p") == 0)
+    *max_height = 720;
+  else if (strcmp(value, "1080p") == 0)
+    *max_height = 1080;
+  else
+    return 0;
+  return 1;
+}
+
 static int resolve_argument(const char *input, int no_download,
-                            const char *cookie_file) {
+                            const char *cookie_file, int max_height) {
   YTMediaRequest media;
   YTStatus status;
   char video_id[12];
@@ -189,8 +205,9 @@ static int resolve_argument(const char *input, int no_download,
     return 1;
   }
   fprintf(stderr, "retro-dlp: resolving video information\n");
-  status = yt_resolve_video_with_http_session_and_progress(
-      request_session, input, cookie_file, &media, print_progress, stderr);
+  status = yt_resolve_video_with_http_session_and_max_height_and_progress(
+      request_session, input, cookie_file, max_height, &media, print_progress,
+      stderr);
   if (status != YT_OK) {
     fprintf(stderr, "retro-dlp: %s\n", yt_status_string(status));
     yt_http_session_destroy(request_session);
@@ -273,6 +290,8 @@ int retro_dlp_run(int argc, char **argv) {
   const char *input;
   int cookies_requested;
   int no_download;
+  int max_height;
+  int size_requested;
   int test_mode;
   int index;
   if (argc == 1) {
@@ -299,6 +318,8 @@ int retro_dlp_run(int argc, char **argv) {
   input = NULL;
   cookies_requested = 0;
   no_download = 0;
+  max_height = YT_DEFAULT_MAX_HEIGHT;
+  size_requested = 0;
   test_mode = 0;
   for (index = 1; index < argc; ++index) {
     if (strcmp(argv[index], "--cookies") == 0) {
@@ -314,6 +335,12 @@ int retro_dlp_run(int argc, char **argv) {
       if (no_download)
         break;
       no_download = 1;
+    } else if (strcmp(argv[index], "--size") == 0) {
+      if (size_requested || index + 1 >= argc ||
+          !parse_size(argv[index + 1], &max_height))
+        break;
+      size_requested = 1;
+      ++index;
     } else if (strcmp(argv[index], "--test") == 0) {
       if (test_mode)
         break;
@@ -341,7 +368,7 @@ int retro_dlp_run(int argc, char **argv) {
     if (test_mode && input == NULL && !no_download)
       return run_self_tests(cookie_file);
     if (!test_mode && input != NULL)
-      return resolve_argument(input, no_download, cookie_file);
+      return resolve_argument(input, no_download, cookie_file, max_height);
   }
 
   fprintf(stderr, "retro-dlp: unsupported arguments\n");

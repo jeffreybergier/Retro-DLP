@@ -39,9 +39,15 @@ typedef struct {
 
 typedef void (*YTProgressCallback)(const char *message, void *opaque);
 
+#define YT_DEFAULT_MAX_HEIGHT 720
+
 YTStatus yt_extract_video_id(const char *input, char video_id[12]);
 YTStatus yt_parse_player_response(const char *json, size_t length,
                                   YTMediaRequest *result);
+YTStatus yt_parse_player_response_with_max_height(const char *json,
+                                                  size_t length,
+                                                  int max_height,
+                                                  YTMediaRequest *result);
 YTStatus yt_parse_player_response_with_javascript(const char *json,
                                                   size_t length,
                                                   const char *player_source,
@@ -57,6 +63,10 @@ YTStatus yt_resolve_video_with_cookies_and_progress(
 YTStatus yt_resolve_video_with_http_session_and_progress(
     YTHttpSession *session, const char *input, const char *cookie_file,
     YTMediaRequest *result, YTProgressCallback progress,
+    void *progress_opaque);
+YTStatus yt_resolve_video_with_http_session_and_max_height_and_progress(
+    YTHttpSession *session, const char *input, const char *cookie_file,
+    int max_height, YTMediaRequest *result, YTProgressCallback progress,
     void *progress_opaque);
 YTStatus yt_probe_media_head(const YTMediaRequest *media, long *http_status);
 YTStatus yt_classify_media_http_status(long http_status);
