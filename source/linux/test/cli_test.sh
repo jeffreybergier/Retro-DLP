@@ -89,12 +89,25 @@ printf '%s\n' "$self_test_output" | \
   fail "--test did not pass deterministic player fixtures"
 printf '%s\n' "$self_test_output" | grep -q '^PASS: player API response' || \
   fail "--test did not pass the live player API test"
-printf '%s\n' "$self_test_output" | grep -q '^PASS: media HEAD' || \
-  fail "--test did not pass the media HEAD test"
+printf '%s\n' "$self_test_output" | \
+  grep -q '^PASS: media byte range (YE7VzlLtp-4,' || \
+  fail "--test did not pass the YE7VzlLtp-4 media byte-range test"
+printf '%s\n' "$self_test_output" | \
+  grep -q '^PASS: media byte range (-_x6t4CaPzo,' || \
+  fail "--test did not pass the -_x6t4CaPzo media byte-range test"
 printf '%s\n' "$self_test_output" | grep -q '^PASS: retro-dlp self-test$' || \
   fail "--test did not report success"
 
-resolve_output=$($binary --no-download "https://youtu.be/YE7VzlLtp-4")
+resolve_output=$($binary --no-download "https://youtu.be/YE7VzlLtp-4" \
+  2>"$error_file")
+grep -q '^retro-dlp: resolving video information$' "$error_file" || \
+  fail "video resolution did not announce its start"
+grep -q '^retro-dlp: fetching web player configuration$' "$error_file" || \
+  fail "video resolution did not report its bootstrap request"
+grep -q '^retro-dlp: requesting video metadata$' "$error_file" || \
+  fail "video resolution did not report its metadata request"
+grep -q '^retro-dlp: selecting a progressive MP4 stream$' "$error_file" || \
+  fail "video resolution did not report format selection"
 printf '%s\n' "$resolve_output" | grep -q '"itag":[[:space:]]*18' || \
   fail "video resolution did not return itag 18 JSON"
 printf '%s\n' "$resolve_output" | grep -q 'googlevideo.com' || \

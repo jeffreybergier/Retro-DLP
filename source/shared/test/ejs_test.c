@@ -42,6 +42,8 @@ static int test_player_and_preprocessed_solver(void) {
   YTEJSStatus status;
   char *preprocessed;
 
+  printf("RUN: EJS signature/n batch and preprocessed fixtures\n");
+  fflush(stdout);
   status = yt_ejs_solve(YT_EJS_SOURCE_PLAYER, retro_dlp_ejs_player_fixture,
                         requests, 2, NULL, &result);
   if (status != YT_EJS_OK || !result_matches_fixture(&result) ||
@@ -80,6 +82,8 @@ static int test_player_and_preprocessed_solver(void) {
 static int test_resolver_cipher_wiring(void) {
   YTMediaRequest media;
   YTStatus status;
+  printf("RUN: resolver signatureCipher and n wiring\n");
+  fflush(stdout);
   status = yt_parse_player_response_with_javascript(
       retro_dlp_ejs_cipher_response_fixture,
       (size_t)retro_dlp_ejs_cipher_response_fixture_length,
@@ -106,6 +110,8 @@ static int test_malformed_result(void) {
   YTEJSResult result;
   YTEJSStatus status;
 
+  printf("RUN: malformed EJS result classification\n");
+  fflush(stdout);
   status = yt_ejs_parse_result_json(malformed_result, requests, 2, &result);
   if (status != YT_EJS_ERR_INVALID_RESULT) {
     fprintf(stderr, "FAIL: malformed EJS result was accepted\n");
@@ -121,6 +127,8 @@ static int test_exception_and_recovery(void) {
   YTEJSResult result;
   YTEJSStatus status;
 
+  printf("RUN: EJS exception classification and recovery\n");
+  fflush(stdout);
   status = yt_ejs_solve(YT_EJS_SOURCE_PLAYER, "not valid JavaScript {",
                         requests, 2, NULL, &result);
   if (status != YT_EJS_ERR_JAVASCRIPT || result.error_message == NULL) {
@@ -148,6 +156,8 @@ static int test_timeout_and_memory_limit(void) {
   YTEJSResult result;
   YTEJSStatus status;
 
+  printf("RUN: EJS execution and memory limits\n");
+  fflush(stdout);
   config = yt_ejs_default_config();
   config.timeout_milliseconds = 0;
   status = yt_ejs_solve(YT_EJS_SOURCE_PLAYER, retro_dlp_ejs_player_fixture,
@@ -189,6 +199,8 @@ int retro_dlp_run_ejs_tests(void) {
   YTEJSAssetsInfo info;
   YTEJSAssetsStatus assets_status;
 
+  printf("RUN: EJS asset availability\n");
+  fflush(stdout);
   assets_status = yt_ejs_assets_inspect(&info);
   if (assets_status == YT_EJS_ASSETS_MISSING) {
     printf("SKIP: EJS assets missing (run: retro-dlp assets install)\n");

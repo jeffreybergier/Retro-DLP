@@ -17,6 +17,8 @@
 static int test_sha256(void) {
   char digest[65];
 
+  printf("RUN: OpenSSL SHA-256 wrapper\n");
+  fflush(stdout);
   if (yt_crypto_sha256_hex("abc", 3, digest) != 0 ||
       strcmp(digest,
              "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") !=
@@ -40,6 +42,8 @@ static int exercise_cache(const char *temporary_home) {
   int retained;
   char *player_source;
 
+  printf("RUN: cache filesystem behavior\n");
+  fflush(stdout);
   failures = 0;
   if (snprintf(expected_root, sizeof(expected_root), "%s/.retro-dlp/cache",
                temporary_home) >= (int)sizeof(expected_root) ||

@@ -16,6 +16,8 @@ YTStatus yt_http_post_json(const char *url, const char *json,
                            YTHttpResponse *response);
 YTStatus yt_http_get(const char *url, size_t maximum_size,
                      YTHttpResponse *response);
+YTStatus yt_http_get_range(const char *url, size_t length,
+                           YTHttpResponse *response);
 YTStatus yt_http_head(const char *url, long *http_status);
 YTStatus yt_http_download(const char *url, const char *destination,
                           long *http_status,

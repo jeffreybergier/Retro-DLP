@@ -152,6 +152,12 @@ static int print_download_result(const char *path, int64_t bytes_written) {
   return 0;
 }
 
+static void print_progress(const char *message, void *opaque) {
+  FILE *stream;
+  stream = (FILE *)opaque;
+  fprintf(stream, "retro-dlp: %s\n", message);
+}
+
 static int resolve_argument(const char *input, int no_download) {
   YTMediaRequest media;
   YTStatus status;
@@ -165,7 +171,9 @@ static int resolve_argument(const char *input, int no_download) {
     fprintf(stderr, "retro-dlp: could not initialize libcurl\n");
     return 1;
   }
-  status = yt_resolve_video(input, &media);
+  fprintf(stderr, "retro-dlp: resolving video information\n");
+  status = yt_resolve_video_with_progress(input, &media, print_progress,
+                                          stderr);
   if (status != YT_OK) {
     fprintf(stderr, "retro-dlp: %s\n", yt_status_string(status));
     curl_global_cleanup();
@@ -186,7 +194,9 @@ static int resolve_argument(const char *input, int no_download) {
     curl_global_cleanup();
     return 1;
   }
-  fprintf(stderr, "retro-dlp: downloading to %s\n", destination);
+  fprintf(stderr, "retro-dlp: selected itag %d (%dx%d, %s)\n", media.itag,
+          media.width, media.height, media.mime_type);
+  fprintf(stderr, "retro-dlp: starting download to %s\n", destination);
   status = yt_http_download(media.url, destination, &http_status,
                             &bytes_written);
   yt_media_request_free(&media);
@@ -237,8 +247,13 @@ int retro_dlp_run(int argc, char **argv) {
   if (argc == 3 && strcmp(argv[1], "--no-download") == 0)
     return resolve_argument(argv[2], 1);
 
-  if (argc == 2 && argv[1][0] != '-')
-    return resolve_argument(argv[1], 0);
+  if (argc == 2) {
+    char video_id[12];
+
+    if (argv[1][0] != '-' ||
+        yt_extract_video_id(argv[1], video_id) == YT_OK)
+      return resolve_argument(argv[1], 0);
+  }
 
   fprintf(stderr, "retro-dlp: unsupported arguments\n");
   print_usage(stderr);

@@ -188,8 +188,8 @@ YTStatus yt_http_post_json(const char *url, const char *json,
   return YT_OK;
 }
 
-YTStatus yt_http_get(const char *url, size_t maximum_size,
-                     YTHttpResponse *response) {
+static YTStatus http_get(const char *url, size_t maximum_size,
+                         const char *range, YTHttpResponse *response) {
   CURL *curl;
   CURLcode code;
   YTWriteBuffer buffer;
@@ -217,6 +217,8 @@ YTStatus yt_http_get(const char *url, size_t maximum_size,
 #endif
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_response);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
+  if (range != NULL)
+    curl_easy_setopt(curl, CURLOPT_RANGE, range);
   code = curl_easy_perform(curl);
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response->status);
   curl_easy_cleanup(curl);
@@ -235,6 +237,22 @@ YTStatus yt_http_get(const char *url, size_t maximum_size,
     response->data[0] = '\0';
   }
   return YT_OK;
+}
+
+YTStatus yt_http_get(const char *url, size_t maximum_size,
+                     YTHttpResponse *response) {
+  return http_get(url, maximum_size, NULL, response);
+}
+
+YTStatus yt_http_get_range(const char *url, size_t length,
+                           YTHttpResponse *response) {
+  char range[64];
+
+  if (length == 0 || length > (size_t)ULONG_MAX ||
+      snprintf(range, sizeof(range), "0-%lu", (unsigned long)(length - 1)) >=
+          (int)sizeof(range))
+    return YT_ERR_INVALID_RESPONSE;
+  return http_get(url, length, range, response);
 }
 
 YTStatus yt_http_head(const char *url, long *http_status) {
@@ -318,6 +336,9 @@ YTStatus yt_http_download(const char *url, const char *destination,
   curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_download);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &writer);
+  /* With no custom callback, libcurl supplies its built-in transfer meter. */
+  curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+  curl_easy_setopt(curl, CURLOPT_STDERR, stderr);
   code = curl_easy_perform(curl);
   response_status = 0;
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_status);

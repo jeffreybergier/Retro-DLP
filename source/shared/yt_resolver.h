@@ -33,6 +33,8 @@ typedef struct {
   int64_t content_length;
 } YTMediaRequest;
 
+typedef void (*YTProgressCallback)(const char *message, void *opaque);
+
 YTStatus yt_extract_video_id(const char *input, char video_id[12]);
 YTStatus yt_parse_player_response(const char *json, size_t length,
                                   YTMediaRequest *result);
@@ -41,6 +43,10 @@ YTStatus yt_parse_player_response_with_javascript(const char *json,
                                                   const char *player_source,
                                                   YTMediaRequest *result);
 YTStatus yt_resolve_video(const char *input, YTMediaRequest *result);
+YTStatus yt_resolve_video_with_progress(const char *input,
+                                        YTMediaRequest *result,
+                                        YTProgressCallback progress,
+                                        void *progress_opaque);
 YTStatus yt_probe_media_head(const YTMediaRequest *media, long *http_status);
 YTStatus yt_classify_media_http_status(long http_status);
 const char *yt_resolver_user_agent(void);

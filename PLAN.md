@@ -39,10 +39,11 @@ test video, compare:
 - [x] Direct signature parameter choice and absence of an unsolved `n`
 - [x] Transformed signature (`s`) and throttling (`n`) results when present;
   covered by the matching deterministic EJS golden fixtures
-- [x] HEAD request status and failure classification
+- [x] Initial 10,241-byte range download and MP4 prefix validation
 
 - [x] Use the public Big Buck Bunny upload (`YE7VzlLtp-4`) as an initial live
   fixture, since yt-dlp also uses it in its YouTube extractor tests.
+- [x] Check `-_x6t4CaPzo` as a second live fixture.
 - [x] Keep sanitized captured player responses and media metadata as
   deterministic embedded fixtures so the core parser and classifications can
   run without the network.
@@ -62,20 +63,21 @@ Do not involve QuickJS yet. Implement the smallest complete resolution path:
 - [x] Inspect `streamingData.formats` only.
 - [x] Select a direct itag 18 URL.
 - [x] Return its URL, required headers, dimensions, MIME type, and expiry.
-- [x] Probe it with a bodyless HTTP HEAD request and classify HTTP 403 as the
-  current PO-token limitation.
+- [x] Probe it with yt-dlp's 10,241-byte test range, require a 2xx response,
+  and validate the MP4 prefix.
 - [x] Make `retro-dlp VIDEO_ID_OR_URL` stream the complete itag 18 MP4 into the
   current directory by default.
 - [x] Make `--no-download` return resolver JSON without probing or downloading.
 - [x] Write through an exclusive `.part` file, validate the MP4 `ftyp` box,
   refuse overwrites, remove handled failures, and publish atomically.
-- [x] Classify a full-download HTTP 403 independently of the diagnostic HEAD
+- [x] Classify a full-download HTTP 403 independently of the byte-range probe
   request. The first Linux live download reached GVS and confirmed the current
   `po_token_required` limitation without leaving a partial file.
 
-The embedded live test retains its bodyless HEAD comparison so routine tests do
-not download the fixture. Normal CLI use performs the complete streaming GET,
-and that result is authoritative for actual download capability.
+The embedded live test downloads only the first 10,241 bytes of each fixture,
+matching yt-dlp's test size, and validates the MP4 prefix. Normal CLI use
+performs the complete streaming GET, and that result is authoritative for
+actual download capability.
 
 This phase proves the network, TLS, JSON parsing, client configuration, format
 selection, result model, and download pipeline before JavaScript is introduced.

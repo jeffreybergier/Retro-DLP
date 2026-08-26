@@ -39,6 +39,10 @@ The default command streams into `VIDEO_ID.mp4.part`, validates the MP4 `ftyp`
 box, and atomically publishes `VIDEO_ID.mp4` after success. It refuses to
 overwrite an existing final or partial file and removes partial output after a
 handled failure. A full-download HTTP 403 is reported as `po_token_required`.
+Resolver stages and download status are written to stderr, while the final JSON
+result remains on stdout. The media transfer enables libcurl's built-in
+progress meter; it is supplied by libcurl rather than by launching the `curl`
+command-line program.
 
 Resolve without downloading or probing the media URL with:
 
@@ -87,15 +91,15 @@ retro-dlp --test
 ```
 
 This runs deterministic cache, player-response, and batched `s`/`n` resolver
-fixtures first, followed by a staged resolver test against yt-dlp's public Big
-Buck Bunny fixture and a bodyless HEAD request to the resulting Google Video
-URL. When EJS assets are
+fixtures first, followed by staged resolver tests for `YE7VzlLtp-4` and
+`-_x6t4CaPzo`. Each live test requests the same 10,241-byte prefix as yt-dlp's
+test mode from the resulting Google Video URL and validates the returned MP4
+prefix. When EJS assets are
 installed, it also runs the `s`/`n` tests for batching, preprocessed-player
 reuse, malformed output, exceptions, execution deadlines, memory limits, and
 runtime recovery. Otherwise that section reports a skip with the installation
-command. The live portion requires internet access. A current HTTP 403 is
-reported as a successful transport probe with a PO-token-required
-classification; it does not mean that the video was downloaded. The tests
+command. The live portion requires internet access and a successful 2xx media
+response; a PO-token-related HTTP 403 fails the self-test. The tests
 execute inside the current binary slice, making them suitable for checking the
 actual PowerPC, i386, x86_64, arm64, or Linux build on its target machine.
 

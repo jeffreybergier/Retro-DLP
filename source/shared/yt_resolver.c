@@ -1085,10 +1085,18 @@ YTStatus yt_load_player_javascript(const char *player_url, char **source) {
   return YT_OK;
 }
 
+static void report_progress(YTProgressCallback progress, void *opaque,
+                            const char *message) {
+  if (progress != NULL)
+    progress(message, opaque);
+}
+
 static YTStatus resolve_player_document(cJSON *document, const char *video_id,
                                         const char *bootstrap_player_url,
                                         const YTClient *client,
-                                        YTMediaRequest *result) {
+                                        YTMediaRequest *result,
+                                        YTProgressCallback progress,
+                                        void *progress_opaque) {
   YTStatus status;
   char *player_url;
   char *player_source;
@@ -1099,21 +1107,30 @@ static YTStatus resolve_player_document(cJSON *document, const char *video_id,
   if (player_url == NULL)
     player_url = copy_string(bootstrap_player_url);
   if (player_url == NULL) {
+    report_progress(progress, progress_opaque,
+                    "fetching fallback player information");
     status = player_url_from_watch_page(video_id, &player_url);
     if (status != YT_OK)
       return status;
   }
   player_source = NULL;
+  report_progress(progress, progress_opaque,
+                  "loading player JavaScript for URL challenges");
   status = yt_load_player_javascript(player_url, &player_source);
   free(player_url);
   if (status != YT_OK)
     return status;
+  report_progress(progress, progress_opaque,
+                  "solving media URL challenges");
   status = parse_player_document(document, player_source, client, result);
   free(player_source);
   return status;
 }
 
-YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
+YTStatus yt_resolve_video_with_progress(const char *input,
+                                        YTMediaRequest *result,
+                                        YTProgressCallback progress,
+                                        void *progress_opaque) {
   char video_id[12];
   char failure_key[65];
   YTClient client;
@@ -1131,11 +1148,14 @@ YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
   status = yt_extract_video_id(input, video_id);
   if (status != YT_OK)
     return status;
+  report_progress(progress, progress_opaque, "loading client configuration");
   status = load_client(&client);
   if (status != YT_OK)
     return status;
   bootstrap_player_url = NULL;
   signature_timestamp = 0;
+  report_progress(progress, progress_opaque,
+                  "fetching web player configuration");
   status = load_mweb_bootstrap(video_id, &client, &signature_timestamp,
                                &bootstrap_player_url);
   if (status != YT_OK)
@@ -1148,6 +1168,7 @@ YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
   }
 
   document = NULL;
+  report_progress(progress, progress_opaque, "requesting video metadata");
   status = call_player(video_id, NULL, &client, signature_timestamp, &document);
   if (status != YT_OK) {
     free(bootstrap_player_url);
@@ -1168,6 +1189,8 @@ YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
   if (visitor_copy != NULL) {
     cJSON_Delete(document);
     document = NULL;
+    report_progress(progress, progress_opaque,
+                    "refreshing video metadata with visitor data");
     status = call_player(video_id, visitor_copy, &client, signature_timestamp,
                          &document);
     free(visitor_copy);
@@ -1178,8 +1201,10 @@ YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
     }
   }
 
+  report_progress(progress, progress_opaque,
+                  "selecting a progressive MP4 stream");
   status = resolve_player_document(document, video_id, bootstrap_player_url,
-                                   &client, result);
+                                   &client, result, progress, progress_opaque);
   cJSON_Delete(document);
   free(bootstrap_player_url);
   if (status == YT_OK) {
@@ -1189,6 +1214,10 @@ YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
     yt_remember_failure(failure_key, status);
   }
   return status;
+}
+
+YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
+  return yt_resolve_video_with_progress(input, result, NULL, NULL);
 }
 
 YTStatus yt_classify_media_http_status(long http_status) {
