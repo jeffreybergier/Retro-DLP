@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include "cJSON.h"
+#include "cli.h"
 #include "cache_test.h"
 #include "cookie_test.h"
 #include "curl/curl.h"
@@ -138,6 +139,39 @@ static int test_video_id(void) {
   }
   printf("PASS: video ID parsing (%s, -_x6t4CaPzo)\n",
          SELF_TEST_VIDEO_ID);
+  return 0;
+}
+
+static int test_default_output_path(void) {
+  char path[256];
+  char short_path[12];
+  char utf8_path[9];
+  char invalid_utf8_path[32];
+
+  if (!retro_dlp_default_output_path("Fixture Title", SELF_TEST_VIDEO_ID,
+                                     path, sizeof(path)) ||
+      strcmp(path, "Fixture Title.mp4") != 0 ||
+      !retro_dlp_default_output_path("../A/B:\n", SELF_TEST_VIDEO_ID,
+                                     path, sizeof(path)) ||
+      strcmp(path, "___A_B__.mp4") != 0 ||
+      !retro_dlp_default_output_path("", SELF_TEST_VIDEO_ID,
+                                     path, sizeof(path)) ||
+      strcmp(path, SELF_TEST_VIDEO_ID ".mp4") != 0 ||
+      !retro_dlp_default_output_path("abcdefghijk", SELF_TEST_VIDEO_ID,
+                                     short_path, sizeof(short_path)) ||
+      strcmp(short_path, "abcdefg.mp4") != 0 ||
+      !retro_dlp_default_output_path("\xc3\xa9\xc3\xa9\xc3\xa9",
+                                     SELF_TEST_VIDEO_ID, utf8_path,
+                                     sizeof(utf8_path)) ||
+      strcmp(utf8_path, "\xc3\xa9\xc3\xa9.mp4") != 0 ||
+      !retro_dlp_default_output_path("\xed\xa0\x80" "bad",
+                                     SELF_TEST_VIDEO_ID, invalid_utf8_path,
+                                     sizeof(invalid_utf8_path)) ||
+      strcmp(invalid_utf8_path, "___bad.mp4") != 0) {
+    fprintf(stderr, "FAIL: title-based default output path\n");
+    return 1;
+  }
+  printf("PASS: title-based default output path\n");
   return 0;
 }
 
@@ -455,6 +489,8 @@ int retro_dlp_run_self_tests(void) {
   failures = test_libcurl();
   announce_test("YouTube video ID parsing");
   failures += test_video_id();
+  announce_test("title-based default output path");
+  failures += test_default_output_path();
   announce_test("cJSON parsing");
   failures += test_cjson();
   announce_test("deterministic player and HTTP fixtures");

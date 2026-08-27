@@ -41,7 +41,7 @@ LSMASH_CPPFLAGS := -I$(LSMASH_DIR)
 LSMASH_CFLAGS := $(CFLAGS) -std=c99 -Wall -Wextra -Wno-unused-parameter
 LINUX_SOURCES := $(SHARED_SOURCES) source/linux/platform.c $(CJSON_SOURCE)
 LINUX_TEST_PROGRAM := retro-dlp-tests
-LINUX_TEST_SOURCES := $(filter-out source/shared/main.c source/shared/cli.c, \
+LINUX_TEST_SOURCES := $(filter-out source/shared/main.c, \
 	$(SHARED_SOURCES)) $(TEST_SOURCES) source/linux/test/test_main.c \
 	source/linux/platform.c $(CJSON_SOURCE)
 

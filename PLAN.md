@@ -67,7 +67,8 @@ Do not involve QuickJS yet. Implement the smallest complete resolution path:
 - [x] Probe it with yt-dlp's 10,241-byte test range, require a 2xx response,
   and validate the MP4 prefix.
 - [x] Make `retro-dlp VIDEO_ID_OR_URL` stream the complete itag 18 MP4 into the
-  current directory by default.
+  current directory by default, using the resolved title as the sanitized
+  filename and falling back to the video ID when the title is empty.
 - [x] Make `--dump-json` return normalized yt-dlp-style resolver JSON
   without probing or downloading.
 - [x] Write through an exclusive `.part` file, validate the MP4 `ftyp` box,
@@ -494,6 +495,8 @@ entries are normally separate video-only and audio-only streams in
   video+audio pair, and `/`-separated explicit alternatives. Add
   `-F`/`--list-formats` and normalized `-j`/`--dump-json` output, keeping the
   complete format inventory exclusive to `--list-formats`.
+- [x] Add built-in `-t`/`--preset-alias` expansions for `low`, `med`, and
+  `high`, without implicit fallback between the quality tiers.
 - [x] Download both streams through the existing native HTTP/TLS, cookie,
   challenge-solving, PO-token, expiry, and atomic-file infrastructure.
 - [x] Add or integrate a small, reviewed native ISO Base Media File Format muxer

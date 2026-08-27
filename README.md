@@ -64,6 +64,19 @@ never silently substitutes another format for an exact request. If none of the
 requested alternatives is available, it prints the same stream table as
 `-F`/`--list-formats` and exits unsuccessfully.
 
+For convenient built-in exact-format selections, use yt-dlp-style preset
+aliases:
+
+```sh
+retro-dlp -t low VIDEO   # 18
+retro-dlp -t med VIDEO   # 135+140/134+140
+retro-dlp -t high VIDEO  # 137+599/137+140/136+599/136+140
+```
+
+Presets expand to the expressions shown and do not fall back between quality
+tiers. `--format` and `--preset-alias` cannot be combined. JSON reports the
+actual selected `format_id`, not the preset name.
+
 List the individual formats advertised by YouTube without solving their URL
 challenges or probing media servers:
 
@@ -81,16 +94,21 @@ container (MP4 before WebM), ascending width, and itag. Column widths adapt to
 the returned codec and resolution strings.
 
 An adaptive download first writes temporary files derived from the final
-output path, then uses its native L-SMASH integration to copy both
-encoded tracks into a conventional, non-fragmented `VIDEO_ID.mp4`. After the
-final MP4 is validated and atomically published, the two input tracks are
-removed. They are retained if muxing fails. Each track uses the same native
-HTTP session, cookies, URL-challenge handling, PO-token error classification,
-MP4 validation, exclusive `.part` file, and atomic publication as progressive
-downloads. Retro-DLP does not require FFmpeg or another external executable.
+output path, then uses its native L-SMASH integration to copy both encoded
+tracks into a conventional, non-fragmented MP4. After the final MP4 is
+validated and atomically published, the two input tracks are removed. They are
+retained if muxing fails. Each track uses the same native HTTP session,
+cookies, URL-challenge handling, PO-token error classification, MP4 validation,
+exclusive `.part` file, and atomic publication as progressive downloads.
+Retro-DLP does not require FFmpeg or another external executable.
 
-The default command streams into `VIDEO_ID.mp4.part`, validates the MP4 `ftyp`
-box, and atomically publishes `VIDEO_ID.mp4` after success. It refuses to
+By default, the resolved YouTube title becomes the filename (`TITLE.mp4`).
+Path separators, colons, and control characters are replaced with underscores,
+valid UTF-8 text is preserved, and malformed UTF-8 bytes are replaced with
+underscores. Long titles are truncated without splitting a UTF-8 character. An
+empty title falls back to `VIDEO_ID.mp4`. An explicit `-o`/`--output` value is
+used literally. The command streams into a `.part` file, validates the MP4 `ftyp`
+box, and atomically publishes the final file after success. It refuses to
 overwrite an existing final or partial file and removes partial output after a
 handled failure. A full-download HTTP 403 is reported as `po_token_required`.
 Resolver stages and download status are written to stderr, while the final JSON

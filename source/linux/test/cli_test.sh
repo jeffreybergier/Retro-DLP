@@ -48,10 +48,21 @@ printf '%s\n' "$help_output" | grep -q -- '~/.retro-dlp/cookies.txt' || \
   fail "--help did not document the default cookie path"
 printf '%s\n' "$help_output" | grep -q -- '-f, --format FORMAT' || \
   fail "--help did not document --format"
+printf '%s\n' "$help_output" | grep -q -- '-t, --preset-alias PRESET' || \
+  fail "--help did not document --preset-alias"
+printf '%s\n' "$help_output" | grep -q -- 'low=18' || \
+  fail "--help did not document the low preset"
+printf '%s\n' "$help_output" | grep -q -- 'med=135+140/134+140' || \
+  fail "--help did not document the med preset"
+printf '%s\n' "$help_output" | \
+  grep -q -- 'high=137+599/137+140/136+599/136+140' || \
+  fail "--help did not document the high preset"
 printf '%s\n' "$help_output" | grep -q -- '-F, --list-formats' || \
   fail "--help did not document --list-formats"
 printf '%s\n' "$help_output" | grep -q -- '-j, --dump-json' || \
   fail "--help did not document --dump-json"
+printf '%s\n' "$help_output" | grep -q -- 'sanitized video title plus .mp4' || \
+  fail "--help did not document the title-based output filename"
 if printf '%s\n' "$help_output" | grep -Eq -- '--size|--no-download|--test'; then
   fail "--help retained a removed option"
 fi
@@ -59,6 +70,18 @@ fi
 if $binary -f best YE7VzlLtp-4 2>"$error_file"; then
   fail "unsupported format syntax returned success"
 fi
+
+if $binary -t ultra YE7VzlLtp-4 2>"$error_file"; then
+  fail "unknown preset alias returned success"
+fi
+grep -q 'available presets are high, med, low' "$error_file" || \
+  fail "unknown preset alias did not list the available presets"
+
+if $binary -t low -f 18 YE7VzlLtp-4 2>"$error_file"; then
+  fail "combined preset and exact format returned success"
+fi
+grep -q -- '--format and --preset-alias cannot be combined' "$error_file" || \
+  fail "preset/format conflict did not explain the error"
 
 version_output=$($binary --version)
 printf '%s\n' "$version_output" | \

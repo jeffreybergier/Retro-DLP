@@ -23,6 +23,99 @@
 #define PATH_MAX 4096
 #endif
 
+#define PRESET_LOW_FORMAT "18"
+#define PRESET_MED_FORMAT "135+140/134+140"
+#define PRESET_HIGH_FORMAT "137+599/137+140/136+599/136+140"
+
+static const char *preset_format_expression(const char *preset) {
+  if (strcmp(preset, "low") == 0)
+    return PRESET_LOW_FORMAT;
+  if (strcmp(preset, "med") == 0)
+    return PRESET_MED_FORMAT;
+  if (strcmp(preset, "high") == 0)
+    return PRESET_HIGH_FORMAT;
+  return NULL;
+}
+
+static size_t utf8_character_size(const unsigned char *text) {
+  size_t size;
+  size_t index;
+  if (text[0] < 0x80)
+    return 1;
+  if (text[0] >= 0xc2 && text[0] <= 0xdf)
+    size = 2;
+  else if (text[0] >= 0xe0 && text[0] <= 0xef)
+    size = 3;
+  else if (text[0] >= 0xf0 && text[0] <= 0xf4)
+    size = 4;
+  else
+    return 0;
+  for (index = 1; index < size; ++index) {
+    if (text[index] == '\0' || (text[index] & 0xc0) != 0x80)
+      return 0;
+  }
+  if ((text[0] == 0xe0 && text[1] < 0xa0) ||
+      (text[0] == 0xed && text[1] >= 0xa0) ||
+      (text[0] == 0xf0 && text[1] < 0x90) ||
+      (text[0] == 0xf4 && text[1] >= 0x90))
+    return 0;
+  return size;
+}
+
+int retro_dlp_default_output_path(const char *title, const char *video_id,
+                                  char *buffer, size_t buffer_size) {
+  const unsigned char *source;
+  size_t source_index;
+  size_t written;
+  size_t character_size;
+  size_t maximum_base;
+  size_t index;
+  unsigned char byte;
+  if (buffer == NULL || buffer_size < 6 || video_id == NULL ||
+      video_id[0] == '\0')
+    return 0;
+  source = (const unsigned char *)
+      (title != NULL && title[0] != '\0' ? title : video_id);
+  maximum_base = buffer_size - 5;
+  if (maximum_base > 240)
+    maximum_base = 240;
+  source_index = 0;
+  written = 0;
+  while (source[source_index] != '\0') {
+    byte = source[source_index];
+    character_size = utf8_character_size(source + source_index);
+    if (character_size == 0) {
+      byte = '_';
+      character_size = 1;
+    }
+    if (written + character_size > maximum_base)
+      break;
+    if (byte < 0x80) {
+      buffer[written++] = byte < 0x20 || byte == 0x7f || byte == '/' ||
+                                  byte == '\\' || byte == ':'
+                              ? '_'
+                              : (char)byte;
+    } else {
+      memcpy(buffer + written, source + source_index, character_size);
+      written += character_size;
+    }
+    source_index += character_size;
+  }
+  while (written > 0 &&
+         (buffer[written - 1] == ' ' || buffer[written - 1] == '.'))
+    --written;
+  for (index = 0; index < written && buffer[index] == '.'; ++index)
+    buffer[index] = '_';
+  if (written == 0) {
+    written = strlen(video_id);
+    if (written > maximum_base)
+      written = maximum_base;
+    memcpy(buffer, video_id, written);
+  }
+  memcpy(buffer + written, ".mp4", 5);
+  return 1;
+}
+
 static void print_usage(FILE *stream) {
   fprintf(stream,
           "Usage: retro-dlp [OPTIONS] VIDEO_ID_OR_URL\n"
@@ -37,9 +130,15 @@ static void print_usage(FILE *stream) {
           "                   Select exact itags, combinations such as 136+140,\n"
           "                   or explicit fallbacks such as 136+140/22/18.\n"
           "                   Default: 22/18.\n"
+          "  -t, --preset-alias PRESET\n"
+          "                   Select a built-in exact-format preset:\n"
+          "                   low=" PRESET_LOW_FORMAT "\n"
+          "                   med=" PRESET_MED_FORMAT "\n"
+          "                   high=" PRESET_HIGH_FORMAT "\n"
           "  -F, --list-formats\n"
           "                   List formats advertised by YouTube and exit.\n"
           "  -o, --output FILE Write the final MP4 to FILE.\n"
+          "                   Default: sanitized video title plus .mp4.\n"
           "  -s, --simulate    Resolve without downloading or writing files.\n"
           "  -j, --dump-json   Print normalized JSON and imply --simulate.\n"
           "      --cookies FILE\n"
@@ -451,7 +550,6 @@ static int resolve_argument(const char *input, const char *format_expression,
   YTMediaSelection selection;
   YTMediaRequest *media;
   YTStatus status;
-  char video_id[12];
   char destination[PATH_MAX];
   char video_destination[PATH_MAX];
   char audio_destination[PATH_MAX];
@@ -516,8 +614,7 @@ static int resolve_argument(const char *input, const char *format_expression,
     curl_global_cleanup();
     return 0;
   }
-  if (yt_extract_video_id(input, video_id) != YT_OK ||
-      snprintf(destination, sizeof(destination), "%s",
+  if (snprintf(destination, sizeof(destination), "%s",
                output == NULL ? "" : output) >= (int)sizeof(destination)) {
     yt_media_selection_free(&selection);
     yt_http_session_destroy(request_session);
@@ -525,8 +622,8 @@ static int resolve_argument(const char *input, const char *format_expression,
     return 1;
   }
   if (output == NULL &&
-      snprintf(destination, sizeof(destination), "%s.mp4", video_id) >=
-          (int)sizeof(destination)) {
+      !retro_dlp_default_output_path(selection.title, selection.video_id,
+                                     destination, sizeof(destination))) {
     yt_media_selection_free(&selection);
     yt_http_session_destroy(request_session);
     curl_global_cleanup();
@@ -644,6 +741,7 @@ int retro_dlp_run(int argc, char **argv) {
   const char *cookie_file;
   const char *input;
   const char *format_expression;
+  const char *preset_alias;
   const char *output;
   int cookies_requested;
   int cookies_default;
@@ -674,6 +772,7 @@ int retro_dlp_run(int argc, char **argv) {
   cookie_file = NULL;
   input = NULL;
   format_expression = NULL;
+  preset_alias = NULL;
   output = NULL;
   cookies_requested = 0;
   cookies_default = 0;
@@ -693,6 +792,11 @@ int retro_dlp_run(int argc, char **argv) {
       cookies_default = 1;
     } else if (strcmp(argv[index], "--format") == 0 ||
                strcmp(argv[index], "-f") == 0) {
+      if (preset_alias != NULL) {
+        fprintf(stderr,
+                "retro-dlp: --format and --preset-alias cannot be combined\n");
+        return 2;
+      }
       if (format_expression != NULL || index + 1 >= argc)
         break;
       if (!yt_format_expression_valid(argv[index + 1])) {
@@ -704,6 +808,26 @@ int retro_dlp_run(int argc, char **argv) {
         return 2;
       }
       format_expression = argv[++index];
+    } else if (strcmp(argv[index], "--preset-alias") == 0 ||
+               strcmp(argv[index], "-t") == 0) {
+      const char *expanded;
+      if (preset_alias != NULL || index + 1 >= argc)
+        break;
+      if (format_expression != NULL) {
+        fprintf(stderr,
+                "retro-dlp: --format and --preset-alias cannot be combined\n");
+        return 2;
+      }
+      preset_alias = argv[++index];
+      expanded = preset_format_expression(preset_alias);
+      if (expanded == NULL) {
+        fprintf(stderr,
+                "retro-dlp: unknown preset alias \"%s\"\n"
+                "retro-dlp: available presets are high, med, low\n",
+                preset_alias);
+        return 2;
+      }
+      format_expression = expanded;
     } else if (strcmp(argv[index], "--list-formats") == 0 ||
                strcmp(argv[index], "-F") == 0) {
       if (list_formats)
