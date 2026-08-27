@@ -104,6 +104,9 @@ static int test_video_id(void) {
       yt_extract_video_id("https://www.youtube.com/embed/" SELF_TEST_VIDEO_ID,
                           video_id) != YT_OK ||
       strcmp(video_id, SELF_TEST_VIDEO_ID) != 0 ||
+      yt_extract_video_id("http://www.youtube.com/v/wjhAtz3_X3M",
+                          video_id) != YT_OK ||
+      strcmp(video_id, "wjhAtz3_X3M") != 0 ||
       yt_extract_video_id("https://www.youtube-nocookie.com/embed/"
                           SELF_TEST_VIDEO_ID,
                           video_id) != YT_OK ||

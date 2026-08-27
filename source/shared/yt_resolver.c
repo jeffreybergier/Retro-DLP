@@ -366,6 +366,8 @@ YTStatus yt_extract_video_id(const char *input, char video_id[12]) {
     return YT_OK;
   if (strncmp(path, "/embed/", 7) == 0 && copy_candidate(path + 7, video_id))
     return YT_OK;
+  if (strncmp(path, "/v/", 3) == 0 && copy_candidate(path + 3, video_id))
+    return YT_OK;
   if (copy_query_video_id(strchr(path, '?'), video_id))
     return YT_OK;
   return YT_ERR_INVALID_VIDEO_ID;
