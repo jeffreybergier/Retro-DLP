@@ -48,16 +48,20 @@ build/linux/retro-dlp 'https://www.youtube.com/watch?v=YE7VzlLtp-4'
 ```
 
 Retro-DLP selects the highest progressive MP4 resolution at or below 720p by
-default. Set a different upper limit with `--size 480p`, `--size 720p`, or
-`--size 1080p`:
+default. Explicit `--size 480p` also remains progressive-only. Explicit
+`--size 720p` or `--size 1080p` first selects separate H.264 video and AAC-LC
+audio from `streamingData.adaptiveFormats`, falling back to a progressive MP4
+when a compatible pair is unavailable:
 
 ```sh
 build/linux/retro-dlp --size 1080p YE7VzlLtp-4
 ```
 
-Only muxed entries from `streamingData.formats` are considered, so a 1080p
-request may select 720p or a lower available resolution. Retro-DLP does not
-download separate adaptive video and audio streams or require FFmpeg.
+Until native muxing is implemented, an adaptive download produces
+`VIDEO_ID.video.mp4` and `VIDEO_ID.audio.m4a`. Each track uses the same native
+HTTP session, cookies, URL-challenge handling, PO-token error classification,
+MP4 validation, exclusive `.part` file, and atomic publication as progressive
+downloads. Retro-DLP does not require FFmpeg or another external executable.
 
 The default command streams into `VIDEO_ID.mp4.part`, validates the MP4 `ftyp`
 box, and atomically publishes `VIDEO_ID.mp4` after success. It refuses to
@@ -110,9 +114,10 @@ rotate. Retro-DLP never includes cookies, SAPISID authorization, account sync
 IDs, or other session secrets in result JSON or resolver caches. Authenticated
 and anonymous success/failure cache entries are separate.
 
-This prints JSON containing the direct URL, itag, dimensions, MIME type, expiry
-time, and required request headers. Retro-DLP supports progressive MP4 formats
-returned by its configured client and does not yet generate PO tokens.
+For a progressive selection this prints the existing JSON containing the direct
+URL, itag, dimensions, MIME type, expiry time, and required request headers. An
+adaptive selection prints the same fields under separate `video` and `audio`
+objects. Retro-DLP does not yet generate PO tokens.
 
 On macOS, every libcurl handle is configured with `cacert.pem` resolved beside
 the running executable. Network requests fail explicitly if the bundle is

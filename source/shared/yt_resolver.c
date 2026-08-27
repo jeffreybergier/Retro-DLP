@@ -53,6 +53,9 @@ typedef struct {
   int itag;
   int width;
   int height;
+  int fps;
+  int bitrate;
+  int audio_channels;
   int64_t content_length;
 } YTFormatCandidate;
 
@@ -228,9 +231,20 @@ void yt_failure_cache_key_for_session(const char *video_id,
 }
 
 static void failure_cache_key(const char *video_id, const YTClient *client,
-                              int authenticated, char key[65]) {
+                              int authenticated, int max_height,
+                              int try_adaptive, char key[65]) {
+  char session_key[65];
+  char material[96];
   yt_failure_cache_key_for_session(video_id, client->name, client->version,
-                                   authenticated, key);
+                                   authenticated, session_key);
+  if (session_key[0] == '\0' ||
+      snprintf(material, sizeof(material), "%s:%s:%d", session_key,
+               try_adaptive ? "adaptive" : "progressive", max_height) >=
+          (int)sizeof(material)) {
+    key[0] = '\0';
+    return;
+  }
+  yt_cache_key_for_string(material, key);
 }
 
 int yt_load_cached_failure(const char *key, YTStatus *status) {
@@ -761,16 +775,49 @@ static int candidate_is_better(const YTFormatCandidate *current,
   return current_is_direct && !candidate_is_direct;
 }
 
+static int read_format_candidate(cJSON *format, YTFormatCandidate *candidate) {
+  const char *cipher;
+  const char *url;
+  const char *content_length;
+
+  memset(candidate, 0, sizeof(*candidate));
+  candidate->itag = json_integer(format, "itag");
+  candidate->mime_type = json_string(format, "mimeType");
+  if (candidate->itag <= 0 || candidate->mime_type == NULL)
+    return 0;
+  url = json_string(format, "url");
+  cipher = json_string(format, "signatureCipher");
+  candidate->signature = query_value(cipher, "s");
+  candidate->signature_parameter = query_value(cipher, "sp");
+  candidate->owned_url = query_value(cipher, "url");
+  if (cipher != NULL && candidate->signature == NULL) {
+    format_candidate_free(candidate);
+    return 0;
+  }
+  if (candidate->owned_url != NULL)
+    url = candidate->owned_url;
+  if (url == NULL) {
+    format_candidate_free(candidate);
+    return 0;
+  }
+  candidate->n_challenge = query_value(
+      strchr(url, '?') == NULL ? "" : strchr(url, '?') + 1, "n");
+  candidate->url = url;
+  candidate->width = json_integer(format, "width");
+  candidate->height = json_integer(format, "height");
+  candidate->fps = json_integer(format, "fps");
+  candidate->bitrate = json_integer(format, "bitrate");
+  candidate->audio_channels = json_integer(format, "audioChannels");
+  content_length = json_string(format, "contentLength");
+  candidate->content_length = parse_decimal(content_length);
+  return 1;
+}
+
 static YTStatus inspect_progressive_mp4(cJSON *document, int max_height,
                                         YTFormatCandidate *candidate) {
   cJSON *streaming_data;
   cJSON *formats;
   cJSON *format;
-  const char *url;
-  const char *mime_type;
-  const char *content_length;
-  const char *cipher;
-  int itag;
   YTFormatCandidate current;
 
   if (max_height <= 0)
@@ -782,41 +829,15 @@ static YTStatus inspect_progressive_mp4(cJSON *document, int max_height,
     return YT_ERR_NO_PROGRESSIVE_MP4;
 
   cJSON_ArrayForEach(format, formats) {
-    itag = json_integer(format, "itag");
-    url = json_string(format, "url");
-    mime_type = json_string(format, "mimeType");
-    if (itag <= 0 || mime_type == NULL ||
-        strncmp(mime_type, "video/mp4", 9) != 0)
-      continue;
-    memset(&current, 0, sizeof(current));
-    current.itag = itag;
-    cipher = json_string(format, "signatureCipher");
-    current.signature = query_value(cipher, "s");
-    current.signature_parameter = query_value(cipher, "sp");
-    current.owned_url = query_value(cipher, "url");
-    if (cipher != NULL && current.signature == NULL) {
+    if (!read_format_candidate(format, &current) ||
+        strncmp(current.mime_type, "video/mp4", 9) != 0) {
       format_candidate_free(&current);
       continue;
     }
-    if (current.owned_url != NULL)
-      url = current.owned_url;
-    if (url == NULL) {
-      format_candidate_free(&current);
-      continue;
-    }
-    current.n_challenge = query_value(strchr(url, '?') == NULL ? "" :
-                                                            strchr(url, '?') + 1,
-                                      "n");
-    current.url = url;
-    current.mime_type = mime_type;
-    current.width = json_integer(format, "width");
-    current.height = json_integer(format, "height");
     if (current.height <= 0 || current.height > max_height) {
       format_candidate_free(&current);
       continue;
     }
-    content_length = json_string(format, "contentLength");
-    current.content_length = parse_decimal(content_length);
     if (candidate_is_better(&current, candidate)) {
       format_candidate_free(candidate);
       *candidate = current;
@@ -825,6 +846,77 @@ static YTStatus inspect_progressive_mp4(cJSON *document, int max_height,
     }
   }
   return candidate->url == NULL ? YT_ERR_NO_PROGRESSIVE_MP4 : YT_OK;
+}
+
+static int mime_has_codec(const char *mime_type, const char *codec) {
+  const char *codecs;
+  if (mime_type == NULL || codec == NULL)
+    return 0;
+  codecs = strstr(mime_type, "codecs=\"");
+  return codecs != NULL && strstr(codecs + 8, codec) != NULL;
+}
+
+static int adaptive_video_is_better(const YTFormatCandidate *candidate,
+                                    const YTFormatCandidate *selected) {
+  if (selected->url == NULL || candidate->height != selected->height)
+    return selected->url == NULL || candidate->height > selected->height;
+  if (candidate->width != selected->width)
+    return candidate->width > selected->width;
+  return candidate->bitrate > selected->bitrate;
+}
+
+static int adaptive_audio_is_better(const YTFormatCandidate *candidate,
+                                    const YTFormatCandidate *selected) {
+  return selected->url == NULL || candidate->bitrate > selected->bitrate;
+}
+
+static YTStatus inspect_adaptive_mp4(cJSON *document, int max_height,
+                                     YTFormatCandidate *video,
+                                     YTFormatCandidate *audio) {
+  cJSON *streaming_data;
+  cJSON *formats;
+  cJSON *format;
+  YTFormatCandidate current;
+
+  if (max_height != 720 && max_height != 1080)
+    return YT_ERR_INVALID_RESPONSE;
+  memset(video, 0, sizeof(*video));
+  memset(audio, 0, sizeof(*audio));
+  streaming_data = cJSON_GetObjectItemCaseSensitive(document, "streamingData");
+  formats = cJSON_GetObjectItemCaseSensitive(streaming_data, "adaptiveFormats");
+  if (!cJSON_IsArray(formats))
+    return YT_ERR_NO_PROGRESSIVE_MP4;
+
+  cJSON_ArrayForEach(format, formats) {
+    if (!read_format_candidate(format, &current))
+      continue;
+    if (strncmp(current.mime_type, "video/mp4", 9) == 0 &&
+        mime_has_codec(current.mime_type, "avc1.") && current.height > 0 &&
+        current.height <= max_height && current.fps <= 30) {
+      if (adaptive_video_is_better(&current, video)) {
+        format_candidate_free(video);
+        *video = current;
+      } else {
+        format_candidate_free(&current);
+      }
+    } else if (strncmp(current.mime_type, "audio/mp4", 9) == 0 &&
+               mime_has_codec(current.mime_type, "mp4a.40.2") &&
+               current.audio_channels <= 2) {
+      if (adaptive_audio_is_better(&current, audio)) {
+        format_candidate_free(audio);
+        *audio = current;
+      } else {
+        format_candidate_free(&current);
+      }
+    } else {
+      format_candidate_free(&current);
+    }
+  }
+  if (video->url != NULL && audio->url != NULL)
+    return YT_OK;
+  format_candidate_free(video);
+  format_candidate_free(audio);
+  return YT_ERR_NO_PROGRESSIVE_MP4;
 }
 
 static YTStatus finish_candidate(const YTFormatCandidate *candidate,
@@ -847,43 +939,69 @@ static YTStatus finish_candidate(const YTFormatCandidate *candidate,
   return YT_OK;
 }
 
-static YTStatus solve_candidate(YTFormatCandidate *candidate,
-                                const char *player_source,
-                                const YTClient *client,
-                                YTMediaRequest *result) {
-  const char *signature_challenges[1];
-  const char *n_challenges[1];
+static YTStatus solve_candidates(YTFormatCandidate *candidates,
+                                 size_t candidate_count,
+                                 const char *player_source,
+                                 const YTClient *client,
+                                 YTMediaRequest *results) {
+  const char *signature_challenges[2];
+  const char *n_challenges[2];
+  size_t signature_solutions[2];
+  size_t n_solutions[2];
   YTEJSRequest requests[2];
   size_t request_count;
   size_t signature_index;
   size_t n_index;
+  size_t signature_count;
+  size_t n_count;
+  size_t index;
   YTEJSResult solved;
   YTEJSStatus ejs_status;
-  char *url;
-  char *updated;
   YTStatus status;
 
-  if (candidate->signature == NULL && candidate->n_challenge == NULL)
-    return finish_candidate(candidate, candidate->url, client, result);
+  if (candidate_count == 0 || candidate_count > 2)
+    return YT_ERR_INVALID_RESPONSE;
+  signature_count = 0;
+  n_count = 0;
+  for (index = 0; index < candidate_count; ++index) {
+    memset(&results[index], 0, sizeof(results[index]));
+    signature_solutions[index] = (size_t)-1;
+    n_solutions[index] = (size_t)-1;
+    if (candidates[index].signature != NULL) {
+      signature_solutions[index] = signature_count;
+      signature_challenges[signature_count++] = candidates[index].signature;
+    }
+    if (candidates[index].n_challenge != NULL) {
+      n_solutions[index] = n_count;
+      n_challenges[n_count++] = candidates[index].n_challenge;
+    }
+  }
+  if (signature_count == 0 && n_count == 0) {
+    for (index = 0; index < candidate_count; ++index) {
+      status = finish_candidate(&candidates[index], candidates[index].url,
+                                client, &results[index]);
+      if (status != YT_OK)
+        goto failed_results;
+    }
+    return YT_OK;
+  }
   if (player_source == NULL)
     return YT_ERR_JS_CHALLENGE;
   request_count = 0;
   signature_index = (size_t)-1;
   n_index = (size_t)-1;
-  if (candidate->signature != NULL) {
-    signature_challenges[0] = candidate->signature;
+  if (signature_count != 0) {
     signature_index = request_count;
     requests[request_count].type = YT_EJS_CHALLENGE_SIGNATURE;
     requests[request_count].challenges = signature_challenges;
-    requests[request_count].challenge_count = 1;
+    requests[request_count].challenge_count = signature_count;
     ++request_count;
   }
-  if (candidate->n_challenge != NULL) {
-    n_challenges[0] = candidate->n_challenge;
+  if (n_count != 0) {
     n_index = request_count;
     requests[request_count].type = YT_EJS_CHALLENGE_N;
     requests[request_count].challenges = n_challenges;
-    requests[request_count].challenge_count = 1;
+    requests[request_count].challenge_count = n_count;
     ++request_count;
   }
   ejs_status = yt_ejs_solve(YT_EJS_SOURCE_PLAYER, player_source, requests,
@@ -894,57 +1012,73 @@ static YTStatus solve_candidate(YTFormatCandidate *candidate,
     return YT_ERR_OUT_OF_MEMORY;
   if (ejs_status != YT_EJS_OK)
     return YT_ERR_JS_CHALLENGE;
-  url = copy_string(candidate->url);
-  if (url == NULL) {
-    yt_ejs_result_free(&solved);
-    return YT_ERR_OUT_OF_MEMORY;
-  }
   status = YT_OK;
-  if (signature_index != (size_t)-1) {
-    const YTEJSResponse *response = &solved.responses[signature_index];
-    if (response->error != NULL || response->solution_count != 1) {
-      status = YT_ERR_JS_CHALLENGE;
-    } else {
+  if (solved.responses == NULL || solved.response_count != request_count ||
+      (signature_index != (size_t)-1 &&
+       (solved.responses[signature_index].error != NULL ||
+        solved.responses[signature_index].solution_count != signature_count)) ||
+      (n_index != (size_t)-1 &&
+       (solved.responses[n_index].error != NULL ||
+        solved.responses[n_index].solution_count != n_count)))
+    status = YT_ERR_JS_CHALLENGE;
+  for (index = 0; status == YT_OK && index < candidate_count; ++index) {
+    YTFormatCandidate *candidate = &candidates[index];
+    char *url = copy_string(candidate->url);
+    char *updated;
+    char *remaining_n;
+    if (url == NULL) {
+      status = YT_ERR_OUT_OF_MEMORY;
+      break;
+    }
+    if (signature_solutions[index] != (size_t)-1) {
       updated = set_query_parameter(
           url,
           candidate->signature_parameter == NULL ||
                   candidate->signature_parameter[0] == '\0'
               ? "signature"
               : candidate->signature_parameter,
-          response->solutions[0]);
+          solved.responses[signature_index]
+              .solutions[signature_solutions[index]]);
       free(url);
       url = updated;
-      if (url == NULL)
-        status = YT_ERR_OUT_OF_MEMORY;
     }
-  }
-  if (status == YT_OK && n_index != (size_t)-1) {
-    const YTEJSResponse *response = &solved.responses[n_index];
-    if (response->error != NULL || response->solution_count != 1) {
-      status = YT_ERR_JS_CHALLENGE;
-    } else {
-      updated = set_query_parameter(url, "n", response->solutions[0]);
+    if (url != NULL && n_solutions[index] != (size_t)-1) {
+      updated = set_query_parameter(
+          url, "n", solved.responses[n_index].solutions[n_solutions[index]]);
       free(url);
       url = updated;
-      if (url == NULL)
-        status = YT_ERR_OUT_OF_MEMORY;
     }
-  }
-  if (status == YT_OK) {
-    char *remaining_n = query_value(strchr(url, '?') == NULL ? "" :
-                                                          strchr(url, '?') + 1,
-                                    "n");
+    if (url == NULL) {
+      status = YT_ERR_OUT_OF_MEMORY;
+      break;
+    }
+    remaining_n = query_value(
+        strchr(url, '?') == NULL ? "" : strchr(url, '?') + 1, "n");
     if (url_has_query_parameter(url, "s") ||
         (candidate->n_challenge != NULL && remaining_n != NULL &&
          strcmp(remaining_n, candidate->n_challenge) == 0))
       status = YT_ERR_JS_CHALLENGE;
     free(remaining_n);
+    if (status == YT_OK)
+      status = finish_candidate(candidate, url, client, &results[index]);
+    free(url);
   }
-  if (status == YT_OK)
-    status = finish_candidate(candidate, url, client, result);
-  free(url);
   yt_ejs_result_free(&solved);
+  if (status != YT_OK)
+    goto failed_results;
   return status;
+
+failed_results:
+  for (index = 0; index < candidate_count; ++index)
+    yt_media_request_free(&results[index]);
+  return status;
+}
+
+static YTStatus solve_candidate(YTFormatCandidate *candidate,
+                                const char *player_source,
+                                const YTClient *client,
+                                YTMediaRequest *result) {
+  return solve_candidates(candidate, 1, player_source, client, result);
 }
 
 static YTStatus parse_player_document(cJSON *document, const char *player_source,
@@ -972,6 +1106,51 @@ static YTStatus parse_player_document(cJSON *document, const char *player_source
   }
 }
 
+static YTStatus parse_player_selection_document(
+    cJSON *document, const char *player_source, const YTClient *client,
+    int max_height, int try_adaptive, YTMediaSelection *result) {
+  cJSON *playability;
+  const char *playability_status;
+  YTStatus status;
+
+  if (document == NULL || result == NULL ||
+      (try_adaptive && max_height != 720 && max_height != 1080))
+    return YT_ERR_INVALID_RESPONSE;
+  memset(result, 0, sizeof(*result));
+  playability = cJSON_GetObjectItemCaseSensitive(document,
+                                                 "playabilityStatus");
+  playability_status = json_string(playability, "status");
+  if (playability_status == NULL || strcmp(playability_status, "OK") != 0)
+    return YT_ERR_UNAVAILABLE;
+
+  if (try_adaptive) {
+    YTFormatCandidate candidates[2];
+    YTMediaRequest solved[2];
+    status = inspect_adaptive_mp4(document, max_height, &candidates[0],
+                                  &candidates[1]);
+    if (status == YT_OK) {
+      memset(solved, 0, sizeof(solved));
+      status = solve_candidates(candidates, 2, player_source, client, solved);
+      format_candidate_free(&candidates[0]);
+      format_candidate_free(&candidates[1]);
+      if (status == YT_OK) {
+        result->video = solved[0];
+        result->audio = solved[1];
+        result->adaptive = 1;
+        return YT_OK;
+      }
+      if (status == YT_ERR_JS_CHALLENGE && player_source == NULL)
+        return status;
+      if (status == YT_ERR_OUT_OF_MEMORY)
+        return status;
+    }
+  }
+
+  status = parse_player_document(document, player_source, client, max_height,
+                                 &result->video);
+  return status;
+}
+
 YTStatus yt_parse_player_response(const char *json, size_t length,
                                   YTMediaRequest *result) {
   return yt_parse_player_response_with_max_height(
@@ -992,6 +1171,26 @@ YTStatus yt_parse_player_response_with_max_height(const char *json,
   if (document == NULL)
     return YT_ERR_INVALID_RESPONSE;
   status = parse_player_document(document, NULL, NULL, max_height, result);
+  if (status == YT_ERR_JS_CHALLENGE)
+    status = YT_ERR_NO_PROGRESSIVE_MP4;
+  cJSON_Delete(document);
+  return status;
+}
+
+YTStatus yt_parse_player_response_with_adaptive_size(
+    const char *json, size_t length, int max_height,
+    YTMediaSelection *result) {
+  cJSON *document;
+  YTStatus status;
+  if (json == NULL || result == NULL ||
+      (max_height != 720 && max_height != 1080))
+    return YT_ERR_INVALID_RESPONSE;
+  memset(result, 0, sizeof(*result));
+  document = cJSON_ParseWithLength(json, length);
+  if (document == NULL)
+    return YT_ERR_INVALID_RESPONSE;
+  status = parse_player_selection_document(document, NULL, NULL, max_height,
+                                           1, result);
   if (status == YT_ERR_JS_CHALLENGE)
     status = YT_ERR_NO_PROGRESSIVE_MP4;
   cJSON_Delete(document);
@@ -1312,18 +1511,17 @@ static void report_progress(YTProgressCallback progress, void *opaque,
     progress(message, opaque);
 }
 
-static YTStatus resolve_player_document(YTHttpSession *session,
-                                        cJSON *document, const char *video_id,
-                                        const char *bootstrap_player_url,
-                                        const YTClient *client,
-                                        int max_height,
-                                        YTMediaRequest *result,
-                                        YTProgressCallback progress,
-                                        void *progress_opaque) {
+static YTStatus resolve_player_selection_document(
+    YTHttpSession *session, cJSON *document, const char *video_id,
+    const char *bootstrap_player_url, const YTClient *client, int max_height,
+    int try_adaptive, YTMediaSelection *result, YTProgressCallback progress,
+    void *progress_opaque) {
   YTStatus status;
   char *player_url;
   char *player_source;
-  status = parse_player_document(document, NULL, client, max_height, result);
+
+  status = parse_player_selection_document(document, NULL, client, max_height,
+                                           try_adaptive, result);
   if (status != YT_ERR_JS_CHALLENGE)
     return status;
   player_url = player_url_from_document(document);
@@ -1343,18 +1541,17 @@ static YTStatus resolve_player_document(YTHttpSession *session,
   free(player_url);
   if (status != YT_OK)
     return status;
-  report_progress(progress, progress_opaque,
-                  "solving media URL challenges");
-  status = parse_player_document(document, player_source, client, max_height,
-                                 result);
+  report_progress(progress, progress_opaque, "solving media URL challenges");
+  status = parse_player_selection_document(document, player_source, client,
+                                           max_height, try_adaptive, result);
   free(player_source);
   return status;
 }
 
 static YTStatus resolve_video(YTHttpSession *provided_session,
                               const char *input, const char *cookie_file,
-                              int max_height,
-                              YTMediaRequest *result,
+                              int max_height, int try_adaptive,
+                              YTMediaSelection *result,
                               YTProgressCallback progress,
                               void *progress_opaque) {
   char video_id[12];
@@ -1371,7 +1568,8 @@ static YTStatus resolve_video(YTHttpSession *provided_session,
   YTAccountContext account;
   int owns_session;
 
-  if (result == NULL || max_height <= 0)
+  if (result == NULL || max_height <= 0 ||
+      (try_adaptive && max_height != 720 && max_height != 1080))
     return YT_ERR_INVALID_RESPONSE;
   memset(result, 0, sizeof(*result));
   memset(&account, 0, sizeof(account));
@@ -1408,7 +1606,8 @@ static YTStatus resolve_video(YTHttpSession *provided_session,
   if (status != YT_OK)
     goto finished;
   prefer_recent_client(&client, account.authenticated);
-  failure_cache_key(video_id, &client, account.authenticated, failure_key);
+  failure_cache_key(video_id, &client, account.authenticated, max_height,
+                    try_adaptive, failure_key);
   if (yt_load_cached_failure(failure_key, &status))
     goto finished;
 
@@ -1444,11 +1643,11 @@ static YTStatus resolve_video(YTHttpSession *provided_session,
   }
 
   report_progress(progress, progress_opaque,
-                  "selecting a progressive MP4 stream");
-  status = resolve_player_document(session, document, video_id,
-                                   bootstrap_player_url, &client, max_height,
-                                   result,
-                                   progress, progress_opaque);
+                  try_adaptive ? "selecting adaptive H.264 and AAC streams"
+                               : "selecting a progressive MP4 stream");
+  status = resolve_player_selection_document(
+      session, document, video_id, bootstrap_player_url, &client, max_height,
+      try_adaptive, result, progress, progress_opaque);
   if (status == YT_OK) {
     remember_successful_client(&client, account.authenticated);
     yt_cache_remove(YT_CACHE_FAILURE, failure_key);
@@ -1469,8 +1668,18 @@ YTStatus yt_resolve_video_with_progress(const char *input,
                                         YTMediaRequest *result,
                                         YTProgressCallback progress,
                                         void *progress_opaque) {
-  return resolve_video(NULL, input, NULL, YT_DEFAULT_MAX_HEIGHT, result,
-                       progress, progress_opaque);
+  YTMediaSelection selection;
+  if (result == NULL)
+    return YT_ERR_INVALID_RESPONSE;
+  memset(&selection, 0, sizeof(selection));
+  YTStatus status = resolve_video(NULL, input, NULL, YT_DEFAULT_MAX_HEIGHT, 0,
+                                  &selection, progress, progress_opaque);
+  if (status == YT_OK) {
+    *result = selection.video;
+    memset(&selection.video, 0, sizeof(selection.video));
+  }
+  yt_media_selection_free(&selection);
+  return status;
 }
 
 YTStatus yt_resolve_video_with_cookies_and_progress(
@@ -1478,9 +1687,21 @@ YTStatus yt_resolve_video_with_cookies_and_progress(
     YTProgressCallback progress, void *progress_opaque) {
   if (cookie_file == NULL || cookie_file[0] == '\0')
     return YT_ERR_COOKIE_FILE;
-  return resolve_video(NULL, input, cookie_file, YT_DEFAULT_MAX_HEIGHT, result,
-                       progress,
-                       progress_opaque);
+  {
+    YTMediaSelection selection;
+    YTStatus status;
+    if (result == NULL)
+      return YT_ERR_INVALID_RESPONSE;
+    memset(&selection, 0, sizeof(selection));
+    status = resolve_video(NULL, input, cookie_file, YT_DEFAULT_MAX_HEIGHT, 0,
+                           &selection, progress, progress_opaque);
+    if (status == YT_OK) {
+      *result = selection.video;
+      memset(&selection.video, 0, sizeof(selection.video));
+    }
+    yt_media_selection_free(&selection);
+    return status;
+  }
 }
 
 YTStatus yt_resolve_video_with_http_session_and_progress(
@@ -1500,8 +1721,31 @@ YTStatus yt_resolve_video_with_http_session_and_max_height_and_progress(
     void *progress_opaque) {
   if (session == NULL || (cookie_file != NULL && cookie_file[0] == '\0'))
     return YT_ERR_INVALID_RESPONSE;
-  return resolve_video(session, input, cookie_file, max_height, result,
-                       progress, progress_opaque);
+  {
+    YTMediaSelection selection;
+    YTStatus status;
+    if (result == NULL)
+      return YT_ERR_INVALID_RESPONSE;
+    memset(&selection, 0, sizeof(selection));
+    status = resolve_video(session, input, cookie_file, max_height, 0,
+                           &selection, progress, progress_opaque);
+    if (status == YT_OK) {
+      *result = selection.video;
+      memset(&selection.video, 0, sizeof(selection.video));
+    }
+    yt_media_selection_free(&selection);
+    return status;
+  }
+}
+
+YTStatus yt_resolve_video_with_http_session_and_size_and_progress(
+    YTHttpSession *session, const char *input, const char *cookie_file,
+    int max_height, int try_adaptive, YTMediaSelection *result,
+    YTProgressCallback progress, void *progress_opaque) {
+  if (session == NULL || (cookie_file != NULL && cookie_file[0] == '\0'))
+    return YT_ERR_INVALID_RESPONSE;
+  return resolve_video(session, input, cookie_file, max_height, try_adaptive,
+                       result, progress, progress_opaque);
 }
 
 YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
@@ -1534,6 +1778,14 @@ void yt_media_request_free(YTMediaRequest *media) {
   free(media->mime_type);
   free(media->user_agent);
   memset(media, 0, sizeof(*media));
+}
+
+void yt_media_selection_free(YTMediaSelection *selection) {
+  if (selection == NULL)
+    return;
+  yt_media_request_free(&selection->video);
+  yt_media_request_free(&selection->audio);
+  memset(selection, 0, sizeof(*selection));
 }
 
 const char *yt_status_string(YTStatus status) {

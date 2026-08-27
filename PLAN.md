@@ -483,11 +483,11 @@ as a directly downloadable MP4 containing both video and audio; higher-quality
 entries are normally separate video-only and audio-only streams in
 `streamingData.adaptiveFormats`.
 
-- [ ] Inspect `streamingData.adaptiveFormats` only for this path and retain the
+- [x] Inspect `streamingData.adaptiveFormats` only for this path and retain the
   existing progressive `streamingData.formats` path as the first fallback.
-- [ ] Select an H.264 video stream at or below 720p and a compatible AAC/M4A
+- [x] Select an H.264 video stream at or below 720p and a compatible AAC/M4A
   audio stream. Prefer formats suitable for PowerPC Tiger and iPhone 4 playback.
-- [ ] Download both streams through the existing native HTTP/TLS, cookie,
+- [x] Download both streams through the existing native HTTP/TLS, cookie,
   challenge-solving, PO-token, expiry, and atomic-file infrastructure.
 - [ ] Add or integrate a small, reviewed native ISO Base Media File Format muxer
   that combines the existing encoded tracks without decoding or re-encoding.

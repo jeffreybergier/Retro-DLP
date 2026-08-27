@@ -165,7 +165,38 @@ static int test_offline_player_fixtures(void) {
       "\"adaptiveFormats\":["
       "{\"itag\":999,\"url\":\"https://fixture.googlevideo.com/ignored\","
       "\"mimeType\":\"video/mp4\",\"width\":3840,\"height\":2160}]}}";
+  static const char adaptive_sizes[] =
+      "{\"playabilityStatus\":{\"status\":\"OK\"},\"streamingData\":{"
+      "\"formats\":[{\"itag\":18,\"url\":\"https://fixture.googlevideo.com/"
+      "progressive\",\"mimeType\":\"video/mp4; codecs=\\\"avc1.42001E, "
+      "mp4a.40.2\\\"\",\"width\":640,\"height\":360}],"
+      "\"adaptiveFormats\":["
+      "{\"itag\":137,\"url\":\"https://fixture.googlevideo.com/v1080\","
+      "\"mimeType\":\"video/mp4; codecs=\\\"avc1.640028\\\"\","
+      "\"width\":1920,\"height\":1080,\"fps\":30,\"bitrate\":4000000},"
+      "{\"itag\":299,\"url\":\"https://fixture.googlevideo.com/v1080-60\","
+      "\"mimeType\":\"video/mp4; codecs=\\\"avc1.64002a\\\"\","
+      "\"width\":1920,\"height\":1080,\"fps\":60,\"bitrate\":6000000},"
+      "{\"itag\":136,\"url\":\"https://fixture.googlevideo.com/v720\","
+      "\"mimeType\":\"video/mp4; codecs=\\\"avc1.4d401f\\\"\","
+      "\"width\":1280,\"height\":720,\"fps\":30,\"bitrate\":2000000},"
+      "{\"itag\":247,\"url\":\"https://fixture.googlevideo.com/vp9\","
+      "\"mimeType\":\"video/webm; codecs=\\\"vp9\\\"\","
+      "\"width\":1280,\"height\":720,\"bitrate\":3000000},"
+      "{\"itag\":139,\"url\":\"https://fixture.googlevideo.com/aac-low\","
+      "\"mimeType\":\"audio/mp4; codecs=\\\"mp4a.40.2\\\"\","
+      "\"bitrate\":48000},"
+      "{\"itag\":140,\"url\":\"https://fixture.googlevideo.com/aac\","
+      "\"mimeType\":\"audio/mp4; codecs=\\\"mp4a.40.2\\\"\","
+      "\"audioChannels\":2,\"bitrate\":129000},"
+      "{\"itag\":258,\"url\":\"https://fixture.googlevideo.com/aac-6ch\","
+      "\"mimeType\":\"audio/mp4; codecs=\\\"mp4a.40.2\\\"\","
+      "\"audioChannels\":6,\"bitrate\":384000},"
+      "{\"itag\":251,\"url\":\"https://fixture.googlevideo.com/opus\","
+      "\"mimeType\":\"audio/webm; codecs=\\\"opus\\\"\","
+      "\"bitrate\":160000}]}}";
   YTMediaRequest media;
+  YTMediaSelection selection;
   YTStatus status;
 
   if (!yt_http_has_mp4_ftyp(mp4_prefix, sizeof(mp4_prefix)) ||
@@ -183,6 +214,61 @@ static int test_offline_player_fixtures(void) {
       media.mime_type == NULL ||
       strncmp(media.mime_type, "video/mp4", 9) != 0) {
     fprintf(stderr, "FAIL: deterministic default player fixture\n");
+    if (status == YT_OK)
+      yt_media_request_free(&media);
+    return 1;
+  }
+  yt_media_request_free(&media);
+
+  status = yt_parse_player_response_with_adaptive_size(
+      adaptive_sizes, sizeof(adaptive_sizes) - 1, 720, &selection);
+  if (status != YT_OK || !selection.adaptive ||
+      selection.video.itag != 136 || selection.video.height != 720 ||
+      selection.audio.itag != 140 || selection.audio.url == NULL ||
+      strstr(selection.audio.url, "aac") == NULL) {
+    fprintf(stderr, "FAIL: adaptive 720p H.264/AAC format selection\n");
+    if (status == YT_OK)
+      yt_media_selection_free(&selection);
+    return 1;
+  }
+  yt_media_selection_free(&selection);
+
+  status = yt_parse_player_response_with_adaptive_size(
+      progressive_sizes, sizeof(progressive_sizes) - 1, 720, &selection);
+  if (status != YT_OK || selection.adaptive || selection.video.itag != 22 ||
+      selection.video.height != 720 || selection.audio.url != NULL) {
+    fprintf(stderr, "FAIL: adaptive selection did not fall back to progressive\n");
+    if (status == YT_OK)
+      yt_media_selection_free(&selection);
+    return 1;
+  }
+  yt_media_selection_free(&selection);
+
+  status = yt_parse_player_response_with_adaptive_size(
+      adaptive_sizes, sizeof(adaptive_sizes) - 1, 1080, &selection);
+  if (status != YT_OK || !selection.adaptive ||
+      selection.video.itag != 137 || selection.video.height != 1080 ||
+      selection.audio.itag != 140) {
+    fprintf(stderr, "FAIL: adaptive 1080p H.264/AAC format selection\n");
+    if (status == YT_OK)
+      yt_media_selection_free(&selection);
+    return 1;
+  }
+  yt_media_selection_free(&selection);
+
+  status = yt_parse_player_response_with_adaptive_size(
+      adaptive_sizes, sizeof(adaptive_sizes) - 1, 480, &selection);
+  if (status != YT_ERR_INVALID_RESPONSE) {
+    fprintf(stderr, "FAIL: adaptive selection accepted 480p\n");
+    if (status == YT_OK)
+      yt_media_selection_free(&selection);
+    return 1;
+  }
+
+  status = yt_parse_player_response_with_max_height(
+      adaptive_sizes, sizeof(adaptive_sizes) - 1, 480, &media);
+  if (status != YT_OK || media.itag != 18 || media.height != 360) {
+    fprintf(stderr, "FAIL: 480p path did not remain progressive-only\n");
     if (status == YT_OK)
       yt_media_request_free(&media);
     return 1;

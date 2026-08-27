@@ -37,6 +37,12 @@ typedef struct {
   int64_t content_length;
 } YTMediaRequest;
 
+typedef struct {
+  YTMediaRequest video;
+  YTMediaRequest audio;
+  int adaptive;
+} YTMediaSelection;
+
 typedef void (*YTProgressCallback)(const char *message, void *opaque);
 
 #define YT_DEFAULT_MAX_HEIGHT 720
@@ -48,6 +54,9 @@ YTStatus yt_parse_player_response_with_max_height(const char *json,
                                                   size_t length,
                                                   int max_height,
                                                   YTMediaRequest *result);
+YTStatus yt_parse_player_response_with_adaptive_size(
+    const char *json, size_t length, int max_height,
+    YTMediaSelection *result);
 YTStatus yt_parse_player_response_with_javascript(const char *json,
                                                   size_t length,
                                                   const char *player_source,
@@ -68,10 +77,15 @@ YTStatus yt_resolve_video_with_http_session_and_max_height_and_progress(
     YTHttpSession *session, const char *input, const char *cookie_file,
     int max_height, YTMediaRequest *result, YTProgressCallback progress,
     void *progress_opaque);
+YTStatus yt_resolve_video_with_http_session_and_size_and_progress(
+    YTHttpSession *session, const char *input, const char *cookie_file,
+    int max_height, int try_adaptive, YTMediaSelection *result,
+    YTProgressCallback progress, void *progress_opaque);
 YTStatus yt_probe_media_head(const YTMediaRequest *media, long *http_status);
 YTStatus yt_classify_media_http_status(long http_status);
 const char *yt_resolver_user_agent(void);
 void yt_media_request_free(YTMediaRequest *media);
+void yt_media_selection_free(YTMediaSelection *selection);
 const char *yt_status_string(YTStatus status);
 
 #endif
