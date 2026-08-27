@@ -57,8 +57,11 @@ when a compatible pair is unavailable:
 build/linux/retro-dlp --size 1080p YE7VzlLtp-4
 ```
 
-Until native muxing is implemented, an adaptive download produces
-`VIDEO_ID.video.mp4` and `VIDEO_ID.audio.m4a`. Each track uses the same native
+An adaptive download first writes `VIDEO_ID.video.mp4` and
+`VIDEO_ID.audio.m4a`, then uses its native L-SMASH integration to copy both
+encoded tracks into a conventional, non-fragmented `VIDEO_ID.mp4`. After the
+final MP4 is validated and atomically published, the two input tracks are
+removed. They are retained if muxing fails. Each track uses the same native
 HTTP session, cookies, URL-challenge handling, PO-token error classification,
 MP4 validation, exclusive `.part` file, and atomic publication as progressive
 downloads. Retro-DLP does not require FFmpeg or another external executable.

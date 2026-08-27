@@ -1824,6 +1824,8 @@ const char *yt_status_string(YTStatus status) {
     return "invalid or unreadable Netscape cookie file";
   case YT_ERR_AUTH_COOKIES_INVALID:
     return "YouTube authentication cookies are missing, expired, or invalid";
+  case YT_ERR_MUX:
+    return "MP4 muxing failed";
   }
   return "unknown error";
 }

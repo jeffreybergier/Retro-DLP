@@ -10,6 +10,7 @@ LINUX_BUILD_DIR := $(BUILD_DIR)/linux
 
 SHARED_SOURCES := source/shared/main.c source/shared/cli.c \
 	source/shared/yt_http.c source/shared/yt_resolver.c \
+	source/shared/yt_mux.c \
 	source/shared/yt_cache.c source/shared/yt_crypto.c source/shared/yt_cookies.c \
 	source/shared/yt_ejs.c source/shared/yt_ejs_assets.c \
 	source/shared/test/cache_test.c source/shared/test/cookie_test.c \
@@ -63,7 +64,7 @@ MAC_MIN_ARM64 := 11.0
 IOS_MIN_ARMV7 := 5.0
 IOS_MIN_ARM64 := 7.0
 
-CPPFLAGS := -Isource/shared -I$(QUICKJS_DIR) \
+CPPFLAGS := -Isource/shared -I$(QUICKJS_DIR) -Isource/deps/L-SMASH \
 	-DRETRO_DLP_VERSION=\"$(VERSION)\"
 MACOS_BASE_CPPFLAGS := $(CPPFLAGS) -I$(ALTIVECCORE_DIR)/include
 LINUX_CPPFLAGS := $(CPPFLAGS) -I$(CJSON_DIR)
@@ -86,8 +87,13 @@ QUICKJS_INT_DIR := $(LINUX_INT_DIR)/QuickJS
 QUICKJS_OBJECTS := $(addprefix $(QUICKJS_INT_DIR)/, \
 	$(QUICKJS_SOURCE_NAMES:.c=.o))
 QUICKJS_LIBRARY := $(LINUX_INT_DIR)/libquickjs.a
+LINUX_LSMASH_INT_DIR := $(LINUX_INT_DIR)/L-SMASH
+LINUX_LSMASH_OBJECTS := $(addprefix $(LINUX_LSMASH_INT_DIR)/, \
+	$(LSMASH_SOURCE_NAMES:.c=.o))
+LINUX_LSMASH_LIBRARY := $(LINUX_INT_DIR)/liblsmash.a
 LINUX_LIBRARIES := -Wl,--whole-archive $(QUICKJS_LIBRARY) \
-	-Wl,--no-whole-archive -lcurl -lcrypto -lm -ldl -lpthread
+	-Wl,--no-whole-archive $(LINUX_LSMASH_LIBRARY) \
+	-lcurl -lcrypto -lm -ldl -lpthread
 LINUX_OBJECTS := $(LINUX_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
 
 include source/make/apple-gcc4.mk
@@ -95,6 +101,7 @@ include source/make/clang.mk
 include source/make/ios-clang.mk
 
 APPLICATION_DEPENDENCIES := $(LINUX_OBJECTS:.o=.d) $(PPC_OBJECTS:.o=.d) \
+	$(LINUX_LSMASH_OBJECTS:.o=.d) \
 	$(I386_OBJECTS:.o=.d) $(X86_64_OBJECTS:.o=.d) $(ARM64_OBJECTS:.o=.d) \
 	$(IOS_OBJECTS:.o=.d) $(PPC_LSMASH_OBJECTS:.o=.d) \
 	$(I386_LSMASH_OBJECTS:.o=.d) $(X86_64_LSMASH_OBJECTS:.o=.d) \
@@ -158,7 +165,8 @@ $(IOS_CA_BUNDLE): $(IOS_CA_SOURCE)
 	@mkdir -p $(dir $@)
 	@cp $< $@
 
-$(LINUX_BUILD_DIR)/$(PROGRAM): $(LINUX_OBJECTS) $(QUICKJS_LIBRARY)
+$(LINUX_BUILD_DIR)/$(PROGRAM): $(LINUX_OBJECTS) $(QUICKJS_LIBRARY) \
+		$(LINUX_LSMASH_LIBRARY)
 	@echo "--- Building retro-dlp Linux Release (-O3) ---"
 	@mkdir -p $(dir $@)
 	@$(CC) $(LINUX_OBJECTS) $(LINUX_LIBRARIES) -o $@
@@ -167,6 +175,16 @@ $(LINUX_BUILD_DIR)/$(PROGRAM): $(LINUX_OBJECTS) $(QUICKJS_LIBRARY)
 $(QUICKJS_LIBRARY): $(QUICKJS_OBJECTS)
 	@echo "  > archiving QuickJS static library"
 	@$(AR) rcs $@ $^
+
+$(LINUX_LSMASH_LIBRARY): $(LINUX_LSMASH_OBJECTS)
+	@echo "  > archiving Linux L-SMASH static library"
+	@$(AR) rcs $@ $^
+
+$(LINUX_LSMASH_INT_DIR)/%.o: $(LSMASH_DIR)/%.c
+	@mkdir -p $(dir $@)
+	@$(CC) $(LSMASH_CPPFLAGS) $(LSMASH_CFLAGS) \
+		-Wno-sign-compare -Wno-missing-field-initializers \
+		-MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 $(QUICKJS_INT_DIR)/%.o: $(QUICKJS_DIR)/%.c
 	@mkdir -p $(dir $@)

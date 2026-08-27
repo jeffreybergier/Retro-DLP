@@ -489,10 +489,10 @@ entries are normally separate video-only and audio-only streams in
   audio stream. Prefer formats suitable for PowerPC Tiger and iPhone 4 playback.
 - [x] Download both streams through the existing native HTTP/TLS, cookie,
   challenge-solving, PO-token, expiry, and atomic-file infrastructure.
-- [ ] Add or integrate a small, reviewed native ISO Base Media File Format muxer
+- [x] Add or integrate a small, reviewed native ISO Base Media File Format muxer
   that combines the existing encoded tracks without decoding or re-encoding.
-- [ ] Do not require FFmpeg, MP4Box, or another external executable at runtime.
-- [ ] Bound parser input, allocation sizes, sample counts, and arithmetic; reject
+- [x] Do not require FFmpeg, MP4Box, or another external executable at runtime.
+- [x] Bound parser input, allocation sizes, sample counts, and arithmetic; reject
   malformed or unsupported MP4 structures without publishing partial output.
 - [ ] Preserve timestamps, duration, orientation, aspect ratio, and audio/video
   synchronization in the final MP4.

@@ -13,6 +13,7 @@
 #include "test/self_test.h"
 #include "yt_ejs_assets.h"
 #include "yt_http.h"
+#include "yt_mux.h"
 #include "yt_resolver.h"
 
 #ifndef RETRO_DLP_VERSION
@@ -39,7 +40,7 @@ static void print_usage(FILE *stream) {
           "                   Resolve and print media JSON without downloading.\n"
           "      --size SIZE   Select the best MP4 no larger than 480p, 720p,\n"
           "                   or 1080p (default: 720p). Explicit 720p/1080p\n"
-          "                   may download separate H.264 and AAC tracks.\n"
+          "                   mux separate H.264 and AAC tracks natively.\n"
           "      --test       Run embedded dependency tests.\n");
   fprintf(stream,
           "\n"
@@ -217,40 +218,6 @@ static int print_download_result(const char *path, int64_t bytes_written) {
   return 0;
 }
 
-static int print_adaptive_download_result(const char *video_path,
-                                          int64_t video_bytes,
-                                          const char *audio_path,
-                                          int64_t audio_bytes) {
-  cJSON *document;
-  cJSON *video;
-  cJSON *audio;
-  char *json;
-  document = cJSON_CreateObject();
-  video = cJSON_CreateObject();
-  audio = cJSON_CreateObject();
-  if (document == NULL || video == NULL || audio == NULL ||
-      !cJSON_AddStringToObject(document, "status", "tracks_downloaded") ||
-      !cJSON_AddBoolToObject(document, "adaptive", 1) ||
-      !cJSON_AddStringToObject(video, "path", video_path) ||
-      !cJSON_AddNumberToObject(video, "bytes", (double)video_bytes) ||
-      !cJSON_AddStringToObject(audio, "path", audio_path) ||
-      !cJSON_AddNumberToObject(audio, "bytes", (double)audio_bytes)) {
-    cJSON_Delete(document);
-    cJSON_Delete(video);
-    cJSON_Delete(audio);
-    return 1;
-  }
-  cJSON_AddItemToObject(document, "video", video);
-  cJSON_AddItemToObject(document, "audio", audio);
-  json = cJSON_Print(document);
-  cJSON_Delete(document);
-  if (json == NULL)
-    return 1;
-  printf("%s\n", json);
-  free(json);
-  return 0;
-}
-
 static void print_progress(const char *message, void *opaque) {
   FILE *stream;
   stream = (FILE *)opaque;
@@ -284,7 +251,9 @@ static int resolve_argument(const char *input, int no_download,
   long http_status;
   int64_t bytes_written;
   int64_t audio_bytes_written;
+  int64_t muxed_bytes;
   int failed;
+  int cleanup_failed;
   YTHttpSession *request_session;
 
   if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
@@ -357,20 +326,40 @@ static int resolve_argument(const char *input, int no_download,
       if (status != YT_OK)
         unlink(audio_destination);
     }
-    yt_http_session_destroy(request_session);
-    yt_media_selection_free(&selection);
-    curl_global_cleanup();
     if (status != YT_OK) {
+      yt_http_session_destroy(request_session);
+      yt_media_selection_free(&selection);
+      curl_global_cleanup();
       fprintf(stderr, "retro-dlp: adaptive download failed: %s (HTTP %ld)\n",
               yt_status_string(status), http_status);
       return 1;
     }
-    failed = print_adaptive_download_result(
-        video_destination, bytes_written, audio_destination,
-        audio_bytes_written);
+    fprintf(stderr, "retro-dlp: muxing tracks to %s\n", destination);
+    muxed_bytes = 0;
+    status = yt_mux_mp4_tracks(video_destination, audio_destination,
+                               destination, &muxed_bytes);
+    yt_http_session_destroy(request_session);
+    yt_media_selection_free(&selection);
+    curl_global_cleanup();
+    if (status != YT_OK) {
+      fprintf(stderr,
+              "retro-dlp: mux failed: %s; downloaded tracks were retained\n",
+              yt_status_string(status));
+      return 1;
+    }
+    cleanup_failed = unlink(video_destination) != 0;
+    if (unlink(audio_destination) != 0)
+      cleanup_failed = 1;
+    if (cleanup_failed) {
+      fprintf(stderr,
+              "retro-dlp: mux succeeded but source-track cleanup failed\n");
+      return 1;
+    }
+    fprintf(stderr, "retro-dlp: mux completed and source tracks removed\n");
+    failed = print_download_result(destination, muxed_bytes);
     if (failed)
       fprintf(stderr,
-              "retro-dlp: downloads completed but result JSON failed\n");
+              "retro-dlp: mux completed but result JSON failed\n");
     return failed;
   }
   fprintf(stderr, "retro-dlp: starting download to %s\n", destination);
