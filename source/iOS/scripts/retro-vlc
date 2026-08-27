@@ -1,0 +1,49 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+  echo "usage: retro-vlc URL_OR_VIDEO_ID" >&2
+  exit 2
+fi
+
+video_input=$1
+retro_dlp=/var/mobile/bin/retro-dlp
+vlc_identifier=org.videolan.vlc-ios
+
+if [ ! -x "$retro_dlp" ]; then
+  echo "retro-vlc: retro-dlp is not installed at $retro_dlp" >&2
+  exit 1
+fi
+
+if [ ! -x /usr/bin/ipainstaller ]; then
+  echo "retro-vlc: ipainstaller is required to find VLC's data container" >&2
+  exit 1
+fi
+
+vlc_data=$(/usr/bin/ipainstaller -i "$vlc_identifier" 2>/dev/null |
+  sed -n 's/^Data: //p' | sed -n '1p')
+if [ -z "$vlc_data" ]; then
+  echo "retro-vlc: could not find VLC identifier $vlc_identifier" >&2
+  exit 1
+fi
+
+case "$vlc_data" in
+  /private/var/mobile/Applications/*|/var/mobile/Applications/*|\
+  /private/var/mobile/Containers/Data/Application/*|\
+  /var/mobile/Containers/Data/Application/*)
+    ;;
+  *)
+    echo "retro-vlc: could not find VLC's data container" >&2
+    exit 1
+    ;;
+esac
+
+vlc_documents=$vlc_data/Documents
+if [ ! -d "$vlc_documents" ] || [ ! -w "$vlc_documents" ]; then
+  echo "retro-vlc: VLC Documents directory is unavailable: $vlc_documents" >&2
+  exit 1
+fi
+
+cd "$vlc_documents"
+exec "$retro_dlp" -t high --cookies-default "$video_input"
