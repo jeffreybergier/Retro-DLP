@@ -47,18 +47,41 @@ build/linux/retro-dlp YE7VzlLtp-4
 build/linux/retro-dlp 'https://www.youtube.com/watch?v=YE7VzlLtp-4'
 ```
 
-Retro-DLP selects the highest progressive MP4 resolution at or below 720p by
-default. Explicit `--size 480p` also remains progressive-only. Explicit
-`--size 720p` or `--size 1080p` first selects separate H.264 video and AAC-LC
-audio from `streamingData.adaptiveFormats`, falling back to a progressive MP4
-when a compatible pair is unavailable:
+Retro-DLP uses the explicit progressive preference `22/18` by default. Use
+yt-dlp-style exact format IDs to select a particular progressive stream or a
+video/audio pair:
 
 ```sh
-build/linux/retro-dlp --size 1080p YE7VzlLtp-4
+build/linux/retro-dlp -f 18 YE7VzlLtp-4
+build/linux/retro-dlp -f 136+140 YE7VzlLtp-4
+build/linux/retro-dlp -f '137+140/136+140/18' YE7VzlLtp-4
 ```
 
-An adaptive download first writes `VIDEO_ID.video.mp4` and
-`VIDEO_ID.audio.m4a`, then uses its native L-SMASH integration to copy both
+`+` combines exactly one video-only and one audio-only stream. `/` specifies
+explicit, left-to-right alternatives. Retro-DLP does not implement yt-dlp's
+automatic selectors, filters, comma-separated outputs, or parentheses. It
+never silently substitutes another format for an exact request. If none of the
+requested alternatives is available, it prints the same stream table as
+`-F`/`--list-formats` and exits unsuccessfully.
+
+List the individual formats advertised by YouTube without solving their URL
+challenges or probing media servers:
+
+```sh
+build/linux/retro-dlp -F YE7VzlLtp-4
+```
+
+The `SUPPORT` column reports `Yes` when Retro-DLP can download and, when
+needed, mux the stream; it is not a playback guarantee for every target device.
+H.264 MP4 streams are supported at any advertised frame rate, and mono or
+stereo AAC-LC and HE-AAC audio in MP4 are supported. The iPhone 4 playback
+profile remains limited to 720p30. The table sorts supported entries before
+unsupported entries, then by type (video+audio, video only, audio only),
+container (MP4 before WebM), ascending width, and itag. Column widths adapt to
+the returned codec and resolution strings.
+
+An adaptive download first writes temporary files derived from the final
+output path, then uses its native L-SMASH integration to copy both
 encoded tracks into a conventional, non-fragmented `VIDEO_ID.mp4`. After the
 final MP4 is validated and atomically published, the two input tracks are
 removed. They are retained if muxing fails. Each track uses the same native
@@ -75,11 +98,16 @@ result remains on stdout. The media transfer enables libcurl's built-in
 progress meter; it is supplied by libcurl rather than by launching the `curl`
 command-line program.
 
-Resolve without downloading or probing the media URL with:
+Print normalized, yt-dlp-style JSON without probing or downloading media:
 
 ```sh
-build/linux/retro-dlp --no-download YE7VzlLtp-4
+build/linux/retro-dlp --dump-json -f 136+140 YE7VzlLtp-4
 ```
+
+The JSON includes the video ID and title, canonical webpage URL, selected
+`format_id`, codecs, dimensions, final solved URLs and HTTP headers. Adaptive
+selections use yt-dlp's `requested_formats` array. Use `-F`/`--list-formats` to
+inspect the complete advertised format inventory.
 
 Use an authenticated YouTube session exported in Mozilla/Netscape
 `cookies.txt` format with:
@@ -87,19 +115,16 @@ Use an authenticated YouTube session exported in Mozilla/Netscape
 ```sh
 build/linux/retro-dlp --cookies /path/to/youtube-cookies.txt YE7VzlLtp-4
 build/linux/retro-dlp --cookies /path/to/youtube-cookies.txt \
-  --no-download YE7VzlLtp-4
+  --dump-json YE7VzlLtp-4
 ```
 
-If the exported file is stored at `~/.retro-dlp/cookies.txt`, omit the path:
+If the exported file is stored at `~/.retro-dlp/cookies.txt`, use the explicit
+default-cookie option:
 
 ```sh
-retro-dlp --cookies YE7VzlLtp-4
-retro-dlp --cookies --no-download YE7VzlLtp-4
+retro-dlp --cookies-default YE7VzlLtp-4
+retro-dlp --cookies-default --dump-json YE7VzlLtp-4
 ```
-
-The argument following `--cookies` is treated as the video when it is a valid
-11-character YouTube ID or supported YouTube URL. Otherwise, it is treated as
-an explicit cookie-file path.
 
 Retro-DLP accepts a cookie file as authenticated only when it contains a
 current `LOGIN_INFO` cookie and at least one current `SAPISID`,
@@ -117,10 +142,7 @@ rotate. Retro-DLP never includes cookies, SAPISID authorization, account sync
 IDs, or other session secrets in result JSON or resolver caches. Authenticated
 and anonymous success/failure cache entries are separate.
 
-For a progressive selection this prints the existing JSON containing the direct
-URL, itag, dimensions, MIME type, expiry time, and required request headers. An
-adaptive selection prints the same fields under separate `video` and `audio`
-objects. Retro-DLP does not yet generate PO tokens.
+Retro-DLP does not yet generate PO tokens.
 
 On macOS, every libcurl handle is configured with `cacert.pem` resolved beside
 the running executable. Network requests fail explicitly if the bundle is
@@ -173,40 +195,20 @@ The repository must define `ALTIVEC_SDK_MACOS_105_URL`,
 `ALTIVEC_SDK_MACOS_113_URL`, and `ALTIVEC_SDK_IPHONEOS_84_URL` as GitHub Actions
 repository secrets containing HTTPS URLs for the private SDK archives.
 
-Run the embedded cJSON and QuickJS smoke tests directly on any supported
-platform:
+Run the separate Linux test executable through the build target:
 
 ```sh
-retro-dlp --test
+make test
 ```
 
-Supply authenticated cookies to run the same fixtures through the tokenless
-authenticated media path:
-
-```sh
-retro-dlp --cookies /path/to/youtube-cookies.txt --test
-retro-dlp --cookies --test
-make test TEST_COOKIES=/absolute/path/to/youtube-cookies.txt
-```
-
-This runs deterministic cache, player-response, and batched `s`/`n` resolver
-fixtures first, followed by staged resolver tests for `YE7VzlLtp-4` and
-`-_x6t4CaPzo`. Each live test requests the same 10,241-byte prefix as yt-dlp's
-test mode from the resulting Google Video URL and validates the returned MP4
-prefix. When EJS assets are
-installed, it also runs the `s`/`n` tests for batching, preprocessed-player
+This runs deterministic cache, cookie, player-response, HTTP-classification,
+format-selection, and batched `s`/`n` resolver fixtures. It does not contact
+YouTube or Google Video, so routine test runs cannot consume request quota or
+contribute to IP throttling. When EJS assets are installed, it also runs the
+`s`/`n` tests for batching, preprocessed-player
 reuse, malformed output, exceptions, execution deadlines, memory limits, and
 runtime recovery. Otherwise that section reports a skip with the installation
-command. The live portion requires internet access and a successful 2xx media
-response; a PO-token-related HTTP 403 fails the self-test. The tests
-execute inside the current binary slice, making them suitable for checking the
-actual PowerPC, i386, x86_64, arm64, or Linux build on its target machine.
-
-`make test` additionally runs the pinned vendored yt-dlp with the same `mweb`
-client. It compares selected format metadata, the Google Video
-media service and stable query fields, direct signature parameter choice,
-matching transformed-`n` parameter presence, and the HEAD
-result/classification.
+command. Test fixtures are not linked into release binaries.
 
 The resolver keeps bounded, versioned caches under `~/.retro-dlp/cache/v1` for
 the active client manifest, raw player JavaScript, EJS preprocessed players,
@@ -216,7 +218,7 @@ Player artifacts use SHA-256 keys, and corrupt or expired entries are discarded.
 ## Source layout
 
 - `source/shared`: portable CLI code
-- `source/shared/test`: tests embedded into every platform binary
+- `source/shared/test`: portable tests linked into the separate Linux test binary
 - `source/linux/test`: Linux-only CLI integration tests
 - `source/macOS`: macOS-specific implementations
 - `source/linux`: Linux-specific implementations

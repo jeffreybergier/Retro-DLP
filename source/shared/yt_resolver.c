@@ -57,7 +57,17 @@ typedef struct {
   int bitrate;
   int audio_channels;
   int64_t content_length;
+  int has_video;
+  int has_audio;
+  int is_drc;
 } YTFormatCandidate;
+
+typedef struct {
+  int itags[2];
+  int count;
+} YTFormatAlternative;
+
+#define YT_MAX_FORMAT_ALTERNATIVES 32
 
 typedef struct {
   YTAuthCookies cookies;
@@ -240,6 +250,26 @@ static void failure_cache_key(const char *video_id, const YTClient *client,
   if (session_key[0] == '\0' ||
       snprintf(material, sizeof(material), "%s:%s:%d", session_key,
                try_adaptive ? "adaptive" : "progressive", max_height) >=
+          (int)sizeof(material)) {
+    key[0] = '\0';
+    return;
+  }
+  yt_cache_key_for_string(material, key);
+}
+
+static void exact_failure_cache_key(const char *video_id,
+                                    const YTClient *client,
+                                    int authenticated,
+                                    const char *format_expression,
+                                    char key[65]) {
+  char session_key[65];
+  char format_key[65];
+  char material[132];
+  yt_failure_cache_key_for_session(video_id, client->name, client->version,
+                                   authenticated, session_key);
+  yt_cache_key_for_string(format_expression, format_key);
+  if (session_key[0] == '\0' || format_key[0] == '\0' ||
+      snprintf(material, sizeof(material), "%s:%s", session_key, format_key) >=
           (int)sizeof(material)) {
     key[0] = '\0';
     return;
@@ -760,6 +790,8 @@ static void format_candidate_free(YTFormatCandidate *candidate) {
   memset(candidate, 0, sizeof(*candidate));
 }
 
+static int mime_has_codec(const char *mime_type, const char *codec);
+
 static int candidate_is_better(const YTFormatCandidate *current,
                                const YTFormatCandidate *candidate) {
   int current_is_direct;
@@ -808,9 +840,202 @@ static int read_format_candidate(cJSON *format, YTFormatCandidate *candidate) {
   candidate->fps = json_integer(format, "fps");
   candidate->bitrate = json_integer(format, "bitrate");
   candidate->audio_channels = json_integer(format, "audioChannels");
+  candidate->is_drc = cJSON_IsTrue(
+      cJSON_GetObjectItemCaseSensitive(format, "isDrc"));
   content_length = json_string(format, "contentLength");
   candidate->content_length = parse_decimal(content_length);
   return 1;
+}
+
+static int candidate_supported(const YTFormatCandidate *candidate) {
+  if (candidate->has_video && candidate->has_audio)
+    return strncmp(candidate->mime_type, "video/mp4", 9) == 0 &&
+           mime_has_codec(candidate->mime_type, "avc1.") &&
+           mime_has_codec(candidate->mime_type, "mp4a.40.2");
+  if (candidate->has_video)
+    return strncmp(candidate->mime_type, "video/mp4", 9) == 0 &&
+           mime_has_codec(candidate->mime_type, "avc1.");
+  if (candidate->has_audio)
+    return strncmp(candidate->mime_type, "audio/mp4", 9) == 0 &&
+           (mime_has_codec(candidate->mime_type, "mp4a.40.2") ||
+            mime_has_codec(candidate->mime_type, "mp4a.40.5")) &&
+           candidate->audio_channels <= 2;
+  return 0;
+}
+
+static int parse_format_expression(const char *expression,
+                                   YTFormatAlternative *alternatives,
+                                   size_t *alternative_count) {
+  const char *cursor;
+  char *end;
+  long value;
+  size_t count;
+  int item_count;
+  if (expression == NULL || expression[0] == '\0')
+    return 0;
+  cursor = expression;
+  count = 0;
+  while (*cursor != '\0') {
+    if (count == YT_MAX_FORMAT_ALTERNATIVES)
+      return 0;
+    item_count = 0;
+    while (1) {
+      if (!isdigit((unsigned char)*cursor))
+        return 0;
+      value = strtol(cursor, &end, 10);
+      if (end == cursor || value <= 0 || value > INT_MAX)
+        return 0;
+      alternatives[count].itags[item_count++] = (int)value;
+      cursor = end;
+      if (*cursor != '+')
+        break;
+      if (item_count == 2)
+        return 0;
+      ++cursor;
+    }
+    alternatives[count].count = item_count;
+    ++count;
+    if (*cursor == '\0')
+      break;
+    if (*cursor != '/')
+      return 0;
+    ++cursor;
+    if (*cursor == '\0')
+      return 0;
+  }
+  *alternative_count = count;
+  return 1;
+}
+
+int yt_format_expression_valid(const char *expression) {
+  YTFormatAlternative alternatives[YT_MAX_FORMAT_ALTERNATIVES];
+  size_t count;
+  return parse_format_expression(expression, alternatives, &count);
+}
+
+static int add_format_info(YTMediaSelection *result,
+                           const YTFormatCandidate *candidate) {
+  YTFormatInfo *resized;
+  YTFormatInfo *info;
+  size_t new_count;
+  size_t index;
+  for (index = 0; index < result->format_count; ++index) {
+    info = &result->formats[index];
+    if (info->itag == candidate->itag &&
+        info->has_video == candidate->has_video &&
+        info->has_audio == candidate->has_audio &&
+        strcmp(info->mime_type, candidate->mime_type) == 0) {
+      if (info->is_drc && !candidate->is_drc)
+        info->is_drc = 0;
+      return 1;
+    }
+  }
+  if (result->format_count == (size_t)-1)
+    return 0;
+  new_count = result->format_count + 1;
+  resized = (YTFormatInfo *)realloc(result->formats,
+                                    new_count * sizeof(*result->formats));
+  if (resized == NULL)
+    return 0;
+  result->formats = resized;
+  info = &result->formats[result->format_count];
+  memset(info, 0, sizeof(*info));
+  info->mime_type = copy_string(candidate->mime_type);
+  if (info->mime_type == NULL)
+    return 0;
+  info->itag = candidate->itag;
+  info->width = candidate->width;
+  info->height = candidate->height;
+  info->fps = candidate->fps;
+  info->bitrate = candidate->bitrate;
+  info->audio_channels = candidate->audio_channels;
+  info->content_length = candidate->content_length;
+  info->has_video = candidate->has_video;
+  info->has_audio = candidate->has_audio;
+  info->supported = candidate_supported(candidate);
+  info->is_drc = candidate->is_drc;
+  result->format_count = new_count;
+  return 1;
+}
+
+static int format_type_rank(const YTFormatInfo *format) {
+  if (format->has_video && format->has_audio)
+    return 0;
+  if (format->has_video)
+    return 1;
+  return 2;
+}
+
+static int format_container_rank(const YTFormatInfo *format) {
+  if (strncmp(format->mime_type, "video/mp4", 9) == 0 ||
+      strncmp(format->mime_type, "audio/mp4", 9) == 0)
+    return 0;
+  if (strncmp(format->mime_type, "video/webm", 10) == 0 ||
+      strncmp(format->mime_type, "audio/webm", 10) == 0)
+    return 1;
+  return 2;
+}
+
+static int compare_format_info(const void *left_value,
+                               const void *right_value) {
+  const YTFormatInfo *left = (const YTFormatInfo *)left_value;
+  const YTFormatInfo *right = (const YTFormatInfo *)right_value;
+  int left_type;
+  int right_type;
+  int left_container;
+  int right_container;
+  if (left->supported != right->supported)
+    return left->supported ? -1 : 1;
+  left_type = format_type_rank(left);
+  right_type = format_type_rank(right);
+  if (left_type != right_type)
+    return left_type < right_type ? -1 : 1;
+  left_container = format_container_rank(left);
+  right_container = format_container_rank(right);
+  if (left_container != right_container)
+    return left_container < right_container ? -1 : 1;
+  if (left->width != right->width)
+    return left->width < right->width ? -1 : 1;
+  if (left->itag != right->itag)
+    return left->itag < right->itag ? -1 : 1;
+  return 0;
+}
+
+static YTStatus collect_format_inventory(cJSON *document,
+                                         YTMediaSelection *result) {
+  cJSON *streaming_data;
+  cJSON *array;
+  cJSON *format;
+  YTFormatCandidate candidate;
+  int adaptive;
+  streaming_data = cJSON_GetObjectItemCaseSensitive(document, "streamingData");
+  for (adaptive = 0; adaptive <= 1; ++adaptive) {
+    array = cJSON_GetObjectItemCaseSensitive(
+        streaming_data, adaptive ? "adaptiveFormats" : "formats");
+    if (!cJSON_IsArray(array))
+      continue;
+    cJSON_ArrayForEach(format, array) {
+      if (!read_format_candidate(format, &candidate))
+        continue;
+      if (adaptive) {
+        candidate.has_video = strncmp(candidate.mime_type, "video/", 6) == 0;
+        candidate.has_audio = strncmp(candidate.mime_type, "audio/", 6) == 0;
+      } else {
+        candidate.has_video = 1;
+        candidate.has_audio = 1;
+      }
+      if (!add_format_info(result, &candidate)) {
+        format_candidate_free(&candidate);
+        return YT_ERR_OUT_OF_MEMORY;
+      }
+      format_candidate_free(&candidate);
+    }
+  }
+  if (result->format_count == 0)
+    return YT_ERR_NO_PROGRESSIVE_MP4;
+  qsort(result->formats, result->format_count, sizeof(*result->formats),
+        compare_format_info);
+  return YT_OK;
 }
 
 static YTStatus inspect_progressive_mp4(cJSON *document, int max_height,
@@ -934,6 +1159,9 @@ static YTStatus finish_candidate(const YTFormatCandidate *candidate,
   result->itag = candidate->itag;
   result->width = candidate->width;
   result->height = candidate->height;
+  result->fps = candidate->fps;
+  result->bitrate = candidate->bitrate;
+  result->audio_channels = candidate->audio_channels;
   result->expires_unix = url_query_integer(url, "expire");
   result->content_length = candidate->content_length;
   return YT_OK;
@@ -1081,6 +1309,159 @@ static YTStatus solve_candidate(YTFormatCandidate *candidate,
   return solve_candidates(candidate, 1, player_source, client, result);
 }
 
+static int exact_candidate_is_better(const YTFormatCandidate *candidate,
+                                     const YTFormatCandidate *selected) {
+  int candidate_direct;
+  int selected_direct;
+  if (selected->url == NULL)
+    return 1;
+  if (candidate->is_drc != selected->is_drc)
+    return !candidate->is_drc;
+  candidate_direct = candidate->signature == NULL &&
+                     candidate->n_challenge == NULL;
+  selected_direct = selected->signature == NULL &&
+                    selected->n_challenge == NULL;
+  if (candidate_direct != selected_direct)
+    return candidate_direct;
+  return candidate->bitrate > selected->bitrate;
+}
+
+static YTStatus find_exact_candidate(cJSON *document, int itag,
+                                     int want_video, int want_audio,
+                                     YTFormatCandidate *selected) {
+  cJSON *streaming_data;
+  cJSON *array;
+  cJSON *format;
+  YTFormatCandidate candidate;
+  int adaptive;
+  memset(selected, 0, sizeof(*selected));
+  streaming_data = cJSON_GetObjectItemCaseSensitive(document, "streamingData");
+  for (adaptive = 0; adaptive <= 1; ++adaptive) {
+    array = cJSON_GetObjectItemCaseSensitive(
+        streaming_data, adaptive ? "adaptiveFormats" : "formats");
+    if (!cJSON_IsArray(array))
+      continue;
+    cJSON_ArrayForEach(format, array) {
+      if (json_integer(format, "itag") != itag ||
+          !read_format_candidate(format, &candidate))
+        continue;
+      if (adaptive) {
+        candidate.has_video = strncmp(candidate.mime_type, "video/", 6) == 0;
+        candidate.has_audio = strncmp(candidate.mime_type, "audio/", 6) == 0;
+      } else {
+        candidate.has_video = 1;
+        candidate.has_audio = 1;
+      }
+      if (candidate.has_video != want_video ||
+          candidate.has_audio != want_audio ||
+          !candidate_supported(&candidate)) {
+        format_candidate_free(&candidate);
+        continue;
+      }
+      if (exact_candidate_is_better(&candidate, selected)) {
+        format_candidate_free(selected);
+        *selected = candidate;
+      } else {
+        format_candidate_free(&candidate);
+      }
+    }
+  }
+  return selected->url == NULL ? YT_ERR_FORMAT_UNAVAILABLE : YT_OK;
+}
+
+static char *selection_format_id(const YTFormatAlternative *alternative) {
+  char buffer[64];
+  if (alternative->count == 1)
+    snprintf(buffer, sizeof(buffer), "%d", alternative->itags[0]);
+  else
+    snprintf(buffer, sizeof(buffer), "%d+%d", alternative->itags[0],
+             alternative->itags[1]);
+  return copy_string(buffer);
+}
+
+static YTStatus parse_exact_selection_document(
+    cJSON *document, const char *player_source, const YTClient *client,
+    const char *format_expression, YTMediaSelection *result) {
+  YTFormatAlternative alternatives[YT_MAX_FORMAT_ALTERNATIVES];
+  size_t alternative_count;
+  size_t index;
+  YTFormatCandidate candidates[2];
+  YTMediaRequest solved[2];
+  YTStatus status;
+  if (!parse_format_expression(format_expression, alternatives,
+                               &alternative_count))
+    return YT_ERR_INVALID_FORMAT;
+  for (index = 0; index < alternative_count; ++index) {
+    memset(candidates, 0, sizeof(candidates));
+    if (alternatives[index].count == 1) {
+      status = find_exact_candidate(document, alternatives[index].itags[0],
+                                    1, 1, &candidates[0]);
+      if (status != YT_OK)
+        continue;
+      status = solve_candidate(&candidates[0], player_source, client,
+                               &result->video);
+      format_candidate_free(&candidates[0]);
+      if (status != YT_OK)
+        return status;
+      result->format_id = selection_format_id(&alternatives[index]);
+      if (result->format_id == NULL) {
+        yt_media_request_free(&result->video);
+        return YT_ERR_OUT_OF_MEMORY;
+      }
+      return YT_OK;
+    }
+    status = find_exact_candidate(document, alternatives[index].itags[0],
+                                  1, 0, &candidates[0]);
+    if (status == YT_OK)
+      status = find_exact_candidate(document, alternatives[index].itags[1],
+                                    0, 1, &candidates[1]);
+    if (status != YT_OK) {
+      format_candidate_free(&candidates[0]);
+      format_candidate_free(&candidates[1]);
+      status = find_exact_candidate(document, alternatives[index].itags[1],
+                                    1, 0, &candidates[0]);
+      if (status == YT_OK)
+        status = find_exact_candidate(document, alternatives[index].itags[0],
+                                      0, 1, &candidates[1]);
+    }
+    if (status != YT_OK) {
+      format_candidate_free(&candidates[0]);
+      format_candidate_free(&candidates[1]);
+      continue;
+    }
+    memset(solved, 0, sizeof(solved));
+    status = solve_candidates(candidates, 2, player_source, client, solved);
+    format_candidate_free(&candidates[0]);
+    format_candidate_free(&candidates[1]);
+    if (status != YT_OK)
+      return status;
+    result->video = solved[0];
+    result->audio = solved[1];
+    result->adaptive = 1;
+    result->format_id = selection_format_id(&alternatives[index]);
+    if (result->format_id == NULL) {
+      yt_media_request_free(&result->video);
+      yt_media_request_free(&result->audio);
+      return YT_ERR_OUT_OF_MEMORY;
+    }
+    return YT_OK;
+  }
+  return YT_ERR_FORMAT_UNAVAILABLE;
+}
+
+static YTStatus attach_video_metadata(cJSON *document, const char *video_id,
+                                      YTMediaSelection *result) {
+  cJSON *details;
+  const char *title;
+  result->video_id = copy_string(video_id);
+  details = cJSON_GetObjectItemCaseSensitive(document, "videoDetails");
+  title = json_string(details, "title");
+  result->title = copy_string(title == NULL ? "" : title);
+  if (result->video_id == NULL || result->title == NULL)
+    return YT_ERR_OUT_OF_MEMORY;
+  return collect_format_inventory(document, result);
+}
+
 static YTStatus parse_player_document(cJSON *document, const char *player_source,
                                       const YTClient *client, int max_height,
                                       YTMediaRequest *result) {
@@ -1193,6 +1574,31 @@ YTStatus yt_parse_player_response_with_adaptive_size(
                                            1, result);
   if (status == YT_ERR_JS_CHALLENGE)
     status = YT_ERR_NO_PROGRESSIVE_MP4;
+  cJSON_Delete(document);
+  return status;
+}
+
+YTStatus yt_parse_player_response_with_format(const char *json, size_t length,
+                                              const char *format_expression,
+                                              YTMediaSelection *result) {
+  cJSON *document;
+  cJSON *details;
+  const char *video_id;
+  YTStatus status;
+  if (json == NULL || result == NULL ||
+      !yt_format_expression_valid(format_expression))
+    return YT_ERR_INVALID_FORMAT;
+  memset(result, 0, sizeof(*result));
+  document = cJSON_ParseWithLength(json, length);
+  if (document == NULL)
+    return YT_ERR_INVALID_RESPONSE;
+  details = cJSON_GetObjectItemCaseSensitive(document, "videoDetails");
+  video_id = json_string(details, "videoId");
+  status = attach_video_metadata(document, video_id == NULL ? "" : video_id,
+                                 result);
+  if (status == YT_OK)
+    status = parse_exact_selection_document(document, NULL, NULL,
+                                            format_expression, result);
   cJSON_Delete(document);
   return status;
 }
@@ -1548,9 +1954,46 @@ static YTStatus resolve_player_selection_document(
   return status;
 }
 
+static YTStatus resolve_exact_selection_document(
+    YTHttpSession *session, cJSON *document, const char *video_id,
+    const char *bootstrap_player_url, const YTClient *client,
+    const char *format_expression, YTMediaSelection *result,
+    YTProgressCallback progress, void *progress_opaque) {
+  YTStatus status;
+  char *player_url;
+  char *player_source;
+  status = parse_exact_selection_document(document, NULL, client,
+                                          format_expression, result);
+  if (status != YT_ERR_JS_CHALLENGE)
+    return status;
+  player_url = player_url_from_document(document);
+  if (player_url == NULL)
+    player_url = copy_string(bootstrap_player_url);
+  if (player_url == NULL) {
+    report_progress(progress, progress_opaque,
+                    "fetching fallback player information");
+    status = player_url_from_watch_page(session, video_id, &player_url);
+    if (status != YT_OK)
+      return status;
+  }
+  player_source = NULL;
+  report_progress(progress, progress_opaque,
+                  "loading player JavaScript for URL challenges");
+  status = load_player_javascript(session, player_url, &player_source);
+  free(player_url);
+  if (status != YT_OK)
+    return status;
+  report_progress(progress, progress_opaque, "solving media URL challenges");
+  status = parse_exact_selection_document(document, player_source, client,
+                                          format_expression, result);
+  free(player_source);
+  return status;
+}
+
 static YTStatus resolve_video(YTHttpSession *provided_session,
                               const char *input, const char *cookie_file,
                               int max_height, int try_adaptive,
+                              const char *format_expression, int list_only,
                               YTMediaSelection *result,
                               YTProgressCallback progress,
                               void *progress_opaque) {
@@ -1606,16 +2049,24 @@ static YTStatus resolve_video(YTHttpSession *provided_session,
   if (status != YT_OK)
     goto finished;
   prefer_recent_client(&client, account.authenticated);
-  failure_cache_key(video_id, &client, account.authenticated, max_height,
-                    try_adaptive, failure_key);
-  if (yt_load_cached_failure(failure_key, &status))
-    goto finished;
+  failure_key[0] = '\0';
+  if (!list_only) {
+    if (format_expression == NULL)
+      failure_cache_key(video_id, &client, account.authenticated, max_height,
+                        try_adaptive, failure_key);
+    else
+      exact_failure_cache_key(video_id, &client, account.authenticated,
+                              format_expression, failure_key);
+    if (yt_load_cached_failure(failure_key, &status))
+      goto finished;
+  }
 
   report_progress(progress, progress_opaque, "requesting video metadata");
   status = call_player(session, &account, video_id, NULL, &client,
                        signature_timestamp, &document);
   if (status != YT_OK) {
-    yt_remember_failure(failure_key, status);
+    if (failure_key[0] != '\0')
+      yt_remember_failure(failure_key, status);
     goto finished;
   }
 
@@ -1637,21 +2088,48 @@ static YTStatus resolve_video(YTHttpSession *provided_session,
                          signature_timestamp, &document);
     free(visitor_copy);
     if (status != YT_OK) {
-      yt_remember_failure(failure_key, status);
+      if (failure_key[0] != '\0')
+        yt_remember_failure(failure_key, status);
       goto finished;
     }
   }
 
-  report_progress(progress, progress_opaque,
-                  try_adaptive ? "selecting adaptive H.264 and AAC streams"
-                               : "selecting a progressive MP4 stream");
-  status = resolve_player_selection_document(
-      session, document, video_id, bootstrap_player_url, &client, max_height,
-      try_adaptive, result, progress, progress_opaque);
+  status = attach_video_metadata(document, video_id, result);
+  if (status != YT_OK)
+    goto finished;
+  if (list_only) {
+    status = YT_OK;
+  } else if (format_expression != NULL) {
+    report_progress(progress, progress_opaque, "selecting requested formats");
+    status = resolve_exact_selection_document(
+        session, document, video_id, bootstrap_player_url, &client,
+        format_expression, result, progress, progress_opaque);
+  } else {
+    report_progress(progress, progress_opaque,
+                    try_adaptive ? "selecting adaptive H.264 and AAC streams"
+                                 : "selecting a progressive MP4 stream");
+    status = resolve_player_selection_document(
+        session, document, video_id, bootstrap_player_url, &client, max_height,
+        try_adaptive, result, progress, progress_opaque);
+    if (status == YT_OK) {
+      char buffer[64];
+      if (result->adaptive)
+        snprintf(buffer, sizeof(buffer), "%d+%d", result->video.itag,
+                 result->audio.itag);
+      else
+        snprintf(buffer, sizeof(buffer), "%d", result->video.itag);
+      result->format_id = copy_string(buffer);
+      if (result->format_id == NULL)
+        status = YT_ERR_OUT_OF_MEMORY;
+    }
+  }
   if (status == YT_OK) {
     remember_successful_client(&client, account.authenticated);
-    yt_cache_remove(YT_CACHE_FAILURE, failure_key);
-  } else {
+    if (failure_key[0] != '\0')
+      yt_cache_remove(YT_CACHE_FAILURE, failure_key);
+  } else if (failure_key[0] != '\0' &&
+             status != YT_ERR_FORMAT_UNAVAILABLE &&
+             status != YT_ERR_INVALID_FORMAT) {
     yt_remember_failure(failure_key, status);
   }
 
@@ -1673,7 +2151,8 @@ YTStatus yt_resolve_video_with_progress(const char *input,
     return YT_ERR_INVALID_RESPONSE;
   memset(&selection, 0, sizeof(selection));
   YTStatus status = resolve_video(NULL, input, NULL, YT_DEFAULT_MAX_HEIGHT, 0,
-                                  &selection, progress, progress_opaque);
+                                  NULL, 0, &selection, progress,
+                                  progress_opaque);
   if (status == YT_OK) {
     *result = selection.video;
     memset(&selection.video, 0, sizeof(selection.video));
@@ -1694,7 +2173,7 @@ YTStatus yt_resolve_video_with_cookies_and_progress(
       return YT_ERR_INVALID_RESPONSE;
     memset(&selection, 0, sizeof(selection));
     status = resolve_video(NULL, input, cookie_file, YT_DEFAULT_MAX_HEIGHT, 0,
-                           &selection, progress, progress_opaque);
+                           NULL, 0, &selection, progress, progress_opaque);
     if (status == YT_OK) {
       *result = selection.video;
       memset(&selection.video, 0, sizeof(selection.video));
@@ -1727,7 +2206,7 @@ YTStatus yt_resolve_video_with_http_session_and_max_height_and_progress(
     if (result == NULL)
       return YT_ERR_INVALID_RESPONSE;
     memset(&selection, 0, sizeof(selection));
-    status = resolve_video(session, input, cookie_file, max_height, 0,
+    status = resolve_video(session, input, cookie_file, max_height, 0, NULL, 0,
                            &selection, progress, progress_opaque);
     if (status == YT_OK) {
       *result = selection.video;
@@ -1745,7 +2224,22 @@ YTStatus yt_resolve_video_with_http_session_and_size_and_progress(
   if (session == NULL || (cookie_file != NULL && cookie_file[0] == '\0'))
     return YT_ERR_INVALID_RESPONSE;
   return resolve_video(session, input, cookie_file, max_height, try_adaptive,
-                       result, progress, progress_opaque);
+                       NULL, 0, result, progress, progress_opaque);
+}
+
+YTStatus yt_resolve_video_with_http_session_and_format_and_progress(
+    YTHttpSession *session, const char *input, const char *cookie_file,
+    const char *format_expression, int list_only, YTMediaSelection *result,
+    YTProgressCallback progress, void *progress_opaque) {
+  if (session == NULL || result == NULL ||
+      (cookie_file != NULL && cookie_file[0] == '\0') ||
+      (!list_only && !yt_format_expression_valid(format_expression)))
+    return !list_only && !yt_format_expression_valid(format_expression)
+               ? YT_ERR_INVALID_FORMAT
+               : YT_ERR_INVALID_RESPONSE;
+  return resolve_video(session, input, cookie_file, YT_DEFAULT_MAX_HEIGHT, 0,
+                       format_expression, list_only, result, progress,
+                       progress_opaque);
 }
 
 YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
@@ -1780,11 +2274,25 @@ void yt_media_request_free(YTMediaRequest *media) {
   memset(media, 0, sizeof(*media));
 }
 
+void yt_format_info_free(YTFormatInfo *format) {
+  if (format == NULL)
+    return;
+  free(format->mime_type);
+  memset(format, 0, sizeof(*format));
+}
+
 void yt_media_selection_free(YTMediaSelection *selection) {
+  size_t index;
   if (selection == NULL)
     return;
   yt_media_request_free(&selection->video);
   yt_media_request_free(&selection->audio);
+  free(selection->video_id);
+  free(selection->title);
+  free(selection->format_id);
+  for (index = 0; index < selection->format_count; ++index)
+    yt_format_info_free(&selection->formats[index]);
+  free(selection->formats);
   memset(selection, 0, sizeof(*selection));
 }
 
@@ -1826,6 +2334,10 @@ const char *yt_status_string(YTStatus status) {
     return "YouTube authentication cookies are missing, expired, or invalid";
   case YT_ERR_MUX:
     return "MP4 muxing failed";
+  case YT_ERR_INVALID_FORMAT:
+    return "invalid format expression";
+  case YT_ERR_FORMAT_UNAVAILABLE:
+    return "requested format is not available";
   }
   return "unknown error";
 }

@@ -12,7 +12,7 @@ adaptive audio/video merging, conversion, DRM, SABR, or PO-token generation.
 Create a command-line program that accepts a YouTube URL or video ID:
 
 ```sh
-retro-dlp --no-download VIDEO_ID
+retro-dlp --dump-json VIDEO_ID
 ```
 
 Return a machine-readable result such as:
@@ -47,8 +47,9 @@ test video, compare:
 - [x] Keep sanitized captured player responses and media metadata as
   deterministic embedded fixtures so the core parser and classifications can
   run without the network.
-- [x] Keep a live integration test so tests do not depend entirely on captured
-  responses remaining representative of YouTube.
+- [x] Retire automated live integration requests after hardware validation;
+  routine tests now use deterministic fixtures exclusively to avoid YouTube
+  throttling the downloader's public IP.
 
 ## 2. Implement direct itag 18 only
 
@@ -67,17 +68,19 @@ Do not involve QuickJS yet. Implement the smallest complete resolution path:
   and validate the MP4 prefix.
 - [x] Make `retro-dlp VIDEO_ID_OR_URL` stream the complete itag 18 MP4 into the
   current directory by default.
-- [x] Make `--no-download` return resolver JSON without probing or downloading.
+- [x] Make `--dump-json` return normalized yt-dlp-style resolver JSON
+  without probing or downloading.
 - [x] Write through an exclusive `.part` file, validate the MP4 `ftyp` box,
   refuse overwrites, remove handled failures, and publish atomically.
 - [x] Classify a full-download HTTP 403 independently of the byte-range probe
   request. The first Linux live download reached GVS and confirmed the current
   `po_token_required` limitation without leaving a partial file.
 
-The embedded live test downloads only the first 10,241 bytes of each fixture,
-matching yt-dlp's test size, and validates the MP4 prefix. Normal CLI use
-performs the complete streaming GET, and that result is authoritative for
-actual download capability.
+Historical hardware validation downloaded the first 10,241 bytes of each live
+fixture, matching yt-dlp's test size, and validated the MP4 prefix. Those live
+requests are no longer part of routine automated tests. Normal CLI use performs
+the complete streaming GET, and that result is authoritative for actual
+download capability.
 
 This phase proves the network, TLS, JSON parsing, client configuration, format
 selection, result model, and download pipeline before JavaScript is introduced.
@@ -228,17 +231,16 @@ accounts, subtitles, rejected sessions, and future enforcement.
   The common curl setup now obtains it from `yt_resolver.c`; generic GETs,
   bootstrap requests, player-JavaScript and asset downloads, probes, and full
   media downloads no longer accept a caller-selected user agent. Keep
-  `--no-download` reporting the identity for users who download the returned
+  `--dump-json` reporting the identity for users who download the returned
   URL themselves with curl.
 - [x] Validate a complete tokenless `mweb` itag 18 download on PowerPC Tiger:
   `EYBBXG8eyo0.mp4`, 7,227,427 bytes, on Darwin 8.11.0 PowerPC.
 - [x] Add `--cookies FILE` with Mozilla/Netscape `cookies.txt` support. Keep
   browser-database discovery and decryption out of the portable resolver;
   export the YouTube session on a modern browser and transfer it securely.
-- [x] Let `--cookies` omit its file argument and load
-  `~/.retro-dlp/cookies.txt`. Distinguish the omitted path by reusing the
-  strict parser for 11-character video IDs and supported YouTube URLs, while
-  preserving `--cookies FILE` for explicit paths.
+- [x] Add unambiguous `--cookies-default` loading of
+  `~/.retro-dlp/cookies.txt`, while preserving yt-dlp-compatible
+  `--cookies FILE` for explicit paths.
 - [x] Introduce a resolution-scoped native HTTP session shared by webpage,
   Innertube, player-JavaScript, probe, and media-download requests. Use
   libcurl's cookie engine and domain rules rather than constructing raw
@@ -268,13 +270,13 @@ accounts, subtitles, rejected sessions, and future enforcement.
   URLs, or other session secrets in ordinary resolver caches.
 - [x] Keep authenticated downloads inside Retro-DLP by default. Never print a
   raw cookie or authorization header in normal, debug, error, or
-  `--no-download` JSON output; document that exported cookies are equivalent
+  `--dump-json` output; document that exported cookies are equivalent
   to account credentials and should be stored with owner-only permissions.
 - [x] Add deterministic tests for Netscape parsing, cookie domain/path/expiry
   handling, SAPISID hash vectors, account/session fields, stale and malformed
   cookies, redaction, and authenticated/anonymous cache separation.
 - [x] Validate the same exported session first with the pinned desktop yt-dlp
-  using an explicit `mweb` client, itag 18, and `--test`; then compare Retro-DLP
+  using an explicit `mweb` client and itag 18; then compare Retro-DLP
   metadata, final URL structure, 10,241-byte MP4 probe, and complete download
   on Linux and PowerPC Tiger. Include non-Premium and deliberately incomplete
   cookies as negative fixtures that verify HTTP 403 fallback and invalid-session
@@ -487,6 +489,11 @@ entries are normally separate video-only and audio-only streams in
   existing progressive `streamingData.formats` path as the first fallback.
 - [x] Select an H.264 video stream at or below 720p and a compatible AAC/M4A
   audio stream. Prefer formats suitable for PowerPC Tiger and iPhone 4 playback.
+- [x] Replace the resolution-oriented `--size` interface with exact yt-dlp-style
+  `-f`/`--format` itag selection, supporting one progressive itag, one explicit
+  video+audio pair, and `/`-separated explicit alternatives. Add
+  `-F`/`--list-formats` and normalized `-j`/`--dump-json` output, keeping the
+  complete format inventory exclusive to `--list-formats`.
 - [x] Download both streams through the existing native HTTP/TLS, cookie,
   challenge-solving, PO-token, expiry, and atomic-file infrastructure.
 - [x] Add or integrate a small, reviewed native ISO Base Media File Format muxer

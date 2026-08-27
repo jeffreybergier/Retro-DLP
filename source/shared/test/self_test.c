@@ -16,8 +16,6 @@
 #include "yt_resolver.h"
 
 #define SELF_TEST_VIDEO_ID "YE7VzlLtp-4"
-#define SECOND_SELF_TEST_VIDEO_ID "-_x6t4CaPzo"
-#define SELF_TEST_MEDIA_RANGE_LENGTH 10241U
 
 static void announce_test(const char *description) {
   printf("RUN: %s\n", description);
@@ -166,7 +164,9 @@ static int test_offline_player_fixtures(void) {
       "{\"itag\":999,\"url\":\"https://fixture.googlevideo.com/ignored\","
       "\"mimeType\":\"video/mp4\",\"width\":3840,\"height\":2160}]}}";
   static const char adaptive_sizes[] =
-      "{\"playabilityStatus\":{\"status\":\"OK\"},\"streamingData\":{"
+      "{\"playabilityStatus\":{\"status\":\"OK\"},"
+      "\"videoDetails\":{\"videoId\":\"fixture1234\","
+      "\"title\":\"Fixture Title\"},\"streamingData\":{"
       "\"formats\":[{\"itag\":18,\"url\":\"https://fixture.googlevideo.com/"
       "progressive\",\"mimeType\":\"video/mp4; codecs=\\\"avc1.42001E, "
       "mp4a.40.2\\\"\",\"width\":640,\"height\":360}],"
@@ -183,12 +183,18 @@ static int test_offline_player_fixtures(void) {
       "{\"itag\":247,\"url\":\"https://fixture.googlevideo.com/vp9\","
       "\"mimeType\":\"video/webm; codecs=\\\"vp9\\\"\","
       "\"width\":1280,\"height\":720,\"bitrate\":3000000},"
+      "{\"itag\":398,\"url\":\"https://fixture.googlevideo.com/av1\","
+      "\"mimeType\":\"video/mp4; codecs=\\\"av01.0.05M.08\\\"\","
+      "\"width\":1280,\"height\":720,\"bitrate\":2500000},"
       "{\"itag\":139,\"url\":\"https://fixture.googlevideo.com/aac-low\","
       "\"mimeType\":\"audio/mp4; codecs=\\\"mp4a.40.2\\\"\","
       "\"bitrate\":48000},"
       "{\"itag\":140,\"url\":\"https://fixture.googlevideo.com/aac\","
       "\"mimeType\":\"audio/mp4; codecs=\\\"mp4a.40.2\\\"\","
       "\"audioChannels\":2,\"bitrate\":129000},"
+      "{\"itag\":599,\"url\":\"https://fixture.googlevideo.com/he-aac\","
+      "\"mimeType\":\"audio/mp4; codecs=\\\"mp4a.40.5\\\"\","
+      "\"audioChannels\":2,\"bitrate\":32000},"
       "{\"itag\":258,\"url\":\"https://fixture.googlevideo.com/aac-6ch\","
       "\"mimeType\":\"audio/mp4; codecs=\\\"mp4a.40.2\\\"\","
       "\"audioChannels\":6,\"bitrate\":384000},"
@@ -227,6 +233,71 @@ static int test_offline_player_fixtures(void) {
       selection.audio.itag != 140 || selection.audio.url == NULL ||
       strstr(selection.audio.url, "aac") == NULL) {
     fprintf(stderr, "FAIL: adaptive 720p H.264/AAC format selection\n");
+    if (status == YT_OK)
+      yt_media_selection_free(&selection);
+    return 1;
+  }
+  yt_media_selection_free(&selection);
+
+  if (!yt_format_expression_valid("18") ||
+      !yt_format_expression_valid("137+140/136+140/18") ||
+      yt_format_expression_valid("best") ||
+      yt_format_expression_valid("136,140") ||
+      yt_format_expression_valid("136+") ||
+      yt_format_expression_valid("136+140+141")) {
+    fprintf(stderr, "FAIL: exact format expression grammar\n");
+    return 1;
+  }
+
+  status = yt_parse_player_response_with_format(
+      adaptive_sizes, sizeof(adaptive_sizes) - 1, "136+140", &selection);
+  if (status != YT_OK || !selection.adaptive ||
+      selection.video.itag != 136 || selection.audio.itag != 140 ||
+      selection.format_id == NULL ||
+      strcmp(selection.format_id, "136+140") != 0 ||
+      selection.video_id == NULL ||
+      strcmp(selection.video_id, "fixture1234") != 0 ||
+      selection.title == NULL || strcmp(selection.title, "Fixture Title") != 0 ||
+      selection.format_count < 10 || selection.formats[0].itag != 18 ||
+      selection.formats[1].itag != 136 || selection.formats[2].itag != 137 ||
+      selection.formats[3].itag != 299 || selection.formats[4].itag != 139 ||
+      selection.formats[5].itag != 140 || selection.formats[6].itag != 599 ||
+      selection.formats[7].itag != 398 || selection.formats[8].itag != 247 ||
+      !selection.formats[3].supported || !selection.formats[6].supported ||
+      selection.formats[7].supported || selection.formats[8].supported) {
+    fprintf(stderr, "FAIL: exact adaptive format selection\n");
+    if (status == YT_OK)
+      yt_media_selection_free(&selection);
+    return 1;
+  }
+  yt_media_selection_free(&selection);
+
+  status = yt_parse_player_response_with_format(
+      adaptive_sizes, sizeof(adaptive_sizes) - 1, "136+599", &selection);
+  if (status != YT_OK || !selection.adaptive ||
+      selection.video.itag != 136 || selection.audio.itag != 599) {
+    fprintf(stderr, "FAIL: exact HE-AAC format selection\n");
+    if (status == YT_OK)
+      yt_media_selection_free(&selection);
+    return 1;
+  }
+  yt_media_selection_free(&selection);
+
+  status = yt_parse_player_response_with_format(
+      adaptive_sizes, sizeof(adaptive_sizes) - 1, "999+140/18", &selection);
+  if (status != YT_OK || selection.adaptive || selection.video.itag != 18 ||
+      selection.format_id == NULL || strcmp(selection.format_id, "18") != 0) {
+    fprintf(stderr, "FAIL: explicit exact-format fallback\n");
+    if (status == YT_OK)
+      yt_media_selection_free(&selection);
+    return 1;
+  }
+  yt_media_selection_free(&selection);
+
+  status = yt_parse_player_response_with_format(
+      adaptive_sizes, sizeof(adaptive_sizes) - 1, "137+1399", &selection);
+  if (status != YT_ERR_FORMAT_UNAVAILABLE || selection.format_count == 0) {
+    fprintf(stderr, "FAIL: unavailable format inventory\n");
     if (status == YT_OK)
       yt_media_selection_free(&selection);
     return 1;
@@ -361,124 +432,6 @@ static int test_offline_player_fixtures(void) {
   return 0;
 }
 
-static int has_googlevideo_host(const char *url) {
-  const char *host;
-  const char *host_end;
-  const char *suffix;
-  size_t host_length;
-  size_t suffix_length;
-
-  host = strstr(url, "://");
-  if (host == NULL)
-    return 0;
-  host += 3;
-  host_end = strchr(host, '/');
-  if (host_end == NULL)
-    return 0;
-  host_length = (size_t)(host_end - host);
-  suffix = ".googlevideo.com";
-  suffix_length = strlen(suffix);
-  return host_length > suffix_length &&
-         memcmp(host + host_length - suffix_length, suffix, suffix_length) ==
-             0;
-}
-
-static int test_media_byte_range(YTHttpSession *session,
-                                 const YTMediaRequest *media,
-                                 const char *video_id) {
-  YTHttpResponse response;
-  YTStatus status;
-
-  printf("RUN: request first 10,241 bytes of media (%s)\n", video_id);
-  fflush(stdout);
-  memset(&response, 0, sizeof(response));
-  status = yt_http_session_get_range(session, media->url,
-                                     SELF_TEST_MEDIA_RANGE_LENGTH, &response);
-  if (status == YT_OK)
-    status = yt_classify_media_http_status(response.status);
-  if (status != YT_OK || response.status < 200 || response.status >= 300 ||
-      response.length == 0 ||
-      !yt_http_has_mp4_ftyp((const unsigned char *)response.data,
-                            response.length)) {
-    fprintf(stderr,
-            "FAIL: media byte-range request (%s): %s "
-            "(HTTP %ld, %lu bytes)\n",
-            video_id, yt_status_string(status), response.status,
-            (unsigned long)response.length);
-    yt_http_response_free(&response);
-    return 1;
-  }
-
-  printf("PASS: media byte range (%s, %lu bytes, HTTP %ld)\n", video_id,
-         (unsigned long)response.length, response.status);
-  yt_http_response_free(&response);
-  return 0;
-}
-
-static int test_live_video(const char *video_id, int check_fixture_metadata,
-                           const char *cookie_file) {
-  YTMediaRequest media;
-  YTStatus status;
-  int failed;
-  char itag_query[32];
-  YTHttpSession *session;
-
-  printf("RUN: resolve live video (%s)\n", video_id);
-  fflush(stdout);
-  session = NULL;
-  status = yt_http_session_create(cookie_file, &session);
-  if (status == YT_OK)
-    status = yt_resolve_video_with_http_session_and_progress(
-        session, video_id, cookie_file, &media, NULL, NULL);
-  if (status != YT_OK) {
-    fprintf(stderr, "FAIL: player API resolution (%s): %s\n", video_id,
-            yt_status_string(status));
-    yt_http_session_destroy(session);
-    return 1;
-  }
-  printf("PASS: player API response (%s)\n", video_id);
-
-  failed = 0;
-  if (media.itag <= 0 || media.width <= 0 || media.height <= 0 ||
-      media.height > YT_DEFAULT_MAX_HEIGHT || media.mime_type == NULL ||
-      strncmp(media.mime_type, "video/mp4", 9) != 0) {
-    fprintf(stderr, "FAIL: live video metadata (%s)\n", video_id);
-    failed = 1;
-  } else if (check_fixture_metadata) {
-    printf("PASS: live fixture metadata (itag %d, %dx%d MP4)\n", media.itag,
-           media.width, media.height);
-  } else {
-    printf("PASS: live video metadata (%s, itag %d, %dx%d MP4)\n", video_id,
-           media.itag, media.width, media.height);
-  }
-
-  snprintf(itag_query, sizeof(itag_query), "itag=%d", media.itag);
-  if (!has_googlevideo_host(media.url) ||
-      strstr(media.url, itag_query) == NULL ||
-      strstr(media.url, "expire=") == NULL || media.expires_unix <= 0) {
-    fprintf(stderr, "FAIL: resolved media URL fields (%s)\n", video_id);
-    failed = 1;
-  } else {
-    printf("PASS: Google Video host and required query fields (%s)\n",
-           video_id);
-  }
-
-  if (strstr(media.url, "sig=") == NULL) {
-    fprintf(stderr, "FAIL: resolved URL signature classification (%s)\n",
-            video_id);
-    failed = 1;
-  } else {
-    printf("PASS: resolved URL signature and n challenge processing (%s)\n",
-           video_id);
-  }
-
-  failed += test_media_byte_range(session, &media, video_id);
-
-  yt_media_request_free(&media);
-  yt_http_session_destroy(session);
-  return failed;
-}
-
 static int test_libcurl(void) {
   const curl_version_info_data *curl_version;
 
@@ -491,15 +444,7 @@ static int test_libcurl(void) {
   return 0;
 }
 
-static int test_live_resolver(const char *cookie_file) {
-  int failures;
-
-  failures = test_live_video(SELF_TEST_VIDEO_ID, 1, cookie_file);
-  failures += test_live_video(SECOND_SELF_TEST_VIDEO_ID, 0, cookie_file);
-  return failures;
-}
-
-int retro_dlp_run_self_tests_with_cookies(const char *cookie_file) {
+int retro_dlp_run_self_tests(void) {
   int failures;
 
   setvbuf(stdout, NULL, _IONBF, 0);
@@ -522,15 +467,9 @@ int retro_dlp_run_self_tests_with_cookies(const char *cookie_file) {
   failures += retro_dlp_run_cookie_tests();
   announce_test("EJS fixtures and runtime limits");
   failures += retro_dlp_run_ejs_tests();
-  announce_test("live network fixtures");
-  failures += test_live_resolver(cookie_file);
   if (failures != 0)
     return 1;
 
   printf("PASS: retro-dlp self-test\n");
   return 0;
-}
-
-int retro_dlp_run_self_tests(void) {
-  return retro_dlp_run_self_tests_with_cookies(NULL);
 }

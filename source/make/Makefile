@@ -1,7 +1,6 @@
 PROGRAM := retro-dlp
 VERSION_PLIST := source/shared/Info.plist
 VERSION ?= $(shell awk '/<key>CFBundleShortVersionString<\/key>/{getline; gsub(/.*<string>|<\/string>.*/, ""); print; exit}' $(VERSION_PLIST))
-TEST_COOKIES ?=
 BUILD_DIR := build
 INTERMEDIATE_DIR := $(BUILD_DIR)/intermediates
 MACOS_BUILD_DIR := $(BUILD_DIR)/macOS
@@ -12,7 +11,8 @@ SHARED_SOURCES := source/shared/main.c source/shared/cli.c \
 	source/shared/yt_http.c source/shared/yt_resolver.c \
 	source/shared/yt_mux.c \
 	source/shared/yt_cache.c source/shared/yt_crypto.c source/shared/yt_cookies.c \
-	source/shared/yt_ejs.c source/shared/yt_ejs_assets.c \
+	source/shared/yt_ejs.c source/shared/yt_ejs_assets.c
+TEST_SOURCES := \
 	source/shared/test/cache_test.c source/shared/test/cookie_test.c \
 	source/shared/test/ejs_test.c source/shared/test/ejs_test_data.c \
 	source/shared/test/self_test.c source/shared/test/self_test_data.c
@@ -40,6 +40,10 @@ LSMASH_SOURCE_NAMES := common/alloc.c common/bits.c common/bytes.c \
 LSMASH_CPPFLAGS := -I$(LSMASH_DIR)
 LSMASH_CFLAGS := $(CFLAGS) -std=c99 -Wall -Wextra -Wno-unused-parameter
 LINUX_SOURCES := $(SHARED_SOURCES) source/linux/platform.c $(CJSON_SOURCE)
+LINUX_TEST_PROGRAM := retro-dlp-tests
+LINUX_TEST_SOURCES := $(filter-out source/shared/main.c source/shared/cli.c, \
+	$(SHARED_SOURCES)) $(TEST_SOURCES) source/linux/test/test_main.c \
+	source/linux/platform.c $(CJSON_SOURCE)
 
 ALTIVEC_ROOT ?= /altivec
 include $(ALTIVEC_ROOT)/altivec_toolchains.mk
@@ -95,12 +99,14 @@ LINUX_LIBRARIES := -Wl,--whole-archive $(QUICKJS_LIBRARY) \
 	-Wl,--no-whole-archive $(LINUX_LSMASH_LIBRARY) \
 	-lcurl -lcrypto -lm -ldl -lpthread
 LINUX_OBJECTS := $(LINUX_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
+LINUX_TEST_OBJECTS := $(LINUX_TEST_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
 
 include source/make/apple-gcc4.mk
 include source/make/clang.mk
 include source/make/ios-clang.mk
 
-APPLICATION_DEPENDENCIES := $(LINUX_OBJECTS:.o=.d) $(PPC_OBJECTS:.o=.d) \
+APPLICATION_DEPENDENCIES := $(LINUX_OBJECTS:.o=.d) \
+	$(LINUX_TEST_OBJECTS:.o=.d) $(PPC_OBJECTS:.o=.d) \
 	$(LINUX_LSMASH_OBJECTS:.o=.d) \
 	$(I386_OBJECTS:.o=.d) $(X86_64_OBJECTS:.o=.d) $(ARM64_OBJECTS:.o=.d) \
 	$(IOS_OBJECTS:.o=.d) $(PPC_LSMASH_OBJECTS:.o=.d) \
@@ -143,10 +149,11 @@ iOS: validate-iOS $(IOS_BUILD_DIR)/$(PROGRAM) $(IOS_CA_BUNDLE)
 
 linux: $(LINUX_BUILD_DIR)/$(PROGRAM)
 
-test: linux
+test: linux $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM)
 	@echo "--- Running retro-dlp Linux tests ---"
 	@source/linux/test/cli_test.sh \
-		"$(abspath $(LINUX_BUILD_DIR)/$(PROGRAM))" "$(TEST_COOKIES)"
+		"$(abspath $(LINUX_BUILD_DIR)/$(PROGRAM))" \
+		"$(abspath $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM))"
 
 $(MACOS_BUILD_DIR)/$(PROGRAM): $(PPC_BINARY) $(I386_BINARY) \
 		$(X86_64_BINARY) $(ARM64_BINARY)
@@ -170,6 +177,13 @@ $(LINUX_BUILD_DIR)/$(PROGRAM): $(LINUX_OBJECTS) $(QUICKJS_LIBRARY) \
 	@echo "--- Building retro-dlp Linux Release (-O3) ---"
 	@mkdir -p $(dir $@)
 	@$(CC) $(LINUX_OBJECTS) $(LINUX_LIBRARIES) -o $@
+	@echo "  > $@"
+
+$(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM): $(LINUX_TEST_OBJECTS) \
+		$(QUICKJS_LIBRARY) $(LINUX_LSMASH_LIBRARY)
+	@echo "--- Building retro-dlp Linux Tests ---"
+	@mkdir -p $(dir $@)
+	@$(CC) $(LINUX_TEST_OBJECTS) $(LINUX_LIBRARIES) -o $@
 	@echo "  > $@"
 
 $(QUICKJS_LIBRARY): $(QUICKJS_OBJECTS)
