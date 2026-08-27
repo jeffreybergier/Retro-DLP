@@ -1,289 +1,212 @@
 # Retro-DLP
 
-`retro-dlp` is a command-line tool built as one quad-fat macOS executable for
-PowerPC, i386, x86_64, and arm64. The project uses the Altivec toolchains while
-keeping platform sources, tests, products, and intermediate files separate.
+Retro-DLP is a tiny YouTube downloader for old Macs and jailbroken iPhones. I
+built it because yt-dlp cannot run on an iPhone 5 with iOS 6 or a PowerPC Mac
+with Tiger, but those machines can still play H.264 video just fine.
 
-## Build
+This is not a full yt-dlp port. Retro-DLP does one job: it downloads ordinary
+YouTube videos as MP4 files. It can download a progressive stream or combine
+separate H.264 video and AAC audio tracks with its built-in MP4 muxer. It does
+not need Python, FFmpeg, or another external executable.
 
-Build the macOS release executable with the Altivec environment:
+I have tested Retro-DLP on a real iPhone 5 running iOS 6 and a PowerPC Mac
+running Mac OS X Tiger. The iPhone successfully downloaded and muxed a
+two-hour, 1.8 GB, 1080p video.
 
-```sh
-make release
-```
+## Features
 
-The results are `build/macOS/retro-dlp` and its required certificate bundle,
-`build/macOS/cacert.pem`. Distribute both files in the same directory.
-Architecture-specific objects and linked slices stay under
-`build/intermediates/macOS`.
+- Downloads YouTube videos from a video ID or common YouTube URL
+- Downloads progressive H.264/AAC MP4 streams
+- Downloads and muxes separate H.264 video and AAC audio tracks
+- Includes `low`, `med`, and `high` quality presets
+- Accepts exact yt-dlp-style itags such as `18` or `137+140`
+- Lists every format that YouTube advertises with `-F`
+- Supports authenticated sessions through Netscape-format cookie files
+- Solves YouTube's JavaScript URL challenges with QuickJS and yt-dlp EJS
+- Prints normalized, yt-dlp-style metadata with `--dump-json`
+- Uses the YouTube title as the default UTF-8 filename
+- Writes downloads atomically and refuses to overwrite existing files
+- Caches player data and challenge results under `~/.retro-dlp/cache`
 
-Build and test the native Linux executable:
+## Compatibility
 
-```sh
-make linux
-make test
-```
+| Platform | Architectures | Minimum OS | I have tested |
+|---|---|---|---|
+| macOS | PowerPC, i386, x86_64, arm64 | 10.4 for PowerPC/i386, 10.9 for x86_64, 11.0 for arm64 | PowerPC Tiger and modern macOS |
+| iOS | armv7, arm64 | iOS 5.0 for armv7, iOS 7.0 for arm64 | iPhone 5 with iOS 6 |
+| Linux | Native host architecture | Development build only | Automated tests |
 
-Build the universal iOS command-line executable with the Altivec environment:
+The macOS release contains one quad-fat executable. The iOS release contains
+one universal armv7/arm64 executable and requires a jailbroken device.
 
-```sh
-make iOS
-```
+## Install
 
-The result is `build/iOS/retro-dlp`, containing an ARMv7 slice with an iOS 5.0
-deployment target and an ARM64 slice with an iOS 7.0 deployment target. Its
-required `build/iOS/cacert.pem` must be installed beside the executable. This
-is the UIKit-independent resolver build intended for the future Objective-C
-wrapper; it is not yet an application bundle.
+Download the macOS or iOS ZIP from
+[GitHub Releases](https://github.com/jeffreybergier/Retro-DLP/releases). Keep
+`retro-dlp` and `cacert.pem` together because Retro-DLP uses that certificate
+bundle for HTTPS.
 
-The Linux product is `build/linux/retro-dlp`; its intermediate objects stay
-under `build/intermediates/linux`. Shared tests live under `source/shared/test`;
-future platform-specific tests belong under `source/<platform>/test`.
+### Mac
 
-Download a public YouTube video to the current directory:
-
-```sh
-build/linux/retro-dlp YE7VzlLtp-4
-build/linux/retro-dlp 'https://www.youtube.com/watch?v=YE7VzlLtp-4'
-```
-
-Retro-DLP uses the explicit progressive preference `22/18` by default. Use
-yt-dlp-style exact format IDs to select a particular progressive stream or a
-video/audio pair:
-
-```sh
-build/linux/retro-dlp -f 18 YE7VzlLtp-4
-build/linux/retro-dlp -f 136+140 YE7VzlLtp-4
-build/linux/retro-dlp -f '137+140/136+140/18' YE7VzlLtp-4
-```
-
-`+` combines exactly one video-only and one audio-only stream. `/` specifies
-explicit, left-to-right alternatives. Retro-DLP does not implement yt-dlp's
-automatic selectors, filters, comma-separated outputs, or parentheses. It
-never silently substitutes another format for an exact request. If none of the
-requested alternatives is available, it prints the same stream table as
-`-F`/`--list-formats` and exits unsuccessfully.
-
-For convenient built-in exact-format selections, use yt-dlp-style preset
-aliases:
+Unzip the macOS release and put both files wherever you want. For example:
 
 ```sh
-retro-dlp -t low VIDEO   # 18
-retro-dlp -t med VIDEO   # 135+140/134+140
-retro-dlp -t high VIDEO  # 137+599/137+140/136+599/136+140
+unzip Retro-DLP-X.Y.Z-macOS.zip
+mkdir -p ~/.local/bin
+mv retro-dlp cacert.pem ~/.local/bin/
+chmod +x ~/.local/bin/retro-dlp
+~/.local/bin/retro-dlp assets install
 ```
 
-Presets expand to the expressions shown and do not fall back between quality
-tiers. `--format` and `--preset-alias` cannot be combined. JSON reports the
-actual selected `format_id`, not the preset name.
+Add `~/.local/bin` to your `PATH` if your shell does not already include it.
 
-List the individual formats advertised by YouTube without solving their URL
-challenges or probing media servers:
+### Jailbroken iPhone
+
+Install OpenSSH on the iPhone, unzip the iOS release on your computer, and copy
+both files to the device:
 
 ```sh
-build/linux/retro-dlp -F YE7VzlLtp-4
+ssh mobile@iphone-ip-address 'mkdir -p /var/mobile/bin'
+scp retro-dlp cacert.pem mobile@iphone-ip-address:/var/mobile/bin/
+ssh mobile@iphone-ip-address \
+  'chmod 755 /var/mobile/bin/retro-dlp && /var/mobile/bin/retro-dlp assets install'
 ```
 
-The `SUPPORT` column reports `Yes` when Retro-DLP can download and, when
-needed, mux the stream; it is not a playback guarantee for every target device.
-H.264 MP4 streams are supported at any advertised frame rate, and mono or
-stereo AAC-LC and HE-AAC audio in MP4 are supported. The iPhone 4 playback
-profile remains limited to 720p30. The table sorts supported entries before
-unsupported entries, then by type (video+audio, video only, audio only),
-container (MP4 before WebM), ascending width, and itag. Column widths adapt to
-the returned codec and resolution strings.
+Old iPhones may require the legacy SSH options
+`HostKeyAlgorithms=+ssh-rsa` and `PubkeyAcceptedAlgorithms=+ssh-rsa`.
 
-An adaptive download first writes temporary files derived from the final
-output path, then uses its native L-SMASH integration to copy both encoded
-tracks into a conventional, non-fragmented MP4. After the final MP4 is
-validated and atomically published, the two input tracks are removed. They are
-retained if muxing fails. Each track uses the same native HTTP session,
-cookies, URL-challenge handling, PO-token error classification, MP4 validation,
-exclusive `.part` file, and atomic publication as progressive downloads.
-Retro-DLP does not require FFmpeg or another external executable.
-
-By default, the resolved YouTube title becomes the filename (`TITLE.mp4`).
-Path separators, colons, and control characters are replaced with underscores,
-valid UTF-8 text is preserved, and malformed UTF-8 bytes are replaced with
-underscores. Long titles are truncated without splitting a UTF-8 character. An
-empty title falls back to `VIDEO_ID.mp4`. An explicit `-o`/`--output` value is
-used literally. The command streams into a `.part` file, validates the MP4 `ftyp`
-box, and atomically publishes the final file after success. It refuses to
-overwrite an existing final or partial file and removes partial output after a
-handled failure. A full-download HTTP 403 is reported as `po_token_required`.
-Resolver stages and download status are written to stderr, while the final JSON
-result remains on stdout. The media transfer enables libcurl's built-in
-progress meter; it is supplied by libcurl rather than by launching the `curl`
-command-line program.
-
-Print normalized, yt-dlp-style JSON without probing or downloading media:
+I also include [`retro-vlc`](source/iOS/scripts/retro-vlc), a small helper for
+VLC on iOS. It finds VLC's Documents directory, changes into it, and downloads
+the high preset there so the video immediately appears in VLC. The script
+requires `ipainstaller`, VLC with the `org.videolan.vlc-ios` identifier, and a
+cookie file at `~/.retro-dlp/cookies.txt`.
 
 ```sh
-build/linux/retro-dlp --dump-json -f 136+140 YE7VzlLtp-4
+scp source/iOS/scripts/retro-vlc mobile@iphone-ip-address:/var/mobile/bin/
+ssh mobile@iphone-ip-address 'chmod 755 /var/mobile/bin/retro-vlc'
+retro-vlc VIDEO_ID_OR_URL
 ```
 
-The JSON includes the video ID and title, canonical webpage URL, selected
-`format_id`, codecs, dimensions, final solved URLs and HTTP headers. Adaptive
-selections use yt-dlp's `requested_formats` array. Use `-F`/`--list-formats` to
-inspect the complete advertised format inventory.
+Run the final command on the iPhone.
 
-Use an authenticated YouTube session exported in Mozilla/Netscape
-`cookies.txt` format with:
+## Usage
+
+The presets provide the easiest way to choose a format:
 
 ```sh
-build/linux/retro-dlp --cookies /path/to/youtube-cookies.txt YE7VzlLtp-4
-build/linux/retro-dlp --cookies /path/to/youtube-cookies.txt \
-  --dump-json YE7VzlLtp-4
+retro-dlp -t low VIDEO    # 18
+retro-dlp -t med VIDEO    # 135+140/134+140
+retro-dlp -t high VIDEO   # 137+599/137+140/136+599/136+140
 ```
 
-If the exported file is stored at `~/.retro-dlp/cookies.txt`, use the explicit
-default-cookie option:
+`VIDEO` means an 11-character YouTube video ID or a common YouTube URL.
+Retro-DLP saves the video as `TITLE.mp4` in the current directory. Use `-o` to
+choose another filename.
+
+List the formats for a video:
 
 ```sh
-retro-dlp --cookies-default YE7VzlLtp-4
-retro-dlp --cookies-default --dump-json YE7VzlLtp-4
+retro-dlp -F VIDEO
 ```
 
-Retro-DLP accepts a cookie file as authenticated only when it contains a
-current `LOGIN_INFO` cookie and at least one current `SAPISID`,
-`__Secure-1PAPISID`, or `__Secure-3PAPISID` cookie for YouTube. It uses those
-cookies to generate the timestamped SHA-1 authorization required by Innertube
-and preserves the same in-memory libcurl cookie session through webpage,
-player, JavaScript, probe, and media requests. An authenticated `mweb` media
-request is attempted without a GVS PO token; HTTP 403 remains the authoritative
-`po_token_required` result and will feed the future PO-token fallback.
-
-Cookie files grant access to the associated YouTube account. Store them outside
-the repository with owner-only permissions (`chmod 600`), never commit or share
-them, and avoid using an active browser session whose cookies YouTube may
-rotate. Retro-DLP never includes cookies, SAPISID authorization, account sync
-IDs, or other session secrets in result JSON or resolver caches. Authenticated
-and anonymous success/failure cache entries are separate.
-
-Retro-DLP does not yet generate PO tokens.
-
-On macOS, every libcurl handle is configured with `cacert.pem` resolved beside
-the running executable. Network requests fail explicitly if the bundle is
-missing or unreadable. Linux continues to use libcurl's system trust settings.
-
-The Linux executable compiles and links the vendored cJSON submodule. It also
-builds QuickJS as `build/intermediates/linux/libquickjs.a` and statically links
-the complete engine into the executable. The resource-limited native adapter
-loads the pinned `yt-dlp-ejs` 0.8.0 JavaScript assets from
-`~/.retro-dlp/cache/assets`; release binaries do not embed those assets. The
-resolver preserves a no-JavaScript fast path for direct media URLs. When the
-selected format contains `signatureCipher` or an `n` parameter, it obtains and
-caches the player JavaScript, submits all required transformations to EJS in
-one batch, and rejects an unresolved challenge.
-The macOS executable links the quad-fat static AltivecCore archive, which
-supplies cJSON and the rest of AltivecCore on each supported Mac architecture.
-QuickJS is compiled into a separate static archive for each of the PowerPC,
-i386, x86_64, and arm64 macOS slices.
-
-Install, inspect, or remove the EJS assets with:
+Choose exact formats:
 
 ```sh
-retro-dlp assets install
-retro-dlp assets status
-retro-dlp assets remove
+retro-dlp -f 18 VIDEO
+retro-dlp -f 136+140 VIDEO
+retro-dlp -f '137+599/137+140/136+140' VIDEO
 ```
 
-Run `make clean` to empty the three build output directories without deleting
-the directories themselves.
+`+` combines one video-only stream with one audio-only stream. `/` tries exact
+alternatives from left to right. Retro-DLP never silently picks an unlisted
+fallback. Its default format expression is `22/18`.
 
-## Releases
-
-Release versions are managed by `altivec-release` using
-`source/shared/Info.plist` as the source of truth. The current version is
-`1.0.0`. From the repository root, use commands such as:
+Print metadata without downloading:
 
 ```sh
-altivec-release current
-altivec-release bump patch --no-push
-altivec-release bump --set 2.0.0 --dry-run
+retro-dlp --dump-json VIDEO
 ```
 
-Pushing a matching version tag (for example, `v1.0.0`) runs the GitHub Actions
-release workflow. It builds both Apple targets and publishes
-`Retro-DLP-1.0.0-macOS.zip` and `Retro-DLP-1.0.0-iOS.zip`. Each archive contains
-the platform's `retro-dlp` executable and the required `cacert.pem` beside it.
-The workflow can also be run manually for an existing version tag.
+Use `--simulate` to resolve a video without downloading it or writing a file.
 
-The repository must define `ALTIVEC_SDK_MACOS_105_URL`,
-`ALTIVEC_SDK_MACOS_113_URL`, and `ALTIVEC_SDK_IPHONEOS_84_URL` as GitHub Actions
-repository secrets containing HTTPS URLs for the private SDK archives.
-
-Run the separate Linux test executable through the build target:
+Use exported YouTube cookies:
 
 ```sh
-make test
+retro-dlp --cookies /path/to/cookies.txt VIDEO
+retro-dlp --cookies-default VIDEO
 ```
 
-This runs deterministic cache, cookie, player-response, HTTP-classification,
-format-selection, and batched `s`/`n` resolver fixtures. It does not contact
-YouTube or Google Video, so routine test runs cannot consume request quota or
-contribute to IP throttling. When EJS assets are installed, it also runs the
-`s`/`n` tests for batching, preprocessed-player
-reuse, malformed output, exceptions, execution deadlines, memory limits, and
-runtime recovery. Otherwise that section reports a skip with the installation
-command. Test fixtures are not linked into release binaries.
+`--cookies-default` reads `~/.retro-dlp/cookies.txt`. Cookie files grant access
+to your YouTube account, so protect them with `chmod 600` and never commit or
+share them.
 
-The resolver keeps bounded, versioned caches under `~/.retro-dlp/cache/v1` for
-the active client manifest, raw player JavaScript, EJS preprocessed players,
-the most recently successful client, and short-lived failure classifications.
-Player artifacts use SHA-256 keys, and corrupt or expired entries are discarded.
+## Limitations
 
-## Source layout
+- Retro-DLP supports YouTube only.
+- It handles ordinary videos, not playlists, live streams, subtitles, comments,
+  manifests, DRM, or every restricted video.
+- It supports H.264 video and mono or stereo AAC audio in MP4 containers. It
+  does not support WebM, VP9, AV1, Opus, conversion, or transcoding.
+- Its `--format` syntax only supports exact itags, `+` pairs, and `/`
+  alternatives. It does not implement yt-dlp's selectors, filters, or automatic
+  quality rules.
+- It does not generate YouTube PO tokens. YouTube may return HTTP 403 for some
+  videos, accounts, or networks even when URL challenge solving succeeds.
+- `SUPPORT: Yes` in `--list-formats` means Retro-DLP can download or mux that
+  format. It does not guarantee that every old device can play it. For example,
+  an iPhone 4 has much stricter playback limits than a modern Mac.
+- YouTube changes constantly and can break Retro-DLP without warning.
 
-- `source/shared`: portable CLI code
-- `source/shared/test`: portable tests linked into the separate Linux test binary
-- `source/linux/test`: Linux-only CLI integration tests
-- `source/macOS`: macOS-specific implementations
-- `source/linux`: Linux-specific implementations
-- `source/iOS`: iOS platform integration and Clang compatibility sources
-- `source/deps`: vendored dependencies, when needed
-- `source/make/Makefile`: complete cross-platform build graph
-- `source/make/apple-gcc4.mk`: isolated PowerPC/i386 and Tiger build profile
-- `source/make/clang.mk`: isolated x86_64/arm64 and pristine QuickJS profile
-- `source/make/ios-clang.mk`: universal ARMv7/ARM64 iOS Clang profile
+## Build from Source
 
-Tiger-specific compatibility sources can be added with
-`LEGACY_MACOS_EXTRA_SOURCES`; legacy-only flags and libraries can be added with
-`LEGACY_MACOS_EXTRA_CPPFLAGS`, `LEGACY_MACOS_EXTRA_CFLAGS`, and
-`LEGACY_MACOS_EXTRA_LIBRARIES`. These inputs are not used by the modern Clang
-build. QuickJS source-level compatibility work should likewise be staged as a
-legacy-only source or forced-include compatibility header rather than changing
-the vendored submodule used by `source/make/clang.mk`.
-
-The current Apple GCC 4 profile uses an isolated compatibility layer under
-`source/macOS/apple-gcc4/QuickJS`. It provides C11-style atomics—including a
-mutex-backed 64-bit implementation for 32-bit CPUs—and a Tiger-compatible
-`clock_gettime` implementation. The Clang profile compiles the unmodified
-QuickJS submodule without this layer.
-
-Initialize cJSON and QuickJS after cloning:
+Retro-DLP uses the Docker-based
+[Altivec Intelligence](https://github.com/jeffreybergier/AltivecIntelligence)
+cross-compile environment. The included `compose.yml` runs every build command
+inside the prebuilt Altivec Intelligence container, so you do not need to
+install the compilers on your computer.
 
 ```sh
-git submodule update --init --recursive
+git clone --recursive https://github.com/jeffreybergier/Retro-DLP.git
+cd Retro-DLP
+docker compose pull
 ```
 
-# License
+Create `.altivec-sdk` and put these three Apple SDK archives inside it:
 
-Retro-DLP is licensed under the [MIT License](https://opensource.org/license/mit/).
-It includes, links against, downloads, or uses for testing components that
-remain subject to their own licenses:
+```text
+MacOSX10.5.sdk.tar.xz
+MacOSX11.3.sdk.tar.xz
+iPhoneOS8.4.sdk.tar.gz
+```
 
-- [QuickJS](https://github.com/bellard/quickjs/blob/master/LICENSE) — MIT
-- [cJSON](https://github.com/DaveGamble/cJSON/blob/master/LICENSE) — MIT
-- AltivecCore — [MIT](https://opensource.org/license/mit/)
-- [libcurl](https://curl.se/docs/copyright.html) — curl license
-- [OpenSSL](https://www.openssl.org/source/license.html) — OpenSSL licenses
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE) — Unlicense
-- [yt-dlp-ejs](https://github.com/yt-dlp/ejs/blob/main/LICENSE) — Unlicense;
-  its prebuilt assets also contain
-  [Meriyah](https://github.com/meriyah/meriyah/blob/master/LICENSE.md) under ISC
-  and [Astring](https://github.com/davidbonnet/astring/blob/main/LICENSE) under
-  MIT
+Verify and install the SDKs into the Compose volumes, then build both releases:
 
-Each third-party component is provided under its respective license, and those
-licenses apply independently of Retro-DLP's MIT license.
+```sh
+docker compose run --rm altivec-sdk preflight
+docker compose run --rm altivec-sdk install
+docker compose run --rm altivec "make clean && make macOS && make iOS"
+```
+
+The builds land in `build/macOS` and `build/iOS`. Each directory contains the
+executable and its matching `cacert.pem`.
+
+Build the native Linux executable or run the offline test suite in the same
+container:
+
+```sh
+docker compose run --rm altivec "make linux"
+docker compose run --rm altivec "make test"
+```
+
+The tests use local fixtures and never connect to YouTube or Google Video.
+
+## License
+
+I release Retro-DLP under the [MIT License](LICENSE). cJSON, QuickJS, L-SMASH,
+yt-dlp EJS, and the other third-party components keep their own licenses.
+
+## Development Status
+
+Retro-DLP works for my use case, but I still consider it experimental personal
+software. See [`PLAN.md`](PLAN.md) for the implementation history and future
+work.
