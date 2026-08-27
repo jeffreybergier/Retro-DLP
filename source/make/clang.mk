@@ -37,23 +37,34 @@ ARM64_QUICKJS_OBJECTS := $(addprefix $(ARM64_QUICKJS_INT_DIR)/, \
 X86_64_QUICKJS_LIBRARY := $(MACOS_INT_DIR)/x86_64/libquickjs.a
 ARM64_QUICKJS_LIBRARY := $(MACOS_INT_DIR)/arm64/libquickjs.a
 
+X86_64_LSMASH_INT_DIR := $(MACOS_INT_DIR)/x86_64/L-SMASH
+ARM64_LSMASH_INT_DIR := $(MACOS_INT_DIR)/arm64/L-SMASH
+X86_64_LSMASH_OBJECTS := $(addprefix $(X86_64_LSMASH_INT_DIR)/, \
+	$(LSMASH_SOURCE_NAMES:.c=.o))
+ARM64_LSMASH_OBJECTS := $(addprefix $(ARM64_LSMASH_INT_DIR)/, \
+	$(LSMASH_SOURCE_NAMES:.c=.o))
+X86_64_LSMASH_LIBRARY := $(MACOS_INT_DIR)/x86_64/liblsmash.a
+ARM64_LSMASH_LIBRARY := $(MACOS_INT_DIR)/arm64/liblsmash.a
+
 $(X86_64_BINARY): $(X86_64_OBJECTS) $(ALTIVECCORE) \
-		$(X86_64_QUICKJS_LIBRARY)
+		$(X86_64_QUICKJS_LIBRARY) $(X86_64_LSMASH_LIBRARY)
 	@echo "  > linking x86_64 binary"
 	@$(COMPILER_X64) -target x86_64-apple-macos$(MAC_MIN_X64) \
 		-isysroot $(SDK_X64_PATH) -fuse-ld=$(LD64_LLD) \
 		-Wl,-platform_version,macos,$(MAC_MIN_X64),$(SDK_MAC_NEW) \
 		$(X86_64_OBJECTS) $(MODERN_MACOS_LIBRARIES) \
 		-Wl,-force_load,$(X86_64_QUICKJS_LIBRARY) \
+		-Wl,-force_load,$(X86_64_LSMASH_LIBRARY) \
 		$(MODERN_QUICKJS_LIBRARIES) -o $@
 
 $(ARM64_BINARY): $(ARM64_OBJECTS) $(ALTIVECCORE) \
-		$(ARM64_QUICKJS_LIBRARY)
+		$(ARM64_QUICKJS_LIBRARY) $(ARM64_LSMASH_LIBRARY)
 	@echo "  > linking arm64 binary"
 	@$(COMPILER_ARM64) -target arm64-apple-macos$(MAC_MIN_ARM64) \
 		-isysroot $(SDK_ARM64_PATH) $(ARM64_OBJECTS) \
 		$(MODERN_MACOS_LIBRARIES) \
 		-Wl,-force_load,$(ARM64_QUICKJS_LIBRARY) \
+		-Wl,-force_load,$(ARM64_LSMASH_LIBRARY) \
 		$(MODERN_QUICKJS_LIBRARIES) -o $@
 
 $(MACOS_INT_DIR)/x86_64/%.o: %.c
@@ -79,6 +90,30 @@ $(X86_64_QUICKJS_LIBRARY): $(X86_64_QUICKJS_OBJECTS)
 $(ARM64_QUICKJS_LIBRARY): $(ARM64_QUICKJS_OBJECTS)
 	@echo "  > archiving arm64 QuickJS static library"
 	@$(AR_MODERN) rcs $@ $^
+
+$(X86_64_LSMASH_LIBRARY): $(X86_64_LSMASH_OBJECTS)
+	@echo "  > archiving x86_64 L-SMASH static library"
+	@$(AR_MODERN) rcs $@ $^
+
+$(ARM64_LSMASH_LIBRARY): $(ARM64_LSMASH_OBJECTS)
+	@echo "  > archiving arm64 L-SMASH static library"
+	@$(AR_MODERN) rcs $@ $^
+
+$(X86_64_LSMASH_INT_DIR)/%.o: $(LSMASH_DIR)/%.c
+	@mkdir -p $(dir $@)
+	@$(COMPILER_X64) -target x86_64-apple-macos$(MAC_MIN_X64) \
+		-arch x86_64 -isysroot $(SDK_X64_PATH) \
+		$(LSMASH_CPPFLAGS) $(LSMASH_CFLAGS) \
+		-Wno-sign-conversion -Wno-shorten-64-to-32 \
+		-MMD -MP -MF $(@:.o=.d) -c $< -o $@
+
+$(ARM64_LSMASH_INT_DIR)/%.o: $(LSMASH_DIR)/%.c
+	@mkdir -p $(dir $@)
+	@$(COMPILER_ARM64) -target arm64-apple-macos$(MAC_MIN_ARM64) \
+		-arch arm64 -isysroot $(SDK_ARM64_PATH) \
+		$(LSMASH_CPPFLAGS) $(LSMASH_CFLAGS) \
+		-Wno-sign-conversion -Wno-shorten-64-to-32 \
+		-MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 $(X86_64_QUICKJS_INT_DIR)/%.o: $(QUICKJS_DIR)/%.c
 	@mkdir -p $(dir $@)

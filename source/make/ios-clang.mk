@@ -39,14 +39,29 @@ IOS_QUICKJS_OBJECTS := $(addprefix $(IOS_QUICKJS_INT_DIR)/, \
 	$(IOS_QUICKJS_SOURCE_NAMES:.c=.o)) \
 	$(IOS_QUICKJS_INT_DIR)/quickjs_compat.o
 
+IOS_ARMV7_LSMASH_INT_DIR := $(IOS_INT_DIR)/armv7/L-SMASH
+IOS_ARM64_LSMASH_INT_DIR := $(IOS_INT_DIR)/arm64/L-SMASH
+IOS_ARMV7_LSMASH_OBJECTS := $(addprefix $(IOS_ARMV7_LSMASH_INT_DIR)/, \
+	$(LSMASH_SOURCE_NAMES:.c=.o))
+IOS_ARM64_LSMASH_OBJECTS := $(addprefix $(IOS_ARM64_LSMASH_INT_DIR)/, \
+	$(LSMASH_SOURCE_NAMES:.c=.o))
+IOS_ARMV7_LSMASH_LIBRARY := $(IOS_INT_DIR)/armv7/liblsmash.a
+IOS_ARM64_LSMASH_LIBRARY := $(IOS_INT_DIR)/arm64/liblsmash.a
+IOS_LSMASH_LIBRARY := $(IOS_INT_DIR)/liblsmash.a
+IOS_ARMV7_LSMASH_ARCH_FLAGS := -target armv7-apple-ios$(IOS_MIN_ARMV7) \
+	-arch armv7 -miphoneos-version-min=$(IOS_MIN_ARMV7)
+IOS_ARM64_LSMASH_ARCH_FLAGS := -target arm64-apple-ios$(IOS_MIN_ARM64) \
+	-arch arm64 -miphoneos-version-min=$(IOS_MIN_ARM64)
+
 $(IOS_BINARY): $(IOS_OBJECTS) $(IOS_ALTIVECCORE) \
-		$(IOS_QUICKJS_OBJECTS)
+		$(IOS_QUICKJS_OBJECTS) $(IOS_LSMASH_LIBRARY)
 	@echo "--- Building retro-dlp iOS Release (-O3) ---"
 	@echo " [2/2] Linking universal iOS binary (armv7, arm64)..."
 	@mkdir -p $(dir $@)
 	@$(COMPILER_IOS) $(IOS_ARCH_FLAGS) $(IOS_TOOLCHAIN_FLAGS) \
 		$(IOS_OBJECTS) $(IOS_LIBRARIES) \
 		$(IOS_QUICKJS_OBJECTS) \
+		-Wl,-force_load,$(IOS_LSMASH_LIBRARY) \
 		$(IOS_QUICKJS_LIBRARIES) -o $@
 	@echo "  > $@"
 
@@ -67,3 +82,30 @@ $(IOS_QUICKJS_INT_DIR)/quickjs_compat.o: \
 	@mkdir -p $(dir $@)
 	@$(COMPILER_IOS) $(IOS_ARCH_FLAGS) $(IOS_TOOLCHAIN_FLAGS) \
 		$(IOS_QUICKJS_CFLAGS) -I$(IOS_QUICKJS_COMPAT_DIR) -c $< -o $@
+
+$(IOS_LSMASH_LIBRARY): $(IOS_ARMV7_LSMASH_LIBRARY) \
+		$(IOS_ARM64_LSMASH_LIBRARY)
+	@echo "  > merging universal iOS L-SMASH static library"
+	@$(LIPO) -create $^ -output $@
+
+$(IOS_ARMV7_LSMASH_LIBRARY): $(IOS_ARMV7_LSMASH_OBJECTS)
+	@echo "  > archiving armv7 L-SMASH static library"
+	@$(AR_MODERN) rcs $@ $^
+
+$(IOS_ARM64_LSMASH_LIBRARY): $(IOS_ARM64_LSMASH_OBJECTS)
+	@echo "  > archiving arm64 L-SMASH static library"
+	@$(AR_MODERN) rcs $@ $^
+
+$(IOS_ARMV7_LSMASH_INT_DIR)/%.o: $(LSMASH_DIR)/%.c
+	@mkdir -p $(dir $@)
+	@$(COMPILER_IOS) $(IOS_ARMV7_LSMASH_ARCH_FLAGS) $(IOS_TOOLCHAIN_FLAGS) \
+		$(LSMASH_CPPFLAGS) $(LSMASH_CFLAGS) \
+		-Wno-unused-command-line-argument -Wno-sign-conversion \
+		-Wno-shorten-64-to-32 -MMD -MP -MF $(@:.o=.d) -c $< -o $@
+
+$(IOS_ARM64_LSMASH_INT_DIR)/%.o: $(LSMASH_DIR)/%.c
+	@mkdir -p $(dir $@)
+	@$(COMPILER_IOS) $(IOS_ARM64_LSMASH_ARCH_FLAGS) $(IOS_TOOLCHAIN_FLAGS) \
+		$(LSMASH_CPPFLAGS) $(LSMASH_CFLAGS) \
+		-Wno-unused-command-line-argument -Wno-sign-conversion \
+		-Wno-shorten-64-to-32 -MMD -MP -MF $(@:.o=.d) -c $< -o $@

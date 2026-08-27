@@ -40,22 +40,35 @@ I386_QUICKJS_OBJECTS := $(addprefix $(I386_QUICKJS_INT_DIR)/, \
 PPC_QUICKJS_LIBRARY := $(MACOS_INT_DIR)/ppc/libquickjs.a
 I386_QUICKJS_LIBRARY := $(MACOS_INT_DIR)/i386/libquickjs.a
 
-$(PPC_BINARY): $(PPC_OBJECTS) $(ALTIVECCORE) $(PPC_QUICKJS_LIBRARY)
+PPC_LSMASH_INT_DIR := $(MACOS_INT_DIR)/ppc/L-SMASH
+I386_LSMASH_INT_DIR := $(MACOS_INT_DIR)/i386/L-SMASH
+PPC_LSMASH_OBJECTS := $(addprefix $(PPC_LSMASH_INT_DIR)/, \
+	$(LSMASH_SOURCE_NAMES:.c=.o)) $(PPC_LSMASH_INT_DIR)/stdio_compat.o
+I386_LSMASH_OBJECTS := $(addprefix $(I386_LSMASH_INT_DIR)/, \
+	$(LSMASH_SOURCE_NAMES:.c=.o)) $(I386_LSMASH_INT_DIR)/stdio_compat.o
+PPC_LSMASH_LIBRARY := $(MACOS_INT_DIR)/ppc/liblsmash.a
+I386_LSMASH_LIBRARY := $(MACOS_INT_DIR)/i386/liblsmash.a
+
+$(PPC_BINARY): $(PPC_OBJECTS) $(ALTIVECCORE) $(PPC_QUICKJS_LIBRARY) \
+		$(PPC_LSMASH_LIBRARY)
 	@echo "  > linking ppc binary"
 	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_PPC) \
 		-arch ppc -isysroot $(SDK_PPC_PATH) $(PPC_OBJECTS) \
 		$(LEGACY_MACOS_LIBRARIES) -Wl,-force_load,$(PPC_QUICKJS_LIBRARY) \
+		-Wl,-force_load,$(PPC_LSMASH_LIBRARY) \
 		$(LEGACY_QUICKJS_LIBRARIES) -lgcc_s.10.4 -o $@
 	@if $(NM) -u $@ | grep -E '\$$(UNIX2003|NOCANCEL|INODE64|1050)' \
 		>/dev/null; then \
 		echo "Tiger-incompatible suffixed symbol in $@" >&2; exit 1; \
 	fi
 
-$(I386_BINARY): $(I386_OBJECTS) $(ALTIVECCORE) $(I386_QUICKJS_LIBRARY)
+$(I386_BINARY): $(I386_OBJECTS) $(ALTIVECCORE) $(I386_QUICKJS_LIBRARY) \
+		$(I386_LSMASH_LIBRARY)
 	@echo "  > linking i386 binary"
 	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_X86) \
 		-arch i386 -isysroot $(SDK_X86_PATH) $(I386_OBJECTS) \
 		$(LEGACY_MACOS_LIBRARIES) -Wl,-force_load,$(I386_QUICKJS_LIBRARY) \
+		-Wl,-force_load,$(I386_LSMASH_LIBRARY) \
 		$(LEGACY_QUICKJS_LIBRARIES) -lgcc_s.10.4 -o $@
 	@if $(NM) -u $@ | grep -E '\$$(UNIX2003|NOCANCEL|INODE64|1050)' \
 		>/dev/null; then \
@@ -85,6 +98,44 @@ $(PPC_QUICKJS_LIBRARY): $(PPC_QUICKJS_OBJECTS)
 $(I386_QUICKJS_LIBRARY): $(I386_QUICKJS_OBJECTS)
 	@echo "  > archiving i386 QuickJS static library"
 	@$(AR_LEGACY) rcs $@ $^
+
+$(PPC_LSMASH_LIBRARY): $(PPC_LSMASH_OBJECTS)
+	@echo "  > archiving ppc L-SMASH static library"
+	@$(AR_LEGACY) rcs $@ $^
+
+$(I386_LSMASH_LIBRARY): $(I386_LSMASH_OBJECTS)
+	@echo "  > archiving i386 L-SMASH static library"
+	@$(AR_LEGACY) rcs $@ $^
+
+$(PPC_LSMASH_INT_DIR)/%.o: $(LSMASH_DIR)/%.c
+	@mkdir -p $(dir $@)
+	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_PPC) \
+		$(LSMASH_CPPFLAGS) $(LSMASH_CFLAGS) -fno-stack-protector \
+		-fno-common -arch ppc -isysroot $(SDK_PPC_PATH) \
+		-MMD -MP -MF $(@:.o=.d) -c $< -o $@
+
+$(I386_LSMASH_INT_DIR)/%.o: $(LSMASH_DIR)/%.c
+	@mkdir -p $(dir $@)
+	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_X86) \
+		$(LSMASH_CPPFLAGS) $(LSMASH_CFLAGS) -fno-stack-protector \
+		-fno-common -arch i386 -isysroot $(SDK_X86_PATH) \
+		-MMD -MP -MF $(@:.o=.d) -c $< -o $@
+
+$(PPC_LSMASH_INT_DIR)/stdio_compat.o: \
+		source/macOS/apple-gcc4/L-SMASH/stdio_compat.c
+	@mkdir -p $(dir $@)
+	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_PPC) \
+		-D_NONSTD_SOURCE $(CFLAGS) -std=c99 -Wall -Wextra \
+		-fno-stack-protector -fno-common -arch ppc \
+		-isysroot $(SDK_PPC_PATH) -c $< -o $@
+
+$(I386_LSMASH_INT_DIR)/stdio_compat.o: \
+		source/macOS/apple-gcc4/L-SMASH/stdio_compat.c
+	@mkdir -p $(dir $@)
+	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_X86) \
+		-D_NONSTD_SOURCE $(CFLAGS) -std=c99 -Wall -Wextra \
+		-fno-stack-protector -fno-common -arch i386 \
+		-isysroot $(SDK_X86_PATH) -c $< -o $@
 
 $(PPC_QUICKJS_INT_DIR)/%.o: $(QUICKJS_DIR)/%.c
 	@mkdir -p $(dir $@)
