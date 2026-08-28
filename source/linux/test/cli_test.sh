@@ -139,6 +139,9 @@ printf '%s\n' "$self_test_output" | grep -q '^PASS: video ID parsing' || \
 printf '%s\n' "$self_test_output" | grep -q '^PASS: playlist ID parsing$' || \
   fail "test binary did not pass playlist ID parsing"
 printf '%s\n' "$self_test_output" | \
+  grep -q '^PASS: playlist collection JSON parsing$' || \
+  fail "test binary did not pass playlist collection JSON parsing"
+printf '%s\n' "$self_test_output" | \
   grep -q '^PASS: deterministic player and HTTP classification fixtures$' || \
   fail "test binary did not pass deterministic player fixtures"
 printf '%s\n' "$self_test_output" | grep -q '^PASS: retro-dlp self-test$' || \
@@ -155,6 +158,13 @@ if $binary --flat-playlist YE7VzlLtp-4 2>"$error_file"; then
 fi
 grep -q '^retro-dlp: invalid or unsupported YouTube playlist URL$' \
   "$error_file" || fail "invalid flat-playlist input was misclassified"
+
+if $binary --flat-playlist \
+    'https://www.youtube.com/feed/playlists' 2>"$error_file"; then
+  fail "account playlist collection did not require cookies"
+fi
+grep -q '^retro-dlp: YouTube authentication cookies are missing, expired, or invalid$' \
+  "$error_file" || fail "account playlist collection lacked cookie guidance"
 
 invalid_cookie_file=$test_home/invalid-cookies.txt
 printf '%s\n' '# Netscape HTTP Cookie File' > "$invalid_cookie_file"

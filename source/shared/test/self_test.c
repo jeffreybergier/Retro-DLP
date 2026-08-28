@@ -154,6 +154,15 @@ static int test_playlist_id(void) {
           "https://www.youtube.com/playlist?list=PL_test-123",
           playlist_id, sizeof(playlist_id)) != YT_OK ||
       strcmp(playlist_id, "PL_test-123") != 0 ||
+      yt_extract_playlist_id("PL0SbJRdq3h-WCYdFjWM03h9IxgDs3fHot",
+                             playlist_id, sizeof(playlist_id)) != YT_OK ||
+      strcmp(playlist_id, "PL0SbJRdq3h-WCYdFjWM03h9IxgDs3fHot") != 0 ||
+      yt_extract_playlist_id("LL", playlist_id, sizeof(playlist_id)) !=
+          YT_ERR_INVALID_PLAYLIST ||
+      yt_extract_playlist_id("WL", playlist_id, sizeof(playlist_id)) !=
+          YT_ERR_INVALID_PLAYLIST ||
+      yt_extract_playlist_id(SELF_TEST_VIDEO_ID, playlist_id,
+                             sizeof(playlist_id)) != YT_ERR_INVALID_PLAYLIST ||
       yt_extract_playlist_id("https://www.youtube.com/watch?v=YE7VzlLtp-4",
                              playlist_id, sizeof(playlist_id)) !=
           YT_ERR_INVALID_PLAYLIST ||
@@ -169,7 +178,54 @@ static int test_playlist_id(void) {
     fprintf(stderr, "FAIL: YouTube playlist ID forms\n");
     return 1;
   }
+  if (!yt_is_playlist_collection_url(
+          "https://www.youtube.com/feed/playlists") ||
+      !yt_is_playlist_collection_url(
+          "https://youtube.com/feed/you/?feature=test") ||
+      !yt_is_playlist_collection_url(
+          "https://m.youtube.com/feed/library#playlists") ||
+      yt_is_playlist_collection_url(
+          "https://example.com/feed/playlists") ||
+      yt_is_playlist_collection_url(
+          "https://youtube.com.example/feed/playlists") ||
+      yt_is_playlist_collection_url(
+          "https://www.youtube.com/feed/playlists/more")) {
+    fprintf(stderr, "FAIL: YouTube playlist collection URL forms\n");
+    return 1;
+  }
   printf("PASS: playlist ID parsing\n");
+  return 0;
+}
+
+static int test_playlist_collection_json(void) {
+  static const char json[] =
+      "{\"contents\":["
+      "{\"lockupViewModel\":{\"contentId\":\"PL_current-1\","
+      "\"contentType\":\"LOCKUP_CONTENT_TYPE_PLAYLIST\","
+      "\"metadata\":{\"lockupMetadataViewModel\":{\"title\":{"
+      "\"content\":\"Current playlist\"}}}}},"
+      "{\"gridPlaylistRenderer\":{\"playlistId\":\"PL_old-2\","
+      "\"title\":{\"runs\":[{\"text\":\"Old playlist\"}]}}},"
+      "{\"playlistRenderer\":{\"playlistId\":\"PL_current-1\","
+      "\"title\":{\"simpleText\":\"Duplicate\"}}}]}";
+  YTPlaylistCollection collection;
+  YTStatus status;
+  memset(&collection, 0, sizeof(collection));
+  status = yt_parse_playlist_collection_json(json, strlen(json),
+                                             &collection);
+  if (status != YT_OK || collection.playlist_count != 2 ||
+      strcmp(collection.playlists[0].playlist_id, "PL_current-1") != 0 ||
+      strcmp(collection.playlists[0].title, "Current playlist") != 0 ||
+      collection.playlists[0].index != 1 ||
+      strcmp(collection.playlists[1].playlist_id, "PL_old-2") != 0 ||
+      strcmp(collection.playlists[1].title, "Old playlist") != 0 ||
+      collection.playlists[1].index != 2) {
+    fprintf(stderr, "FAIL: playlist collection JSON parsing\n");
+    yt_playlist_collection_free(&collection);
+    return 1;
+  }
+  yt_playlist_collection_free(&collection);
+  printf("PASS: playlist collection JSON parsing\n");
   return 0;
 }
 
@@ -521,6 +577,7 @@ int retro_dlp_run_self_tests(void) {
   announce_test("YouTube video ID parsing");
   failures += test_video_id();
   failures += test_playlist_id();
+  failures += test_playlist_collection_json();
   announce_test("title-based default output path");
   failures += test_default_output_path();
   announce_test("cJSON parsing");

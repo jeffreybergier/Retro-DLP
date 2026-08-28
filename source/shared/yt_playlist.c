@@ -167,30 +167,25 @@ static int valid_playlist_id(const char *value, size_t length) {
   return 1;
 }
 
-YTStatus yt_extract_playlist_id(const char *input, char *playlist_id,
-                                size_t playlist_id_size) {
+static int youtube_url_path(const char *input, const char **path_out) {
   const char *scheme;
   const char *authority;
   const char *authority_end;
   const char *host_end;
-  const char *query;
-  const char *start;
-  const char *end;
-  size_t length;
   size_t host_length;
-  if (input == NULL || playlist_id == NULL || playlist_id_size == 0)
-    return YT_ERR_INVALID_PLAYLIST;
+  if (input == NULL)
+    return 0;
   scheme = strstr(input, "://");
   if (scheme == NULL ||
       !((scheme - input == 5 && strncmp(input, "https", 5) == 0) ||
         (scheme - input == 4 && strncmp(input, "http", 4) == 0)))
-    return YT_ERR_INVALID_PLAYLIST;
+    return 0;
   authority = scheme + 3;
   authority_end = strpbrk(authority, "/?#");
   if (authority_end == NULL)
     authority_end = authority + strlen(authority);
   if (memchr(authority, '@', (size_t)(authority_end - authority)) != NULL)
-    return YT_ERR_INVALID_PLAYLIST;
+    return 0;
   host_end = memchr(authority, ':', (size_t)(authority_end - authority));
   if (host_end == NULL)
     host_end = authority_end;
@@ -198,8 +193,48 @@ YTStatus yt_extract_playlist_id(const char *input, char *playlist_id,
   if (!((host_length == 11 && strncmp(authority, "youtube.com", 11) == 0) ||
         (host_length > 12 &&
          strncmp(authority + host_length - 12, ".youtube.com", 12) == 0)))
+    return 0;
+  *path_out = authority_end;
+  return 1;
+}
+
+int yt_is_playlist_collection_url(const char *input) {
+  const char *path;
+  const char *end;
+  size_t length;
+  if (!youtube_url_path(input, &path))
+    return 0;
+  end = strpbrk(path, "?#");
+  if (end == NULL)
+    end = path + strlen(path);
+  while (end > path + 1 && end[-1] == '/')
+    --end;
+  length = (size_t)(end - path);
+  return (length == 15 && strncmp(path, "/feed/playlists", 15) == 0) ||
+         (length == 9 && strncmp(path, "/feed/you", 9) == 0) ||
+         (length == 13 && strncmp(path, "/feed/library", 13) == 0);
+}
+
+YTStatus yt_extract_playlist_id(const char *input, char *playlist_id,
+                                size_t playlist_id_size) {
+  const char *path;
+  const char *query;
+  const char *start;
+  const char *end;
+  size_t length;
+  if (input == NULL || playlist_id == NULL || playlist_id_size == 0)
     return YT_ERR_INVALID_PLAYLIST;
-  query = strchr(authority_end, '?');
+  length = strlen(input);
+  if (length > 2 && strncmp(input, "PL", 2) == 0 &&
+      valid_playlist_id(input, length)) {
+    if (length >= playlist_id_size)
+      return YT_ERR_INVALID_PLAYLIST;
+    memcpy(playlist_id, input, length + 1);
+    return YT_OK;
+  }
+  if (!youtube_url_path(input, &path))
+    return YT_ERR_INVALID_PLAYLIST;
+  query = strchr(path, '?');
   if (query == NULL)
     return YT_ERR_INVALID_PLAYLIST;
   start = query + 1;
@@ -365,6 +400,99 @@ static YTStatus collect_entries(cJSON *node, YTPlaylist *playlist) {
   return YT_OK;
 }
 
+static YTStatus append_playlist_reference(YTPlaylistCollection *collection,
+                                          const char *playlist_id,
+                                          const char *title) {
+  YTPlaylistReference *grown;
+  YTPlaylistReference *reference;
+  size_t index;
+  size_t length;
+  if (playlist_id == NULL)
+    return YT_OK;
+  length = strlen(playlist_id);
+  if (!valid_playlist_id(playlist_id, length))
+    return YT_OK;
+  for (index = 0; index < collection->playlist_count; ++index) {
+    if (strcmp(collection->playlists[index].playlist_id, playlist_id) == 0)
+      return YT_OK;
+  }
+  if (collection->playlist_count >= YT_PLAYLIST_MAX_ENTRIES)
+    return YT_ERR_INVALID_RESPONSE;
+  grown = (YTPlaylistReference *)realloc(
+      collection->playlists,
+      (collection->playlist_count + 1) * sizeof(*collection->playlists));
+  if (grown == NULL)
+    return YT_ERR_OUT_OF_MEMORY;
+  collection->playlists = grown;
+  reference = &collection->playlists[collection->playlist_count];
+  memset(reference, 0, sizeof(*reference));
+  reference->playlist_id = copy_string(playlist_id);
+  reference->title = copy_string(title == NULL ? playlist_id : title);
+  if (reference->playlist_id == NULL || reference->title == NULL) {
+    free(reference->playlist_id);
+    free(reference->title);
+    memset(reference, 0, sizeof(*reference));
+    return YT_ERR_OUT_OF_MEMORY;
+  }
+  reference->index = collection->playlist_count + 1;
+  ++collection->playlist_count;
+  return YT_OK;
+}
+
+static YTStatus collect_playlist_references(cJSON *node,
+                                            YTPlaylistCollection *collection) {
+  cJSON *child;
+  cJSON *lockup;
+  cJSON *renderer;
+  const char *type;
+  YTStatus status;
+  if (node == NULL)
+    return YT_OK;
+  if (cJSON_IsObject(node)) {
+    lockup = cJSON_GetObjectItemCaseSensitive(node, "lockupViewModel");
+    if (cJSON_IsObject(lockup)) {
+      type = json_string(lockup, "contentType");
+      if (type != NULL && strcmp(type, "LOCKUP_CONTENT_TYPE_PLAYLIST") == 0)
+        return append_playlist_reference(collection,
+                                         json_string(lockup, "contentId"),
+                                         lockup_title(lockup));
+    }
+    renderer = cJSON_GetObjectItemCaseSensitive(node, "playlistRenderer");
+    if (!cJSON_IsObject(renderer))
+      renderer = cJSON_GetObjectItemCaseSensitive(node,
+                                                   "gridPlaylistRenderer");
+    if (cJSON_IsObject(renderer))
+      return append_playlist_reference(collection,
+                                       json_string(renderer, "playlistId"),
+                                       renderer_text(renderer, "title"));
+  }
+  cJSON_ArrayForEach(child, node) {
+    status = collect_playlist_references(child, collection);
+    if (status != YT_OK)
+      return status;
+  }
+  return YT_OK;
+}
+
+YTStatus yt_parse_playlist_collection_json(const char *json, size_t length,
+                                           YTPlaylistCollection *collection) {
+  cJSON *document;
+  YTStatus status;
+  if (json == NULL || collection == NULL)
+    return YT_ERR_INVALID_RESPONSE;
+  memset(collection, 0, sizeof(*collection));
+  document = cJSON_ParseWithLength(json, length);
+  if (document == NULL)
+    return YT_ERR_INVALID_RESPONSE;
+  status = collect_playlist_references(document, collection);
+  cJSON_Delete(document);
+  if (status == YT_OK && collection->playlist_count == 0)
+    status = YT_ERR_INVALID_RESPONSE;
+  if (status != YT_OK)
+    yt_playlist_collection_free(collection);
+  return status;
+}
+
 static const char *continuation_in_node(cJSON *node) {
   cJSON *command;
   cJSON *child;
@@ -400,6 +528,30 @@ static int contains_direct_video(cJSON *array) {
   return 0;
 }
 
+static int contains_direct_playlist(cJSON *array) {
+  cJSON *child;
+  cJSON *lockup;
+  cJSON *renderer;
+  const char *type;
+  if (!cJSON_IsArray(array))
+    return 0;
+  cJSON_ArrayForEach(child, array) {
+    lockup = cJSON_GetObjectItemCaseSensitive(child, "lockupViewModel");
+    if (cJSON_IsObject(lockup)) {
+      type = json_string(lockup, "contentType");
+      if (type != NULL && strcmp(type, "LOCKUP_CONTENT_TYPE_PLAYLIST") == 0)
+        return 1;
+    }
+    renderer = cJSON_GetObjectItemCaseSensitive(child, "playlistRenderer");
+    if (!cJSON_IsObject(renderer))
+      renderer = cJSON_GetObjectItemCaseSensitive(child,
+                                                   "gridPlaylistRenderer");
+    if (cJSON_IsObject(renderer))
+      return 1;
+  }
+  return 0;
+}
+
 static const char *find_entry_continuation(cJSON *node) {
   cJSON *child;
   const char *token;
@@ -407,6 +559,19 @@ static const char *find_entry_continuation(cJSON *node) {
     return continuation_in_node(node);
   cJSON_ArrayForEach(child, node) {
     token = find_entry_continuation(child);
+    if (token != NULL)
+      return token;
+  }
+  return NULL;
+}
+
+static const char *find_playlist_continuation(cJSON *node) {
+  cJSON *child;
+  const char *token;
+  if (cJSON_IsArray(node) && contains_direct_playlist(node))
+    return continuation_in_node(node);
+  cJSON_ArrayForEach(child, node) {
+    token = find_playlist_continuation(child);
     if (token != NULL)
       return token;
   }
@@ -692,6 +857,133 @@ finished:
   return status;
 }
 
+YTStatus yt_list_account_playlists(
+    YTHttpSession *session, const char *input, const char *cookie_file,
+    YTPlaylistCollection *collection, YTProgressCallback progress,
+    void *progress_opaque) {
+  const char *path;
+  const char *path_end;
+  char url[256];
+  YTHttpResponse response;
+  YTPlaylistAccount account;
+  cJSON *document = NULL;
+  cJSON *context;
+  const char *token;
+  char *continuation = NULL;
+  char *next_continuation;
+  char *api_key = NULL;
+  char *client_version = NULL;
+  char *visitor_data = NULL;
+  char *updated_visitor;
+  size_t page;
+  YTStatus status;
+  if (session == NULL || input == NULL || collection == NULL ||
+      !yt_is_playlist_collection_url(input))
+    return YT_ERR_INVALID_PLAYLIST;
+  memset(collection, 0, sizeof(*collection));
+  memset(&account, 0, sizeof(account));
+  if (cookie_file == NULL)
+    return YT_ERR_AUTH_COOKIES_INVALID;
+  status = yt_auth_cookies_load(cookie_file, (int64_t)time(NULL),
+                                &account.cookies);
+  if (status != YT_OK)
+    return status;
+  account.authenticated = 1;
+  if (!youtube_url_path(input, &path)) {
+    status = YT_ERR_INVALID_PLAYLIST;
+    goto finished;
+  }
+  path_end = strpbrk(path, "?#");
+  if (path_end == NULL)
+    path_end = path + strlen(path);
+  while (path_end > path + 1 && path_end[-1] == '/')
+    --path_end;
+  if (snprintf(url, sizeof(url), YT_PLAYLIST_ORIGIN "%.*s?hl=en",
+               (int)(path_end - path), path) >= (int)sizeof(url)) {
+    status = YT_ERR_INVALID_PLAYLIST;
+    goto finished;
+  }
+  if (progress != NULL)
+    progress("fetching account playlists", progress_opaque);
+  status = yt_http_session_get_with_user_agent(
+      session, url, YT_PLAYLIST_PAGE_MAX_RESPONSE, YT_PLAYLIST_USER_AGENT,
+      &response);
+  if (status != YT_OK)
+    goto finished;
+  if (response.status < 200 || response.status >= 300) {
+    status = YT_ERR_HTTP;
+    yt_http_response_free(&response);
+    goto finished;
+  }
+  account_load_page(&account, response.data);
+  api_key = json_string_after_marker(response.data, "\"INNERTUBE_API_KEY\"");
+  client_version = json_string_after_marker(
+      response.data, "\"INNERTUBE_CONTEXT_CLIENT_VERSION\"");
+  visitor_data = json_string_after_marker(response.data, "\"VISITOR_DATA\"");
+  document = embedded_json_object(response.data, "ytInitialData");
+  yt_http_response_free(&response);
+  if (api_key == NULL || client_version == NULL || document == NULL ||
+      !account.logged_in) {
+    status = YT_ERR_AUTH_COOKIES_INVALID;
+    goto pagination_finished;
+  }
+  status = collect_playlist_references(document, collection);
+  token = find_playlist_continuation(document);
+  continuation = copy_string(token);
+  if (token != NULL && continuation == NULL)
+    status = YT_ERR_OUT_OF_MEMORY;
+  cJSON_Delete(document);
+  document = NULL;
+  if (status != YT_OK)
+    goto pagination_finished;
+  for (page = 1; continuation != NULL && page <= YT_PLAYLIST_MAX_PAGES;
+       ++page) {
+    if (progress != NULL)
+      progress("fetching account playlist continuation", progress_opaque);
+    status = call_browse(session, &account, api_key, client_version,
+                         visitor_data, continuation, NULL, &document);
+    free(continuation);
+    continuation = NULL;
+    if (status != YT_OK)
+      break;
+    status = collect_playlist_references(document, collection);
+    if (status != YT_OK)
+      break;
+    token = find_playlist_continuation(document);
+    next_continuation = copy_string(token);
+    if (token != NULL && next_continuation == NULL) {
+      status = YT_ERR_OUT_OF_MEMORY;
+      break;
+    }
+    continuation = next_continuation;
+    context = cJSON_GetObjectItemCaseSensitive(document, "responseContext");
+    updated_visitor = copy_string(json_string(context, "visitorData"));
+    if (updated_visitor != NULL) {
+      free(visitor_data);
+      visitor_data = updated_visitor;
+    }
+    cJSON_Delete(document);
+    document = NULL;
+  }
+  if (continuation != NULL)
+    status = YT_ERR_INVALID_RESPONSE;
+  if (status == YT_OK && collection->playlist_count == 0)
+    status = YT_ERR_INVALID_RESPONSE;
+
+pagination_finished:
+  free(continuation);
+  free(api_key);
+  free(client_version);
+  free(visitor_data);
+  cJSON_Delete(document);
+
+finished:
+  account_free(&account);
+  if (status != YT_OK)
+    yt_playlist_collection_free(collection);
+  return status;
+}
+
 void yt_playlist_free(YTPlaylist *playlist) {
   size_t index;
   if (playlist == NULL)
@@ -704,4 +996,16 @@ void yt_playlist_free(YTPlaylist *playlist) {
   free(playlist->playlist_id);
   free(playlist->title);
   memset(playlist, 0, sizeof(*playlist));
+}
+
+void yt_playlist_collection_free(YTPlaylistCollection *collection) {
+  size_t index;
+  if (collection == NULL)
+    return;
+  for (index = 0; index < collection->playlist_count; ++index) {
+    free(collection->playlists[index].playlist_id);
+    free(collection->playlists[index].title);
+  }
+  free(collection->playlists);
+  memset(collection, 0, sizeof(*collection));
 }

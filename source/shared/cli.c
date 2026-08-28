@@ -776,28 +776,99 @@ static void print_playlist_table(const YTPlaylist *playlist) {
   }
 }
 
+static int print_playlist_collection_json(
+    const YTPlaylistCollection *collection) {
+  size_t index;
+  for (index = 0; index < collection->playlist_count; ++index) {
+    const YTPlaylistReference *reference = &collection->playlists[index];
+    cJSON *document = cJSON_CreateObject();
+    char url[256];
+    char *json;
+    if (document == NULL ||
+        snprintf(url, sizeof(url),
+                 "https://www.youtube.com/playlist?list=%s",
+                 reference->playlist_id) >= (int)sizeof(url) ||
+        !cJSON_AddStringToObject(document, "id", reference->playlist_id) ||
+        !cJSON_AddStringToObject(document, "title", reference->title) ||
+        !cJSON_AddStringToObject(document, "url", url) ||
+        !cJSON_AddStringToObject(document, "webpage_url", url) ||
+        !cJSON_AddNumberToObject(document, "playlist_index",
+                                (double)reference->index) ||
+        !cJSON_AddStringToObject(document, "_type", "url") ||
+        !cJSON_AddStringToObject(document, "extractor_key", "YoutubeTab")) {
+      cJSON_Delete(document);
+      return 1;
+    }
+    json = cJSON_PrintUnformatted(document);
+    cJSON_Delete(document);
+    if (json == NULL)
+      return 1;
+    printf("%s\n", json);
+    free(json);
+  }
+  return 0;
+}
+
+static void print_playlist_collection_table(
+    const YTPlaylistCollection *collection) {
+  size_t index;
+  size_t index_width = strlen("INDEX");
+  char number[32];
+  for (index = 0; index < collection->playlist_count; ++index) {
+    size_t width;
+    snprintf(number, sizeof(number), "%lu",
+             (unsigned long)collection->playlists[index].index);
+    width = strlen(number);
+    if (width > index_width)
+      index_width = width;
+  }
+  printf("%-*s  %-34s  %s\n", (int)index_width, "INDEX", "ID", "TITLE");
+  printf("%-*s  %-34s  %s\n", (int)index_width, "-----",
+         "----------------------------------", "-----");
+  for (index = 0; index < collection->playlist_count; ++index) {
+    const YTPlaylistReference *reference = &collection->playlists[index];
+    printf("%*lu  %-34s  %s\n", (int)index_width,
+           (unsigned long)reference->index, reference->playlist_id,
+           reference->title);
+  }
+}
+
 static int list_playlist_argument(const char *input, const char *cookie_file,
                                   int dump_json) {
   YTHttpSession *session = NULL;
   YTPlaylist playlist;
+  YTPlaylistCollection collection;
   YTStatus status;
   int failed;
   memset(&playlist, 0, sizeof(playlist));
+  memset(&collection, 0, sizeof(collection));
   if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
     fprintf(stderr, "retro-dlp: could not initialize libcurl\n");
     return 1;
   }
   status = yt_http_session_create(cookie_file, &session);
-  if (status == YT_OK)
-    status = yt_list_playlist(session, input, cookie_file, &playlist,
-                              print_progress, stderr);
+  if (status == YT_OK) {
+    if (yt_is_playlist_collection_url(input))
+      status = yt_list_account_playlists(session, input, cookie_file,
+                                         &collection, print_progress, stderr);
+    else
+      status = yt_list_playlist(session, input, cookie_file, &playlist,
+                                print_progress, stderr);
+  }
   if (status != YT_OK) {
     fprintf(stderr, "retro-dlp: %s\n", yt_status_string(status));
     yt_http_session_destroy(session);
     curl_global_cleanup();
     return 1;
   }
-  if (dump_json)
+  if (yt_is_playlist_collection_url(input)) {
+    if (dump_json)
+      failed = print_playlist_collection_json(&collection);
+    else {
+      print_playlist_collection_table(&collection);
+      failed = 0;
+    }
+  } else if (dump_json)
     failed = print_playlist_json(&playlist);
   else {
     print_playlist_table(&playlist);
@@ -806,6 +877,7 @@ static int list_playlist_argument(const char *input, const char *cookie_file,
   if (failed)
     fprintf(stderr, "retro-dlp: could not create playlist output\n");
   yt_playlist_free(&playlist);
+  yt_playlist_collection_free(&collection);
   yt_http_session_destroy(session);
   curl_global_cleanup();
   return failed;
