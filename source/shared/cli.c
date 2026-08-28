@@ -10,6 +10,7 @@
 
 #include "cJSON.h"
 #include "platform.h"
+#include "yt_cache.h"
 #include "yt_ejs_assets.h"
 #include "yt_http.h"
 #include "yt_mux.h"
@@ -27,6 +28,27 @@
 #define PRESET_LOW_FORMAT "18"
 #define PRESET_MED_FORMAT "135+140/134+140"
 #define PRESET_HIGH_FORMAT "137+599/137+140/136+599/136+140"
+
+static YTStatus cli_http_session_create(const char *cookie_file,
+                                        YTHttpSession **session) {
+  YTHttpSessionConfig config;
+  char cache_directory[PATH_MAX];
+  char ca_bundle_path[PATH_MAX];
+  char ejs_asset_directory[PATH_MAX];
+  memset(&config, 0, sizeof(config));
+  config.cookie_file = cookie_file;
+  if (yt_cache_root(cache_directory, sizeof(cache_directory)) == YT_CACHE_OK) {
+    config.cache_directory = cache_directory;
+    if (snprintf(ejs_asset_directory, sizeof(ejs_asset_directory),
+                 "%s/assets/ejs/%s", cache_directory,
+                 YT_EJS_ASSET_VERSION) < (int)sizeof(ejs_asset_directory))
+      config.ejs_asset_directory = ejs_asset_directory;
+  }
+  if (retro_dlp_default_ca_bundle_path(ca_bundle_path,
+                                       sizeof(ca_bundle_path)))
+    config.ca_bundle_path = ca_bundle_path;
+  return yt_http_session_create_with_config(&config, session);
+}
 
 static const char *preset_format_expression(const char *preset) {
   if (strcmp(preset, "low") == 0)
@@ -571,7 +593,7 @@ static int resolve_argument(const char *input, const char *format_expression,
     return 1;
   }
   request_session = NULL;
-  status = yt_http_session_create(cookie_file, &request_session);
+  status = cli_http_session_create(cookie_file, &request_session);
   if (status != YT_OK) {
     fprintf(stderr, "retro-dlp: %s\n", yt_status_string(status));
     curl_global_cleanup();
@@ -847,7 +869,7 @@ static int list_playlist_argument(const char *input, const char *cookie_file,
     fprintf(stderr, "retro-dlp: could not initialize libcurl\n");
     return 1;
   }
-  status = yt_http_session_create(cookie_file, &session);
+  status = cli_http_session_create(cookie_file, &session);
   if (status == YT_OK) {
     if (yt_is_playlist_collection_url(input))
       status = yt_list_account_playlists(session, input, cookie_file,

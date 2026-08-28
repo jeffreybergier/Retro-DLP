@@ -1,5 +1,6 @@
 #if !defined(__APPLE__)
 #define _POSIX_C_SOURCE 200112L
+#define _XOPEN_SOURCE 600
 #endif
 
 #include "yt_cache.h"
@@ -37,8 +38,6 @@ static const YTCachePolicy cache_policies[] = {
     {"preprocessed-player", 8U * 1024U * 1024U, 16U * 1024U * 1024U, 4},
     {"successful-client", 64U * 1024U, 64U * 1024U, 2},
     {"failures", 64U * 1024U, 4U * 1024U * 1024U, 64}};
-
-static unsigned long temporary_counter;
 
 static int relative_path_is_safe(const char *path) {
   const char *component;
@@ -118,41 +117,40 @@ static YTCacheStatus ensure_directory(const char *path) {
   return YT_CACHE_IO_ERROR;
 }
 
-static YTCacheStatus ensure_root(void) {
-  char root[PATH_MAX];
-  char parent[PATH_MAX];
-  char *separator;
+static YTCacheStatus ensure_root(const char *root) {
+  char path[PATH_MAX];
+  char *cursor;
+  size_t length;
   YTCacheStatus status;
 
-  status = yt_cache_root(root, sizeof(root));
-  if (status != YT_CACHE_OK)
-    return status;
-  if (strlen(root) >= sizeof(parent))
+  if (root == NULL || root[0] != '/')
+    return YT_CACHE_INVALID_ARGUMENT;
+  length = strlen(root);
+  if (length >= sizeof(path))
     return YT_CACHE_TOO_LARGE;
-  memcpy(parent, root, strlen(root) + 1);
-  separator = strrchr(parent, '/');
-  if (separator == NULL)
-    return YT_CACHE_IO_ERROR;
-  *separator = '\0';
-  status = ensure_directory(parent);
-  if (status != YT_CACHE_OK)
-    return status;
-  return ensure_directory(root);
+  memcpy(path, root, length + 1);
+  for (cursor = path + 1; *cursor != '\0'; ++cursor) {
+    if (*cursor != '/')
+      continue;
+    *cursor = '\0';
+    status = ensure_directory(path);
+    *cursor = '/';
+    if (status != YT_CACHE_OK)
+      return status;
+  }
+  return ensure_directory(path);
 }
 
-static YTCacheStatus build_path(const char *relative_path, char *path,
-                                size_t path_size) {
-  char root[PATH_MAX];
+static YTCacheStatus build_path(const char *root, const char *relative_path,
+                                char *path, size_t path_size) {
   size_t root_length;
   size_t relative_length;
-  YTCacheStatus status;
 
-  if (!relative_path_is_safe(relative_path))
+  if (root == NULL || root[0] != '/' || !relative_path_is_safe(relative_path))
     return YT_CACHE_INVALID_ARGUMENT;
-  status = yt_cache_root(root, sizeof(root));
-  if (status != YT_CACHE_OK)
-    return status;
   root_length = strlen(root);
+  while (root_length > 1 && root[root_length - 1] == '/')
+    --root_length;
   relative_length = strlen(relative_path);
   if (root_length + 1 + relative_length + 1 > path_size)
     return YT_CACHE_TOO_LARGE;
@@ -162,21 +160,21 @@ static YTCacheStatus build_path(const char *relative_path, char *path,
   return YT_CACHE_OK;
 }
 
-static YTCacheStatus ensure_parent_directories(const char *relative_path) {
-  char root[PATH_MAX];
+static YTCacheStatus ensure_parent_directories(const char *root,
+                                               const char *relative_path) {
   char path[PATH_MAX];
   const char *cursor;
   size_t used;
   YTCacheStatus status;
 
-  status = ensure_root();
-  if (status != YT_CACHE_OK)
-    return status;
-  status = yt_cache_root(root, sizeof(root));
+  status = ensure_root(root);
   if (status != YT_CACHE_OK)
     return status;
   used = strlen(root);
+  while (used > 1 && root[used - 1] == '/')
+    --used;
   memcpy(path, root, used + 1);
+  path[used] = '\0';
   cursor = relative_path;
   while ((cursor = strchr(cursor, '/')) != NULL) {
     size_t component_length = (size_t)(cursor - relative_path);
@@ -193,8 +191,10 @@ static YTCacheStatus ensure_parent_directories(const char *relative_path) {
   return YT_CACHE_OK;
 }
 
-YTCacheStatus yt_cache_read_file(const char *relative_path, size_t maximum_size,
-                                 char **data, size_t *length) {
+YTCacheStatus yt_cache_read_file_at(const char *root,
+                                    const char *relative_path,
+                                    size_t maximum_size, char **data,
+                                    size_t *length) {
   char path[PATH_MAX];
   struct stat information;
   int descriptor;
@@ -207,7 +207,9 @@ YTCacheStatus yt_cache_read_file(const char *relative_path, size_t maximum_size,
     return YT_CACHE_INVALID_ARGUMENT;
   *data = NULL;
   *length = 0;
-  status = build_path(relative_path, path, sizeof(path));
+  if (root == NULL)
+    return YT_CACHE_MISSING;
+  status = build_path(root, relative_path, path, sizeof(path));
   if (status != YT_CACHE_OK)
     return status;
   open_flags = O_RDONLY;
@@ -252,8 +254,9 @@ YTCacheStatus yt_cache_read_file(const char *relative_path, size_t maximum_size,
   return YT_CACHE_OK;
 }
 
-YTCacheStatus yt_cache_write_file_atomic(const char *relative_path,
-                                         const void *data, size_t length) {
+YTCacheStatus yt_cache_write_file_atomic_at(const char *root,
+                                            const char *relative_path,
+                                            const void *data, size_t length) {
   char path[PATH_MAX];
   char temporary[PATH_MAX];
   int descriptor;
@@ -261,19 +264,20 @@ YTCacheStatus yt_cache_write_file_atomic(const char *relative_path,
   int failed;
   YTCacheStatus status;
 
+  if (root == NULL)
+    return YT_CACHE_OK;
   if ((data == NULL && length != 0) || !relative_path_is_safe(relative_path))
     return YT_CACHE_INVALID_ARGUMENT;
-  status = ensure_parent_directories(relative_path);
+  status = ensure_parent_directories(root, relative_path);
   if (status != YT_CACHE_OK)
     return status;
-  status = build_path(relative_path, path, sizeof(path));
+  status = build_path(root, relative_path, path, sizeof(path));
   if (status != YT_CACHE_OK)
     return status;
-  if (snprintf(temporary, sizeof(temporary), "%s.tmp.%ld.%lu", path,
-               (long)getpid(), ++temporary_counter) >=
+  if (snprintf(temporary, sizeof(temporary), "%s.tmp.XXXXXX", path) >=
       (int)sizeof(temporary))
     return YT_CACHE_TOO_LARGE;
-  descriptor = open(temporary, O_WRONLY | O_CREAT | O_EXCL, 0600);
+  descriptor = mkstemp(temporary);
   if (descriptor < 0)
     return YT_CACHE_IO_ERROR;
   offset = 0;
@@ -300,16 +304,49 @@ YTCacheStatus yt_cache_write_file_atomic(const char *relative_path,
   return YT_CACHE_OK;
 }
 
-YTCacheStatus yt_cache_remove_file(const char *relative_path) {
+YTCacheStatus yt_cache_remove_file_at(const char *root,
+                                      const char *relative_path) {
   char path[PATH_MAX];
   YTCacheStatus status;
 
-  status = build_path(relative_path, path, sizeof(path));
+  if (root == NULL)
+    return YT_CACHE_MISSING;
+  status = build_path(root, relative_path, path, sizeof(path));
   if (status != YT_CACHE_OK)
     return status;
   if (unlink(path) == 0)
     return YT_CACHE_OK;
   return errno == ENOENT ? YT_CACHE_MISSING : YT_CACHE_IO_ERROR;
+}
+
+static YTCacheStatus legacy_root(char root[PATH_MAX]) {
+  return yt_cache_root(root, PATH_MAX);
+}
+
+YTCacheStatus yt_cache_read_file(const char *relative_path, size_t maximum_size,
+                                 char **data, size_t *length) {
+  char root[PATH_MAX];
+  YTCacheStatus status = legacy_root(root);
+  if (status != YT_CACHE_OK)
+    return status;
+  return yt_cache_read_file_at(root, relative_path, maximum_size, data, length);
+}
+
+YTCacheStatus yt_cache_write_file_atomic(const char *relative_path,
+                                         const void *data, size_t length) {
+  char root[PATH_MAX];
+  YTCacheStatus status = legacy_root(root);
+  if (status != YT_CACHE_OK)
+    return status;
+  return yt_cache_write_file_atomic_at(root, relative_path, data, length);
+}
+
+YTCacheStatus yt_cache_remove_file(const char *relative_path) {
+  char root[PATH_MAX];
+  YTCacheStatus status = legacy_root(root);
+  if (status != YT_CACHE_OK)
+    return status;
+  return yt_cache_remove_file_at(root, relative_path);
 }
 
 void yt_cache_key_for_string(const char *value, char key[65]) {
@@ -341,7 +378,7 @@ static YTCacheStatus entry_path(YTCacheKind kind, const char *key, char *path,
   return YT_CACHE_OK;
 }
 
-static YTCacheStatus prune_kind(YTCacheKind kind) {
+static YTCacheStatus prune_kind(const char *root, YTCacheKind kind) {
   const YTCachePolicy *policy;
   char relative[PATH_MAX];
   char directory_path[PATH_MAX];
@@ -357,7 +394,7 @@ static YTCacheStatus prune_kind(YTCacheKind kind) {
   if (snprintf(relative, sizeof(relative), "v1/%s", policy->directory) >=
       (int)sizeof(relative))
     return YT_CACHE_TOO_LARGE;
-  status = build_path(relative, directory_path, sizeof(directory_path));
+  status = build_path(root, relative, directory_path, sizeof(directory_path));
   if (status != YT_CACHE_OK)
     return status;
 
@@ -409,9 +446,9 @@ static YTCacheStatus prune_kind(YTCacheKind kind) {
   }
 }
 
-YTCacheStatus yt_cache_put(YTCacheKind kind, const char *key,
-                           const void *data, size_t length,
-                           int64_t expires_unix) {
+YTCacheStatus yt_cache_put_at(const char *root, YTCacheKind kind,
+                              const char *key, const void *data,
+                              size_t length, int64_t expires_unix) {
   const YTCachePolicy *policy;
   char relative[PATH_MAX];
   char header[CACHE_HEADER_MAX];
@@ -419,6 +456,8 @@ YTCacheStatus yt_cache_put(YTCacheKind kind, const char *key,
   char *entry;
   YTCacheStatus status;
 
+  if (root == NULL)
+    return YT_CACHE_OK;
   policy = policy_for_kind(kind);
   if (policy == NULL || (data == NULL && length != 0) ||
       length > policy->maximum_entry_size)
@@ -440,16 +479,17 @@ YTCacheStatus yt_cache_put(YTCacheKind kind, const char *key,
   memcpy(entry, header, (size_t)header_length);
   if (length != 0)
     memcpy(entry + header_length, data, length);
-  status = yt_cache_write_file_atomic(relative, entry,
-                                      (size_t)header_length + length);
+  status = yt_cache_write_file_atomic_at(root, relative, entry,
+                                         (size_t)header_length + length);
   free(entry);
   if (status != YT_CACHE_OK)
     return status;
-  return prune_kind(kind);
+  return prune_kind(root, kind);
 }
 
-YTCacheStatus yt_cache_get(YTCacheKind kind, const char *key,
-                           int64_t now_unix, char **data, size_t *length) {
+YTCacheStatus yt_cache_get_at(const char *root, YTCacheKind kind,
+                              const char *key, int64_t now_unix, char **data,
+                              size_t *length) {
   const YTCachePolicy *policy;
   char relative[PATH_MAX];
   char *entry;
@@ -467,15 +507,17 @@ YTCacheStatus yt_cache_get(YTCacheKind kind, const char *key,
     return YT_CACHE_INVALID_ARGUMENT;
   *data = NULL;
   *length = 0;
+  if (root == NULL)
+    return YT_CACHE_MISSING;
   policy = policy_for_kind(kind);
   if (policy == NULL)
     return YT_CACHE_INVALID_ARGUMENT;
   status = entry_path(kind, key, relative, sizeof(relative));
   if (status != YT_CACHE_OK)
     return status;
-  status = yt_cache_read_file(relative,
-                              policy->maximum_entry_size + CACHE_HEADER_MAX,
-                              &entry, &entry_length);
+  status = yt_cache_read_file_at(root, relative,
+                                 policy->maximum_entry_size + CACHE_HEADER_MAX,
+                                 &entry, &entry_length);
   if (status != YT_CACHE_OK)
     return status;
   first_newline = strchr(entry, '\n');
@@ -485,14 +527,14 @@ YTCacheStatus yt_cache_get(YTCacheKind kind, const char *key,
       (size_t)(first_newline - entry + 1) != strlen(CACHE_MAGIC) ||
       memcmp(entry, CACHE_MAGIC, strlen(CACHE_MAGIC)) != 0) {
     free(entry);
-    yt_cache_remove_file(relative);
+    yt_cache_remove_file_at(root, relative);
     return YT_CACHE_CORRUPT;
   }
   *second_newline = '\0';
   expires = (int64_t)strtoll(first_newline + 1, &end, 10);
   if (end != second_newline) {
     free(entry);
-    yt_cache_remove_file(relative);
+    yt_cache_remove_file_at(root, relative);
     return YT_CACHE_CORRUPT;
   }
   *third_newline = '\0';
@@ -501,12 +543,12 @@ YTCacheStatus yt_cache_get(YTCacheKind kind, const char *key,
       (size_t)(third_newline + 1 - entry) + (size_t)payload_length !=
           entry_length) {
     free(entry);
-    yt_cache_remove_file(relative);
+    yt_cache_remove_file_at(root, relative);
     return YT_CACHE_CORRUPT;
   }
   if (expires != 0 && now_unix >= expires) {
     free(entry);
-    yt_cache_remove_file(relative);
+    yt_cache_remove_file_at(root, relative);
     return YT_CACHE_EXPIRED;
   }
   payload = (char *)malloc((size_t)payload_length + 1);
@@ -522,14 +564,44 @@ YTCacheStatus yt_cache_get(YTCacheKind kind, const char *key,
   return YT_CACHE_OK;
 }
 
-YTCacheStatus yt_cache_remove(YTCacheKind kind, const char *key) {
+YTCacheStatus yt_cache_remove_at(const char *root, YTCacheKind kind,
+                                 const char *key) {
   char relative[PATH_MAX];
   YTCacheStatus status;
 
+  if (root == NULL)
+    return YT_CACHE_MISSING;
   status = entry_path(kind, key, relative, sizeof(relative));
   if (status != YT_CACHE_OK)
     return status;
-  return yt_cache_remove_file(relative);
+  return yt_cache_remove_file_at(root, relative);
+}
+
+YTCacheStatus yt_cache_put(YTCacheKind kind, const char *key,
+                           const void *data, size_t length,
+                           int64_t expires_unix) {
+  char root[PATH_MAX];
+  YTCacheStatus status = legacy_root(root);
+  if (status != YT_CACHE_OK)
+    return status;
+  return yt_cache_put_at(root, kind, key, data, length, expires_unix);
+}
+
+YTCacheStatus yt_cache_get(YTCacheKind kind, const char *key,
+                           int64_t now_unix, char **data, size_t *length) {
+  char root[PATH_MAX];
+  YTCacheStatus status = legacy_root(root);
+  if (status != YT_CACHE_OK)
+    return status;
+  return yt_cache_get_at(root, kind, key, now_unix, data, length);
+}
+
+YTCacheStatus yt_cache_remove(YTCacheKind kind, const char *key) {
+  char root[PATH_MAX];
+  YTCacheStatus status = legacy_root(root);
+  if (status != YT_CACHE_OK)
+    return status;
+  return yt_cache_remove_at(root, kind, key);
 }
 
 YTCacheStatus yt_cache_clear(YTCacheKind kind) {
@@ -539,6 +611,7 @@ YTCacheStatus yt_cache_clear(YTCacheKind kind) {
   DIR *directory;
   struct dirent *entry;
   YTCacheStatus status;
+  char root[PATH_MAX];
 
   policy = policy_for_kind(kind);
   if (policy == NULL)
@@ -546,7 +619,10 @@ YTCacheStatus yt_cache_clear(YTCacheKind kind) {
   if (snprintf(relative, sizeof(relative), "v1/%s", policy->directory) >=
       (int)sizeof(relative))
     return YT_CACHE_TOO_LARGE;
-  status = build_path(relative, directory_path, sizeof(directory_path));
+  status = legacy_root(root);
+  if (status != YT_CACHE_OK)
+    return status;
+  status = build_path(root, relative, directory_path, sizeof(directory_path));
   if (status != YT_CACHE_OK)
     return status;
   directory = opendir(directory_path);

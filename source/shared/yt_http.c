@@ -12,12 +12,14 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <curl/curl.h>
 
 #include "retrodlp/retrodlp.h"
 #include "platform.h"
+#include "yt_cookies.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -45,11 +47,33 @@ typedef struct {
 struct YTHttpSession {
   CURLSH *share;
   char *cookie_file;
+  char *cookie_data;
+  size_t cookie_data_length;
+  char *cache_directory;
+  char *ca_bundle_path;
+  char *ejs_asset_directory;
   rdlp_transport transport;
   unsigned long timeout_milliseconds;
+  size_t ejs_memory_limit_bytes;
+  size_t ejs_stack_limit_bytes;
   YTHttpCancelCallback cancel_callback;
   void *cancel_opaque;
+  YTHttpClockCallback clock_callback;
+  void *clock_opaque;
+  YTHttpDiagnostic diagnostic;
 };
+
+static char *copy_string(const char *value) {
+  size_t length;
+  char *copy;
+  if (value == NULL)
+    return NULL;
+  length = strlen(value);
+  copy = (char *)malloc(length + 1);
+  if (copy != NULL)
+    memcpy(copy, value, length + 1);
+  return copy;
+}
 
 YTStatus yt_http_session_create(const char *cookie_file,
                                 YTHttpSession **session) {
@@ -61,19 +85,33 @@ YTStatus yt_http_session_create_with_transport(
     const char *cookie_file, const rdlp_transport *transport,
     unsigned long timeout_milliseconds, YTHttpCancelCallback cancel_callback,
     void *cancel_opaque, YTHttpSession **session) {
+  YTHttpSessionConfig config;
+  memset(&config, 0, sizeof(config));
+  config.cookie_file = cookie_file;
+  config.transport = transport;
+  config.timeout_milliseconds = timeout_milliseconds;
+  config.cancel_callback = cancel_callback;
+  config.cancel_opaque = cancel_opaque;
+  return yt_http_session_create_with_config(&config, session);
+}
+
+YTStatus yt_http_session_create_with_config(const YTHttpSessionConfig *config,
+                                            YTHttpSession **session) {
   YTHttpSession *created;
+  YTStatus cookie_status;
   if (session == NULL)
     return YT_ERR_INVALID_RESPONSE;
   *session = NULL;
   created = (YTHttpSession *)calloc(1, sizeof(*created));
   if (created == NULL)
     return YT_ERR_OUT_OF_MEMORY;
-  if (transport != NULL) {
-    if (transport->struct_size < sizeof(*transport) || transport->send == NULL) {
+  if (config != NULL && config->transport != NULL) {
+    if (config->transport->struct_size < sizeof(*config->transport) ||
+        config->transport->send == NULL) {
       free(created);
       return YT_ERR_INVALID_RESPONSE;
     }
-    created->transport = *transport;
+    created->transport = *config->transport;
   } else {
     created->share = curl_share_init();
     if (created->share == NULL ||
@@ -85,21 +123,36 @@ YTStatus yt_http_session_create_with_transport(
       return YT_ERR_NETWORK;
     }
   }
-  created->timeout_milliseconds = timeout_milliseconds;
-  created->cancel_callback = cancel_callback;
-  created->cancel_opaque = cancel_opaque;
-  if (cookie_file != NULL) {
-    size_t cookie_file_length = strlen(cookie_file);
-    created->cookie_file = (char *)malloc(cookie_file_length + 1);
-    if (created->cookie_file == NULL) {
-      curl_share_cleanup(created->share);
-      free(created);
-      return YT_ERR_OUT_OF_MEMORY;
+  if (config != NULL) {
+    created->timeout_milliseconds = config->timeout_milliseconds;
+    created->ejs_memory_limit_bytes = config->ejs_memory_limit_bytes;
+    created->ejs_stack_limit_bytes = config->ejs_stack_limit_bytes;
+    created->cancel_callback = config->cancel_callback;
+    created->cancel_opaque = config->cancel_opaque;
+    created->clock_callback = config->clock_callback;
+    created->clock_opaque = config->clock_opaque;
+    created->cache_directory = copy_string(config->cache_directory);
+    created->ca_bundle_path = copy_string(config->ca_bundle_path);
+    created->ejs_asset_directory = copy_string(config->ejs_asset_directory);
+    if ((config->cache_directory != NULL && created->cache_directory == NULL) ||
+        (config->ca_bundle_path != NULL && created->ca_bundle_path == NULL) ||
+        (config->ejs_asset_directory != NULL &&
+         created->ejs_asset_directory == NULL))
+      goto out_of_memory;
+    cookie_status = yt_http_session_set_cookies(
+        created, config->cookie_file, config->cookie_data,
+        config->cookie_data_length);
+    if (cookie_status != YT_OK) {
+      yt_http_session_destroy(created);
+      return cookie_status;
     }
-    memcpy(created->cookie_file, cookie_file, cookie_file_length + 1);
   }
   *session = created;
   return YT_OK;
+
+out_of_memory:
+  yt_http_session_destroy(created);
+  return YT_ERR_OUT_OF_MEMORY;
 }
 
 static YTStatus transport_status(rdlp_status status) {
@@ -187,6 +240,7 @@ static YTStatus custom_request(YTHttpSession *session, rdlp_http_method method,
   memset(&request, 0, sizeof(request));
   memset(&transported, 0, sizeof(transported));
   memset(&error, 0, sizeof(error));
+  memset(&session->diagnostic, 0, sizeof(session->diagnostic));
   request.struct_size = sizeof(request);
   request.method = method;
   request.url = url;
@@ -206,6 +260,13 @@ static YTStatus custom_request(YTHttpSession *session, rdlp_http_method method,
   else
     sent = session->transport.send(session->transport.context, &request,
                                    &transported, &error);
+  session->diagnostic.http_status = transported.http_status;
+  session->diagnostic.transport_code =
+      error.transport_code != 0 ? error.transport_code
+                                : transported.transport_code;
+  if (error.message[0] != '\0')
+    snprintf(session->diagnostic.message,
+             sizeof(session->diagnostic.message), "%s", error.message);
   for (index = 0; index < header_count; ++index)
     free(storage[index]);
   free(converted);
@@ -234,9 +295,146 @@ void yt_http_session_destroy(YTHttpSession *session) {
     memset(session->cookie_file, 0, strlen(session->cookie_file));
     free(session->cookie_file);
   }
+  if (session->cookie_data != NULL) {
+    memset(session->cookie_data, 0, session->cookie_data_length);
+    free(session->cookie_data);
+  }
+  free(session->cache_directory);
+  free(session->ca_bundle_path);
+  free(session->ejs_asset_directory);
   if (session->share != NULL)
     curl_share_cleanup(session->share);
   free(session);
+}
+
+YTStatus yt_http_session_set_cookies(YTHttpSession *session,
+                                     const char *cookie_file,
+                                     const void *cookie_data,
+                                     size_t cookie_data_length) {
+  char *file_copy;
+  char *data_copy;
+  CURL *curl;
+  if (session == NULL || (cookie_data == NULL) != (cookie_data_length == 0) ||
+      (cookie_file != NULL && cookie_data != NULL))
+    return YT_ERR_INVALID_RESPONSE;
+  file_copy = copy_string(cookie_file);
+  if (cookie_file != NULL && file_copy == NULL)
+    return YT_ERR_OUT_OF_MEMORY;
+  data_copy = NULL;
+  if (cookie_data_length != 0) {
+    data_copy = (char *)malloc(cookie_data_length);
+    if (data_copy == NULL) {
+      free(file_copy);
+      return YT_ERR_OUT_OF_MEMORY;
+    }
+    memcpy(data_copy, cookie_data, cookie_data_length);
+  }
+  if (session->cookie_file != NULL) {
+    memset(session->cookie_file, 0, strlen(session->cookie_file));
+    free(session->cookie_file);
+  }
+  if (session->cookie_data != NULL) {
+    memset(session->cookie_data, 0, session->cookie_data_length);
+    free(session->cookie_data);
+  }
+  session->cookie_file = file_copy;
+  session->cookie_data = data_copy;
+  session->cookie_data_length = cookie_data_length;
+  if (session->share != NULL) {
+    curl = curl_easy_init();
+    if (curl == NULL)
+      return YT_ERR_NETWORK;
+    curl_easy_setopt(curl, CURLOPT_SHARE, session->share);
+    curl_easy_setopt(curl, CURLOPT_COOKIELIST, "ALL");
+    curl_easy_cleanup(curl);
+  }
+  return YT_OK;
+}
+
+int64_t yt_http_session_now(YTHttpSession *session) {
+  time_t now;
+  if (session != NULL && session->clock_callback != NULL)
+    return session->clock_callback(session->clock_opaque);
+  now = time(NULL);
+  return now == (time_t)-1 ? 0 : (int64_t)now;
+}
+
+int yt_http_session_has_cookies(const YTHttpSession *session) {
+  return session != NULL &&
+         ((session->cookie_file != NULL && session->cookie_file[0] != '\0') ||
+          session->cookie_data_length != 0);
+}
+
+YTStatus yt_http_session_load_auth_cookies(YTHttpSession *session,
+                                           int64_t now_unix,
+                                           YTAuthCookies *cookies) {
+  if (session == NULL || cookies == NULL)
+    return YT_ERR_COOKIE_FILE;
+  if (session->cookie_data_length != 0)
+    return yt_auth_cookies_parse(session->cookie_data,
+                                 session->cookie_data_length, now_unix,
+                                 cookies);
+  return yt_auth_cookies_load(session->cookie_file, now_unix, cookies);
+}
+
+YTCacheStatus yt_http_session_cache_get(YTHttpSession *session,
+                                        YTCacheKind kind, const char *key,
+                                        int64_t now_unix, char **data,
+                                        size_t *length) {
+  if (session == NULL)
+    return yt_cache_get(kind, key, now_unix, data, length);
+  return yt_cache_get_at(session->cache_directory, kind, key, now_unix, data,
+                         length);
+}
+
+YTCacheStatus yt_http_session_cache_put(YTHttpSession *session,
+                                        YTCacheKind kind, const char *key,
+                                        const void *data, size_t length,
+                                        int64_t expires_unix) {
+  if (session == NULL)
+    return yt_cache_put(kind, key, data, length, expires_unix);
+  return yt_cache_put_at(session->cache_directory, kind, key, data, length,
+                         expires_unix);
+}
+
+YTCacheStatus yt_http_session_cache_remove(YTHttpSession *session,
+                                           YTCacheKind kind,
+                                           const char *key) {
+  if (session == NULL)
+    return yt_cache_remove(kind, key);
+  return yt_cache_remove_at(session->cache_directory, kind, key);
+}
+
+const char *yt_http_session_ejs_asset_directory(
+    const YTHttpSession *session) {
+  return session == NULL ? NULL : session->ejs_asset_directory;
+}
+
+YTEJSConfig yt_http_session_ejs_config(const YTHttpSession *session) {
+  YTEJSConfig config = yt_ejs_default_config();
+  if (session != NULL) {
+    if (session->ejs_memory_limit_bytes != 0)
+      config.memory_limit_bytes = session->ejs_memory_limit_bytes;
+    if (session->ejs_stack_limit_bytes != 0)
+      config.stack_limit_bytes = session->ejs_stack_limit_bytes;
+    if (session->timeout_milliseconds != 0)
+      config.timeout_milliseconds = session->timeout_milliseconds;
+  }
+  return config;
+}
+
+int yt_http_session_cancelled(const YTHttpSession *session) {
+  return session != NULL && session->cancel_callback != NULL &&
+         session->cancel_callback(session->cancel_opaque);
+}
+
+void yt_http_session_diagnostic(const YTHttpSession *session,
+                                YTHttpDiagnostic *diagnostic) {
+  if (diagnostic == NULL)
+    return;
+  memset(diagnostic, 0, sizeof(*diagnostic));
+  if (session != NULL)
+    *diagnostic = session->diagnostic;
 }
 
 static size_t write_response(void *contents, size_t size, size_t count,
@@ -306,15 +504,84 @@ int yt_http_has_mp4_ftyp(const unsigned char *prefix, size_t length) {
   return prefix != NULL && length >= 8 && memcmp(prefix + 4, "ftyp", 4) == 0;
 }
 
+#if LIBCURL_VERSION_NUM >= 0x072000
+static int transfer_progress(void *opaque, curl_off_t download_total,
+                             curl_off_t download_now, curl_off_t upload_total,
+                             curl_off_t upload_now) {
+  YTHttpSession *session = (YTHttpSession *)opaque;
+  (void)download_total;
+  (void)download_now;
+  (void)upload_total;
+  (void)upload_now;
+  return yt_http_session_cancelled(session);
+}
+#else
+static int transfer_progress(void *opaque, double download_total,
+                             double download_now, double upload_total,
+                             double upload_now) {
+  YTHttpSession *session = (YTHttpSession *)opaque;
+  (void)download_total;
+  (void)download_now;
+  (void)upload_total;
+  (void)upload_now;
+  return yt_http_session_cancelled(session);
+}
+#endif
+
+static int configure_memory_cookies(CURL *curl, const YTHttpSession *session) {
+  char *copy;
+  char *line;
+  char *next;
+  if (session == NULL || session->cookie_data_length == 0)
+    return 1;
+  copy = (char *)malloc(session->cookie_data_length + 1);
+  if (copy == NULL)
+    return 0;
+  memcpy(copy, session->cookie_data, session->cookie_data_length);
+  copy[session->cookie_data_length] = '\0';
+  line = copy;
+  while (line != NULL) {
+    size_t length;
+    next = strchr(line, '\n');
+    if (next != NULL)
+      *next++ = '\0';
+    length = strlen(line);
+    if (length != 0 && line[length - 1] == '\r')
+      line[length - 1] = '\0';
+    if (line[0] != '\0' && line[0] != '#' &&
+        curl_easy_setopt(curl, CURLOPT_COOKIELIST, line) != CURLE_OK) {
+      free(copy);
+      return 0;
+    }
+    line = next;
+  }
+  memset(copy, 0, session->cookie_data_length);
+  free(copy);
+  return 1;
+}
+
 static YTStatus configure_common(CURL *curl, YTHttpSession *session,
                                  const char *url, const char *user_agent) {
-  if (retro_dlp_configure_curl(curl) != 0)
+  if (session != NULL) {
+    if (session->ca_bundle_path != NULL &&
+        curl_easy_setopt(curl, CURLOPT_CAINFO, session->ca_bundle_path) !=
+            CURLE_OK)
+      return YT_ERR_CERTIFICATE_BUNDLE;
+  } else if (retro_dlp_configure_curl(curl) != 0) {
     return YT_ERR_CERTIFICATE_BUNDLE;
+  }
   curl_easy_setopt(curl, CURLOPT_URL, url);
   curl_easy_setopt(curl, CURLOPT_USERAGENT,
                    user_agent == NULL ? yt_resolver_user_agent() : user_agent);
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
+#if LIBCURL_VERSION_NUM >= 0x075500
+  curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "https");
+  curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "https");
+#else
+  curl_easy_setopt(curl, CURLOPT_PROTOCOLS, (long)CURLPROTO_HTTPS);
+  curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS, (long)CURLPROTO_HTTPS);
+#endif
   if (session != NULL && session->timeout_milliseconds != 0) {
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS,
                      (long)session->timeout_milliseconds);
@@ -332,6 +599,18 @@ static YTStatus configure_common(CURL *curl, YTHttpSession *session,
     curl_easy_setopt(curl, CURLOPT_SHARE, session->share);
     if (session->cookie_file != NULL)
       curl_easy_setopt(curl, CURLOPT_COOKIEFILE, session->cookie_file);
+    if (!configure_memory_cookies(curl, session))
+      return YT_ERR_OUT_OF_MEMORY;
+    if (session->cancel_callback != NULL) {
+      curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+#if LIBCURL_VERSION_NUM >= 0x072000
+      curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, transfer_progress);
+      curl_easy_setopt(curl, CURLOPT_XFERINFODATA, session);
+#else
+      curl_easy_setopt(curl, CURLOPT_PROGRESSFUNCTION, transfer_progress);
+      curl_easy_setopt(curl, CURLOPT_PROGRESSDATA, session);
+#endif
+    }
   }
   return YT_OK;
 }
@@ -388,11 +667,17 @@ YTStatus yt_http_session_post_json(YTHttpSession *session, const char *url,
 
   code = curl_easy_perform(curl);
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response->status);
+  if (session != NULL) {
+    session->diagnostic.http_status = response->status;
+    session->diagnostic.transport_code = (int)code;
+  }
   curl_slist_free_all(header_list);
   curl_easy_cleanup(curl);
 
   if (code != CURLE_OK) {
     free(buffer.data);
+    if (code == CURLE_ABORTED_BY_CALLBACK && yt_http_session_cancelled(session))
+      return YT_ERR_CANCELLED;
     return buffer.failed ? YT_ERR_OUT_OF_MEMORY : YT_ERR_NETWORK;
   }
   response->data = buffer.data;
@@ -463,9 +748,15 @@ static YTStatus http_get(YTHttpSession *session, const char *url,
     curl_easy_setopt(curl, CURLOPT_RANGE, range);
   code = curl_easy_perform(curl);
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response->status);
+  if (session != NULL) {
+    session->diagnostic.http_status = response->status;
+    session->diagnostic.transport_code = (int)code;
+  }
   curl_easy_cleanup(curl);
   if (code != CURLE_OK) {
     free(buffer.data);
+    if (code == CURLE_ABORTED_BY_CALLBACK && yt_http_session_cancelled(session))
+      return YT_ERR_CANCELLED;
     return buffer.too_large ? YT_ERR_INVALID_RESPONSE
                             : (buffer.failed ? YT_ERR_OUT_OF_MEMORY
                                              : YT_ERR_NETWORK);
@@ -551,9 +842,15 @@ YTStatus yt_http_session_head(YTHttpSession *session, const char *url,
   code = curl_easy_perform(curl);
   status = 0;
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+  if (session != NULL) {
+    session->diagnostic.http_status = status;
+    session->diagnostic.transport_code = (int)code;
+  }
   curl_easy_cleanup(curl);
   *http_status = status;
 
+  if (code == CURLE_ABORTED_BY_CALLBACK && yt_http_session_cancelled(session))
+    return YT_ERR_CANCELLED;
   if (code != CURLE_OK)
     return YT_ERR_NETWORK;
   return YT_OK;
@@ -616,12 +913,14 @@ YTStatus yt_http_session_download(YTHttpSession *session, const char *url,
   curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_download);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &writer);
-  /* With no custom callback, libcurl supplies its built-in transfer meter. */
-  curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-  curl_easy_setopt(curl, CURLOPT_STDERR, stderr);
+  curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
   code = curl_easy_perform(curl);
   response_status = 0;
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_status);
+  if (session != NULL) {
+    session->diagnostic.http_status = response_status;
+    session->diagnostic.transport_code = (int)code;
+  }
   curl_easy_cleanup(curl);
   *http_status = response_status;
   *bytes_written = writer.bytes_written;

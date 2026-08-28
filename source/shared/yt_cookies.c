@@ -100,6 +100,61 @@ static int parse_cookie_line(char *line, int64_t now_unix,
   return 1;
 }
 
+YTStatus yt_auth_cookies_parse(const void *data, size_t length,
+                               int64_t now_unix, YTAuthCookies *cookies) {
+  char *copy;
+  char *line;
+  char *next;
+  int first_line;
+  int valid_header;
+  if (data == NULL || length == 0 || length > YT_COOKIE_FILE_MAXIMUM ||
+      cookies == NULL)
+    return YT_ERR_COOKIE_FILE;
+  memset(cookies, 0, sizeof(*cookies));
+  copy = (char *)malloc(length + 1);
+  if (copy == NULL)
+    return YT_ERR_OUT_OF_MEMORY;
+  memcpy(copy, data, length);
+  copy[length] = '\0';
+  first_line = 1;
+  valid_header = 0;
+  line = copy;
+  while (line <= copy + length) {
+    size_t line_length;
+    next = strchr(line, '\n');
+    if (next != NULL)
+      *next++ = '\0';
+    line_length = strlen(line);
+    if (line_length != 0 && line[line_length - 1] == '\r')
+      line[--line_length] = '\0';
+    if (first_line) {
+      valid_header = strcmp(line, "# Netscape HTTP Cookie File") == 0 ||
+                     strcmp(line, "# HTTP Cookie File") == 0;
+      first_line = 0;
+    } else if (line_length != 0 &&
+               (line[0] != '#' || strncmp(line, "#HttpOnly_", 10) == 0) &&
+               !parse_cookie_line(line, now_unix, cookies)) {
+      free(copy);
+      yt_auth_cookies_free(cookies);
+      return YT_ERR_OUT_OF_MEMORY;
+    }
+    if (next == NULL)
+      break;
+    line = next;
+  }
+  memset(copy, 0, length);
+  free(copy);
+  if (!valid_header) {
+    yt_auth_cookies_free(cookies);
+    return YT_ERR_COOKIE_FILE;
+  }
+  if (!yt_auth_cookies_is_authenticated(cookies)) {
+    yt_auth_cookies_free(cookies);
+    return YT_ERR_AUTH_COOKIES_INVALID;
+  }
+  return YT_OK;
+}
+
 YTStatus yt_auth_cookies_load(const char *path, int64_t now_unix,
                               YTAuthCookies *cookies) {
   struct stat information;

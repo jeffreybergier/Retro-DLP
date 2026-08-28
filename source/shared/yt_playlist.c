@@ -739,7 +739,8 @@ static YTStatus call_browse(YTHttpSession *session,
   if (account->authenticated) {
     status = yt_auth_cookies_make_authorization(
         &account->cookies, YT_PLAYLIST_ORIGIN, account->user_session_id,
-        (int64_t)time(NULL), authorization_value, sizeof(authorization_value));
+        yt_http_session_now(session), authorization_value,
+        sizeof(authorization_value));
     if (status != YT_OK ||
         snprintf(authorization_header, sizeof(authorization_header),
                  "Authorization: %s", authorization_value) >=
@@ -813,9 +814,9 @@ YTStatus yt_list_playlist(YTHttpSession *session, const char *input,
   status = yt_extract_playlist_id(input, playlist_id, sizeof(playlist_id));
   if (status != YT_OK)
     return status;
-  if (cookie_file != NULL) {
-    status = yt_auth_cookies_load(cookie_file, (int64_t)time(NULL),
-                                  &account.cookies);
+  if (cookie_file != NULL || yt_http_session_has_cookies(session)) {
+    status = yt_http_session_load_auth_cookies(
+        session, yt_http_session_now(session), &account.cookies);
     if (status != YT_OK)
       return status;
     account.authenticated = 1;
@@ -873,6 +874,10 @@ YTStatus yt_list_playlist(YTHttpSession *session, const char *input,
     goto pagination_finished;
   for (page = 1; continuation != NULL && page <= YT_PLAYLIST_MAX_PAGES;
        ++page) {
+    if (yt_http_session_cancelled(session)) {
+      status = YT_ERR_CANCELLED;
+      break;
+    }
     if (progress != NULL)
       progress("fetching playlist continuation", progress_opaque);
     status = call_browse(session, &account, api_key, client_version,
@@ -944,10 +949,10 @@ YTStatus yt_list_account_playlists(
     return YT_ERR_INVALID_PLAYLIST;
   memset(collection, 0, sizeof(*collection));
   memset(&account, 0, sizeof(account));
-  if (cookie_file == NULL)
+  if (cookie_file == NULL && !yt_http_session_has_cookies(session))
     return YT_ERR_AUTH_COOKIES_INVALID;
-  status = yt_auth_cookies_load(cookie_file, (int64_t)time(NULL),
-                                &account.cookies);
+  status = yt_http_session_load_auth_cookies(
+      session, yt_http_session_now(session), &account.cookies);
   if (status != YT_OK)
     return status;
   account.authenticated = 1;
@@ -1000,6 +1005,10 @@ YTStatus yt_list_account_playlists(
     goto pagination_finished;
   for (page = 1; continuation != NULL && page <= YT_PLAYLIST_MAX_PAGES;
        ++page) {
+    if (yt_http_session_cancelled(session)) {
+      status = YT_ERR_CANCELLED;
+      break;
+    }
     if (progress != NULL)
       progress("fetching account playlist continuation", progress_opaque);
     status = call_browse(session, &account, api_key, client_version,

@@ -75,6 +75,7 @@ typedef struct {
 
 typedef void (*rdlp_event_callback)(const rdlp_event *event, void *context);
 typedef int (*rdlp_cancel_callback)(void *context);
+typedef int64_t (*rdlp_clock_callback)(void *context);
 
 typedef struct {
   const char *name;
@@ -131,6 +132,8 @@ typedef struct {
   rdlp_cancel_callback cancel_callback;
   void *callback_context;
   const rdlp_transport *transport;
+  rdlp_clock_callback clock_callback;
+  void *clock_context;
 } rdlp_config;
 
 typedef struct {

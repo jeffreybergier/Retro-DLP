@@ -337,23 +337,23 @@ Exit criteria:
 
 ## Phase 3: Make dependencies context-driven
 
-- [ ] Move HTTP session state under `rdlp_context`.
-- [ ] Add the transport interface and default libcurl implementation.
-- [ ] Move cache root and policy state under the context.
-- [ ] Make CA bundle, EJS assets, cookies, resource limits, timeouts, and clock
+- [x] Move HTTP session state under `rdlp_context`.
+- [x] Add the transport interface and default libcurl implementation.
+- [x] Move cache root and policy state under the context.
+- [x] Make CA bundle, EJS assets, cookies, resource limits, timeouts, and clock
   configurable.
-- [ ] Remove direct library access to `$HOME`, executable paths, stdout, and
+- [x] Remove direct library access to `$HOME`, executable paths, stdout, and
   stderr.
-- [ ] Remove or synchronize writable global state, including cache temporary-name
+- [x] Remove or synchronize writable global state, including cache temporary-name
   state and platform-path initialization.
-- [ ] Define and test independent-context concurrency.
+- [x] Define and test independent-context concurrency.
 
 Exit criteria:
 
-- [ ] Two independent contexts can operate concurrently in a thread-enabled test.
-- [ ] A context can operate with caching disabled.
-- [ ] A context can resolve fixtures using an injected transport and clock.
-- [ ] The library produces no process output.
+- [x] Two independent contexts can operate concurrently in a thread-enabled test.
+- [x] A context can operate with caching disabled.
+- [x] A context can resolve fixtures using an injected transport and clock.
+- [x] The library produces no process output.
 
 ## Phase 4: Separate internal responsibilities
 

@@ -13,27 +13,33 @@ release, not a promise of ABI stability.
 Initialize every public configuration or option structure to zero and set its
 `struct_size` before use. Passing `NULL` for the configuration or operation
 options selects the documented defaults: a 20-second network timeout, the
-default libcurl transport, no cookies, progressive MP4 selection, and a maximum
-height of 720 pixels.
+default libcurl transport, disabled caching, no cookies, the system libcurl
+trust configuration, progressive MP4 selection, and a maximum height of 720
+pixels.
 
 `rdlp_context_create` returns an owned context through its output pointer.
 Destroy it with `rdlp_context_destroy`. A context accepts only one operation at
 a time; reentrant use from an event callback returns `RDLP_STATUS_BUSY`.
 Creation and destruction of default-transport contexts safely reference-counts
-the libcurl lifecycle. Concurrent resolution on separate contexts is the target
-contract, but is not guaranteed by the Phase 2 adapter while legacy cache and
-platform state remain shared; Phase 3 removes that shared state and validates
-independent-context concurrency.
+the libcurl lifecycle. Independent contexts may operate concurrently. The
+one-operation rule is enforced per context and reentrant or concurrent use of
+the same context returns `RDLP_STATUS_BUSY`.
 
-The callback context and custom transport context are borrowed. They must
-remain valid until the `rdlp_context` is destroyed. Callbacks are synchronous
-and run on the thread performing the operation.
+The callback context, clock context, and custom transport context are borrowed.
+They must remain valid until the `rdlp_context` is destroyed. Callbacks are
+synchronous and run on the thread performing the operation. Configuration path
+strings are copied during context creation.
 
-The cache directory, CA bundle, EJS asset directory, EJS limits, and in-memory
-cookie fields reserve their stable API locations in Phase 2. The current
-adapter continues to use the legacy defaults for cache, CA, and EJS assets;
-in-memory cookies are rejected. Phase 3 makes these dependencies fully
-context-driven.
+`cache_directory`, `ca_bundle_path`, and `ejs_asset_directory` must be absolute
+when supplied. A `NULL` cache directory disables all resolver caching. An EJS
+asset directory contains the version-matched `core.min.js` and `lib.min.js`
+files. Zero EJS memory and stack limits select the internal defaults. A custom
+clock returns Unix seconds and is used for cache expiry, cookie validation, and
+authenticated request timestamps; a `NULL` clock uses system time.
+
+Cookie options accept either a Netscape cookie-file path or caller-owned
+Netscape cookie bytes, never both. The bytes are copied into the operation's
+HTTP session and need remain valid only for the public call.
 
 ## Results and ownership
 
@@ -66,11 +72,14 @@ Events are typed and contain no terminal-oriented text. Event callbacks are
 informational and must not call another operation on the same context.
 
 The cancellation callback should return nonzero to cancel. It is checked before
-an operation, around requests made by a custom transport, and after legacy
-resolver orchestration. A custom transport also receives the callback in every
-request and should check it while blocking. Fine-grained interruption inside
-the default libcurl and QuickJS implementations is part of Phase 3. A cancelled
-call returns `RDLP_STATUS_CANCELLED` and no result.
+an operation, around custom-transport requests, during default libcurl
+transfers, between playlist pages, and through the QuickJS interrupt handler. A
+custom transport also receives the callback in every request and should check
+it while blocking. A cancelled call returns `RDLP_STATUS_CANCELLED` and no
+result.
+
+Library facade operations never write to stdout or stderr. Event callbacks are
+the only progress-reporting boundary.
 
 ## Custom transport
 

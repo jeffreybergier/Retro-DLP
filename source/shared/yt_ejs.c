@@ -11,6 +11,7 @@
 #include "yt_cache.h"
 #include "yt_ejs_assets.h"
 #include "yt_ejs_internal.h"
+#include "yt_http.h"
 
 #define YT_EJS_DEFAULT_MEMORY_LIMIT (128U * 1024U * 1024U)
 #define YT_EJS_DEFAULT_STACK_LIMIT (1024U * 1024U)
@@ -20,6 +21,7 @@ typedef struct {
   clock_t started;
   unsigned long timeout_milliseconds;
   int interrupted;
+  YTHttpSession *session;
 } YTEJSDeadline;
 
 static char *copy_string(const char *source) {
@@ -48,6 +50,10 @@ static int deadline_interrupt(JSRuntime *runtime, void *opaque) {
 
   (void)runtime;
   deadline = (YTEJSDeadline *)opaque;
+  if (yt_http_session_cancelled(deadline->session)) {
+    deadline->interrupted = 1;
+    return 1;
+  }
   now = clock();
   if (now == (clock_t)-1 || deadline->started == (clock_t)-1)
     return 0;
@@ -295,6 +301,10 @@ static YTEJSStatus javascript_exception_status(JSContext *context,
   YTEJSStatus status;
 
   if (deadline->interrupted) {
+    if (yt_http_session_cancelled(deadline->session)) {
+      set_error_message(result, "EJS execution cancelled");
+      return YT_EJS_ERR_CANCELLED;
+    }
     set_error_message(result, "EJS execution deadline exceeded");
     return YT_EJS_ERR_TIMEOUT;
   }
@@ -335,12 +345,13 @@ YTEJSConfig yt_ejs_default_config(void) {
   return config;
 }
 
-YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
-                         const char *player_source,
-                         const YTEJSRequest *requests,
-                         size_t request_count,
-                         const YTEJSConfig *config,
-                         YTEJSResult *result) {
+YTEJSStatus yt_ejs_solve_with_session(YTHttpSession *session,
+                                      YTEJSSourceType source_type,
+                                      const char *player_source,
+                                      const YTEJSRequest *requests,
+                                      size_t request_count,
+                                      const YTEJSConfig *config,
+                                      YTEJSResult *result) {
   static const char isolation_check[] =
       "typeof std==='undefined'&&typeof os==='undefined'&&"
       "typeof require==='undefined'&&typeof fetch==='undefined'&&"
@@ -390,9 +401,10 @@ YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
   if (source_type == YT_EJS_SOURCE_PLAYER) {
     yt_cache_key_for_string(player_source, cache_key);
     if (cache_key[0] != '\0' &&
-        yt_cache_get(YT_CACHE_PREPROCESSED_PLAYER, cache_key,
-                     (int64_t)time(NULL), &cached_player_source,
-                     &cached_player_length) == YT_CACHE_OK) {
+        yt_http_session_cache_get(session, YT_CACHE_PREPROCESSED_PLAYER,
+                                  cache_key, yt_http_session_now(session),
+                                  &cached_player_source,
+                                  &cached_player_length) == YT_CACHE_OK) {
       effective_source_type = YT_EJS_SOURCE_PREPROCESSED;
       effective_player_source = cached_player_source;
     }
@@ -406,7 +418,15 @@ YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
   }
 
   memset(&assets, 0, sizeof(assets));
-  assets_status = yt_ejs_assets_load(&assets);
+  if (session != NULL) {
+    if (yt_http_session_ejs_asset_directory(session) != NULL)
+      assets_status = yt_ejs_assets_load_from_directory(
+          yt_http_session_ejs_asset_directory(session), &assets);
+    else
+      assets_status = YT_EJS_ASSETS_MISSING;
+  } else {
+    assets_status = yt_ejs_assets_load(&assets);
+  }
   if (assets_status != YT_EJS_ASSETS_OK) {
     free(cached_player_source);
     free(request_json);
@@ -434,6 +454,7 @@ YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
   deadline.started = clock();
   deadline.timeout_milliseconds = effective_config.timeout_milliseconds;
   deadline.interrupted = 0;
+  deadline.session = session;
   JS_SetInterruptHandler(runtime, deadline_interrupt, &deadline);
 
   context = JS_NewContext(runtime);
@@ -505,12 +526,11 @@ YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
   if (status == YT_EJS_OK && source_type == YT_EJS_SOURCE_PLAYER &&
       effective_source_type == YT_EJS_SOURCE_PLAYER &&
       result->preprocessed_player != NULL && cache_key[0] != '\0') {
-    time_t now = time(NULL);
-    int64_t expires =
-        now == (time_t)-1 ? 0 : (int64_t)now + 30LL * 24LL * 60LL * 60LL;
-    yt_cache_put(YT_CACHE_PREPROCESSED_PLAYER, cache_key,
-                 result->preprocessed_player,
-                 strlen(result->preprocessed_player), expires);
+    int64_t now = yt_http_session_now(session);
+    int64_t expires = now == 0 ? 0 : now + 30LL * 24LL * 60LL * 60LL;
+    yt_http_session_cache_put(session, YT_CACHE_PREPROCESSED_PLAYER, cache_key,
+                              result->preprocessed_player,
+                              strlen(result->preprocessed_player), expires);
   }
 
 cleanup:
@@ -520,6 +540,16 @@ cleanup:
   free(request_json);
   free(cached_player_source);
   return status;
+}
+
+YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
+                         const char *player_source,
+                         const YTEJSRequest *requests,
+                         size_t request_count,
+                         const YTEJSConfig *config,
+                         YTEJSResult *result) {
+  return yt_ejs_solve_with_session(NULL, source_type, player_source, requests,
+                                   request_count, config, result);
 }
 
 const char *yt_ejs_status_string(YTEJSStatus status) {
@@ -534,6 +564,8 @@ const char *yt_ejs_status_string(YTEJSStatus status) {
       return "javascript_error";
     case YT_EJS_ERR_TIMEOUT:
       return "timeout";
+    case YT_EJS_ERR_CANCELLED:
+      return "cancelled";
     case YT_EJS_ERR_INVALID_RESULT:
       return "invalid_result";
     case YT_EJS_ERR_ASSETS_MISSING:

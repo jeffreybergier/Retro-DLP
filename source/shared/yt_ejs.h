@@ -9,6 +9,7 @@ typedef enum {
   YT_EJS_ERR_OUT_OF_MEMORY,
   YT_EJS_ERR_JAVASCRIPT,
   YT_EJS_ERR_TIMEOUT,
+  YT_EJS_ERR_CANCELLED,
   YT_EJS_ERR_INVALID_RESULT,
   YT_EJS_ERR_ASSETS_MISSING,
   YT_EJS_ERR_ASSETS_INVALID
@@ -49,6 +50,8 @@ typedef struct {
   unsigned long timeout_milliseconds;
 } YTEJSConfig;
 
+typedef struct YTHttpSession YTHttpSession;
+
 YTEJSConfig yt_ejs_default_config(void);
 
 YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
@@ -57,6 +60,13 @@ YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
                          size_t request_count,
                          const YTEJSConfig *config,
                          YTEJSResult *result);
+YTEJSStatus yt_ejs_solve_with_session(YTHttpSession *session,
+                                      YTEJSSourceType source_type,
+                                      const char *player_source,
+                                      const YTEJSRequest *requests,
+                                      size_t request_count,
+                                      const YTEJSConfig *config,
+                                      YTEJSResult *result);
 
 void yt_ejs_result_free(YTEJSResult *result);
 const char *yt_ejs_status_string(YTEJSStatus status);

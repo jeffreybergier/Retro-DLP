@@ -16,9 +16,7 @@ const char *retro_dlp_platform(void) {
   return "iOS";
 }
 
-static const char *certificate_bundle_path(void) {
-  static char path[PATH_MAX];
-  static int initialized;
+static int certificate_bundle_path(char path[PATH_MAX]) {
   char executable_path[PATH_MAX];
   char resolved_path[PATH_MAX];
   char *separator;
@@ -26,13 +24,9 @@ static const char *certificate_bundle_path(void) {
   size_t directory_length;
   static const char filename[] = "cacert.pem";
 
-  if (initialized)
-    return path[0] == '\0' ? NULL : path;
-  initialized = 1;
-
   size = (uint32_t)sizeof(executable_path);
   if (_NSGetExecutablePath(executable_path, &size) != 0)
-    return NULL;
+    return 0;
 
   if (realpath(executable_path, resolved_path) != NULL)
     memcpy(path, resolved_path, strlen(resolved_path) + 1);
@@ -42,26 +36,37 @@ static const char *certificate_bundle_path(void) {
   separator = strrchr(path, '/');
   if (separator == NULL) {
     path[0] = '\0';
-    return NULL;
+    return 0;
   }
   directory_length = (size_t)(separator - path) + 1;
-  if (directory_length + sizeof(filename) > sizeof(path)) {
+  if (directory_length + sizeof(filename) > PATH_MAX) {
     path[0] = '\0';
-    return NULL;
+    return 0;
   }
   memcpy(path + directory_length, filename, sizeof(filename));
   if (access(path, R_OK) != 0) {
     path[0] = '\0';
-    return NULL;
+    return 0;
   }
-  return path;
+  return 1;
 }
 
 int retro_dlp_configure_curl(CURL *curl) {
-  const char *path;
+  char path[PATH_MAX];
 
-  path = certificate_bundle_path();
-  if (path == NULL)
+  if (!certificate_bundle_path(path))
     return 1;
   return curl_easy_setopt(curl, CURLOPT_CAINFO, path) == CURLE_OK ? 0 : 1;
+}
+
+int retro_dlp_default_ca_bundle_path(char *path, size_t path_size) {
+  char resolved[PATH_MAX];
+  size_t length;
+  if (path == NULL || path_size == 0 || !certificate_bundle_path(resolved))
+    return 0;
+  length = strlen(resolved);
+  if (length + 1 > path_size)
+    return 0;
+  memcpy(path, resolved, length + 1);
+  return 1;
 }
