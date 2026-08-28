@@ -295,25 +295,25 @@ the CLI's `rdlp_config`.
 
 ## Phase 1: Establish a safe baseline
 
-- [ ] Fix silent playlist truncation when a continuation token cannot be copied.
-- [ ] Accept supported raw playlist IDs without requiring the `PL` prefix.
-- [ ] Make playlist host matching case-insensitive.
-- [ ] Ensure downloads use the headers and user agent from the resolved media
+- [x] Fix silent playlist truncation when a continuation token cannot be copied.
+- [x] Accept supported raw playlist IDs without requiring the `PL` prefix.
+- [x] Make playlist host matching case-insensitive.
+- [x] Ensure downloads use the headers and user agent from the resolved media
   request.
-- [ ] Resolve the strict-build format-description truncation warning.
-- [ ] Add fixture tests covering playlist bootstrap parsing, normal entries,
+- [x] Resolve the strict-build format-description truncation warning.
+- [x] Add fixture tests covering playlist bootstrap parsing, normal entries,
   continuation pagination, duplicate entries, malformed continuations, and
   allocation/error paths where practical.
-- [ ] Add push and pull-request Linux CI running `make test`.
-- [ ] Add a supported sanitizer test target or make the link rules honor
+- [x] Add push and pull-request Linux CI running `make test`.
+- [x] Add a supported sanitizer test target or make the link rules honor
   `LDFLAGS` and `LDLIBS`.
 
 Exit criteria:
 
-- [ ] Existing CLI behavior remains compatible.
-- [ ] Normal Linux tests pass.
-- [ ] ASan/UBSan tests pass for first-party code.
-- [ ] New playlist fixtures demonstrate that truncation cannot be reported as
+- [x] Existing CLI behavior remains compatible.
+- [x] Normal Linux tests pass.
+- [x] ASan/UBSan tests pass for first-party code.
+- [x] New playlist fixtures demonstrate that truncation cannot be reported as
   success.
 
 ## Phase 2: Introduce the library facade

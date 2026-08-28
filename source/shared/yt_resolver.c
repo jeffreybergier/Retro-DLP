@@ -2260,7 +2260,7 @@ YTStatus yt_probe_media_head(const YTMediaRequest *media, long *http_status) {
 
   if (media == NULL || media->url == NULL)
     return YT_ERR_INVALID_RESPONSE;
-  status = yt_http_head(media->url, http_status);
+  status = yt_http_head(media->url, media->user_agent, http_status);
   if (status != YT_OK)
     return status;
   return yt_classify_media_http_status(*http_status);

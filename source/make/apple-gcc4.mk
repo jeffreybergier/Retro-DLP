@@ -53,10 +53,10 @@ $(PPC_BINARY): $(PPC_OBJECTS) $(ALTIVECCORE) $(PPC_QUICKJS_LIBRARY) \
 		$(PPC_LSMASH_LIBRARY)
 	@echo "  > linking ppc binary"
 	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_PPC) \
-		-arch ppc -isysroot $(SDK_PPC_PATH) $(PPC_OBJECTS) \
+		-arch ppc -isysroot $(SDK_PPC_PATH) $(LDFLAGS) $(PPC_OBJECTS) \
 		$(LEGACY_MACOS_LIBRARIES) -Wl,-force_load,$(PPC_QUICKJS_LIBRARY) \
 		-Wl,-force_load,$(PPC_LSMASH_LIBRARY) \
-		$(LEGACY_QUICKJS_LIBRARIES) -lgcc_s.10.4 -o $@
+		$(LEGACY_QUICKJS_LIBRARIES) -lgcc_s.10.4 $(LDLIBS) -o $@
 	@if $(NM) -u $@ | grep -E '\$$(UNIX2003|NOCANCEL|INODE64|1050)' \
 		>/dev/null; then \
 		echo "Tiger-incompatible suffixed symbol in $@" >&2; exit 1; \
@@ -66,10 +66,10 @@ $(I386_BINARY): $(I386_OBJECTS) $(ALTIVECCORE) $(I386_QUICKJS_LIBRARY) \
 		$(I386_LSMASH_LIBRARY)
 	@echo "  > linking i386 binary"
 	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_X86) \
-		-arch i386 -isysroot $(SDK_X86_PATH) $(I386_OBJECTS) \
+		-arch i386 -isysroot $(SDK_X86_PATH) $(LDFLAGS) $(I386_OBJECTS) \
 		$(LEGACY_MACOS_LIBRARIES) -Wl,-force_load,$(I386_QUICKJS_LIBRARY) \
 		-Wl,-force_load,$(I386_LSMASH_LIBRARY) \
-		$(LEGACY_QUICKJS_LIBRARIES) -lgcc_s.10.4 -o $@
+		$(LEGACY_QUICKJS_LIBRARIES) -lgcc_s.10.4 $(LDLIBS) -o $@
 	@if $(NM) -u $@ | grep -E '\$$(UNIX2003|NOCANCEL|INODE64|1050)' \
 		>/dev/null; then \
 		echo "Tiger-incompatible suffixed symbol in $@" >&2; exit 1; \

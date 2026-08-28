@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -15,6 +16,7 @@
 #include "self_test_data.h"
 #include "yt_http.h"
 #include "yt_playlist.h"
+#include "yt_playlist_internal.h"
 #include "yt_resolver.h"
 
 #define SELF_TEST_VIDEO_ID "YE7VzlLtp-4"
@@ -157,6 +159,13 @@ static int test_playlist_id(void) {
       yt_extract_playlist_id("PL0SbJRdq3h-WCYdFjWM03h9IxgDs3fHot",
                              playlist_id, sizeof(playlist_id)) != YT_OK ||
       strcmp(playlist_id, "PL0SbJRdq3h-WCYdFjWM03h9IxgDs3fHot") != 0 ||
+      yt_extract_playlist_id("UU0SbJRdq3h-WCYdFjWM03h9IxgDs3fHot",
+                             playlist_id, sizeof(playlist_id)) != YT_OK ||
+      strcmp(playlist_id, "UU0SbJRdq3h-WCYdFjWM03h9IxgDs3fHot") != 0 ||
+      yt_extract_playlist_id(
+          "https://WWW.YOUTUBE.COM/playlist?list=OLAK5uy_fixture",
+          playlist_id, sizeof(playlist_id)) != YT_OK ||
+      strcmp(playlist_id, "OLAK5uy_fixture") != 0 ||
       yt_extract_playlist_id("LL", playlist_id, sizeof(playlist_id)) !=
           YT_ERR_INVALID_PLAYLIST ||
       yt_extract_playlist_id("WL", playlist_id, sizeof(playlist_id)) !=
@@ -194,6 +203,105 @@ static int test_playlist_id(void) {
     return 1;
   }
   printf("PASS: playlist ID parsing\n");
+  return 0;
+}
+
+static int test_playlist_page_fixtures(void) {
+  static const char bootstrap_page[] =
+      "<html><script>ytcfg.set({\"INNERTUBE_API_KEY\":\"fixture-key\","
+      "\"INNERTUBE_CONTEXT_CLIENT_VERSION\":\"1.20260828.00.00\","
+      "\"VISITOR_DATA\":\"fixture-visitor\"});"
+      "var ytInitialData={\"contents\":["
+      "{\"playlistVideoRenderer\":{\"videoId\":\"AAAAAAAAAAA\","
+      "\"title\":{\"simpleText\":\"First video\"}}},"
+      "{\"playlistVideoRenderer\":{\"videoId\":\"AAAAAAAAAAA\","
+      "\"title\":{\"runs\":[{\"text\":\"Repeated video\"}]}}},"
+      "{\"continuationItemRenderer\":{\"continuationEndpoint\":{"
+      "\"continuationCommand\":{\"token\":\"page-two\"}}}}]};"
+      "</script></html>";
+  static const char continuation_json[] =
+      "{\"onResponseReceivedActions\":[{\"appendContinuationItemsAction\":{"
+      "\"continuationItems\":[{\"lockupViewModel\":{"
+      "\"contentId\":\"BBBBBBBBBBB\","
+      "\"contentType\":\"LOCKUP_CONTENT_TYPE_VIDEO\","
+      "\"metadata\":{\"lockupMetadataViewModel\":{\"title\":{"
+      "\"content\":\"Second page video\"}}}}}]}}]}";
+  static const char malformed_continuation_json[] =
+      "{\"contents\":[{\"playlistVideoRenderer\":{"
+      "\"videoId\":\"CCCCCCCCCCC\",\"title\":{"
+      "\"simpleText\":\"Malformed continuation fixture\"}}},"
+      "{\"continuationItemRenderer\":{\"continuationEndpoint\":{"
+      "\"continuationCommand\":{\"token\":42}}}}]}";
+  YTPlaylistBootstrap bootstrap;
+  YTPlaylist playlist;
+  YTPlaylist malformed_playlist;
+  cJSON *continuation_document;
+  cJSON *malformed_document;
+  char *continuation;
+  YTStatus status;
+
+  memset(&bootstrap, 0, sizeof(bootstrap));
+  memset(&playlist, 0, sizeof(playlist));
+  memset(&malformed_playlist, 0, sizeof(malformed_playlist));
+  continuation = NULL;
+  status = yt_playlist_parse_bootstrap_page(bootstrap_page, &bootstrap);
+  if (status != YT_OK || strcmp(bootstrap.api_key, "fixture-key") != 0 ||
+      strcmp(bootstrap.client_version, "1.20260828.00.00") != 0 ||
+      strcmp(bootstrap.visitor_data, "fixture-visitor") != 0 ||
+      yt_playlist_collect_entries(bootstrap.document, &playlist,
+                                  &continuation) != YT_OK ||
+      continuation == NULL || strcmp(continuation, "page-two") != 0 ||
+      playlist.entry_count != 2 ||
+      strcmp(playlist.entries[0].video_id, "AAAAAAAAAAA") != 0 ||
+      strcmp(playlist.entries[0].title, "First video") != 0 ||
+      strcmp(playlist.entries[1].video_id, "AAAAAAAAAAA") != 0 ||
+      strcmp(playlist.entries[1].title, "Repeated video") != 0) {
+    fprintf(stderr, "FAIL: playlist webpage bootstrap and first page fixtures\n");
+    free(continuation);
+    yt_playlist_free(&playlist);
+    yt_playlist_bootstrap_free(&bootstrap);
+    return 1;
+  }
+  free(continuation);
+  continuation = NULL;
+  continuation_document = cJSON_Parse(continuation_json);
+  if (continuation_document == NULL ||
+      yt_playlist_collect_entries(continuation_document, &playlist,
+                                  &continuation) != YT_OK ||
+      continuation != NULL || playlist.entry_count != 3 ||
+      strcmp(playlist.entries[2].video_id, "BBBBBBBBBBB") != 0 ||
+      strcmp(playlist.entries[2].title, "Second page video") != 0 ||
+      playlist.entries[2].index != 3) {
+    fprintf(stderr, "FAIL: playlist continuation page fixture\n");
+    free(continuation);
+    cJSON_Delete(continuation_document);
+    yt_playlist_free(&playlist);
+    yt_playlist_bootstrap_free(&bootstrap);
+    return 1;
+  }
+  cJSON_Delete(continuation_document);
+  yt_playlist_bootstrap_free(&bootstrap);
+  malformed_document = cJSON_Parse(malformed_continuation_json);
+  status = malformed_document == NULL
+               ? YT_ERR_INVALID_RESPONSE
+               : yt_playlist_collect_entries(malformed_document,
+                                             &malformed_playlist,
+                                             &continuation);
+  cJSON_Delete(malformed_document);
+  free(continuation);
+  if (status != YT_ERR_INVALID_RESPONSE ||
+      yt_playlist_parse_bootstrap_page("ytInitialData={broken", &bootstrap) !=
+          YT_ERR_INVALID_RESPONSE) {
+    fprintf(stderr, "FAIL: malformed playlist fixture classification\n");
+    yt_playlist_free(&malformed_playlist);
+    yt_playlist_free(&playlist);
+    yt_playlist_bootstrap_free(&bootstrap);
+    return 1;
+  }
+  yt_playlist_free(&malformed_playlist);
+  yt_playlist_free(&playlist);
+  yt_playlist_bootstrap_free(&bootstrap);
+  printf("PASS: playlist bootstrap, pagination, duplicate, and error fixtures\n");
   return 0;
 }
 
@@ -578,6 +686,7 @@ int retro_dlp_run_self_tests(void) {
   failures += test_video_id();
   failures += test_playlist_id();
   failures += test_playlist_collection_json();
+  failures += test_playlist_page_fixtures();
   announce_test("title-based default output path");
   failures += test_default_output_path();
   announce_test("cJSON parsing");

@@ -142,6 +142,9 @@ printf '%s\n' "$self_test_output" | \
   grep -q '^PASS: playlist collection JSON parsing$' || \
   fail "test binary did not pass playlist collection JSON parsing"
 printf '%s\n' "$self_test_output" | \
+  grep -q '^PASS: playlist bootstrap, pagination, duplicate, and error fixtures$' || \
+  fail "test binary did not pass playlist page fixtures"
+printf '%s\n' "$self_test_output" | \
   grep -q '^PASS: deterministic player and HTTP classification fixtures$' || \
   fail "test binary did not pass deterministic player fixtures"
 printf '%s\n' "$self_test_output" | grep -q '^PASS: retro-dlp self-test$' || \

@@ -59,10 +59,10 @@ $(IOS_BINARY): $(IOS_OBJECTS) $(IOS_ALTIVECCORE) \
 	@echo " [2/2] Linking universal iOS binary (armv7, arm64)..."
 	@mkdir -p $(dir $@)
 	@$(COMPILER_IOS) $(IOS_ARCH_FLAGS) $(IOS_TOOLCHAIN_FLAGS) \
-		$(IOS_OBJECTS) $(IOS_LIBRARIES) \
+		$(LDFLAGS) $(IOS_OBJECTS) $(IOS_LIBRARIES) \
 		$(IOS_QUICKJS_OBJECTS) \
 		-Wl,-force_load,$(IOS_LSMASH_LIBRARY) \
-		$(IOS_QUICKJS_LIBRARIES) -o $@
+		$(IOS_QUICKJS_LIBRARIES) $(LDLIBS) -o $@
 	@echo "  > $@"
 
 $(IOS_INT_DIR)/%.o: %.c

@@ -11,8 +11,11 @@ release:
 test:
 	@$(MAKE) --no-print-directory -f $(BUILD_MAKEFILE) test
 
+sanitize:
+	@$(MAKE) --no-print-directory -f $(BUILD_MAKEFILE) sanitize
+
 macOS iOS linux validate validate-iOS clean-macOS clean-iOS clean-linux:
 	@$(MAKE) --no-print-directory -f $(BUILD_MAKEFILE) $@
 
-.PHONY: release macOS iOS linux test validate validate-iOS clean \
+.PHONY: release macOS iOS linux test sanitize validate validate-iOS clean \
 	clean-macOS clean-iOS clean-linux

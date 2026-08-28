@@ -52,20 +52,20 @@ $(X86_64_BINARY): $(X86_64_OBJECTS) $(ALTIVECCORE) \
 	@$(COMPILER_X64) -target x86_64-apple-macos$(MAC_MIN_X64) \
 		-isysroot $(SDK_X64_PATH) -fuse-ld=$(LD64_LLD) \
 		-Wl,-platform_version,macos,$(MAC_MIN_X64),$(SDK_MAC_NEW) \
-		$(X86_64_OBJECTS) $(MODERN_MACOS_LIBRARIES) \
+		$(LDFLAGS) $(X86_64_OBJECTS) $(MODERN_MACOS_LIBRARIES) \
 		-Wl,-force_load,$(X86_64_QUICKJS_LIBRARY) \
 		-Wl,-force_load,$(X86_64_LSMASH_LIBRARY) \
-		$(MODERN_QUICKJS_LIBRARIES) -o $@
+		$(MODERN_QUICKJS_LIBRARIES) $(LDLIBS) -o $@
 
 $(ARM64_BINARY): $(ARM64_OBJECTS) $(ALTIVECCORE) \
 		$(ARM64_QUICKJS_LIBRARY) $(ARM64_LSMASH_LIBRARY)
 	@echo "  > linking arm64 binary"
 	@$(COMPILER_ARM64) -target arm64-apple-macos$(MAC_MIN_ARM64) \
-		-isysroot $(SDK_ARM64_PATH) $(ARM64_OBJECTS) \
+		-isysroot $(SDK_ARM64_PATH) $(LDFLAGS) $(ARM64_OBJECTS) \
 		$(MODERN_MACOS_LIBRARIES) \
 		-Wl,-force_load,$(ARM64_QUICKJS_LIBRARY) \
 		-Wl,-force_load,$(ARM64_LSMASH_LIBRARY) \
-		$(MODERN_QUICKJS_LIBRARIES) -o $@
+		$(MODERN_QUICKJS_LIBRARIES) $(LDLIBS) -o $@
 
 $(MACOS_INT_DIR)/x86_64/%.o: %.c
 	@echo " [3/5] Compiling x86_64: $<"

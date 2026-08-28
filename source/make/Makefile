@@ -76,6 +76,8 @@ LINUX_CPPFLAGS := $(CPPFLAGS) -I$(CJSON_DIR)
 QUICKJS_CPPFLAGS := -I$(QUICKJS_DIR) -D_GNU_SOURCE \
 	-DCONFIG_VERSION=\"$(QUICKJS_VERSION)\"
 CFLAGS ?= -O3 -g
+LDFLAGS ?=
+LDLIBS ?=
 COMMON_CFLAGS := $(CFLAGS) -std=c99 -Wall -Wextra -Werror
 QUICKJS_CFLAGS := $(CFLAGS) -std=gnu11 -Wall -Wextra -funsigned-char \
 	-fwrapv -Wno-sign-compare -Wno-missing-field-initializers \
@@ -156,6 +158,12 @@ test: linux $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM)
 		"$(abspath $(LINUX_BUILD_DIR)/$(PROGRAM))" \
 		"$(abspath $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM))"
 
+sanitize:
+	@$(MAKE) --no-print-directory -f source/make/Makefile \
+		BUILD_DIR="$(BUILD_DIR)/sanitize" \
+		CFLAGS="-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined" \
+		LDFLAGS="-fsanitize=address,undefined" test
+
 $(MACOS_BUILD_DIR)/$(PROGRAM): $(PPC_BINARY) $(I386_BINARY) \
 		$(X86_64_BINARY) $(ARM64_BINARY)
 	@echo " [5/5] Merging quad-fat binary (ppc, i386, x86_64, arm64)..."
@@ -177,14 +185,14 @@ $(LINUX_BUILD_DIR)/$(PROGRAM): $(LINUX_OBJECTS) $(QUICKJS_LIBRARY) \
 		$(LINUX_LSMASH_LIBRARY)
 	@echo "--- Building retro-dlp Linux Release (-O3) ---"
 	@mkdir -p $(dir $@)
-	@$(CC) $(LINUX_OBJECTS) $(LINUX_LIBRARIES) -o $@
+	@$(CC) $(LDFLAGS) $(LINUX_OBJECTS) $(LINUX_LIBRARIES) $(LDLIBS) -o $@
 	@echo "  > $@"
 
 $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM): $(LINUX_TEST_OBJECTS) \
 		$(QUICKJS_LIBRARY) $(LINUX_LSMASH_LIBRARY)
 	@echo "--- Building retro-dlp Linux Tests ---"
 	@mkdir -p $(dir $@)
-	@$(CC) $(LINUX_TEST_OBJECTS) $(LINUX_LIBRARIES) -o $@
+	@$(CC) $(LDFLAGS) $(LINUX_TEST_OBJECTS) $(LINUX_LIBRARIES) $(LDLIBS) -o $@
 	@echo "  > $@"
 
 $(QUICKJS_LIBRARY): $(QUICKJS_OBJECTS)
@@ -269,5 +277,5 @@ clean-linux:
 		fi; \
 	done
 
-.PHONY: release macOS iOS linux test validate validate-iOS clean \
+.PHONY: release macOS iOS linux test sanitize validate validate-iOS clean \
 	clean-macOS clean-iOS clean-linux

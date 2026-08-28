@@ -4,11 +4,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 
 #include "cJSON.h"
 #include "yt_cookies.h"
 #include "yt_http.h"
+#include "yt_playlist_internal.h"
 
 #define YT_PLAYLIST_PAGE_MAX_RESPONSE (8U * 1024U * 1024U)
 #define YT_PLAYLIST_ID_MAX 128
@@ -155,6 +157,36 @@ static cJSON *embedded_json_object(const char *page, const char *marker) {
   return cJSON_ParseWithLength(start, (size_t)(cursor - start));
 }
 
+YTStatus yt_playlist_parse_bootstrap_page(const char *page,
+                                          YTPlaylistBootstrap *bootstrap) {
+  if (page == NULL || bootstrap == NULL)
+    return YT_ERR_INVALID_RESPONSE;
+  memset(bootstrap, 0, sizeof(*bootstrap));
+  bootstrap->api_key =
+      json_string_after_marker(page, "\"INNERTUBE_API_KEY\"");
+  bootstrap->client_version = json_string_after_marker(
+      page, "\"INNERTUBE_CONTEXT_CLIENT_VERSION\"");
+  bootstrap->visitor_data =
+      json_string_after_marker(page, "\"VISITOR_DATA\"");
+  bootstrap->document = embedded_json_object(page, "ytInitialData");
+  if (bootstrap->api_key == NULL || bootstrap->client_version == NULL ||
+      bootstrap->document == NULL) {
+    yt_playlist_bootstrap_free(bootstrap);
+    return YT_ERR_INVALID_RESPONSE;
+  }
+  return YT_OK;
+}
+
+void yt_playlist_bootstrap_free(YTPlaylistBootstrap *bootstrap) {
+  if (bootstrap == NULL)
+    return;
+  free(bootstrap->api_key);
+  free(bootstrap->client_version);
+  free(bootstrap->visitor_data);
+  cJSON_Delete(bootstrap->document);
+  memset(bootstrap, 0, sizeof(*bootstrap));
+}
+
 static int valid_playlist_id(const char *value, size_t length) {
   size_t index;
   if (length < 2 || length >= YT_PLAYLIST_ID_MAX)
@@ -165,6 +197,18 @@ static int valid_playlist_id(const char *value, size_t length) {
       return 0;
   }
   return 1;
+}
+
+static int valid_raw_playlist_id(const char *value, size_t length) {
+  static const char *const prefixes[] = {"PL", "UU", "FL", "OL", "RD"};
+  size_t index;
+  if (!valid_playlist_id(value, length))
+    return 0;
+  for (index = 0; index < sizeof(prefixes) / sizeof(prefixes[0]); ++index) {
+    if (strncmp(value, prefixes[index], 2) == 0)
+      return 1;
+  }
+  return 0;
 }
 
 static int youtube_url_path(const char *input, const char **path_out) {
@@ -190,9 +234,9 @@ static int youtube_url_path(const char *input, const char **path_out) {
   if (host_end == NULL)
     host_end = authority_end;
   host_length = (size_t)(host_end - authority);
-  if (!((host_length == 11 && strncmp(authority, "youtube.com", 11) == 0) ||
+  if (!((host_length == 11 && strncasecmp(authority, "youtube.com", 11) == 0) ||
         (host_length > 12 &&
-         strncmp(authority + host_length - 12, ".youtube.com", 12) == 0)))
+         strncasecmp(authority + host_length - 12, ".youtube.com", 12) == 0)))
     return 0;
   *path_out = authority_end;
   return 1;
@@ -225,8 +269,7 @@ YTStatus yt_extract_playlist_id(const char *input, char *playlist_id,
   if (input == NULL || playlist_id == NULL || playlist_id_size == 0)
     return YT_ERR_INVALID_PLAYLIST;
   length = strlen(input);
-  if (length > 2 && strncmp(input, "PL", 2) == 0 &&
-      valid_playlist_id(input, length)) {
+  if (length > 2 && valid_raw_playlist_id(input, length)) {
     if (length >= playlist_id_size)
       return YT_ERR_INVALID_PLAYLIST;
     memcpy(playlist_id, input, length + 1);
@@ -493,7 +536,7 @@ YTStatus yt_parse_playlist_collection_json(const char *json, size_t length,
   return status;
 }
 
-static const char *continuation_in_node(cJSON *node) {
+static const char *continuation_in_node(cJSON *node, int *malformed) {
   cJSON *command;
   cJSON *child;
   const char *token;
@@ -501,12 +544,17 @@ static const char *continuation_in_node(cJSON *node) {
     return NULL;
   if (cJSON_IsObject(node)) {
     command = cJSON_GetObjectItemCaseSensitive(node, "continuationCommand");
-    if (cJSON_IsObject(command) && json_string(command, "token") != NULL)
-      return json_string(command, "token");
+    if (cJSON_IsObject(command)) {
+      token = json_string(command, "token");
+      if (token != NULL && token[0] != '\0')
+        return token;
+      *malformed = 1;
+      return NULL;
+    }
   }
   cJSON_ArrayForEach(child, node) {
-    token = continuation_in_node(child);
-    if (token != NULL)
+    token = continuation_in_node(child, malformed);
+    if (token != NULL || *malformed)
       return token;
   }
   return NULL;
@@ -552,14 +600,14 @@ static int contains_direct_playlist(cJSON *array) {
   return 0;
 }
 
-static const char *find_entry_continuation(cJSON *node) {
+static const char *find_entry_continuation(cJSON *node, int *malformed) {
   cJSON *child;
   const char *token;
   if (cJSON_IsArray(node) && contains_direct_video(node))
-    return continuation_in_node(node);
+    return continuation_in_node(node, malformed);
   cJSON_ArrayForEach(child, node) {
-    token = find_entry_continuation(child);
-    if (token != NULL)
+    token = find_entry_continuation(child, malformed);
+    if (token != NULL || *malformed)
       return token;
   }
   return NULL;
@@ -568,14 +616,36 @@ static const char *find_entry_continuation(cJSON *node) {
 static const char *find_playlist_continuation(cJSON *node) {
   cJSON *child;
   const char *token;
+  int malformed = 0;
   if (cJSON_IsArray(node) && contains_direct_playlist(node))
-    return continuation_in_node(node);
+    return continuation_in_node(node, &malformed);
   cJSON_ArrayForEach(child, node) {
     token = find_playlist_continuation(child);
     if (token != NULL)
       return token;
   }
   return NULL;
+}
+
+YTStatus yt_playlist_collect_entries(cJSON *document, YTPlaylist *playlist,
+                                     char **continuation) {
+  const char *token;
+  YTStatus status;
+  int malformed;
+  if (document == NULL || playlist == NULL || continuation == NULL)
+    return YT_ERR_INVALID_RESPONSE;
+  *continuation = NULL;
+  status = collect_entries(document, playlist);
+  if (status != YT_OK)
+    return status;
+  malformed = 0;
+  token = find_entry_continuation(document, &malformed);
+  if (malformed)
+    return YT_ERR_INVALID_RESPONSE;
+  *continuation = copy_string(token);
+  if (token != NULL && *continuation == NULL)
+    return YT_ERR_OUT_OF_MEMORY;
+  return YT_OK;
 }
 
 static cJSON *create_browse_request(const char *continuation,
@@ -721,10 +791,10 @@ YTStatus yt_list_playlist(YTHttpSession *session, const char *input,
   char url[256];
   YTHttpResponse response;
   YTPlaylistAccount account;
+  YTPlaylistBootstrap bootstrap;
   cJSON *document;
   cJSON *metadata;
   const char *title;
-  const char *token;
   char *continuation;
   char *next_continuation;
   char *api_key;
@@ -739,6 +809,7 @@ YTStatus yt_list_playlist(YTHttpSession *session, const char *input,
     return YT_ERR_INVALID_PLAYLIST;
   memset(playlist, 0, sizeof(*playlist));
   memset(&account, 0, sizeof(account));
+  memset(&bootstrap, 0, sizeof(bootstrap));
   status = yt_extract_playlist_id(input, playlist_id, sizeof(playlist_id));
   if (status != YT_OK)
     return status;
@@ -769,20 +840,15 @@ YTStatus yt_list_playlist(YTHttpSession *session, const char *input,
   }
   if (account.authenticated)
     account_load_page(&account, response.data);
-  api_key = json_string_after_marker(response.data, "\"INNERTUBE_API_KEY\"");
-  client_version = json_string_after_marker(
-      response.data, "\"INNERTUBE_CONTEXT_CLIENT_VERSION\"");
-  visitor_data = json_string_after_marker(response.data, "\"VISITOR_DATA\"");
-  document = embedded_json_object(response.data, "ytInitialData");
+  status = yt_playlist_parse_bootstrap_page(response.data, &bootstrap);
   yt_http_response_free(&response);
-  if (api_key == NULL || client_version == NULL || document == NULL) {
-    free(api_key);
-    free(client_version);
-    free(visitor_data);
-    cJSON_Delete(document);
-    status = YT_ERR_INVALID_RESPONSE;
+  if (status != YT_OK)
     goto finished;
-  }
+  api_key = bootstrap.api_key;
+  client_version = bootstrap.client_version;
+  visitor_data = bootstrap.visitor_data;
+  document = bootstrap.document;
+  memset(&bootstrap, 0, sizeof(bootstrap));
   playlist->playlist_id = copy_string(playlist_id);
   metadata = find_named_object(document, "playlistMetadataRenderer");
   title = json_string(metadata, "title");
@@ -799,9 +865,8 @@ YTStatus yt_list_playlist(YTHttpSession *session, const char *input,
     cJSON_Delete(document);
     document = reloaded_document;
   }
-  status = collect_entries(document, playlist);
-  token = find_entry_continuation(document);
-  continuation = copy_string(token);
+  continuation = NULL;
+  status = yt_playlist_collect_entries(document, playlist, &continuation);
   cJSON_Delete(document);
   document = NULL;
   if (status != YT_OK)
@@ -816,15 +881,11 @@ YTStatus yt_list_playlist(YTHttpSession *session, const char *input,
     continuation = NULL;
     if (status != YT_OK)
       break;
-    status = collect_entries(document, playlist);
+    next_continuation = NULL;
+    status = yt_playlist_collect_entries(document, playlist,
+                                         &next_continuation);
     if (status != YT_OK)
       break;
-    token = find_entry_continuation(document);
-    next_continuation = copy_string(token);
-    if (token != NULL && next_continuation == NULL) {
-      status = YT_ERR_OUT_OF_MEMORY;
-      break;
-    }
     continuation = next_continuation;
     metadata = cJSON_GetObjectItemCaseSensitive(document, "responseContext");
     updated_visitor = copy_string(json_string(metadata, "visitorData"));
@@ -851,6 +912,7 @@ pagination_finished:
   cJSON_Delete(document);
 
 finished:
+  yt_playlist_bootstrap_free(&bootstrap);
   account_free(&account);
   if (status != YT_OK)
     yt_playlist_free(playlist);

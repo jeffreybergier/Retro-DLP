@@ -274,7 +274,7 @@ static cJSON *media_request_json(const YTMediaRequest *media) {
   char vcodec[64];
   char acodec[64];
   char format_note[32];
-  char format_description[96];
+  char format_description[128];
   document = cJSON_CreateObject();
   if (document == NULL)
     return NULL;
@@ -651,15 +651,15 @@ static int resolve_argument(const char *input, const char *format_expression,
     http_status = 0;
     audio_bytes_written = 0;
     status = yt_http_session_download(
-        request_session, selection.audio.url, audio_destination, &http_status,
-        &audio_bytes_written);
+        request_session, selection.audio.url, audio_destination,
+        selection.audio.user_agent, &http_status, &audio_bytes_written);
     if (status == YT_OK) {
       fprintf(stderr, "retro-dlp: starting video download to %s\n",
               video_destination);
       bytes_written = 0;
-      status = yt_http_session_download(request_session, media->url,
-                                        video_destination, &http_status,
-                                        &bytes_written);
+      status = yt_http_session_download(
+          request_session, media->url, video_destination, media->user_agent,
+          &http_status, &bytes_written);
       if (status != YT_OK)
         unlink(audio_destination);
     }
@@ -703,7 +703,8 @@ static int resolve_argument(const char *input, const char *format_expression,
   http_status = 0;
   bytes_written = 0;
   status = yt_http_session_download(request_session, media->url, destination,
-                                    &http_status, &bytes_written);
+                                    media->user_agent, &http_status,
+                                    &bytes_written);
   yt_http_session_destroy(request_session);
   yt_media_selection_free(&selection);
   curl_global_cleanup();

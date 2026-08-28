@@ -158,11 +158,12 @@ int yt_http_has_mp4_ftyp(const unsigned char *prefix, size_t length) {
 }
 
 static YTStatus configure_common(CURL *curl, YTHttpSession *session,
-                                 const char *url) {
+                                 const char *url, const char *user_agent) {
   if (retro_dlp_configure_curl(curl) != 0)
     return YT_ERR_CERTIFICATE_BUNDLE;
   curl_easy_setopt(curl, CURLOPT_URL, url);
-  curl_easy_setopt(curl, CURLOPT_USERAGENT, yt_resolver_user_agent());
+  curl_easy_setopt(curl, CURLOPT_USERAGENT,
+                   user_agent == NULL ? yt_resolver_user_agent() : user_agent);
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
   curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, YT_HTTP_TIMEOUT_SECONDS);
@@ -213,7 +214,7 @@ YTStatus yt_http_session_post_json(YTHttpSession *session, const char *url,
     header_list = grown;
   }
 
-  status = configure_common(curl, session, url);
+  status = configure_common(curl, session, url, NULL);
   if (status != YT_OK) {
     curl_slist_free_all(header_list);
     curl_easy_cleanup(curl);
@@ -269,13 +270,11 @@ static YTStatus http_get(YTHttpSession *session, const char *url,
   curl = curl_easy_init();
   if (curl == NULL)
     return YT_ERR_NETWORK;
-  status = configure_common(curl, session, url);
+  status = configure_common(curl, session, url, user_agent);
   if (status != YT_OK) {
     curl_easy_cleanup(curl);
     return status;
   }
-  if (user_agent != NULL)
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, user_agent);
 #if LIBCURL_VERSION_NUM >= 0x075500
   curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "https");
   curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "https");
@@ -345,7 +344,7 @@ YTStatus yt_http_session_get_range(YTHttpSession *session, const char *url,
 }
 
 YTStatus yt_http_session_head(YTHttpSession *session, const char *url,
-                              long *http_status) {
+                              const char *user_agent, long *http_status) {
   CURL *curl;
   CURLcode code;
   long status;
@@ -358,7 +357,7 @@ YTStatus yt_http_session_head(YTHttpSession *session, const char *url,
   if (curl == NULL)
     return YT_ERR_NETWORK;
 
-  configure_status = configure_common(curl, session, url);
+  configure_status = configure_common(curl, session, url, user_agent);
   if (configure_status != YT_OK) {
     curl_easy_cleanup(curl);
     return configure_status;
@@ -375,12 +374,14 @@ YTStatus yt_http_session_head(YTHttpSession *session, const char *url,
   return YT_OK;
 }
 
-YTStatus yt_http_head(const char *url, long *http_status) {
-  return yt_http_session_head(NULL, url, http_status);
+YTStatus yt_http_head(const char *url, const char *user_agent,
+                      long *http_status) {
+  return yt_http_session_head(NULL, url, user_agent, http_status);
 }
 
 YTStatus yt_http_session_download(YTHttpSession *session, const char *url,
-                                  const char *destination, long *http_status,
+                                  const char *destination,
+                                  const char *user_agent, long *http_status,
                                   int64_t *bytes_written) {
   char temporary[PATH_MAX];
   struct stat information;
@@ -420,7 +421,7 @@ YTStatus yt_http_session_download(YTHttpSession *session, const char *url,
     unlink(temporary);
     return YT_ERR_NETWORK;
   }
-  status = configure_common(curl, session, url);
+  status = configure_common(curl, session, url, user_agent);
   if (status != YT_OK) {
     curl_easy_cleanup(curl);
     fclose(writer.file);
@@ -469,8 +470,9 @@ YTStatus yt_http_session_download(YTHttpSession *session, const char *url,
 }
 
 YTStatus yt_http_download(const char *url, const char *destination,
-                          long *http_status, int64_t *bytes_written) {
-  return yt_http_session_download(NULL, url, destination, http_status,
+                          const char *user_agent, long *http_status,
+                          int64_t *bytes_written) {
+  return yt_http_session_download(NULL, url, destination, user_agent, http_status,
                                   bytes_written);
 }
 
