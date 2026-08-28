@@ -142,7 +142,7 @@ $(IOS_INT_DIR)/source/shared/test/self_test.o: \
 
 .DEFAULT_GOAL := release
 
-release: macOS
+release: macOS iOS
 
 macOS: validate $(MACOS_BUILD_DIR)/$(PROGRAM) $(MACOS_CA_BUNDLE)
 
