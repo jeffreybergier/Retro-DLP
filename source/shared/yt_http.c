@@ -16,6 +16,7 @@
 
 #include <curl/curl.h>
 
+#include "retrodlp/retrodlp.h"
 #include "platform.h"
 
 #ifndef PATH_MAX
@@ -44,10 +45,22 @@ typedef struct {
 struct YTHttpSession {
   CURLSH *share;
   char *cookie_file;
+  rdlp_transport transport;
+  unsigned long timeout_milliseconds;
+  YTHttpCancelCallback cancel_callback;
+  void *cancel_opaque;
 };
 
 YTStatus yt_http_session_create(const char *cookie_file,
                                 YTHttpSession **session) {
+  return yt_http_session_create_with_transport(cookie_file, NULL, 0, NULL,
+                                               NULL, session);
+}
+
+YTStatus yt_http_session_create_with_transport(
+    const char *cookie_file, const rdlp_transport *transport,
+    unsigned long timeout_milliseconds, YTHttpCancelCallback cancel_callback,
+    void *cancel_opaque, YTHttpSession **session) {
   YTHttpSession *created;
   if (session == NULL)
     return YT_ERR_INVALID_RESPONSE;
@@ -55,15 +68,26 @@ YTStatus yt_http_session_create(const char *cookie_file,
   created = (YTHttpSession *)calloc(1, sizeof(*created));
   if (created == NULL)
     return YT_ERR_OUT_OF_MEMORY;
-  created->share = curl_share_init();
-  if (created->share == NULL ||
-      curl_share_setopt(created->share, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE) !=
-          CURLSHE_OK) {
-    if (created->share != NULL)
-      curl_share_cleanup(created->share);
-    free(created);
-    return YT_ERR_NETWORK;
+  if (transport != NULL) {
+    if (transport->struct_size < sizeof(*transport) || transport->send == NULL) {
+      free(created);
+      return YT_ERR_INVALID_RESPONSE;
+    }
+    created->transport = *transport;
+  } else {
+    created->share = curl_share_init();
+    if (created->share == NULL ||
+        curl_share_setopt(created->share, CURLSHOPT_SHARE,
+                          CURL_LOCK_DATA_COOKIE) != CURLSHE_OK) {
+      if (created->share != NULL)
+        curl_share_cleanup(created->share);
+      free(created);
+      return YT_ERR_NETWORK;
+    }
   }
+  created->timeout_milliseconds = timeout_milliseconds;
+  created->cancel_callback = cancel_callback;
+  created->cancel_opaque = cancel_opaque;
   if (cookie_file != NULL) {
     size_t cookie_file_length = strlen(cookie_file);
     created->cookie_file = (char *)malloc(cookie_file_length + 1);
@@ -75,6 +99,131 @@ YTStatus yt_http_session_create(const char *cookie_file,
     memcpy(created->cookie_file, cookie_file, cookie_file_length + 1);
   }
   *session = created;
+  return YT_OK;
+}
+
+static YTStatus transport_status(rdlp_status status) {
+  switch (status) {
+  case RDLP_STATUS_OK:
+    return YT_OK;
+  case RDLP_STATUS_OUT_OF_MEMORY:
+    return YT_ERR_OUT_OF_MEMORY;
+  case RDLP_STATUS_CERTIFICATE_BUNDLE:
+    return YT_ERR_CERTIFICATE_BUNDLE;
+  case RDLP_STATUS_HTTP:
+    return YT_ERR_HTTP;
+  case RDLP_STATUS_CANCELLED:
+    return YT_ERR_CANCELLED;
+  case RDLP_STATUS_INVALID_RESPONSE:
+  case RDLP_STATUS_INVALID_ARGUMENT:
+    return YT_ERR_INVALID_RESPONSE;
+  default:
+    return YT_ERR_NETWORK;
+  }
+}
+
+static int split_header(const char *header, rdlp_http_header *result,
+                        char **storage) {
+  const char *separator;
+  size_t name_length;
+  size_t value_length;
+  char *copy;
+  separator = strchr(header, ':');
+  if (separator == NULL)
+    return 0;
+  name_length = (size_t)(separator - header);
+  while (separator[1] == ' ' || separator[1] == '\t')
+    ++separator;
+  value_length = strlen(separator + 1);
+  copy = (char *)malloc(name_length + 1 + value_length + 1);
+  if (copy == NULL)
+    return 0;
+  memcpy(copy, header, name_length);
+  copy[name_length] = '\0';
+  memcpy(copy + name_length + 1, separator + 1, value_length + 1);
+  result->name = copy;
+  result->value = copy + name_length + 1;
+  *storage = copy;
+  return 1;
+}
+
+static YTStatus custom_request(YTHttpSession *session, rdlp_http_method method,
+                               const char *url, const void *body,
+                               size_t body_length,
+                               const char *const *headers,
+                               size_t header_count, size_t maximum_size,
+                               YTHttpResponse *response) {
+  rdlp_transport_request request;
+  rdlp_transport_response transported;
+  rdlp_error error;
+  rdlp_http_header *converted;
+  char **storage;
+  rdlp_status sent;
+  size_t index;
+  char *copy;
+  if (session == NULL || session->transport.send == NULL || response == NULL)
+    return YT_ERR_INVALID_RESPONSE;
+  memset(response, 0, sizeof(*response));
+  converted = NULL;
+  storage = NULL;
+  if (header_count != 0) {
+    converted = (rdlp_http_header *)calloc(header_count, sizeof(*converted));
+    storage = (char **)calloc(header_count, sizeof(*storage));
+    if (converted == NULL || storage == NULL) {
+      free(converted);
+      free(storage);
+      return YT_ERR_OUT_OF_MEMORY;
+    }
+    for (index = 0; index < header_count; ++index) {
+      if (!split_header(headers[index], &converted[index], &storage[index])) {
+        while (index != 0)
+          free(storage[--index]);
+        free(converted);
+        free(storage);
+        return YT_ERR_OUT_OF_MEMORY;
+      }
+    }
+  }
+  memset(&request, 0, sizeof(request));
+  memset(&transported, 0, sizeof(transported));
+  memset(&error, 0, sizeof(error));
+  request.struct_size = sizeof(request);
+  request.method = method;
+  request.url = url;
+  request.headers = converted;
+  request.header_count = header_count;
+  request.body = body;
+  request.body_length = body_length;
+  request.maximum_response_bytes = maximum_size;
+  request.timeout_milliseconds = session->timeout_milliseconds;
+  request.cancel_callback = session->cancel_callback;
+  request.cancel_context = session->cancel_opaque;
+  transported.struct_size = sizeof(transported);
+  error.struct_size = sizeof(error);
+  if (session->cancel_callback != NULL &&
+      session->cancel_callback(session->cancel_opaque))
+    sent = RDLP_STATUS_CANCELLED;
+  else
+    sent = session->transport.send(session->transport.context, &request,
+                                   &transported, &error);
+  for (index = 0; index < header_count; ++index)
+    free(storage[index]);
+  free(converted);
+  free(storage);
+  if (sent != RDLP_STATUS_OK)
+    return transport_status(sent);
+  if (transported.data_length > maximum_size ||
+      (transported.data_length != 0 && transported.data == NULL))
+    return YT_ERR_INVALID_RESPONSE;
+  copy = (char *)malloc(transported.data_length + 1);
+  if (copy == NULL)
+    return YT_ERR_OUT_OF_MEMORY;
+  if (transported.data_length != 0)
+    memcpy(copy, transported.data, transported.data_length);
+  copy[transported.data_length] = '\0';
+  response->data = copy;
+  response->length = transported.data_length;
+  response->status = transported.http_status;
   return YT_OK;
 }
 
@@ -166,8 +315,15 @@ static YTStatus configure_common(CURL *curl, YTHttpSession *session,
                    user_agent == NULL ? yt_resolver_user_agent() : user_agent);
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
-  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, YT_HTTP_TIMEOUT_SECONDS);
-  curl_easy_setopt(curl, CURLOPT_TIMEOUT, YT_HTTP_TIMEOUT_SECONDS);
+  if (session != NULL && session->timeout_milliseconds != 0) {
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS,
+                     (long)session->timeout_milliseconds);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS,
+                     (long)session->timeout_milliseconds);
+  } else {
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, YT_HTTP_TIMEOUT_SECONDS);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, YT_HTTP_TIMEOUT_SECONDS);
+  }
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
   curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
   curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
@@ -194,6 +350,10 @@ YTStatus yt_http_session_post_json(YTHttpSession *session, const char *url,
 
   if (url == NULL || json == NULL || response == NULL)
     return YT_ERR_INVALID_RESPONSE;
+  if (session != NULL && session->transport.send != NULL)
+    return custom_request(session, RDLP_HTTP_POST, url, json, strlen(json),
+                          headers, header_count, YT_HTTP_MAX_RESPONSE,
+                          response);
   memset(response, 0, sizeof(*response));
   memset(&buffer, 0, sizeof(buffer));
   buffer.maximum_size = YT_HTTP_MAX_RESPONSE;
@@ -261,9 +421,24 @@ static YTStatus http_get(YTHttpSession *session, const char *url,
   CURLcode code;
   YTWriteBuffer buffer;
   YTStatus status;
+  char user_agent_header[512];
+  const char *custom_headers[1];
 
   if (url == NULL || response == NULL || maximum_size == 0)
     return YT_ERR_INVALID_RESPONSE;
+  if (session != NULL && session->transport.send != NULL) {
+    if (user_agent != NULL) {
+      if (snprintf(user_agent_header, sizeof(user_agent_header),
+                   "User-Agent: %s", user_agent) >=
+          (int)sizeof(user_agent_header))
+        return YT_ERR_INVALID_RESPONSE;
+      custom_headers[0] = user_agent_header;
+      return custom_request(session, RDLP_HTTP_GET, url, NULL, 0,
+                            custom_headers, 1, maximum_size, response);
+    }
+    return custom_request(session, RDLP_HTTP_GET, url, NULL, 0, NULL, 0,
+                          maximum_size, response);
+  }
   memset(response, 0, sizeof(*response));
   memset(&buffer, 0, sizeof(buffer));
   buffer.maximum_size = maximum_size;
@@ -352,6 +527,16 @@ YTStatus yt_http_session_head(YTHttpSession *session, const char *url,
 
   if (url == NULL || http_status == NULL)
     return YT_ERR_INVALID_RESPONSE;
+  if (session != NULL && session->transport.send != NULL) {
+    YTHttpResponse response;
+    YTStatus custom_status = custom_request(
+        session, RDLP_HTTP_HEAD, url, NULL, 0, NULL, 0, 1, &response);
+    if (custom_status == YT_OK) {
+      *http_status = response.status;
+      yt_http_response_free(&response);
+    }
+    return custom_status;
+  }
   *http_status = 0;
   curl = curl_easy_init();
   if (curl == NULL)

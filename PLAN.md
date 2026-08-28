@@ -318,22 +318,22 @@ Exit criteria:
 
 ## Phase 2: Introduce the library facade
 
-- [ ] Create `include/retrodlp/retrodlp.h` and `version.h`.
-- [ ] Define `rdlp_status`, `rdlp_error`, opaque result types, configuration,
+- [x] Create `include/retrodlp/retrodlp.h` and `version.h`.
+- [x] Define `rdlp_status`, `rdlp_error`, opaque result types, configuration,
   options, typed events, and cancellation.
-- [ ] Add `rdlp_context_create` and `rdlp_context_destroy`.
-- [ ] Implement the initial facade as adapters over current internals before doing
+- [x] Add `rdlp_context_create` and `rdlp_context_destroy`.
+- [x] Implement the initial facade as adapters over current internals before doing
   large source moves.
-- [ ] Document defaults, ownership, error behavior, threading, and cancellation.
-- [ ] Add symbol visibility/export macros suitable for static use now and possible
+- [x] Document defaults, ownership, error behavior, threading, and cancellation.
+- [x] Add symbol visibility/export macros suitable for static use now and possible
   shared-library use later.
 
 Exit criteria:
 
-- [ ] A small external C program can create a context, parse an ID, resolve an
+- [x] A small external C program can create a context, parse an ID, resolve an
   offline fixture through a test transport, inspect a result, and clean up.
-- [ ] The consumer includes only public Retro-DLP headers.
-- [ ] No third-party type appears in the supported API.
+- [x] The consumer includes only public Retro-DLP headers.
+- [x] No third-party type appears in the supported API.
 
 ## Phase 3: Make dependencies context-driven
 

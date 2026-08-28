@@ -8,6 +8,7 @@ IOS_BUILD_DIR := $(BUILD_DIR)/iOS
 LINUX_BUILD_DIR := $(BUILD_DIR)/linux
 
 SHARED_SOURCES := source/shared/main.c source/shared/cli.c \
+	source/shared/retrodlp.c \
 	source/shared/yt_http.c source/shared/yt_resolver.c \
 	source/shared/yt_playlist.c \
 	source/shared/yt_mux.c \
@@ -42,6 +43,8 @@ LSMASH_CPPFLAGS := -I$(LSMASH_DIR)
 LSMASH_CFLAGS := $(CFLAGS) -std=c99 -Wall -Wextra -Wno-unused-parameter
 LINUX_SOURCES := $(SHARED_SOURCES) source/linux/platform.c $(CJSON_SOURCE)
 LINUX_TEST_PROGRAM := retro-dlp-tests
+LINUX_CONSUMER_TEST_PROGRAM := retro-dlp-consumer-test
+LINUX_CONSUMER_TEST_SOURCE := source/linux/test/public_consumer.c
 LINUX_TEST_SOURCES := $(filter-out source/shared/main.c, \
 	$(SHARED_SOURCES)) $(TEST_SOURCES) source/linux/test/test_main.c \
 	source/linux/platform.c $(CJSON_SOURCE)
@@ -69,7 +72,7 @@ MAC_MIN_ARM64 := 11.0
 IOS_MIN_ARMV7 := 5.0
 IOS_MIN_ARM64 := 7.0
 
-CPPFLAGS := -Isource/shared -I$(QUICKJS_DIR) -Isource/deps/L-SMASH \
+CPPFLAGS := -Iinclude -Isource/shared -I$(QUICKJS_DIR) -Isource/deps/L-SMASH \
 	-DRETRO_DLP_VERSION=\"$(VERSION)\"
 MACOS_BASE_CPPFLAGS := $(CPPFLAGS) -I$(ALTIVECCORE_DIR)/include
 LINUX_CPPFLAGS := $(CPPFLAGS) -I$(CJSON_DIR)
@@ -103,6 +106,12 @@ LINUX_LIBRARIES := -Wl,--whole-archive $(QUICKJS_LIBRARY) \
 	-lcurl -lcrypto -lm -ldl -lpthread
 LINUX_OBJECTS := $(LINUX_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
 LINUX_TEST_OBJECTS := $(LINUX_TEST_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
+LINUX_LIBRARY_SOURCES := $(filter-out source/shared/main.c \
+	source/shared/cli.c source/shared/yt_mux.c,$(SHARED_SOURCES)) \
+	source/linux/platform.c $(CJSON_SOURCE)
+LINUX_LIBRARY_OBJECTS := $(LINUX_LIBRARY_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
+LINUX_CONSUMER_TEST_OBJECT := \
+	$(LINUX_INT_DIR)/$(LINUX_CONSUMER_TEST_SOURCE:.c=.o)
 
 include source/make/apple-gcc4.mk
 include source/make/clang.mk
@@ -110,6 +119,7 @@ include source/make/ios-clang.mk
 
 APPLICATION_DEPENDENCIES := $(LINUX_OBJECTS:.o=.d) \
 	$(LINUX_TEST_OBJECTS:.o=.d) $(PPC_OBJECTS:.o=.d) \
+	$(LINUX_CONSUMER_TEST_OBJECT:.o=.d) \
 	$(LINUX_LSMASH_OBJECTS:.o=.d) \
 	$(I386_OBJECTS:.o=.d) $(X86_64_OBJECTS:.o=.d) $(ARM64_OBJECTS:.o=.d) \
 	$(IOS_OBJECTS:.o=.d) $(PPC_LSMASH_OBJECTS:.o=.d) \
@@ -152,11 +162,13 @@ iOS: validate-iOS $(IOS_BUILD_DIR)/$(PROGRAM) $(IOS_CA_BUNDLE)
 
 linux: $(LINUX_BUILD_DIR)/$(PROGRAM)
 
-test: linux $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM)
+test: linux $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM) \
+		$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM)
 	@echo "--- Running retro-dlp Linux tests ---"
 	@source/linux/test/cli_test.sh \
 		"$(abspath $(LINUX_BUILD_DIR)/$(PROGRAM))" \
 		"$(abspath $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM))"
+	@$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM)
 
 sanitize:
 	@$(MAKE) --no-print-directory -f source/make/Makefile \
@@ -193,6 +205,17 @@ $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM): $(LINUX_TEST_OBJECTS) \
 	@echo "--- Building retro-dlp Linux Tests ---"
 	@mkdir -p $(dir $@)
 	@$(CC) $(LDFLAGS) $(LINUX_TEST_OBJECTS) $(LINUX_LIBRARIES) $(LDLIBS) -o $@
+	@echo "  > $@"
+
+$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM): \
+		$(LINUX_CONSUMER_TEST_OBJECT) $(LINUX_LIBRARY_OBJECTS) \
+		$(QUICKJS_LIBRARY)
+	@echo "--- Building public API consumer test ---"
+	@mkdir -p $(dir $@)
+	@$(CC) $(LDFLAGS) $(LINUX_CONSUMER_TEST_OBJECT) \
+		$(LINUX_LIBRARY_OBJECTS) -Wl,--whole-archive $(QUICKJS_LIBRARY) \
+		-Wl,--no-whole-archive -lcurl -lcrypto -lm -ldl -lpthread \
+		$(LDLIBS) -o $@
 	@echo "  > $@"
 
 $(QUICKJS_LIBRARY): $(QUICKJS_OBJECTS)

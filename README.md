@@ -1,5 +1,9 @@
 # Retro-DLP
 
+The provisional reusable C interface is documented in
+[`docs/library-api.md`](docs/library-api.md). Applications should include only
+headers from `include/retrodlp`.
+
 Retro-DLP is a super minimalist/reduced-scope conversion of 
 [yt-dlp](https://github.com/yt-dlp/yt-dlp) from Python into C. I built 
 Retro-DLP so I could play videos on my retro Apple devices like my iMac G4 and

@@ -1498,7 +1498,11 @@ static YTStatus parse_player_selection_document(
   if (document == NULL || result == NULL ||
       (try_adaptive && max_height != 720 && max_height != 1080))
     return YT_ERR_INVALID_RESPONSE;
-  memset(result, 0, sizeof(*result));
+  /* Metadata and format inventory may already have been attached by the
+     resolver facade. Only reset the stream portion before (re)selection. */
+  yt_media_request_free(&result->video);
+  yt_media_request_free(&result->audio);
+  result->adaptive = 0;
   playability = cJSON_GetObjectItemCaseSensitive(document,
                                                  "playabilityStatus");
   playability_status = json_string(playability, "status");
@@ -2341,6 +2345,8 @@ const char *yt_status_string(YTStatus status) {
     return "requested format is not available";
   case YT_ERR_INVALID_PLAYLIST:
     return "invalid or unsupported YouTube playlist URL";
+  case YT_ERR_CANCELLED:
+    return "operation cancelled";
   }
   return "unknown error";
 }

@@ -11,8 +11,15 @@ typedef struct {
   long status;
 } YTHttpResponse;
 
+typedef struct rdlp_transport rdlp_transport;
+typedef int (*YTHttpCancelCallback)(void *opaque);
+
 YTStatus yt_http_session_create(const char *cookie_file,
                                 YTHttpSession **session);
+YTStatus yt_http_session_create_with_transport(
+    const char *cookie_file, const rdlp_transport *transport,
+    unsigned long timeout_milliseconds, YTHttpCancelCallback cancel_callback,
+    void *cancel_opaque, YTHttpSession **session);
 void yt_http_session_destroy(YTHttpSession *session);
 
 YTStatus yt_http_post_json(const char *url, const char *json,
