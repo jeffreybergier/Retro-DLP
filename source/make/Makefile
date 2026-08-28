@@ -10,7 +10,11 @@ LINUX_BUILD_DIR := $(BUILD_DIR)/linux
 SHARED_SOURCES := source/shared/main.c source/shared/cli.c \
 	source/shared/retrodlp.c \
 	source/shared/yt_http.c source/shared/yt_resolver.c \
-	source/shared/yt_playlist.c \
+	source/shared/yt_formats.c source/shared/yt_challenges.c \
+	source/shared/yt_failure_cache.c \
+	source/shared/yt_innertube.c \
+	source/shared/yt_playlist.c source/shared/yt_session.c \
+	source/shared/yt_util.c source/shared/yt_webpage.c \
 	source/shared/yt_mux.c \
 	source/shared/yt_cache.c source/shared/yt_crypto.c source/shared/yt_cookies.c \
 	source/shared/yt_ejs.c source/shared/yt_ejs_assets.c

@@ -357,22 +357,22 @@ Exit criteria:
 
 ## Phase 4: Separate internal responsibilities
 
-- [ ] Extract shared webpage/config scanning used by resolver and playlist code.
-- [ ] Consolidate account context and authenticated-header construction.
-- [ ] Extract client and Innertube request handling.
-- [ ] Extract format inventory, grammar, and selection.
-- [ ] Keep challenge resolution behind one internal interface.
-- [ ] Reduce `yt_resolver.c` and `yt_playlist.c` to orchestration plus domain-specific
+- [x] Extract shared webpage/config scanning used by resolver and playlist code.
+- [x] Consolidate account context and authenticated-header construction.
+- [x] Extract client and Innertube request handling.
+- [x] Extract format inventory, grammar, and selection.
+- [x] Keep challenge resolution behind one internal interface.
+- [x] Reduce `yt_resolver.c` and `yt_playlist.c` to orchestration plus domain-specific
   traversal.
-- [ ] Centralize duplicated allocation, JSON, URL, and time helpers where doing so
+- [x] Centralize duplicated allocation, JSON, URL, and time helpers where doing so
   improves correctness.
 
 Exit criteria:
 
-- [ ] Resolver and playlist orchestration can be understood without reading HTTP,
+- [x] Resolver and playlist orchestration can be understood without reading HTTP,
   cache, authentication-header, or format-selection implementations.
-- [ ] Duplicated page-marker and account-context logic is removed.
-- [ ] Existing fixture behavior remains unchanged.
+- [x] Duplicated page-marker and account-context logic is removed.
+- [x] Existing fixture behavior remains unchanged.
 
 ## Phase 5: Separate CLI and download responsibilities
 
