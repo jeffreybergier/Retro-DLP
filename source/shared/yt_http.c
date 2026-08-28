@@ -254,7 +254,8 @@ YTStatus yt_http_post_json(const char *url, const char *json,
 
 static YTStatus http_get(YTHttpSession *session, const char *url,
                          size_t maximum_size,
-                         const char *range, YTHttpResponse *response) {
+                         const char *range, const char *user_agent,
+                         YTHttpResponse *response) {
   CURL *curl;
   CURLcode code;
   YTWriteBuffer buffer;
@@ -273,6 +274,8 @@ static YTStatus http_get(YTHttpSession *session, const char *url,
     curl_easy_cleanup(curl);
     return status;
   }
+  if (user_agent != NULL)
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, user_agent);
 #if LIBCURL_VERSION_NUM >= 0x075500
   curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "https");
   curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "https");
@@ -306,12 +309,18 @@ static YTStatus http_get(YTHttpSession *session, const char *url,
 
 YTStatus yt_http_get(const char *url, size_t maximum_size,
                      YTHttpResponse *response) {
-  return http_get(NULL, url, maximum_size, NULL, response);
+  return http_get(NULL, url, maximum_size, NULL, NULL, response);
 }
 
 YTStatus yt_http_session_get(YTHttpSession *session, const char *url,
                              size_t maximum_size, YTHttpResponse *response) {
-  return http_get(session, url, maximum_size, NULL, response);
+  return http_get(session, url, maximum_size, NULL, NULL, response);
+}
+
+YTStatus yt_http_session_get_with_user_agent(
+    YTHttpSession *session, const char *url, size_t maximum_size,
+    const char *user_agent, YTHttpResponse *response) {
+  return http_get(session, url, maximum_size, NULL, user_agent, response);
 }
 
 YTStatus yt_http_get_range(const char *url, size_t length,
@@ -322,7 +331,7 @@ YTStatus yt_http_get_range(const char *url, size_t length,
       snprintf(range, sizeof(range), "0-%lu", (unsigned long)(length - 1)) >=
           (int)sizeof(range))
     return YT_ERR_INVALID_RESPONSE;
-  return http_get(NULL, url, length, range, response);
+  return http_get(NULL, url, length, range, NULL, response);
 }
 
 YTStatus yt_http_session_get_range(YTHttpSession *session, const char *url,
@@ -332,7 +341,7 @@ YTStatus yt_http_session_get_range(YTHttpSession *session, const char *url,
       snprintf(range, sizeof(range), "0-%lu", (unsigned long)(length - 1)) >=
           (int)sizeof(range))
     return YT_ERR_INVALID_RESPONSE;
-  return http_get(session, url, length, range, response);
+  return http_get(session, url, length, range, NULL, response);
 }
 
 YTStatus yt_http_session_head(YTHttpSession *session, const char *url,

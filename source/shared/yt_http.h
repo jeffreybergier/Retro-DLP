@@ -33,6 +33,9 @@ YTStatus yt_http_session_post_json(YTHttpSession *session, const char *url,
                                    YTHttpResponse *response);
 YTStatus yt_http_session_get(YTHttpSession *session, const char *url,
                              size_t maximum_size, YTHttpResponse *response);
+YTStatus yt_http_session_get_with_user_agent(
+    YTHttpSession *session, const char *url, size_t maximum_size,
+    const char *user_agent, YTHttpResponse *response);
 YTStatus yt_http_session_get_range(YTHttpSession *session, const char *url,
                                    size_t length, YTHttpResponse *response);
 YTStatus yt_http_session_head(YTHttpSession *session, const char *url,

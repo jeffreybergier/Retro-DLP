@@ -28,6 +28,7 @@
 #define YT_CLIENT_MANIFEST_TTL (30LL * 24LL * 60LL * 60LL)
 #define YT_SUCCESSFUL_CLIENT_TTL (24LL * 60LL * 60LL)
 #define YT_PLAYER_JAVASCRIPT_TTL (7LL * 24LL * 60LL * 60LL)
+#define YT_WEBPAGE_MAX_RESPONSE (8U * 1024U * 1024U)
 
 static const char builtin_client_manifest[] =
     "{\"version\":1,\"clients\":[{\"name\":\"" YT_CLIENT_NAME
@@ -1792,7 +1793,7 @@ static YTStatus load_mweb_bootstrap(YTHttpSession *session,
                "https://m.youtube.com/watch?v=%s", video_id) >=
       (int)sizeof(watch_url))
     return YT_ERR_INVALID_RESPONSE;
-  status = yt_http_session_get(session, watch_url, 2U * 1024U * 1024U,
+  status = yt_http_session_get(session, watch_url, YT_WEBPAGE_MAX_RESPONSE,
                                &response);
   if (status != YT_OK)
     return status;
@@ -1846,7 +1847,7 @@ static YTStatus player_url_from_watch_page(YTHttpSession *session,
                "https://www.youtube.com/watch?v=%s", video_id) >=
       (int)sizeof(watch_url))
     return YT_ERR_INVALID_RESPONSE;
-  status = yt_http_session_get(session, watch_url, 2U * 1024U * 1024U,
+  status = yt_http_session_get(session, watch_url, YT_WEBPAGE_MAX_RESPONSE,
                                &response);
   if (status != YT_OK)
     return status;
@@ -2338,6 +2339,8 @@ const char *yt_status_string(YTStatus status) {
     return "invalid format expression";
   case YT_ERR_FORMAT_UNAVAILABLE:
     return "requested format is not available";
+  case YT_ERR_INVALID_PLAYLIST:
+    return "invalid or unsupported YouTube playlist URL";
   }
   return "unknown error";
 }

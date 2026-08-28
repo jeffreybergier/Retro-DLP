@@ -59,6 +59,8 @@ printf '%s\n' "$help_output" | \
   fail "--help did not document the high preset"
 printf '%s\n' "$help_output" | grep -q -- '-F, --list-formats' || \
   fail "--help did not document --list-formats"
+printf '%s\n' "$help_output" | grep -q -- '--flat-playlist' || \
+  fail "--help did not document --flat-playlist"
 printf '%s\n' "$help_output" | grep -q -- '-j, --dump-json' || \
   fail "--help did not document --dump-json"
 printf '%s\n' "$help_output" | grep -q -- 'sanitized video title plus .mp4' || \
@@ -134,6 +136,8 @@ printf '%s\n' "$self_test_output" | grep -q '^PASS: EJS 0.8.0' || \
   fail "test binary did not run the downloaded EJS assets"
 printf '%s\n' "$self_test_output" | grep -q '^PASS: video ID parsing' || \
   fail "test binary did not pass video ID parsing"
+printf '%s\n' "$self_test_output" | grep -q '^PASS: playlist ID parsing$' || \
+  fail "test binary did not pass playlist ID parsing"
 printf '%s\n' "$self_test_output" | \
   grep -q '^PASS: deterministic player and HTTP classification fixtures$' || \
   fail "test binary did not pass deterministic player fixtures"
@@ -145,6 +149,12 @@ if $binary --not-an-option 2>"$error_file"; then
 fi
 grep -q '^retro-dlp: unsupported arguments$' "$error_file" || \
   fail "unsupported arguments did not report an error"
+
+if $binary --flat-playlist YE7VzlLtp-4 2>"$error_file"; then
+  fail "--flat-playlist accepted a video ID"
+fi
+grep -q '^retro-dlp: invalid or unsupported YouTube playlist URL$' \
+  "$error_file" || fail "invalid flat-playlist input was misclassified"
 
 invalid_cookie_file=$test_home/invalid-cookies.txt
 printf '%s\n' '# Netscape HTTP Cookie File' > "$invalid_cookie_file"

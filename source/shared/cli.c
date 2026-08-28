@@ -13,6 +13,7 @@
 #include "yt_ejs_assets.h"
 #include "yt_http.h"
 #include "yt_mux.h"
+#include "yt_playlist.h"
 #include "yt_resolver.h"
 
 #ifndef RETRO_DLP_VERSION
@@ -137,6 +138,8 @@ static void print_usage(FILE *stream) {
           "                   high=" PRESET_HIGH_FORMAT "\n"
           "  -F, --list-formats\n"
           "                   List formats advertised by YouTube and exit.\n"
+          "      --flat-playlist\n"
+          "                   List playlist entries without downloading them.\n"
           "  -o, --output FILE Write the final MP4 to FILE.\n"
           "                   Default: sanitized video title plus .mp4.\n"
           "  -s, --simulate    Resolve without downloading or writing files.\n"
@@ -715,6 +718,99 @@ static int resolve_argument(const char *input, const char *format_expression,
   return failed;
 }
 
+static int print_playlist_json(const YTPlaylist *playlist) {
+  size_t index;
+  for (index = 0; index < playlist->entry_count; ++index) {
+    const YTPlaylistEntry *entry = &playlist->entries[index];
+    cJSON *document = cJSON_CreateObject();
+    char url[128];
+    char *json;
+    if (document == NULL ||
+        snprintf(url, sizeof(url), "https://www.youtube.com/watch?v=%s",
+                 entry->video_id) >= (int)sizeof(url) ||
+        !cJSON_AddStringToObject(document, "id", entry->video_id) ||
+        !cJSON_AddStringToObject(document, "title", entry->title) ||
+        !cJSON_AddStringToObject(document, "url", url) ||
+        !cJSON_AddStringToObject(document, "webpage_url", url) ||
+        !cJSON_AddStringToObject(document, "playlist_id",
+                                playlist->playlist_id) ||
+        !cJSON_AddStringToObject(document, "playlist_title",
+                                playlist->title) ||
+        !cJSON_AddNumberToObject(document, "playlist_index",
+                                (double)entry->index) ||
+        !cJSON_AddStringToObject(document, "_type", "url") ||
+        !cJSON_AddStringToObject(document, "extractor_key", "Youtube")) {
+      cJSON_Delete(document);
+      return 1;
+    }
+    json = cJSON_PrintUnformatted(document);
+    cJSON_Delete(document);
+    if (json == NULL)
+      return 1;
+    printf("%s\n", json);
+    free(json);
+  }
+  return 0;
+}
+
+static void print_playlist_table(const YTPlaylist *playlist) {
+  size_t index;
+  size_t index_width = strlen("INDEX");
+  char number[32];
+  for (index = 0; index < playlist->entry_count; ++index) {
+    size_t width;
+    snprintf(number, sizeof(number), "%lu",
+             (unsigned long)playlist->entries[index].index);
+    width = strlen(number);
+    if (width > index_width)
+      index_width = width;
+  }
+  printf("Playlist: %s (%s)\n", playlist->title, playlist->playlist_id);
+  printf("%-*s  %-11s  %s\n", (int)index_width, "INDEX", "ID", "TITLE");
+  printf("%-*s  %-11s  %s\n", (int)index_width, "-----", "-----------",
+         "-----");
+  for (index = 0; index < playlist->entry_count; ++index) {
+    const YTPlaylistEntry *entry = &playlist->entries[index];
+    printf("%*lu  %-11s  %s\n", (int)index_width,
+           (unsigned long)entry->index, entry->video_id, entry->title);
+  }
+}
+
+static int list_playlist_argument(const char *input, const char *cookie_file,
+                                  int dump_json) {
+  YTHttpSession *session = NULL;
+  YTPlaylist playlist;
+  YTStatus status;
+  int failed;
+  memset(&playlist, 0, sizeof(playlist));
+  if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
+    fprintf(stderr, "retro-dlp: could not initialize libcurl\n");
+    return 1;
+  }
+  status = yt_http_session_create(cookie_file, &session);
+  if (status == YT_OK)
+    status = yt_list_playlist(session, input, cookie_file, &playlist,
+                              print_progress, stderr);
+  if (status != YT_OK) {
+    fprintf(stderr, "retro-dlp: %s\n", yt_status_string(status));
+    yt_http_session_destroy(session);
+    curl_global_cleanup();
+    return 1;
+  }
+  if (dump_json)
+    failed = print_playlist_json(&playlist);
+  else {
+    print_playlist_table(&playlist);
+    failed = 0;
+  }
+  if (failed)
+    fprintf(stderr, "retro-dlp: could not create playlist output\n");
+  yt_playlist_free(&playlist);
+  yt_http_session_destroy(session);
+  curl_global_cleanup();
+  return failed;
+}
+
 static int default_cookie_path(char *buffer, size_t buffer_size) {
   const char *home;
   size_t home_length;
@@ -748,6 +844,7 @@ int retro_dlp_run(int argc, char **argv) {
   int list_formats;
   int dump_json;
   int simulate;
+  int flat_playlist;
   int index;
   if (argc == 1) {
     print_usage(stdout);
@@ -779,6 +876,7 @@ int retro_dlp_run(int argc, char **argv) {
   list_formats = 0;
   dump_json = 0;
   simulate = 0;
+  flat_playlist = 0;
   for (index = 1; index < argc; ++index) {
     if (strcmp(argv[index], "--cookies") == 0) {
       if (cookies_requested || cookies_default || index + 1 >= argc ||
@@ -833,6 +931,10 @@ int retro_dlp_run(int argc, char **argv) {
       if (list_formats)
         break;
       list_formats = 1;
+    } else if (strcmp(argv[index], "--flat-playlist") == 0) {
+      if (flat_playlist)
+        break;
+      flat_playlist = 1;
     } else if (strcmp(argv[index], "--output") == 0 ||
                strcmp(argv[index], "-o") == 0) {
       if (output != NULL || index + 1 >= argc || argv[index + 1][0] == '\0')
@@ -869,7 +971,11 @@ int retro_dlp_run(int argc, char **argv) {
       }
       cookie_file = default_cookie_file;
     }
-    if (input != NULL && !(list_formats && format_expression != NULL) &&
+    if (input != NULL && flat_playlist && !list_formats &&
+        format_expression == NULL && preset_alias == NULL && output == NULL)
+      return list_playlist_argument(input, cookie_file, dump_json);
+    if (input != NULL && !flat_playlist &&
+        !(list_formats && format_expression != NULL) &&
         !(list_formats && dump_json))
       return resolve_argument(input, format_expression, list_formats,
                               dump_json, simulate, cookie_file, output);

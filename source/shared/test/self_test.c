@@ -14,6 +14,7 @@
 #include "quickjs.h"
 #include "self_test_data.h"
 #include "yt_http.h"
+#include "yt_playlist.h"
 #include "yt_resolver.h"
 
 #define SELF_TEST_VIDEO_ID "YE7VzlLtp-4"
@@ -139,6 +140,36 @@ static int test_video_id(void) {
   }
   printf("PASS: video ID parsing (%s, -_x6t4CaPzo)\n",
          SELF_TEST_VIDEO_ID);
+  return 0;
+}
+
+static int test_playlist_id(void) {
+  char playlist_id[128];
+  if (yt_extract_playlist_id(
+          "https://www.youtube.com/watch?v=BlHv3BbBv6A&list="
+          "PLFWnTRz9kjd__AsPFMkdw9G7P-NBhAlaf",
+          playlist_id, sizeof(playlist_id)) != YT_OK ||
+      strcmp(playlist_id, "PLFWnTRz9kjd__AsPFMkdw9G7P-NBhAlaf") != 0 ||
+      yt_extract_playlist_id(
+          "https://www.youtube.com/playlist?list=PL_test-123",
+          playlist_id, sizeof(playlist_id)) != YT_OK ||
+      strcmp(playlist_id, "PL_test-123") != 0 ||
+      yt_extract_playlist_id("https://www.youtube.com/watch?v=YE7VzlLtp-4",
+                             playlist_id, sizeof(playlist_id)) !=
+          YT_ERR_INVALID_PLAYLIST ||
+      yt_extract_playlist_id(
+          "https://www.youtube.com/playlist?list=bad%20id", playlist_id,
+          sizeof(playlist_id)) != YT_ERR_INVALID_PLAYLIST ||
+      yt_extract_playlist_id(
+          "https://example.com/playlist?list=PL_test-123", playlist_id,
+          sizeof(playlist_id)) != YT_ERR_INVALID_PLAYLIST ||
+      yt_extract_playlist_id(
+          "https://youtube.com.example/playlist?list=PL_test-123",
+          playlist_id, sizeof(playlist_id)) != YT_ERR_INVALID_PLAYLIST) {
+    fprintf(stderr, "FAIL: YouTube playlist ID forms\n");
+    return 1;
+  }
+  printf("PASS: playlist ID parsing\n");
   return 0;
 }
 
@@ -489,6 +520,7 @@ int retro_dlp_run_self_tests(void) {
   failures = test_libcurl();
   announce_test("YouTube video ID parsing");
   failures += test_video_id();
+  failures += test_playlist_id();
   announce_test("title-based default output path");
   failures += test_default_output_path();
   announce_test("cJSON parsing");
