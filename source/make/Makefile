@@ -7,17 +7,20 @@ MACOS_BUILD_DIR := $(BUILD_DIR)/macOS
 IOS_BUILD_DIR := $(BUILD_DIR)/iOS
 LINUX_BUILD_DIR := $(BUILD_DIR)/linux
 
-SHARED_SOURCES := source/shared/main.c source/shared/cli.c \
-	source/shared/retrodlp.c \
+CLI_SOURCES := source/shared/main.c source/shared/cli.c \
+	source/shared/cli_options.c source/shared/cli_render.c \
+	source/shared/cli_assets.c
+CORE_SOURCES := source/shared/retrodlp.c \
 	source/shared/yt_http.c source/shared/yt_resolver.c \
 	source/shared/yt_formats.c source/shared/yt_challenges.c \
 	source/shared/yt_failure_cache.c \
 	source/shared/yt_innertube.c \
 	source/shared/yt_playlist.c source/shared/yt_session.c \
 	source/shared/yt_util.c source/shared/yt_webpage.c \
-	source/shared/yt_mux.c \
 	source/shared/yt_cache.c source/shared/yt_crypto.c source/shared/yt_cookies.c \
 	source/shared/yt_ejs.c source/shared/yt_ejs_assets.c
+DOWNLOAD_SOURCES := source/shared/retrodlp_download.c source/shared/yt_mux.c
+SHARED_SOURCES := $(CLI_SOURCES) $(CORE_SOURCES) $(DOWNLOAD_SOURCES)
 TEST_SOURCES := \
 	source/shared/test/cache_test.c source/shared/test/cookie_test.c \
 	source/shared/test/ejs_test.c source/shared/test/ejs_test_data.c \
@@ -48,7 +51,11 @@ LSMASH_CFLAGS := $(CFLAGS) -std=c99 -Wall -Wextra -Wno-unused-parameter
 LINUX_SOURCES := $(SHARED_SOURCES) source/linux/platform.c $(CJSON_SOURCE)
 LINUX_TEST_PROGRAM := retro-dlp-tests
 LINUX_CONSUMER_TEST_PROGRAM := retro-dlp-consumer-test
+LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM := retro-dlp-download-consumer-test
+LINUX_LIBRARY := $(LINUX_BUILD_DIR)/libretrodlp.a
+LINUX_DOWNLOAD_LIBRARY := $(LINUX_BUILD_DIR)/libretrodlp-download.a
 LINUX_CONSUMER_TEST_SOURCE := source/linux/test/public_consumer.c
+LINUX_DOWNLOAD_CONSUMER_TEST_SOURCE := source/linux/test/download_consumer.c
 LINUX_TEST_SOURCES := $(filter-out source/shared/main.c, \
 	$(SHARED_SOURCES)) $(TEST_SOURCES) source/linux/test/test_main.c \
 	source/linux/platform.c $(CJSON_SOURCE)
@@ -110,12 +117,14 @@ LINUX_LIBRARIES := -Wl,--whole-archive $(QUICKJS_LIBRARY) \
 	-lcurl -lcrypto -lm -ldl -lpthread
 LINUX_OBJECTS := $(LINUX_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
 LINUX_TEST_OBJECTS := $(LINUX_TEST_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
-LINUX_LIBRARY_SOURCES := $(filter-out source/shared/main.c \
-	source/shared/cli.c source/shared/yt_mux.c,$(SHARED_SOURCES)) \
-	source/linux/platform.c $(CJSON_SOURCE)
+LINUX_LIBRARY_SOURCES := $(CORE_SOURCES) source/linux/platform.c \
+	$(CJSON_SOURCE)
 LINUX_LIBRARY_OBJECTS := $(LINUX_LIBRARY_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
+LINUX_DOWNLOAD_OBJECTS := $(DOWNLOAD_SOURCES:%.c=$(LINUX_INT_DIR)/%.o)
 LINUX_CONSUMER_TEST_OBJECT := \
 	$(LINUX_INT_DIR)/$(LINUX_CONSUMER_TEST_SOURCE:.c=.o)
+LINUX_DOWNLOAD_CONSUMER_TEST_OBJECT := \
+	$(LINUX_INT_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_SOURCE:.c=.o)
 
 include source/make/apple-gcc4.mk
 include source/make/clang.mk
@@ -124,6 +133,7 @@ include source/make/ios-clang.mk
 APPLICATION_DEPENDENCIES := $(LINUX_OBJECTS:.o=.d) \
 	$(LINUX_TEST_OBJECTS:.o=.d) $(PPC_OBJECTS:.o=.d) \
 	$(LINUX_CONSUMER_TEST_OBJECT:.o=.d) \
+	$(LINUX_DOWNLOAD_CONSUMER_TEST_OBJECT:.o=.d) \
 	$(LINUX_LSMASH_OBJECTS:.o=.d) \
 	$(I386_OBJECTS:.o=.d) $(X86_64_OBJECTS:.o=.d) $(ARM64_OBJECTS:.o=.d) \
 	$(IOS_OBJECTS:.o=.d) $(PPC_LSMASH_OBJECTS:.o=.d) \
@@ -164,15 +174,18 @@ macOS: validate $(MACOS_BUILD_DIR)/$(PROGRAM) $(MACOS_CA_BUNDLE)
 
 iOS: validate-iOS $(IOS_BUILD_DIR)/$(PROGRAM) $(IOS_CA_BUNDLE)
 
-linux: $(LINUX_BUILD_DIR)/$(PROGRAM)
+linux: $(LINUX_BUILD_DIR)/$(PROGRAM) $(LINUX_LIBRARY) \
+	$(LINUX_DOWNLOAD_LIBRARY)
 
 test: linux $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM) \
-		$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM)
+		$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM) \
+		$(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM)
 	@echo "--- Running retro-dlp Linux tests ---"
 	@source/linux/test/cli_test.sh \
 		"$(abspath $(LINUX_BUILD_DIR)/$(PROGRAM))" \
 		"$(abspath $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM))"
 	@$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM)
+	@$(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM)
 
 sanitize:
 	@$(MAKE) --no-print-directory -f source/make/Makefile \
@@ -212,15 +225,34 @@ $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM): $(LINUX_TEST_OBJECTS) \
 	@echo "  > $@"
 
 $(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM): \
-		$(LINUX_CONSUMER_TEST_OBJECT) $(LINUX_LIBRARY_OBJECTS) \
-		$(QUICKJS_LIBRARY)
+		$(LINUX_CONSUMER_TEST_OBJECT) $(LINUX_LIBRARY)
 	@echo "--- Building public API consumer test ---"
 	@mkdir -p $(dir $@)
-	@$(CC) $(LDFLAGS) $(LINUX_CONSUMER_TEST_OBJECT) \
-		$(LINUX_LIBRARY_OBJECTS) -Wl,--whole-archive $(QUICKJS_LIBRARY) \
-		-Wl,--no-whole-archive -lcurl -lcrypto -lm -ldl -lpthread \
+	@$(CC) $(LDFLAGS) $(LINUX_CONSUMER_TEST_OBJECT) $(LINUX_LIBRARY) \
+		-lcurl -lcrypto -lm -ldl -lpthread \
 		$(LDLIBS) -o $@
 	@echo "  > $@"
+
+$(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM): \
+		$(LINUX_DOWNLOAD_CONSUMER_TEST_OBJECT) $(LINUX_DOWNLOAD_LIBRARY) \
+		$(LINUX_LIBRARY)
+	@echo "--- Building optional download API consumer test ---"
+	@mkdir -p $(dir $@)
+	@$(CC) $(LDFLAGS) $(LINUX_DOWNLOAD_CONSUMER_TEST_OBJECT) \
+		$(LINUX_DOWNLOAD_LIBRARY) $(LINUX_LIBRARY) \
+		-lcurl -lcrypto -lm -ldl -lpthread $(LDLIBS) -o $@
+	@echo "  > $@"
+
+$(LINUX_LIBRARY): $(LINUX_LIBRARY_OBJECTS) $(QUICKJS_OBJECTS)
+	@echo "  > archiving resolver library"
+	@mkdir -p $(dir $@)
+	@$(AR) rcs $@ $^
+
+$(LINUX_DOWNLOAD_LIBRARY): $(LINUX_DOWNLOAD_OBJECTS) \
+		$(LINUX_LSMASH_OBJECTS)
+	@echo "  > archiving optional download library"
+	@mkdir -p $(dir $@)
+	@$(AR) rcs $@ $^
 
 $(QUICKJS_LIBRARY): $(QUICKJS_OBJECTS)
 	@echo "  > archiving QuickJS static library"

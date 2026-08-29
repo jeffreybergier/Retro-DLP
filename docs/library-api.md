@@ -44,10 +44,11 @@ HTTP session and need remain valid only for the public call.
 ## Results and ownership
 
 Every result is owned by the caller. Destroy selections with
-`rdlp_selection_destroy` and playlists with `rdlp_playlist_destroy`. Strings,
-media headers, and playlist entries returned by accessors are borrowed from
-their parent result and remain valid until that result is destroyed. An
-out-of-range accessor returns `NULL`, zero, or an empty count as appropriate.
+`rdlp_selection_destroy`, playlists with `rdlp_playlist_destroy`, and account
+playlist collections with `rdlp_playlist_collection_destroy`. Strings, media
+headers, and playlist entries returned by accessors are borrowed from their
+parent result and remain valid until that result is destroyed. An out-of-range
+accessor returns `NULL`, zero, or an empty count as appropriate.
 
 Media index zero is the video or progressive request. For adaptive selections,
 index one is the audio request. Each request includes the headers that must be
@@ -80,6 +81,20 @@ result.
 
 Library facade operations never write to stdout or stderr. Event callbacks are
 the only progress-reporting boundary.
+
+## Optional download component
+
+Resolver-only applications link `libretrodlp.a` and do not need L-SMASH.
+Applications that want Retro-DLP's progressive/adaptive download and MP4 mux
+pipeline also include `<retrodlp/download.h>` and link
+`libretrodlp-download.a` before the resolver library.
+
+`rdlp_download_selection` consumes the opaque result returned by
+`rdlp_resolve_video`. It sends every HTTP header carried by each resolved media
+request, writes through an exclusive `.part` file, and retains downloaded
+source tracks if muxing fails. Download events, cancellation, timeouts, and CA
+configuration are supplied through `rdlp_download_options`. The component does
+not write to stdout or stderr.
 
 ## Custom transport
 

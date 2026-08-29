@@ -4,7 +4,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifndef YT_HTTP_SESSION_TYPE_DEFINED
+#define YT_HTTP_SESSION_TYPE_DEFINED
 typedef struct YTHttpSession YTHttpSession;
+#endif
 
 typedef enum {
   YT_OK = 0,

@@ -50,7 +50,10 @@ typedef struct {
   unsigned long timeout_milliseconds;
 } YTEJSConfig;
 
+#ifndef YT_HTTP_SESSION_TYPE_DEFINED
+#define YT_HTTP_SESSION_TYPE_DEFINED
 typedef struct YTHttpSession YTHttpSession;
+#endif
 
 YTEJSConfig yt_ejs_default_config(void);
 

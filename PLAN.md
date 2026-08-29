@@ -376,21 +376,21 @@ Exit criteria:
 
 ## Phase 5: Separate CLI and download responsibilities
 
-- [ ] Split CLI argument parsing from output rendering.
-- [ ] Move JSON and table rendering into CLI-only code.
-- [ ] Move progressive/adaptive download and mux orchestration into the optional
+- [x] Split CLI argument parsing from output rendering.
+- [x] Move JSON and table rendering into CLI-only code.
+- [x] Move progressive/adaptive download and mux orchestration into the optional
   download component.
-- [ ] Remove all terminal output from HTTP and download internals.
-- [ ] Have the CLI construct a context and call only the supported library facade.
-- [ ] Keep asset install/status/remove as CLI tooling or a separately documented
+- [x] Remove all terminal output from HTTP and download internals.
+- [x] Have the CLI construct a context and call only the supported library facade.
+- [x] Keep asset install/status/remove as CLI tooling or a separately documented
   utility API, not part of normal resolution.
 
 Exit criteria:
 
-- [ ] `main.c` and CLI sources are not present in library archives.
-- [ ] The CLI has no direct dependency on resolver-private headers.
-- [ ] An application can resolve URLs without linking L-SMASH.
-- [ ] CLI output and exit behavior remain covered by shell tests.
+- [x] `main.c` and CLI sources are not present in library archives.
+- [x] The CLI has no direct dependency on resolver-private headers.
+- [x] An application can resolve URLs without linking L-SMASH.
+- [x] CLI output and exit behavior remain covered by shell tests.
 
 ## Phase 6: Build and packaging
 

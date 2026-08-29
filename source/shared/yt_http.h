@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "retrodlp/retrodlp.h"
 #include "yt_cache.h"
 #include "yt_ejs.h"
 #include "yt_resolver.h"
@@ -14,8 +15,10 @@ typedef struct {
   long status;
 } YTHttpResponse;
 
-typedef struct rdlp_transport rdlp_transport;
+#ifndef YT_AUTH_COOKIES_TYPE_DEFINED
+#define YT_AUTH_COOKIES_TYPE_DEFINED
 typedef struct YTAuthCookies YTAuthCookies;
+#endif
 typedef int (*YTHttpCancelCallback)(void *opaque);
 typedef int64_t (*YTHttpClockCallback)(void *opaque);
 

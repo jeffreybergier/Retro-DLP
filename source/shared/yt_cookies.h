@@ -6,12 +6,17 @@
 
 #include "yt_resolver.h"
 
-typedef struct YTAuthCookies {
+#ifndef YT_AUTH_COOKIES_TYPE_DEFINED
+#define YT_AUTH_COOKIES_TYPE_DEFINED
+typedef struct YTAuthCookies YTAuthCookies;
+#endif
+
+struct YTAuthCookies {
   char *sapisid;
   char *sapisid_1p;
   char *sapisid_3p;
   int has_login_info;
-} YTAuthCookies;
+};
 
 YTStatus yt_auth_cookies_load(const char *path, int64_t now_unix,
                               YTAuthCookies *cookies);

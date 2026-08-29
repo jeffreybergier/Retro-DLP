@@ -25,6 +25,7 @@ extern "C" {
 typedef struct rdlp_context rdlp_context;
 typedef struct rdlp_selection rdlp_selection;
 typedef struct rdlp_playlist rdlp_playlist;
+typedef struct rdlp_playlist_collection rdlp_playlist_collection;
 
 typedef enum {
   RDLP_STATUS_OK = 0,
@@ -167,6 +168,8 @@ RDLP_API rdlp_status rdlp_parse_playlist_id(const char *input,
                                             char *playlist_id,
                                             size_t playlist_id_size,
                                             rdlp_error *error);
+RDLP_API int rdlp_format_expression_valid(const char *expression);
+RDLP_API int rdlp_is_playlist_collection_input(const char *input);
 RDLP_API rdlp_status rdlp_resolve_video(rdlp_context *context,
                                         const char *input,
                                         const rdlp_resolve_options *options,
@@ -177,6 +180,10 @@ RDLP_API rdlp_status rdlp_list_playlist(rdlp_context *context,
                                         const rdlp_playlist_options *options,
                                         rdlp_playlist **playlist,
                                         rdlp_error *error);
+RDLP_API rdlp_status rdlp_list_playlist_collection(
+    rdlp_context *context, const char *input,
+    const rdlp_playlist_options *options,
+    rdlp_playlist_collection **collection, rdlp_error *error);
 
 RDLP_API void rdlp_selection_destroy(rdlp_selection *selection);
 RDLP_API const char *rdlp_selection_video_id(const rdlp_selection *selection);
@@ -196,6 +203,10 @@ RDLP_API int rdlp_selection_media_height(const rdlp_selection *selection,
                                          size_t media_index);
 RDLP_API int64_t rdlp_selection_media_content_length(
     const rdlp_selection *selection, size_t media_index);
+RDLP_API int rdlp_selection_media_fps(const rdlp_selection *selection,
+                                      size_t media_index);
+RDLP_API int rdlp_selection_media_audio_channels(
+    const rdlp_selection *selection, size_t media_index);
 RDLP_API size_t rdlp_selection_media_header_count(
     const rdlp_selection *selection, size_t media_index);
 RDLP_API const rdlp_http_header *rdlp_selection_media_header(
@@ -209,6 +220,8 @@ RDLP_API int rdlp_selection_format_width(const rdlp_selection *selection,
                                          size_t format_index);
 RDLP_API int rdlp_selection_format_height(const rdlp_selection *selection,
                                           size_t format_index);
+RDLP_API int rdlp_selection_format_fps(const rdlp_selection *selection,
+                                       size_t format_index);
 RDLP_API int rdlp_selection_format_has_video(const rdlp_selection *selection,
                                              size_t format_index);
 RDLP_API int rdlp_selection_format_has_audio(const rdlp_selection *selection,
@@ -226,6 +239,17 @@ RDLP_API const char *rdlp_playlist_entry_title(const rdlp_playlist *playlist,
                                                size_t entry_index);
 RDLP_API size_t rdlp_playlist_entry_index(const rdlp_playlist *playlist,
                                           size_t entry_index);
+
+RDLP_API void rdlp_playlist_collection_destroy(
+    rdlp_playlist_collection *collection);
+RDLP_API size_t rdlp_playlist_collection_count(
+    const rdlp_playlist_collection *collection);
+RDLP_API const char *rdlp_playlist_collection_id(
+    const rdlp_playlist_collection *collection, size_t playlist_index);
+RDLP_API const char *rdlp_playlist_collection_title(
+    const rdlp_playlist_collection *collection, size_t playlist_index);
+RDLP_API size_t rdlp_playlist_collection_index(
+    const rdlp_playlist_collection *collection, size_t playlist_index);
 
 #ifdef __cplusplus
 }

@@ -68,6 +68,10 @@ struct rdlp_playlist {
   YTPlaylist value;
 };
 
+struct rdlp_playlist_collection {
+  YTPlaylistCollection value;
+};
+
 static void publish_error(rdlp_error *error, rdlp_status status,
                           const char *message) {
   rdlp_error value;
@@ -379,6 +383,14 @@ rdlp_status rdlp_parse_playlist_id(const char *input, char *playlist_id,
   return finish_status(status, error);
 }
 
+int rdlp_format_expression_valid(const char *expression) {
+  return yt_format_expression_valid(expression);
+}
+
+int rdlp_is_playlist_collection_input(const char *input) {
+  return input != NULL && yt_is_playlist_collection_url(input);
+}
+
 static int context_cancelled(void *opaque) {
   rdlp_context *context = (rdlp_context *)opaque;
   return context->cancel_callback != NULL &&
@@ -613,6 +625,70 @@ rdlp_status rdlp_list_playlist(rdlp_context *context, const char *input,
   return RDLP_STATUS_OK;
 }
 
+rdlp_status rdlp_list_playlist_collection(
+    rdlp_context *context, const char *input,
+    const rdlp_playlist_options *options,
+    rdlp_playlist_collection **collection, rdlp_error *error) {
+  rdlp_playlist_collection *created;
+  YTHttpSession *session;
+  YTStatus status;
+  rdlp_status started;
+  const char *cookie_file = NULL;
+  const void *cookie_data = NULL;
+  size_t cookie_data_length = 0;
+  if (collection == NULL) {
+    publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+                  "playlist collection output pointer is required");
+    return RDLP_STATUS_INVALID_ARGUMENT;
+  }
+  *collection = NULL;
+  if (input == NULL || !yt_is_playlist_collection_url(input) ||
+      (options != NULL && options->struct_size < sizeof(options->struct_size))) {
+    publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+                  "input or playlist options are invalid");
+    return RDLP_STATUS_INVALID_ARGUMENT;
+  }
+  if (options != NULL) {
+    if (HAS_FIELD(options, rdlp_playlist_options, cookie_file))
+      cookie_file = options->cookie_file;
+    if (HAS_FIELD(options, rdlp_playlist_options, cookie_data))
+      cookie_data = options->cookie_data;
+    if (HAS_FIELD(options, rdlp_playlist_options, cookie_data_length))
+      cookie_data_length = options->cookie_data_length;
+    if ((cookie_data == NULL) != (cookie_data_length == 0) ||
+        (cookie_file != NULL && cookie_data != NULL)) {
+      publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+                    "cookie file and cookie data options are invalid");
+      return RDLP_STATUS_INVALID_ARGUMENT;
+    }
+  }
+  started = begin_operation(context, error);
+  if (started != RDLP_STATUS_OK)
+    return started;
+  created = (rdlp_playlist_collection *)calloc(1, sizeof(*created));
+  session = NULL;
+  status = created == NULL
+               ? YT_ERR_OUT_OF_MEMORY
+               : operation_session(context, cookie_file, cookie_data,
+                                   cookie_data_length, &session);
+  if (status == YT_OK)
+    status = yt_list_account_playlists(session, input, cookie_file,
+                                       &created->value, facade_progress,
+                                       context);
+  if (session != NULL)
+    yt_http_session_set_cookies(session, NULL, NULL, 0);
+  if (status == YT_OK && context_cancelled(context))
+    status = YT_ERR_CANCELLED;
+  end_operation(context);
+  if (status != YT_OK) {
+    rdlp_playlist_collection_destroy(created);
+    return finish_session_status(status, context->http_session, error);
+  }
+  *collection = created;
+  publish_error(error, RDLP_STATUS_OK, "success");
+  return RDLP_STATUS_OK;
+}
+
 void rdlp_selection_destroy(rdlp_selection *selection) {
   if (selection == NULL)
     return;
@@ -672,6 +748,16 @@ int64_t rdlp_selection_media_content_length(const rdlp_selection *selection,
   const YTMediaRequest *media = media_at(selection, media_index);
   return media == NULL ? 0 : media->content_length;
 }
+int rdlp_selection_media_fps(const rdlp_selection *selection,
+                             size_t media_index) {
+  const YTMediaRequest *media = media_at(selection, media_index);
+  return media == NULL ? 0 : media->fps;
+}
+int rdlp_selection_media_audio_channels(const rdlp_selection *selection,
+                                        size_t media_index) {
+  const YTMediaRequest *media = media_at(selection, media_index);
+  return media == NULL ? 0 : media->audio_channels;
+}
 size_t rdlp_selection_media_header_count(const rdlp_selection *selection,
                                          size_t media_index) {
   return media_at(selection, media_index) == NULL
@@ -714,6 +800,11 @@ int rdlp_selection_format_height(const rdlp_selection *selection,
                                  size_t format_index) {
   const YTFormatInfo *format = format_at(selection, format_index);
   return format == NULL ? 0 : format->height;
+}
+int rdlp_selection_format_fps(const rdlp_selection *selection,
+                              size_t format_index) {
+  const YTFormatInfo *format = format_at(selection, format_index);
+  return format == NULL ? 0 : format->fps;
 }
 int rdlp_selection_format_has_video(const rdlp_selection *selection,
                                     size_t format_index) {
@@ -763,4 +854,33 @@ size_t rdlp_playlist_entry_index(const rdlp_playlist *playlist,
   return playlist == NULL || entry_index >= playlist->value.entry_count
              ? 0U
              : playlist->value.entries[entry_index].index;
+}
+
+void rdlp_playlist_collection_destroy(rdlp_playlist_collection *collection) {
+  if (collection == NULL)
+    return;
+  yt_playlist_collection_free(&collection->value);
+  free(collection);
+}
+size_t rdlp_playlist_collection_count(
+    const rdlp_playlist_collection *collection) {
+  return collection == NULL ? 0U : collection->value.playlist_count;
+}
+const char *rdlp_playlist_collection_id(
+    const rdlp_playlist_collection *collection, size_t playlist_index) {
+  return collection == NULL || playlist_index >= collection->value.playlist_count
+             ? NULL
+             : collection->value.playlists[playlist_index].playlist_id;
+}
+const char *rdlp_playlist_collection_title(
+    const rdlp_playlist_collection *collection, size_t playlist_index) {
+  return collection == NULL || playlist_index >= collection->value.playlist_count
+             ? NULL
+             : collection->value.playlists[playlist_index].title;
+}
+size_t rdlp_playlist_collection_index(
+    const rdlp_playlist_collection *collection, size_t playlist_index) {
+  return collection == NULL || playlist_index >= collection->value.playlist_count
+             ? 0U
+             : collection->value.playlists[playlist_index].index;
 }

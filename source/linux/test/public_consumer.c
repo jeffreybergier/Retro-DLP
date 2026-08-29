@@ -316,7 +316,11 @@ int main(void) {
       rdlp_selection_media_header_count(selection, 0) == 1 &&
       rdlp_selection_format_count(selection) == 1 &&
       rdlp_selection_format_itag(selection, 0) == 18 &&
-      rdlp_selection_format_is_supported(selection, 0);
+      rdlp_selection_format_is_supported(selection, 0) &&
+      rdlp_format_expression_valid("136+140/22/18") &&
+      !rdlp_format_expression_valid("best") &&
+      rdlp_is_playlist_collection_input(
+          "https://www.youtube.com/feed/playlists");
   quiet = end_output_capture(&capture);
   snprintf(disabled_cache_path, sizeof(disabled_cache_path),
            "%s/.retro-dlp", disabled_home);
