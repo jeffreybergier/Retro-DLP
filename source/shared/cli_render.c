@@ -8,7 +8,7 @@
 
 #define PRESET_LOW_FORMAT "18"
 #define PRESET_MED_FORMAT "135+140/134+140"
-#define PRESET_HIGH_FORMAT "137+599/137+140/136+599/136+140"
+#define PRESET_HIGH_FORMAT "137+140/136+140"
 
 void cli_render_usage(FILE *stream) {
   fprintf(stream,

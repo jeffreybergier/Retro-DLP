@@ -7,7 +7,13 @@
 
 #define PRESET_LOW_FORMAT "18"
 #define PRESET_MED_FORMAT "135+140/134+140"
-#define PRESET_HIGH_FORMAT "137+599/137+140/136+599/136+140"
+#define PRESET_HIGH_FORMAT "137+140/136+140"
+
+static const char *known_options[] = {
+    "--help",        "--version",      "--format",
+    "--preset-alias", "--list-formats", "--flat-playlist",
+    "--output",      "--simulate",     "--dump-json",
+    "--cookies",     "--cookies-default"};
 
 static const char *preset_format_expression(const char *preset) {
   if (strcmp(preset, "low") == 0)
@@ -26,6 +32,62 @@ static int fail(char *error, size_t error_size, const char *message,
       snprintf(error, error_size, "%s", message);
     else
       snprintf(error, error_size, message, value);
+  }
+  return 0;
+}
+
+static size_t edit_distance(const char *left, const char *right) {
+  size_t previous[64];
+  size_t current[64];
+  size_t left_index;
+  size_t right_index;
+  size_t right_length = strlen(right);
+  if (right_length >= 64 || strlen(left) >= 64)
+    return 64;
+  for (right_index = 0; right_index <= right_length; ++right_index)
+    previous[right_index] = right_index;
+  for (left_index = 1; left[left_index - 1] != '\0'; ++left_index) {
+    current[0] = left_index;
+    for (right_index = 1; right_index <= right_length; ++right_index) {
+      size_t deletion = previous[right_index] + 1;
+      size_t insertion = current[right_index - 1] + 1;
+      size_t replacement = previous[right_index - 1] +
+                           (left[left_index - 1] == right[right_index - 1]
+                                ? 0U
+                                : 1U);
+      size_t best = deletion < insertion ? deletion : insertion;
+      current[right_index] = best < replacement ? best : replacement;
+    }
+    memcpy(previous, current, (right_length + 1) * sizeof(previous[0]));
+  }
+  return previous[right_length];
+}
+
+static int fail_unknown_option(char *error, size_t error_size,
+                               const char *option) {
+  const char *suggestion = NULL;
+  size_t best_distance = 3;
+  size_t index;
+  for (index = 0; index < sizeof(known_options) / sizeof(known_options[0]);
+       ++index) {
+    size_t distance = edit_distance(option, known_options[index]);
+    if (distance < best_distance) {
+      best_distance = distance;
+      suggestion = known_options[index];
+    }
+  }
+  if (error != NULL && error_size != 0) {
+    if (suggestion != NULL)
+      snprintf(error, error_size,
+               "unknown option \"%s\"\n"
+               "retro-dlp: did you mean \"%s\"?\n"
+               "retro-dlp: try \"retro-dlp --help\" for usage",
+               option, suggestion);
+    else
+      snprintf(error, error_size,
+               "unknown option \"%s\"\n"
+               "retro-dlp: try \"retro-dlp --help\" for usage",
+               option);
   }
   return 0;
 }
@@ -135,7 +197,7 @@ int cli_options_parse(int argc, char **argv, CLIOptions *options,
       if (argv[index][0] == '-' &&
           rdlp_parse_video_id(argv[index], video_id, &parse_error) !=
               RDLP_STATUS_OK)
-        break;
+        return fail_unknown_option(error, error_size, argv[index]);
       options->input = argv[index];
     } else {
       break;

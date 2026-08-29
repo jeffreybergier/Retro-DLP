@@ -402,11 +402,15 @@ static int context_cancelled(void *opaque) {
 }
 
 static rdlp_event_type event_type(const char *message) {
-  if (strstr(message, "configuration") != NULL)
-    return RDLP_EVENT_LOADING_CONFIGURATION;
+  if (strstr(message, "authenticated YouTube cookies") != NULL)
+    return RDLP_EVENT_AUTHENTICATING;
+  if (strstr(message, "refreshing video metadata") != NULL)
+    return RDLP_EVENT_REFRESHING_METADATA;
   if (strstr(message, "web player") != NULL ||
       strstr(message, "webpage") != NULL)
     return RDLP_EVENT_FETCHING_BOOTSTRAP;
+  if (strstr(message, "configuration") != NULL)
+    return RDLP_EVENT_LOADING_CONFIGURATION;
   if (strstr(message, "metadata") != NULL)
     return RDLP_EVENT_REQUESTING_METADATA;
   if (strstr(message, "JavaScript") != NULL)

@@ -78,7 +78,7 @@ printf '%s\n' "$help_output" | grep -q -- 'low=18' || \
 printf '%s\n' "$help_output" | grep -q -- 'med=135+140/134+140' || \
   fail "--help did not document the med preset"
 printf '%s\n' "$help_output" | \
-  grep -q -- 'high=137+599/137+140/136+599/136+140' || \
+  grep -q -- 'high=137+140/136+140' || \
   fail "--help did not document the high preset"
 printf '%s\n' "$help_output" | grep -q -- '-F, --list-formats' || \
   fail "--help did not document --list-formats"
@@ -184,8 +184,16 @@ printf '%s\n' "$self_test_output" | grep -q '^PASS: retro-dlp self-test$' || \
 if $binary --not-an-option 2>"$error_file"; then
   fail "unsupported arguments returned success"
 fi
-grep -q '^retro-dlp: unsupported arguments$' "$error_file" || \
-  fail "unsupported arguments did not report an error"
+grep -q '^retro-dlp: unknown option "--not-an-option"$' "$error_file" || \
+  fail "unknown option did not report its name"
+grep -q '^retro-dlp: try "retro-dlp --help" for usage$' "$error_file" || \
+  fail "unknown option did not provide a usage hint"
+
+if $binary --cokies-default YE7VzlLtp-4 2>"$error_file"; then
+  fail "misspelled option returned success"
+fi
+grep -q '^retro-dlp: did you mean "--cookies-default"?$' "$error_file" || \
+  fail "misspelled option did not provide a suggestion"
 
 if $binary --flat-playlist YE7VzlLtp-4 2>"$error_file"; then
   fail "--flat-playlist accepted a video ID"

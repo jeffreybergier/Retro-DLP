@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
+#include <sys/time.h>
+#include <unistd.h>
 
 #include "cli_assets.h"
 #include "cli_options.h"
@@ -16,9 +19,33 @@
 #define PATH_MAX 4096
 #endif
 
+#define CLI_FALLBACK_COLUMNS 80U
+#define CLI_LABEL_WIDTH 11U
+
 typedef struct {
   int download_event_seen[5];
+  int progress_started;
+  int progress_line_open;
+  rdlp_download_event_type progress_type;
+  unsigned int last_percent;
+  uint64_t last_completed_bytes;
+  uint64_t last_expected_bytes;
+  struct timeval progress_started_at;
+  int progress_clock_valid;
 } CLIEventState;
+
+static void print_operation_prefix(const char *label) {
+  size_t length = strlen(label);
+  size_t padding = length < CLI_LABEL_WIDTH ? CLI_LABEL_WIDTH - length : 1U;
+  fprintf(stderr, "[%s]", label);
+  while (padding-- != 0)
+    fputc(' ', stderr);
+}
+
+static void print_operation(const char *label, const char *detail) {
+  print_operation_prefix(label);
+  fprintf(stderr, "%s\n", detail == NULL ? "" : detail);
+}
 
 static int home_path(char *buffer, size_t buffer_size, const char *suffix) {
   const char *home = getenv("HOME");
@@ -35,69 +62,446 @@ static int home_path(char *buffer, size_t buffer_size, const char *suffix) {
   return 1;
 }
 
-static const char *event_message(rdlp_event_type type) {
-  switch (type) {
-  case RDLP_EVENT_LOADING_CONFIGURATION:
-    return "loading client configuration";
-  case RDLP_EVENT_FETCHING_BOOTSTRAP:
-    return "downloading mobile web player configuration";
-  case RDLP_EVENT_REQUESTING_METADATA:
-    return "requesting YouTube player metadata";
-  case RDLP_EVENT_LOADING_PLAYER_JAVASCRIPT:
-    return "downloading player JavaScript";
-  case RDLP_EVENT_SOLVING_CHALLENGES:
-    return "solving player JavaScript challenges";
-  case RDLP_EVENT_SELECTING_FORMATS:
-    return "selecting media formats";
-  case RDLP_EVENT_ENUMERATING_PLAYLIST:
-    return "enumerating playlist pages";
-  case RDLP_EVENT_OTHER:
-    return "processing response";
+static size_t terminal_columns(void) {
+  struct winsize size;
+  const char *configured;
+  char *end;
+  unsigned long columns;
+  if (ioctl(STDERR_FILENO, TIOCGWINSZ, &size) == 0 && size.ws_col >= 40)
+    return size.ws_col;
+  configured = getenv("COLUMNS");
+  if (configured != NULL && configured[0] != '\0') {
+    columns = strtoul(configured, &end, 10);
+    if (*end == '\0' && columns >= 40 && columns <= 1000)
+      return (size_t)columns;
   }
-  return "processing response";
+  return CLI_FALLBACK_COLUMNS;
+}
+
+static size_t utf8_decode(const unsigned char *text, unsigned long *codepoint) {
+  size_t size;
+  unsigned long value;
+  if (text[0] < 0x80) {
+    *codepoint = text[0];
+    return 1;
+  }
+  if (text[0] >= 0xc2 && text[0] <= 0xdf) {
+    size = 2;
+    value = text[0] & 0x1fU;
+  } else if (text[0] >= 0xe0 && text[0] <= 0xef) {
+    size = 3;
+    value = text[0] & 0x0fU;
+  } else if (text[0] >= 0xf0 && text[0] <= 0xf4) {
+    size = 4;
+    value = text[0] & 0x07U;
+  } else {
+    *codepoint = '?';
+    return 0;
+  }
+  {
+    size_t index;
+    for (index = 1; index < size; ++index) {
+      if (text[index] == '\0' || (text[index] & 0xc0U) != 0x80U) {
+        *codepoint = '?';
+        return 0;
+      }
+      value = (value << 6) | (text[index] & 0x3fU);
+    }
+  }
+  if ((size == 3 && value >= 0xd800 && value <= 0xdfff) ||
+      (size == 4 && value > 0x10ffff)) {
+    *codepoint = '?';
+    return 0;
+  }
+  *codepoint = value;
+  return size;
+}
+
+static int unicode_columns(unsigned long value) {
+  if ((value >= 0x0300 && value <= 0x036f) ||
+      (value >= 0x1ab0 && value <= 0x1aff) ||
+      (value >= 0x1dc0 && value <= 0x1dff) ||
+      (value >= 0x20d0 && value <= 0x20ff) ||
+      (value >= 0xfe00 && value <= 0xfe0f) ||
+      (value >= 0xfe20 && value <= 0xfe2f))
+    return 0;
+  if ((value >= 0x1100 && value <= 0x115f) || value == 0x2329 ||
+      value == 0x232a || (value >= 0x2e80 && value <= 0xa4cf) ||
+      (value >= 0xac00 && value <= 0xd7a3) ||
+      (value >= 0xf900 && value <= 0xfaff) ||
+      (value >= 0xfe10 && value <= 0xfe19) ||
+      (value >= 0xfe30 && value <= 0xfe6f) ||
+      (value >= 0xff00 && value <= 0xff60) ||
+      (value >= 0xffe0 && value <= 0xffe6) ||
+      (value >= 0x1f300 && value <= 0x1faff) ||
+      (value >= 0x20000 && value <= 0x3fffd))
+    return 2;
+  return 1;
+}
+
+static size_t escape_display_path(const char *path, char *escaped,
+                                  size_t escaped_size) {
+  const unsigned char *source = (const unsigned char *)path;
+  size_t read_index = 0;
+  size_t written = 0;
+  while (source[read_index] != '\0' && written + 1 < escaped_size) {
+    unsigned long codepoint;
+    size_t character_size = utf8_decode(source + read_index, &codepoint);
+    if (source[read_index] == '"' || source[read_index] == '\\') {
+      if (written + 2 >= escaped_size)
+        break;
+      escaped[written++] = '\\';
+      escaped[written++] = (char)source[read_index++];
+    } else if (source[read_index] == '\n' || source[read_index] == '\r' ||
+               source[read_index] == '\t') {
+      if (written + 2 >= escaped_size)
+        break;
+      escaped[written++] = '\\';
+      escaped[written++] = source[read_index] == '\n'
+                               ? 'n'
+                               : (source[read_index] == '\r' ? 'r' : 't');
+      ++read_index;
+    } else if (character_size == 0 || source[read_index] < 0x20 ||
+               source[read_index] == 0x7f) {
+      escaped[written++] = '?';
+      ++read_index;
+    } else {
+      if (written + character_size >= escaped_size)
+        break;
+      memcpy(escaped + written, source + read_index, character_size);
+      written += character_size;
+      read_index += character_size;
+    }
+  }
+  escaped[written] = '\0';
+  return written;
+}
+
+static void print_quoted_target(const char *path) {
+  char escaped[PATH_MAX * 2 + 1];
+  size_t offsets[PATH_MAX * 2 + 1];
+  unsigned char widths[PATH_MAX * 2];
+  size_t escaped_length;
+  size_t character_count = 0;
+  size_t full_width = 0;
+  size_t maximum_width;
+  size_t index = 0;
+  escaped_length = escape_display_path(path, escaped, sizeof(escaped));
+  while (index < escaped_length) {
+    unsigned long codepoint;
+    size_t character_size = utf8_decode(
+        (const unsigned char *)escaped + index, &codepoint);
+    if (character_size == 0)
+      character_size = 1;
+    offsets[character_count] = index;
+    widths[character_count] = (unsigned char)unicode_columns(codepoint);
+    full_width += widths[character_count++];
+    index += character_size;
+  }
+  offsets[character_count] = escaped_length;
+  maximum_width = terminal_columns();
+  maximum_width = maximum_width > CLI_LABEL_WIDTH + 4
+                      ? maximum_width - CLI_LABEL_WIDTH - 4
+                      : 16;
+  print_operation_prefix("target");
+  fputc('"', stderr);
+  if (full_width <= maximum_width || maximum_width < 8) {
+    fputs(escaped, stderr);
+  } else {
+    size_t available = maximum_width - 3;
+    size_t head_width = (available + 1) / 2;
+    size_t tail_width = available / 2;
+    size_t head_count = 0;
+    size_t tail_start = character_count;
+    size_t used = 0;
+    while (head_count < character_count &&
+           used + widths[head_count] <= head_width)
+      used += widths[head_count++];
+    used = 0;
+    while (tail_start > head_count &&
+           used + widths[tail_start - 1] <= tail_width)
+      used += widths[--tail_start];
+    fwrite(escaped, 1, offsets[head_count], stderr);
+    fputs("...", stderr);
+    fputs(escaped + offsets[tail_start], stderr);
+  }
+  fputs("\"\n", stderr);
+}
+
+static const char *video_codec_label(const char *mime_type) {
+  if (mime_type == NULL)
+    return "unknown";
+  if (strstr(mime_type, "avc1") != NULL || strstr(mime_type, "avc3") != NULL)
+    return "H.264";
+  if (strstr(mime_type, "hev1") != NULL || strstr(mime_type, "hvc1") != NULL)
+    return "HEVC";
+  if (strstr(mime_type, "av01") != NULL)
+    return "AV1";
+  if (strstr(mime_type, "vp9") != NULL || strstr(mime_type, "vp09") != NULL)
+    return "VP9";
+  return "video";
+}
+
+static const char *audio_codec_label(const char *mime_type) {
+  if (mime_type == NULL)
+    return "unknown";
+  if (strstr(mime_type, "mp4a") != NULL)
+    return "AAC";
+  if (strstr(mime_type, "opus") != NULL)
+    return "Opus";
+  if (strstr(mime_type, "vorbis") != NULL)
+    return "Vorbis";
+  return "audio";
+}
+
+static void print_format_summary(const rdlp_selection *selection) {
+  char detail[256];
+  const char *video_mime = rdlp_selection_media_mime_type(selection, 0);
+  const char *audio_mime = rdlp_selection_media_mime_type(
+      selection, rdlp_selection_is_adaptive(selection) ? 1U : 0U);
+  snprintf(detail, sizeof(detail), "%s | %dx%d | %s + %s",
+           rdlp_selection_format_id(selection),
+           rdlp_selection_media_width(selection, 0),
+           rdlp_selection_media_height(selection, 0),
+           video_codec_label(video_mime), audio_codec_label(audio_mime));
+  print_operation("format", detail);
+}
+
+static void format_file_size(int64_t bytes, char output[32]) {
+  double amount = bytes > 0 ? (double)bytes : 0.0;
+  const char *unit = "bytes";
+  if (amount >= 1024.0 * 1024.0 * 1024.0) {
+    amount /= 1024.0 * 1024.0 * 1024.0;
+    unit = "GiB";
+  } else if (amount >= 1024.0 * 1024.0) {
+    amount /= 1024.0 * 1024.0;
+    unit = "MiB";
+  } else if (amount >= 1024.0) {
+    amount /= 1024.0;
+    unit = "KiB";
+  }
+  if (strcmp(unit, "bytes") == 0)
+    snprintf(output, 32, "%.0f %s", amount, unit);
+  else
+    snprintf(output, 32, "%.1f %s", amount, unit);
+}
+
+static const char *event_label(rdlp_event_type type) {
+  switch (type) {
+  case RDLP_EVENT_AUTHENTICATING:
+    return "auth";
+  case RDLP_EVENT_LOADING_CONFIGURATION:
+    return "client";
+  case RDLP_EVENT_FETCHING_BOOTSTRAP:
+    return "bootstrap";
+  case RDLP_EVENT_REQUESTING_METADATA:
+  case RDLP_EVENT_REFRESHING_METADATA:
+    return "metadata";
+  case RDLP_EVENT_LOADING_PLAYER_JAVASCRIPT:
+    return "player-js";
+  case RDLP_EVENT_SOLVING_CHALLENGES:
+    return "challenges";
+  case RDLP_EVENT_SELECTING_FORMATS:
+    return "formats";
+  case RDLP_EVENT_ENUMERATING_PLAYLIST:
+    return "playlist";
+  case RDLP_EVENT_OTHER:
+    return "process";
+  }
+  return "process";
+}
+
+static const char *event_detail(rdlp_event_type type) {
+  switch (type) {
+  case RDLP_EVENT_AUTHENTICATING:
+    return "cookies";
+  case RDLP_EVENT_LOADING_CONFIGURATION:
+    return "configure";
+  case RDLP_EVENT_FETCHING_BOOTSTRAP:
+    return "mobile-web";
+  case RDLP_EVENT_REQUESTING_METADATA:
+    return "request";
+  case RDLP_EVENT_REFRESHING_METADATA:
+    return "refresh (visitor data)";
+  case RDLP_EVENT_LOADING_PLAYER_JAVASCRIPT:
+    return "download";
+  case RDLP_EVENT_SOLVING_CHALLENGES:
+    return "solve";
+  case RDLP_EVENT_SELECTING_FORMATS:
+    return "select";
+  case RDLP_EVENT_ENUMERATING_PLAYLIST:
+    return "enumerate";
+  case RDLP_EVENT_OTHER:
+    return "response";
+  }
+  return "response";
 }
 
 static void cli_event(const rdlp_event *event, void *opaque) {
   (void)opaque;
   if (event != NULL)
-    fprintf(stderr, "retro-dlp: %s\n", event_message(event->type));
+    print_operation(event_label(event->type), event_detail(event->type));
+}
+
+static void cli_download_progress_finish(CLIEventState *state) {
+  if (state != NULL && state->progress_line_open) {
+    fputc('\n', stderr);
+    fflush(stderr);
+    state->progress_line_open = 0;
+  }
+}
+
+static const char *download_label(rdlp_download_event_type type) {
+  switch (type) {
+  case RDLP_DOWNLOAD_EVENT_DOWNLOADING_AUDIO:
+    return "audio";
+  case RDLP_DOWNLOAD_EVENT_DOWNLOADING_VIDEO:
+    return "video";
+  case RDLP_DOWNLOAD_EVENT_DOWNLOADING_MEDIA:
+    return "download";
+  case RDLP_DOWNLOAD_EVENT_MUXING:
+    return "mux";
+  case RDLP_DOWNLOAD_EVENT_CLEANING_UP:
+    return "cleanup";
+  }
+  return "download";
+}
+
+static void cli_download_progress(const rdlp_download_event *event,
+                                  CLIEventState *state) {
+  char bar[33];
+  char speed[7];
+  const char *speed_unit;
+  unsigned int percent = 0;
+  size_t bar_width;
+  size_t completed_width;
+  size_t index;
+  struct timeval now;
+  double elapsed;
+  double bits_per_second = 0.0;
+  double displayed_speed;
+  int should_render;
+
+  if (!state->progress_started || state->progress_type != event->type) {
+    cli_download_progress_finish(state);
+    state->progress_started = 1;
+    state->progress_type = event->type;
+    state->last_percent = 101U;
+    state->last_completed_bytes = 0;
+    state->last_expected_bytes = 0;
+    state->progress_clock_valid =
+        gettimeofday(&state->progress_started_at, NULL) == 0;
+  }
+  if (event->expected_bytes != 0) {
+    uint64_t bounded = event->completed_bytes;
+    if (bounded > event->expected_bytes)
+      bounded = event->expected_bytes;
+    percent = (unsigned int)(((double)bounded * 100.0) /
+                             (double)event->expected_bytes);
+    should_render = percent != state->last_percent ||
+                    event->expected_bytes != state->last_expected_bytes;
+  } else {
+    should_render = state->last_percent == 101U ||
+                    event->completed_bytes < state->last_completed_bytes ||
+                    event->completed_bytes - state->last_completed_bytes >=
+                        256U * 1024U;
+  }
+  if (!should_render)
+    return;
+
+  elapsed = 0.0;
+  if (state->progress_clock_valid && gettimeofday(&now, NULL) == 0) {
+    elapsed = (double)(now.tv_sec - state->progress_started_at.tv_sec) +
+              (double)(now.tv_usec - state->progress_started_at.tv_usec) /
+                  1000000.0;
+  }
+  if (elapsed > 0.0)
+    bits_per_second = ((double)event->completed_bytes * 8.0) / elapsed;
+  if (bits_per_second >= 1000000.0) {
+    displayed_speed = bits_per_second / 1000000.0;
+    speed_unit = "Mbps";
+  } else {
+    displayed_speed = bits_per_second / 1000.0;
+    speed_unit = "Kbps";
+  }
+  if (displayed_speed > 9999.9)
+    snprintf(speed, sizeof(speed), "%6s", ">9999");
+  else
+    snprintf(speed, sizeof(speed), "%6.1f", displayed_speed);
+  bar_width = terminal_columns();
+  bar_width = bar_width > 35 ? bar_width - 27 : 8;
+  if (bar_width > 32)
+    bar_width = 32;
+  completed_width = event->expected_bytes == 0
+                        ? 0
+                        : (size_t)(((double)percent * (double)bar_width) /
+                                   100.0);
+  if (completed_width > bar_width)
+    completed_width = bar_width;
+  for (index = 0; index < bar_width; ++index) {
+    if (index < completed_width)
+      bar[index] = '=';
+    else if (index == completed_width && completed_width < bar_width)
+      bar[index] = '>';
+    else
+      bar[index] = '-';
+  }
+  bar[bar_width] = '\0';
+  fputc('\r', stderr);
+  print_operation_prefix(download_label(event->type));
+  fprintf(stderr, "%s (%s %s)", bar, speed, speed_unit);
+  fflush(stderr);
+  state->progress_line_open = 1;
+  state->last_percent = percent;
+  state->last_completed_bytes = event->completed_bytes;
+  state->last_expected_bytes = event->expected_bytes;
+  if (event->expected_bytes != 0 &&
+      event->completed_bytes >= event->expected_bytes)
+    cli_download_progress_finish(state);
 }
 
 static void cli_download_event(const rdlp_download_event *event, void *opaque) {
   CLIEventState *state = (CLIEventState *)opaque;
-  const char *message;
-  if (event == NULL || event->type > RDLP_DOWNLOAD_EVENT_CLEANING_UP ||
-      state->download_event_seen[event->type])
+  int downloading;
+  if (event == NULL || state == NULL ||
+      event->type > RDLP_DOWNLOAD_EVENT_CLEANING_UP)
     return;
+  downloading = event->type == RDLP_DOWNLOAD_EVENT_DOWNLOADING_AUDIO ||
+                event->type == RDLP_DOWNLOAD_EVENT_DOWNLOADING_VIDEO ||
+                event->type == RDLP_DOWNLOAD_EVENT_DOWNLOADING_MEDIA;
+  if (!downloading)
+    cli_download_progress_finish(state);
+  if (state->download_event_seen[event->type]) {
+    if (downloading)
+      cli_download_progress(event, state);
+    return;
+  }
   state->download_event_seen[event->type] = 1;
   switch (event->type) {
   case RDLP_DOWNLOAD_EVENT_DOWNLOADING_AUDIO:
-    message = "starting audio download to";
-    break;
   case RDLP_DOWNLOAD_EVENT_DOWNLOADING_VIDEO:
-    message = "starting video download to";
-    break;
   case RDLP_DOWNLOAD_EVENT_DOWNLOADING_MEDIA:
-    message = "starting download to";
+    cli_download_progress(event, state);
     break;
   case RDLP_DOWNLOAD_EVENT_MUXING:
-    message = "muxing tracks to";
+    print_operation("mux", "audio + video");
     break;
   case RDLP_DOWNLOAD_EVENT_CLEANING_UP:
-    message = "mux completed; removing source tracks for";
     break;
   default:
     return;
   }
-  fprintf(stderr, "retro-dlp: %s %s\n", message,
-          event->path == NULL ? "" : event->path);
 }
 
 static void print_error(const rdlp_error *error, rdlp_status status) {
-  fprintf(stderr, "retro-dlp: %s\n",
-          error != NULL && error->message[0] != '\0'
-              ? error->message
-              : rdlp_status_string(status));
+  const char *message = error != NULL && error->message[0] != '\0'
+                            ? error->message
+                            : rdlp_status_string(status);
+  if (status == RDLP_STATUS_HTTP && error != NULL && error->http_status != 0)
+    fprintf(stderr, "retro-dlp: %s (HTTP %ld)\n", message,
+            error->http_status);
+  else
+    fprintf(stderr, "retro-dlp: %s\n", message);
 }
 
 static int create_cli_context(rdlp_context **context, rdlp_error *error,
@@ -136,7 +540,7 @@ static int resolve_argument(const CLIOptions *cli, const char *cookie_file,
   options.cookie_file = cookie_file;
   options.include_format_inventory = cli->list_formats;
   error.struct_size = sizeof(error);
-  fprintf(stderr, "retro-dlp: resolving video information\n");
+  print_operation("resolve", cli->input);
   status = rdlp_resolve_video(context, cli->input, &options, &selection, &error);
   if (status != RDLP_STATUS_OK) {
     print_error(&error, status);
@@ -155,8 +559,7 @@ static int resolve_argument(const CLIOptions *cli, const char *cookie_file,
     return failed;
   }
   if (cli->simulate) {
-    fprintf(stderr, "retro-dlp: selected format %s\n",
-            rdlp_selection_format_id(selection));
+    print_format_summary(selection);
     rdlp_selection_destroy(selection);
     return 0;
   }
@@ -173,15 +576,8 @@ static int resolve_argument(const CLIOptions *cli, const char *cookie_file,
     rdlp_selection_destroy(selection);
     return 1;
   }
-  fprintf(stderr, "retro-dlp: selected itag %d (%dx%d, %s)\n",
-          rdlp_selection_media_itag(selection, 0),
-          rdlp_selection_media_width(selection, 0),
-          rdlp_selection_media_height(selection, 0),
-          rdlp_selection_media_mime_type(selection, 0));
-  if (rdlp_selection_is_adaptive(selection))
-    fprintf(stderr, "retro-dlp: selected audio itag %d (%s)\n",
-            rdlp_selection_media_itag(selection, 1),
-            rdlp_selection_media_mime_type(selection, 1));
+  print_format_summary(selection);
+  print_quoted_target(destination);
   {
     rdlp_download_options download_options;
     rdlp_download_result result;
@@ -197,6 +593,7 @@ static int resolve_argument(const CLIOptions *cli, const char *cookie_file,
     error.struct_size = sizeof(error);
     status = rdlp_download_selection(selection, destination, &download_options,
                                      &result, &error);
+    cli_download_progress_finish(&event_state);
     rdlp_selection_destroy(selection);
     if (status != RDLP_STATUS_OK) {
       if (result.source_tracks_retained)
@@ -207,6 +604,11 @@ static int resolve_argument(const CLIOptions *cli, const char *cookie_file,
       else
         print_error(&error, status);
       return 1;
+    }
+    {
+      char size[32];
+      format_file_size(result.bytes_written, size);
+      print_operation("done", size);
     }
     failed = cli_render_download_result(destination, result.bytes_written);
     if (failed)

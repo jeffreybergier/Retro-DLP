@@ -85,6 +85,14 @@ chmod +x ~/bin/retro-dlp
 
 Add `~/bin` to your `PATH` if your shell does not already include it.
 
+On a 64-bit Intel Mac running OS X 10.4 through 10.8, the system may try to
+launch the x86_64 slice, which requires OS X 10.9. If `retro-dlp` does not
+launch, explicitly select the compatible i386 slice:
+
+```sh
+/usr/bin/arch -i386 ~/bin/retro-dlp [OPTIONS] VIDEO_ID_OR_URL
+```
+
 ### Jailbroken iPhone
 
 Install OpenSSH on the iPhone, unzip the iOS release on your computer, and copy
@@ -128,7 +136,7 @@ The presets provide the easiest way to choose a format:
 ```sh
 retro-dlp -t low VIDEO_URL_OR_ID    # 18 (generally 360p)
 retro-dlp -t med VIDEO_URL_OR_ID    # 135+140/134+140 (generally 480p)
-retro-dlp -t high VIDEO_URL_OR_ID   # 137+599/137+140/136+599/136+140 (generally 1080p)
+retro-dlp -t high VIDEO_URL_OR_ID   # 137+140/136+140 (generally 1080p)
 ```
 
 List the formats for a video:

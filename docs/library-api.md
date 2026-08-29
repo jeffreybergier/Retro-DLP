@@ -189,12 +189,14 @@ result.
 Library facade operations never write to stdout or stderr. Event callbacks are
 the only progress-reporting boundary.
 
-Resolver event types cover configuration, bootstrap fetching, metadata,
-player JavaScript, challenge solving, format selection, and playlist
-enumeration. `completed_bytes` and `expected_bytes` are zero when a phase has no
-byte progress. Event pointers are borrowed and valid only during the callback.
-The corresponding values are `RDLP_EVENT_LOADING_CONFIGURATION`,
+Resolver event types cover authentication, configuration, bootstrap fetching,
+initial and visitor-data metadata requests, player JavaScript, challenge
+solving, format selection, and playlist enumeration. `completed_bytes` and
+`expected_bytes` are zero when a phase has no byte progress. Event pointers are
+borrowed and valid only during the callback. The corresponding values are
+`RDLP_EVENT_AUTHENTICATING`, `RDLP_EVENT_LOADING_CONFIGURATION`,
 `RDLP_EVENT_FETCHING_BOOTSTRAP`, `RDLP_EVENT_REQUESTING_METADATA`,
+`RDLP_EVENT_REFRESHING_METADATA`,
 `RDLP_EVENT_LOADING_PLAYER_JAVASCRIPT`, `RDLP_EVENT_SOLVING_CHALLENGES`,
 `RDLP_EVENT_SELECTING_FORMATS`, `RDLP_EVENT_ENUMERATING_PLAYLIST`, and the
 forward-compatible fallback `RDLP_EVENT_OTHER`.
