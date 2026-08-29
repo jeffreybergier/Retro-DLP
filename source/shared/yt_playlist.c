@@ -592,7 +592,7 @@ YTStatus yt_list_playlist(YTHttpSession *session, const char *input,
     cJSON_Delete(document);
     document = NULL;
   }
-  if (continuation != NULL)
+  if (status == YT_OK && continuation != NULL)
     status = YT_ERR_INVALID_RESPONSE;
   free(continuation);
   continuation = NULL;
@@ -726,7 +726,7 @@ YTStatus yt_list_account_playlists(
     cJSON_Delete(document);
     document = NULL;
   }
-  if (continuation != NULL)
+  if (status == YT_OK && continuation != NULL)
     status = YT_ERR_INVALID_RESPONSE;
   if (status == YT_OK && collection->playlist_count == 0)
     status = YT_ERR_INVALID_RESPONSE;

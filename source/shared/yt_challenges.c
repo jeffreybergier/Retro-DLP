@@ -51,10 +51,6 @@ YTStatus yt_challenges_load_player(YTHttpSession *session,
   return YT_OK;
 }
 
-YTStatus yt_load_player_javascript(const char *player_url, char **source) {
-  return yt_challenges_load_player(NULL, player_url, source);
-}
-
 YTStatus yt_challenges_solve(YTHttpSession *session,
                              const char *player_source,
                              const YTEJSRequest *requests,

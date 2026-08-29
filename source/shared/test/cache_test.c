@@ -11,7 +11,10 @@
 #include <unistd.h>
 
 #include "yt_cache.h"
+#include "yt_challenges.h"
 #include "yt_crypto.h"
+#include "yt_failure_cache.h"
+#include "yt_http.h"
 #include "yt_resolver_internal.h"
 
 static int test_sha256(void) {
@@ -41,32 +44,40 @@ static int exercise_cache(const char *temporary_home) {
   int failures;
   int retained;
   char *player_source;
+  YTHttpSessionConfig session_config;
+  YTHttpSession *session;
 
   printf("RUN: cache filesystem behavior\n");
   fflush(stdout);
   failures = 0;
   if (snprintf(expected_root, sizeof(expected_root), "%s/.retro-dlp/cache",
-               temporary_home) >= (int)sizeof(expected_root) ||
-      yt_cache_root(root, sizeof(root)) != YT_CACHE_OK ||
-      strcmp(root, expected_root) != 0) {
+               temporary_home) >= (int)sizeof(expected_root)) {
     fprintf(stderr, "FAIL: cache root\n");
     return 1;
   }
-  if (yt_cache_write_file_atomic("../escape", payload,
-                                 sizeof(payload) - 1) !=
+  memcpy(root, expected_root, strlen(expected_root) + 1);
+  memset(&session_config, 0, sizeof(session_config));
+  session_config.cache_directory = root;
+  session = NULL;
+  if (yt_http_session_create_with_config(&session_config, &session) != YT_OK) {
+    fprintf(stderr, "FAIL: cache session setup\n");
+    return 1;
+  }
+  if (yt_cache_write_file_atomic_at(root, "../escape", payload,
+                                    sizeof(payload) - 1) !=
       YT_CACHE_INVALID_ARGUMENT) {
     fprintf(stderr, "FAIL: unsafe cache path was accepted\n");
     ++failures;
   }
 
   yt_cache_key_for_string("fixture-player", key);
-  status = yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, key, payload,
-                        sizeof(payload) - 1, 2000);
+  status = yt_cache_put_at(root, YT_CACHE_PLAYER_JAVASCRIPT, key, payload,
+                           sizeof(payload) - 1, 2000);
   loaded = NULL;
   loaded_length = 0;
   if (status != YT_CACHE_OK ||
-      yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, key, 1000, &loaded,
-                   &loaded_length) != YT_CACHE_OK ||
+      yt_cache_get_at(root, YT_CACHE_PLAYER_JAVASCRIPT, key, 1000, &loaded,
+                      &loaded_length) != YT_CACHE_OK ||
       loaded_length != sizeof(payload) - 1 ||
       memcmp(loaded, payload, sizeof(payload) - 1) != 0) {
     fprintf(stderr, "FAIL: versioned cache round trip\n");
@@ -75,14 +86,14 @@ static int exercise_cache(const char *temporary_home) {
   free(loaded);
   yt_cache_key_for_string("https://www.youtube.com/s/player/fixture/base.js",
                           key);
-  if (yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, key, "fixture-player-js", 17,
-                   0) != YT_CACHE_OK) {
+  if (yt_cache_put_at(root, YT_CACHE_PLAYER_JAVASCRIPT, key,
+                      "fixture-player-js", 17, 0) != YT_CACHE_OK) {
     fprintf(stderr, "FAIL: raw player cache setup\n");
     ++failures;
   } else {
     player_source = NULL;
-    if (yt_load_player_javascript(
-            "https://www.youtube.com/s/player/fixture/base.js",
+    if (yt_challenges_load_player(
+            session, "https://www.youtube.com/s/player/fixture/base.js",
             &player_source) != YT_OK || player_source == NULL ||
         strcmp(player_source, "fixture-player-js") != 0) {
       fprintf(stderr, "FAIL: production raw player cache lookup\n");
@@ -99,49 +110,49 @@ static int exercise_cache(const char *temporary_home) {
   }
   {
     YTStatus cached_failure = YT_OK;
-    yt_remember_failure("failure-fixture", YT_ERR_UNAVAILABLE);
-    if (!yt_load_cached_failure("failure-fixture", &cached_failure) ||
+    yt_failure_cache_remember(session, "failure-fixture", YT_ERR_UNAVAILABLE);
+    if (!yt_failure_cache_load(session, "failure-fixture", &cached_failure) ||
         cached_failure != YT_ERR_UNAVAILABLE) {
       fprintf(stderr, "FAIL: production failure cache round trip\n");
       ++failures;
     }
   }
-  if (yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, "one", payload,
+  if (yt_cache_put_at(root, YT_CACHE_PLAYER_JAVASCRIPT, "one", payload,
                    sizeof(payload) - 1, 0) != YT_CACHE_OK ||
-      yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, "two", payload,
+      yt_cache_put_at(root, YT_CACHE_PLAYER_JAVASCRIPT, "two", payload,
                    sizeof(payload) - 1, 0) != YT_CACHE_OK ||
-      yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, "three", payload,
+      yt_cache_put_at(root, YT_CACHE_PLAYER_JAVASCRIPT, "three", payload,
                    sizeof(payload) - 1, 0) != YT_CACHE_OK ||
-      yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, "four", payload,
+      yt_cache_put_at(root, YT_CACHE_PLAYER_JAVASCRIPT, "four", payload,
                    sizeof(payload) - 1, 0) != YT_CACHE_OK ||
-      yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, "five", payload,
+      yt_cache_put_at(root, YT_CACHE_PLAYER_JAVASCRIPT, "five", payload,
                    sizeof(payload) - 1, 0) != YT_CACHE_OK) {
     fprintf(stderr, "FAIL: bounded cache writes\n");
     ++failures;
   }
   retained = 0;
   loaded = NULL;
-  if (yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, "one", 0, &loaded,
+  if (yt_cache_get_at(root, YT_CACHE_PLAYER_JAVASCRIPT, "one", 0, &loaded,
                    &loaded_length) == YT_CACHE_OK)
     ++retained;
   free(loaded);
   loaded = NULL;
-  if (yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, "two", 0, &loaded,
+  if (yt_cache_get_at(root, YT_CACHE_PLAYER_JAVASCRIPT, "two", 0, &loaded,
                    &loaded_length) == YT_CACHE_OK)
     ++retained;
   free(loaded);
   loaded = NULL;
-  if (yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, "three", 0, &loaded,
+  if (yt_cache_get_at(root, YT_CACHE_PLAYER_JAVASCRIPT, "three", 0, &loaded,
                    &loaded_length) == YT_CACHE_OK)
     ++retained;
   free(loaded);
   loaded = NULL;
-  if (yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, "four", 0, &loaded,
+  if (yt_cache_get_at(root, YT_CACHE_PLAYER_JAVASCRIPT, "four", 0, &loaded,
                    &loaded_length) == YT_CACHE_OK)
     ++retained;
   free(loaded);
   loaded = NULL;
-  if (yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, "five", 0, &loaded,
+  if (yt_cache_get_at(root, YT_CACHE_PLAYER_JAVASCRIPT, "five", 0, &loaded,
                    &loaded_length) == YT_CACHE_OK)
     ++retained;
   free(loaded);
@@ -150,27 +161,26 @@ static int exercise_cache(const char *temporary_home) {
     ++failures;
   }
   loaded = NULL;
-  if (yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, "expiring", payload,
+  if (yt_cache_put_at(root, YT_CACHE_PLAYER_JAVASCRIPT, "expiring", payload,
                    sizeof(payload) - 1, 2000) != YT_CACHE_OK ||
-      yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, "expiring", 2000, &loaded,
+      yt_cache_get_at(root, YT_CACHE_PLAYER_JAVASCRIPT, "expiring", 2000, &loaded,
                    &loaded_length) != YT_CACHE_EXPIRED) {
     fprintf(stderr, "FAIL: cache expiry\n");
     ++failures;
   }
 
-  status = yt_cache_put(YT_CACHE_FAILURE, "broken", payload,
+  status = yt_cache_put_at(root, YT_CACHE_FAILURE, "broken", payload,
                         sizeof(payload) - 1, 0);
   if (status != YT_CACHE_OK ||
-      yt_cache_write_file_atomic("v1/failures/broken.entry", "invalid", 7) !=
+      yt_cache_write_file_atomic_at(root, "v1/failures/broken.entry", "invalid", 7) !=
           YT_CACHE_OK ||
-      yt_cache_get(YT_CACHE_FAILURE, "broken", 0, &loaded, &loaded_length) !=
+      yt_cache_get_at(root, YT_CACHE_FAILURE, "broken", 0, &loaded, &loaded_length) !=
           YT_CACHE_CORRUPT) {
     fprintf(stderr, "FAIL: corrupt cache classification\n");
     ++failures;
   }
   free(loaded);
-  yt_cache_clear(YT_CACHE_PLAYER_JAVASCRIPT);
-  yt_cache_clear(YT_CACHE_FAILURE);
+  yt_http_session_destroy(session);
   if (failures == 0)
     printf("PASS: ~/.retro-dlp/cache atomic, versioned, bounded entries\n");
   return failures;
@@ -197,49 +207,18 @@ static void cleanup_cache_test(const char *temporary_home) {
 int retro_dlp_run_cache_tests(void) {
   char template_path[] = "/tmp/retro-dlp-cache-test.XXXXXX";
   char *temporary_home;
-  const char *current_home;
-  char *saved_home;
   int temporary_descriptor;
   int failures;
 
   failures = test_sha256();
-  current_home = getenv("HOME");
-  saved_home = NULL;
-  if (current_home != NULL) {
-    saved_home = (char *)malloc(strlen(current_home) + 1);
-    if (saved_home != NULL)
-      memcpy(saved_home, current_home, strlen(current_home) + 1);
-  }
-  if (current_home != NULL && saved_home == NULL) {
-    fprintf(stderr, "FAIL: cache test setup\n");
-    return failures + 1;
-  }
   temporary_descriptor = mkstemp(template_path);
   if (temporary_descriptor < 0 || close(temporary_descriptor) != 0 ||
       unlink(template_path) != 0 || mkdir(template_path, 0700) != 0) {
     fprintf(stderr, "FAIL: cache test temporary directory\n");
-    free(saved_home);
     return failures + 1;
   }
   temporary_home = template_path;
-  if (setenv("HOME", temporary_home, 1) != 0) {
-    fprintf(stderr, "FAIL: cache test temporary HOME\n");
-    free(saved_home);
-    return failures + 1;
-  }
   failures += exercise_cache(temporary_home);
-  if (saved_home != NULL) {
-    if (setenv("HOME", saved_home, 1) != 0)
-      ++failures;
-  } else {
-#if defined(__APPLE__) && !defined(__LP64__)
-    unsetenv("HOME");
-#else
-    if (unsetenv("HOME") != 0)
-      ++failures;
-#endif
-  }
-  free(saved_home);
   cleanup_cache_test(temporary_home);
   return failures;
 }

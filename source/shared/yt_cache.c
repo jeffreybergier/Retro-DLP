@@ -79,27 +79,6 @@ static int key_is_safe(const char *key) {
   return strcmp(key, ".") != 0 && strcmp(key, "..") != 0;
 }
 
-YTCacheStatus yt_cache_root(char *buffer, size_t buffer_size) {
-  const char *home;
-  size_t home_length;
-  static const char suffix[] = "/.retro-dlp/cache";
-
-  if (buffer == NULL || buffer_size == 0)
-    return YT_CACHE_INVALID_ARGUMENT;
-  buffer[0] = '\0';
-  home = getenv("HOME");
-  if (home == NULL || home[0] != '/')
-    return YT_CACHE_HOME_UNAVAILABLE;
-  home_length = strlen(home);
-  while (home_length > 1 && home[home_length - 1] == '/')
-    --home_length;
-  if (home_length + sizeof(suffix) > buffer_size)
-    return YT_CACHE_TOO_LARGE;
-  memcpy(buffer, home, home_length);
-  memcpy(buffer + home_length, suffix, sizeof(suffix));
-  return YT_CACHE_OK;
-}
-
 static YTCacheStatus ensure_directory(const char *path) {
   struct stat information;
 
@@ -315,36 +294,6 @@ YTCacheStatus yt_cache_remove_file_at(const char *root,
   if (unlink(path) == 0)
     return YT_CACHE_OK;
   return errno == ENOENT ? YT_CACHE_MISSING : YT_CACHE_IO_ERROR;
-}
-
-static YTCacheStatus legacy_root(char root[PATH_MAX]) {
-  return yt_cache_root(root, PATH_MAX);
-}
-
-YTCacheStatus yt_cache_read_file(const char *relative_path, size_t maximum_size,
-                                 char **data, size_t *length) {
-  char root[PATH_MAX];
-  YTCacheStatus status = legacy_root(root);
-  if (status != YT_CACHE_OK)
-    return status;
-  return yt_cache_read_file_at(root, relative_path, maximum_size, data, length);
-}
-
-YTCacheStatus yt_cache_write_file_atomic(const char *relative_path,
-                                         const void *data, size_t length) {
-  char root[PATH_MAX];
-  YTCacheStatus status = legacy_root(root);
-  if (status != YT_CACHE_OK)
-    return status;
-  return yt_cache_write_file_atomic_at(root, relative_path, data, length);
-}
-
-YTCacheStatus yt_cache_remove_file(const char *relative_path) {
-  char root[PATH_MAX];
-  YTCacheStatus status = legacy_root(root);
-  if (status != YT_CACHE_OK)
-    return status;
-  return yt_cache_remove_file_at(root, relative_path);
 }
 
 void yt_cache_key_for_string(const char *value, char key[65]) {
@@ -575,75 +524,6 @@ YTCacheStatus yt_cache_remove_at(const char *root, YTCacheKind kind,
   return yt_cache_remove_file_at(root, relative);
 }
 
-YTCacheStatus yt_cache_put(YTCacheKind kind, const char *key,
-                           const void *data, size_t length,
-                           int64_t expires_unix) {
-  char root[PATH_MAX];
-  YTCacheStatus status = legacy_root(root);
-  if (status != YT_CACHE_OK)
-    return status;
-  return yt_cache_put_at(root, kind, key, data, length, expires_unix);
-}
-
-YTCacheStatus yt_cache_get(YTCacheKind kind, const char *key,
-                           int64_t now_unix, char **data, size_t *length) {
-  char root[PATH_MAX];
-  YTCacheStatus status = legacy_root(root);
-  if (status != YT_CACHE_OK)
-    return status;
-  return yt_cache_get_at(root, kind, key, now_unix, data, length);
-}
-
-YTCacheStatus yt_cache_remove(YTCacheKind kind, const char *key) {
-  char root[PATH_MAX];
-  YTCacheStatus status = legacy_root(root);
-  if (status != YT_CACHE_OK)
-    return status;
-  return yt_cache_remove_at(root, kind, key);
-}
-
-YTCacheStatus yt_cache_clear(YTCacheKind kind) {
-  const YTCachePolicy *policy;
-  char relative[PATH_MAX];
-  char directory_path[PATH_MAX];
-  DIR *directory;
-  struct dirent *entry;
-  YTCacheStatus status;
-  char root[PATH_MAX];
-
-  policy = policy_for_kind(kind);
-  if (policy == NULL)
-    return YT_CACHE_INVALID_ARGUMENT;
-  if (snprintf(relative, sizeof(relative), "v1/%s", policy->directory) >=
-      (int)sizeof(relative))
-    return YT_CACHE_TOO_LARGE;
-  status = legacy_root(root);
-  if (status != YT_CACHE_OK)
-    return status;
-  status = build_path(root, relative, directory_path, sizeof(directory_path));
-  if (status != YT_CACHE_OK)
-    return status;
-  directory = opendir(directory_path);
-  if (directory == NULL)
-    return errno == ENOENT ? YT_CACHE_OK : YT_CACHE_IO_ERROR;
-  while ((entry = readdir(directory)) != NULL) {
-    char candidate[PATH_MAX];
-    size_t name_length = strlen(entry->d_name);
-
-    if (entry->d_name[0] == '.' || name_length < 6 ||
-        strcmp(entry->d_name + name_length - 6, ".entry") != 0)
-      continue;
-    if (snprintf(candidate, sizeof(candidate), "%s/%s", directory_path,
-                 entry->d_name) >= (int)sizeof(candidate) ||
-        unlink(candidate) != 0) {
-      closedir(directory);
-      return YT_CACHE_IO_ERROR;
-    }
-  }
-  closedir(directory);
-  return YT_CACHE_OK;
-}
-
 const char *yt_cache_status_string(YTCacheStatus status) {
   switch (status) {
     case YT_CACHE_OK:
@@ -654,8 +534,6 @@ const char *yt_cache_status_string(YTCacheStatus status) {
       return "expired";
     case YT_CACHE_INVALID_ARGUMENT:
       return "invalid_argument";
-    case YT_CACHE_HOME_UNAVAILABLE:
-      return "home_unavailable";
     case YT_CACHE_IO_ERROR:
       return "io_error";
     case YT_CACHE_CORRUPT:

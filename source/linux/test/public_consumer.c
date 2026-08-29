@@ -25,13 +25,27 @@ typedef struct {
   rdlp_context *reentry_context;
   rdlp_status reentry_status;
   fixture_gate *gate;
+  int failure_mode;
 } fixture_state;
+
+enum {
+  FIXTURE_SUCCESS = 0,
+  FIXTURE_NETWORK_FAILURE,
+  FIXTURE_HTTP_FAILURE,
+  FIXTURE_MALFORMED_RESPONSE,
+  FIXTURE_OVERSIZED_RESPONSE
+};
 
 typedef struct {
   fixture_state state;
   const char *cache_directory;
   int result;
 } thread_case;
+
+typedef struct {
+  int requests;
+  int cancelled;
+} cancellation_fixture;
 
 typedef struct {
   int saved_stdout;
@@ -107,6 +121,14 @@ static rdlp_status fixture_send(void *opaque,
   const char *data;
   size_t index;
   (void)error;
+  if (state->failure_mode == FIXTURE_NETWORK_FAILURE) {
+    if (error != NULL) {
+      error->status = RDLP_STATUS_NETWORK;
+      error->transport_code = 77;
+      snprintf(error->message, sizeof(error->message), "fixture network failure");
+    }
+    return RDLP_STATUS_NETWORK;
+  }
   if (request->cancel_callback != NULL &&
       request->cancel_callback(request->cancel_context))
     return RDLP_STATUS_CANCELLED;
@@ -126,9 +148,11 @@ static rdlp_status fixture_send(void *opaque,
       state->saw_clock = 1;
   }
   ++state->requests;
-  response->http_status = 200;
-  response->data = data;
-  response->data_length = strlen(data);
+  response->http_status = state->failure_mode == FIXTURE_HTTP_FAILURE ? 503 : 200;
+  response->data = state->failure_mode == FIXTURE_MALFORMED_RESPONSE ? "{" : data;
+  response->data_length = state->failure_mode == FIXTURE_OVERSIZED_RESPONSE
+                              ? request->maximum_response_bytes + 1
+                              : strlen((const char *)response->data);
   return RDLP_STATUS_OK;
 }
 
@@ -264,6 +288,162 @@ static int additive_transport_struct_test(void) {
   return status == RDLP_STATUS_OK;
 }
 
+static int transport_failure_test(void) {
+  static const rdlp_status expected[] = {
+      RDLP_STATUS_NETWORK, RDLP_STATUS_HTTP, RDLP_STATUS_INVALID_RESPONSE,
+      RDLP_STATUS_INVALID_RESPONSE};
+  fixture_state state;
+  rdlp_transport transport;
+  rdlp_config config;
+  rdlp_context *context = NULL;
+  rdlp_selection *selection;
+  rdlp_error error;
+  size_t index;
+  memset(&state, 0, sizeof(state));
+  memset(&transport, 0, sizeof(transport));
+  memset(&config, 0, sizeof(config));
+  transport.struct_size = sizeof(transport);
+  transport.send = fixture_send;
+  transport.context = &state;
+  config.struct_size = sizeof(config);
+  config.transport = &transport;
+  memset(&error, 0, sizeof(error));
+  error.struct_size = sizeof(error);
+  if (rdlp_context_create(&config, &context, &error) != RDLP_STATUS_OK)
+    return 0;
+  for (index = 0; index < sizeof(expected) / sizeof(expected[0]); ++index) {
+    state.failure_mode = (int)index + FIXTURE_NETWORK_FAILURE;
+    selection = (rdlp_selection *)(size_t)1;
+    if (rdlp_resolve_video(context, "YE7VzlLtp-4", NULL, &selection, &error) !=
+            expected[index] ||
+        selection != NULL || error.status != expected[index]) {
+      rdlp_context_destroy(context);
+      return 0;
+    }
+    if (state.failure_mode == FIXTURE_NETWORK_FAILURE &&
+        error.transport_code != 77) {
+      rdlp_context_destroy(context);
+      return 0;
+    }
+  }
+  rdlp_context_destroy(context);
+  return 1;
+}
+
+static int cancellation_fixture_cancel(void *opaque) {
+  return ((cancellation_fixture *)opaque)->cancelled;
+}
+
+static rdlp_status active_network_cancel_send(
+    void *opaque, const rdlp_transport_request *request,
+    rdlp_transport_response *response, rdlp_error *error) {
+  cancellation_fixture *fixture = (cancellation_fixture *)opaque;
+  (void)response;
+  (void)error;
+  ++fixture->requests;
+  fixture->cancelled = 1;
+  return request->cancel_callback != NULL &&
+                 request->cancel_callback(request->cancel_context)
+             ? RDLP_STATUS_CANCELLED
+             : RDLP_STATUS_NETWORK;
+}
+
+static rdlp_status playlist_cancel_send(
+    void *opaque, const rdlp_transport_request *request,
+    rdlp_transport_response *response, rdlp_error *error) {
+  static const char bootstrap[] =
+      "<html><script>ytcfg.set({\"INNERTUBE_API_KEY\":\"fixture-key\","
+      "\"INNERTUBE_CONTEXT_CLIENT_VERSION\":\"1.20260828.00.00\","
+      "\"VISITOR_DATA\":\"fixture-visitor\"});var ytInitialData="
+      "{\"metadata\":{\"playlistMetadataRenderer\":{"
+      "\"title\":\"Cancellation fixture\"}},\"contents\":[{"
+      "\"playlistVideoRenderer\":{\"videoId\":\"AAAAAAAAAAA\","
+      "\"title\":{\"simpleText\":\"First video\"}}},{"
+      "\"continuationItemRenderer\":{\"continuationEndpoint\":{"
+      "\"continuationCommand\":{\"token\":\"page-two\"}}}}]};"
+      "</script></html>";
+  static const char browse[] =
+      "{\"metadata\":{\"playlistMetadataRenderer\":{"
+      "\"title\":\"Cancellation fixture\"}},\"contents\":[{"
+      "\"playlistVideoRenderer\":{\"videoId\":\"AAAAAAAAAAA\","
+      "\"title\":{\"simpleText\":\"First video\"}}},{"
+      "\"continuationItemRenderer\":{\"continuationEndpoint\":{"
+      "\"continuationCommand\":{\"token\":\"page-two\"}}}}]}";
+  cancellation_fixture *fixture = (cancellation_fixture *)opaque;
+  const char *data;
+  (void)error;
+  if (request->method == RDLP_HTTP_GET &&
+      strstr(request->url, "/playlist?list=") != NULL)
+    data = bootstrap;
+  else if (request->method == RDLP_HTTP_POST &&
+           strstr(request->url, "/youtubei/v1/browse") != NULL)
+    data = browse;
+  else
+    return RDLP_STATUS_NETWORK;
+  ++fixture->requests;
+  response->http_status = 200;
+  response->data = data;
+  response->data_length = strlen(data);
+  if (request->method == RDLP_HTTP_POST)
+    fixture->cancelled = 1;
+  return RDLP_STATUS_OK;
+}
+
+static int cancellation_boundary_test(void) {
+  cancellation_fixture fixture;
+  rdlp_transport transport;
+  rdlp_config config;
+  rdlp_context *context;
+  rdlp_selection *selection;
+  rdlp_playlist *playlist;
+  rdlp_error error;
+
+  memset(&fixture, 0, sizeof(fixture));
+  memset(&transport, 0, sizeof(transport));
+  memset(&config, 0, sizeof(config));
+  memset(&error, 0, sizeof(error));
+  transport.struct_size = sizeof(transport);
+  transport.send = active_network_cancel_send;
+  transport.context = &fixture;
+  config.struct_size = sizeof(config);
+  config.transport = &transport;
+  config.cancel_callback = cancellation_fixture_cancel;
+  config.callback_context = &fixture;
+  error.struct_size = sizeof(error);
+  context = NULL;
+  selection = (rdlp_selection *)(size_t)1;
+  if (rdlp_context_create(&config, &context, &error) != RDLP_STATUS_OK ||
+      rdlp_resolve_video(context, "YE7VzlLtp-4", NULL, &selection, &error) !=
+          RDLP_STATUS_CANCELLED ||
+      selection != NULL || fixture.requests != 1) {
+    fprintf(stderr,
+            "FAIL: active network cancellation (status=%d requests=%d)\n",
+            (int)error.status, fixture.requests);
+    rdlp_selection_destroy(selection);
+    rdlp_context_destroy(context);
+    return 0;
+  }
+  rdlp_context_destroy(context);
+
+  memset(&fixture, 0, sizeof(fixture));
+  transport.send = playlist_cancel_send;
+  context = NULL;
+  playlist = (rdlp_playlist *)(size_t)1;
+  if (rdlp_context_create(&config, &context, &error) != RDLP_STATUS_OK ||
+      rdlp_list_playlist(context, "PL_cancel_fixture", NULL, &playlist,
+                         &error) != RDLP_STATUS_CANCELLED ||
+      playlist != NULL || fixture.requests != 2) {
+    fprintf(stderr,
+            "FAIL: playlist pagination cancellation (status=%d requests=%d)\n",
+            (int)error.status, fixture.requests);
+    rdlp_playlist_destroy(playlist);
+    rdlp_context_destroy(context);
+    return 0;
+  }
+  rdlp_context_destroy(context);
+  return 1;
+}
+
 int main(void) {
   fixture_state state;
   rdlp_transport transport;
@@ -372,6 +552,15 @@ int main(void) {
   }
   if (!additive_transport_struct_test()) {
     fprintf(stderr, "FAIL: additive transport structure contract\n");
+    return 1;
+  }
+  if (!transport_failure_test()) {
+    fprintf(stderr,
+            "FAIL: network, HTTP, malformed, or oversized response contract\n");
+    return 1;
+  }
+  if (!cancellation_boundary_test()) {
+    fprintf(stderr, "FAIL: active network or playlist cancellation boundary\n");
     return 1;
   }
   puts("PASS: external public API fixture consumer");

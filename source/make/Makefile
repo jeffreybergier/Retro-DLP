@@ -9,7 +9,8 @@ LINUX_BUILD_DIR := $(BUILD_DIR)/linux
 
 CLI_SOURCES := source/shared/main.c source/shared/cli.c \
 	source/shared/cli_options.c source/shared/cli_render.c \
-	source/shared/cli_assets.c
+	source/shared/cli_assets.c source/shared/cli_asset_store.c \
+	source/shared/rdlp_asset_tool.c
 CORE_SOURCES := source/shared/retrodlp.c \
 	source/shared/yt_http.c source/shared/yt_resolver.c \
 	source/shared/yt_formats.c source/shared/yt_challenges.c \
@@ -22,7 +23,8 @@ CORE_SOURCES := source/shared/retrodlp.c \
 DOWNLOAD_SOURCES := source/shared/retrodlp_download.c source/shared/yt_mux.c
 SHARED_SOURCES := $(CLI_SOURCES) $(CORE_SOURCES) $(DOWNLOAD_SOURCES)
 TEST_SOURCES := \
-	source/shared/test/cache_test.c source/shared/test/cookie_test.c \
+	source/shared/test/allocation_test.c source/shared/test/cache_test.c \
+	source/shared/test/cookie_test.c \
 	source/shared/test/ejs_test.c source/shared/test/ejs_test_data.c \
 	source/shared/test/self_test.c source/shared/test/self_test_data.c \
 	source/shared/test/yt_formats_test_support.c
@@ -211,7 +213,8 @@ test: linux $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM) \
 		"$(abspath $(LINUX_BUILD_DIR)/$(PROGRAM))" \
 		"$(abspath $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM))"
 	@$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM)
-	@$(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM)
+	@source/linux/test/download_test.sh \
+		"$(abspath $(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM))"
 
 examples: $(LINUX_RESOLVER_EXAMPLES) $(LINUX_DOWNLOAD_EXAMPLE)
 
@@ -291,7 +294,8 @@ $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM): $(LINUX_TEST_OBJECTS) \
 		$(QUICKJS_LIBRARY) $(LINUX_LSMASH_LIBRARY)
 	@echo "--- Building retro-dlp Linux Tests ---"
 	@mkdir -p $(dir $@)
-	@$(CC) $(LDFLAGS) $(LINUX_TEST_OBJECTS) $(LINUX_LIBRARIES) $(LDLIBS) -o $@
+	@$(CC) $(LDFLAGS) -Wl,--wrap=malloc -Wl,--wrap=calloc \
+		$(LINUX_TEST_OBJECTS) $(LINUX_LIBRARIES) $(LDLIBS) -o $@
 	@echo "  > $@"
 
 $(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM): \

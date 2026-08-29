@@ -223,10 +223,16 @@ static int finish_track(lsmash_root_t *output, YTMuxTrack *track) {
                                              edit) == 0;
 }
 
-static int mux_samples(lsmash_root_t *output, YTMuxTrack tracks[2]) {
+static int mux_samples(lsmash_root_t *output, YTMuxTrack tracks[2],
+                       YTMuxCancelCallback cancel_callback,
+                       void *cancel_opaque, int *was_cancelled) {
   while (tracks[0].active || tracks[1].active || tracks[0].sample != NULL ||
          tracks[1].sample != NULL) {
     YTMuxTrack *selected;
+    if (cancel_callback != NULL && cancel_callback(cancel_opaque)) {
+      *was_cancelled = 1;
+      return 0;
+    }
     if (!load_next_sample(&tracks[0]) || !load_next_sample(&tracks[1]))
       return 0;
     if (tracks[0].sample == NULL && tracks[1].sample == NULL)
@@ -319,7 +325,9 @@ static int validate_flat_mp4(const char *path, int64_t *size_out) {
 }
 
 YTStatus yt_mux_mp4_tracks(const char *video_path, const char *audio_path,
-                           const char *destination, int64_t *bytes_written) {
+                           const char *destination, int64_t *bytes_written,
+                           YTMuxCancelCallback cancel_callback,
+                           void *cancel_opaque) {
   YTMuxTrack tracks[2];
   lsmash_root_t *output;
   lsmash_file_parameters_t output_file;
@@ -331,12 +339,16 @@ YTStatus yt_mux_mp4_tracks(const char *video_path, const char *audio_path,
   int descriptor;
   int output_open;
   int success;
+  int was_cancelled;
   YTStatus status;
 
   if (video_path == NULL || audio_path == NULL || destination == NULL ||
       destination[0] == '\0' || bytes_written == NULL)
     return YT_ERR_INVALID_RESPONSE;
   *bytes_written = 0;
+  was_cancelled = 0;
+  if (cancel_callback != NULL && cancel_callback(cancel_opaque))
+    return YT_ERR_CANCELLED;
   if (!checked_input(video_path) || !checked_input(audio_path))
     return YT_ERR_INVALID_MEDIA;
   if (lstat(destination, &information) == 0)
@@ -377,8 +389,13 @@ YTStatus yt_mux_mp4_tracks(const char *video_path, const char *audio_path,
   if (lsmash_set_movie_parameters(output, &movie) < 0 ||
       !setup_output_track(output, &tracks[0]) ||
       !setup_output_track(output, &tracks[1]) ||
-      !mux_samples(output, tracks))
+      !mux_samples(output, tracks, cancel_callback, cancel_opaque,
+                   &was_cancelled))
     goto finished;
+  if (cancel_callback != NULL && cancel_callback(cancel_opaque)) {
+    was_cancelled = 1;
+    goto finished;
+  }
   optimize.buffer_size = 4U * 1024U * 1024U;
   optimize.func = NULL;
   optimize.param = NULL;
@@ -414,5 +431,5 @@ finished:
   mux_track_cleanup(&tracks[1]);
   if (status != YT_OK)
     unlink(temporary);
-  return status;
+  return was_cancelled ? YT_ERR_CANCELLED : status;
 }

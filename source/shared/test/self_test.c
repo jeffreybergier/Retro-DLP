@@ -1,5 +1,7 @@
 #include "self_test.h"
 
+#include "allocation_test.h"
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -694,10 +696,12 @@ int retro_dlp_run_self_tests(void) {
   failures += test_quickjs();
   announce_test("cache and SHA-256 fixtures");
   failures += retro_dlp_run_cache_tests();
+  announce_test("allocation failure contracts");
+  failures += retro_dlp_run_allocation_tests();
   announce_test("cookie authentication fixtures");
   failures += retro_dlp_run_cookie_tests();
   announce_test("EJS fixtures and runtime limits");
-  failures += retro_dlp_run_ejs_tests();
+  failures += retro_dlp_run_ejs_tests(getenv("RETRO_DLP_TEST_EJS_DIR"));
   if (failures != 0)
     return 1;
 

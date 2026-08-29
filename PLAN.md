@@ -284,7 +284,7 @@ Configuration should support:
 - disabled caching;
 - caller-provided cache operations if later required;
 - an explicit CA bundle path for the libcurl transport;
-- EJS assets supplied by directory or caller-owned bytes;
+- EJS assets supplied by directory; ~~caller-owned EJS asset bytes~~;
 - cookies supplied by file or memory.
 
 CLI defaults such as `~/.retro-dlp/cache`, `~/.retro-dlp/cookies.txt`, and a CA

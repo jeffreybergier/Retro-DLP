@@ -343,9 +343,8 @@ YTCacheStatus yt_http_session_cache_get(YTHttpSession *session,
                                         YTCacheKind kind, const char *key,
                                         int64_t now_unix, char **data,
                                         size_t *length) {
-  if (session == NULL)
-    return yt_cache_get(kind, key, now_unix, data, length);
-  return yt_cache_get_at(session->cache_directory, kind, key, now_unix, data,
+  return yt_cache_get_at(session == NULL ? NULL : session->cache_directory,
+                         kind, key, now_unix, data,
                          length);
 }
 
@@ -353,18 +352,16 @@ YTCacheStatus yt_http_session_cache_put(YTHttpSession *session,
                                         YTCacheKind kind, const char *key,
                                         const void *data, size_t length,
                                         int64_t expires_unix) {
-  if (session == NULL)
-    return yt_cache_put(kind, key, data, length, expires_unix);
-  return yt_cache_put_at(session->cache_directory, kind, key, data, length,
+  return yt_cache_put_at(session == NULL ? NULL : session->cache_directory,
+                         kind, key, data, length,
                          expires_unix);
 }
 
 YTCacheStatus yt_http_session_cache_remove(YTHttpSession *session,
                                            YTCacheKind kind,
                                            const char *key) {
-  if (session == NULL)
-    return yt_cache_remove(kind, key);
-  return yt_cache_remove_at(session->cache_directory, kind, key);
+  return yt_cache_remove_at(session == NULL ? NULL : session->cache_directory,
+                            kind, key);
 }
 
 const char *yt_http_session_ejs_asset_directory(
@@ -686,11 +683,6 @@ static YTStatus http_get(YTHttpSession *session, const char *url,
     response->data[0] = '\0';
   }
   return YT_OK;
-}
-
-YTStatus yt_http_get(const char *url, size_t maximum_size,
-                     YTHttpResponse *response) {
-  return http_get(NULL, url, maximum_size, NULL, response);
 }
 
 YTStatus yt_http_session_get(YTHttpSession *session, const char *url,

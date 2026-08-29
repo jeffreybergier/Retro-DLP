@@ -75,8 +75,6 @@ int yt_http_session_cancelled(const YTHttpSession *session);
 void yt_http_session_diagnostic(const YTHttpSession *session,
                                 YTHttpDiagnostic *diagnostic);
 
-YTStatus yt_http_get(const char *url, size_t maximum_size,
-                     YTHttpResponse *response);
 YTStatus yt_http_session_post_json(YTHttpSession *session, const char *url,
                                    const char *json,
                                    const char *const *headers,

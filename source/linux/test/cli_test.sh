@@ -44,8 +44,11 @@ fi
 test -f "$resolver_library" || fail "resolver library was not built"
 test -f "$download_library" || fail "optional download library was not built"
 if ar t "$resolver_library" | grep -Eq \
-    '^(main|cli|cli_options|cli_render|cli_assets|retrodlp_download|yt_mux)\.o$'; then
+    '^(main|cli|cli_options|cli_render|cli_assets|cli_asset_store|retrodlp_download|yt_mux)\.o$'; then
   fail "resolver library contains CLI or download objects"
+fi
+if strings "$resolver_library" | grep -q '/.retro-dlp'; then
+  fail "resolver library contains an implicit CLI home-directory path"
 fi
 if nm -u "$resolver_library" | grep -q 'lsmash'; then
   fail "resolver library depends on L-SMASH"
@@ -118,6 +121,8 @@ printf '%s\n' "$asset_install" | grep -q '"installed":[[:space:]]*true' || \
   fail "asset install did not validate both EJS files"
 
 asset_dir=$test_home/.retro-dlp/cache/assets/ejs/0.8.0
+RETRO_DLP_TEST_EJS_DIR=$asset_dir
+export RETRO_DLP_TEST_EJS_DIR
 cp "$asset_dir/core.min.js" "$asset_dir/core.saved"
 printf 'corrupt' > "$asset_dir/core.min.js"
 asset_status=$($binary assets status)
@@ -164,6 +169,12 @@ printf '%s\n' "$self_test_output" | \
 printf '%s\n' "$self_test_output" | \
   grep -q '^PASS: playlist bootstrap, pagination, duplicate, and error fixtures$' || \
   fail "test binary did not pass playlist page fixtures"
+printf '%s\n' "$self_test_output" | \
+  grep -q '^PASS: owned-result allocation failure contracts$' || \
+  fail "test binary did not pass owned-result allocation failures"
+printf '%s\n' "$self_test_output" | \
+  grep -q '^PASS: pagination token allocation failure contract$' || \
+  fail "test binary did not pass pagination allocation failure"
 printf '%s\n' "$self_test_output" | \
   grep -q '^PASS: deterministic player fixtures$' || \
   fail "test binary did not pass deterministic player fixtures"

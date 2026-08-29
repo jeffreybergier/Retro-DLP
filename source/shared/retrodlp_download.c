@@ -334,11 +334,17 @@ static rdlp_status download_media(const rdlp_selection *selection,
 }
 
 static rdlp_status mux_status(YTStatus status) {
+  if (status == YT_ERR_CANCELLED)
+    return RDLP_STATUS_CANCELLED;
   if (status == YT_ERR_FILE_EXISTS || status == YT_ERR_STORAGE)
     return RDLP_STATUS_STORAGE;
   if (status == YT_ERR_INVALID_MEDIA)
     return RDLP_STATUS_INVALID_RESPONSE;
   return RDLP_STATUS_INTERNAL;
+}
+
+static int mux_cancelled(void *opaque) {
+  return cancelled((const rdlp_download_options *)opaque);
 }
 
 rdlp_status rdlp_download_selection(
@@ -424,14 +430,17 @@ rdlp_status rdlp_download_selection(
     return RDLP_STATUS_CANCELLED;
   }
   emit_event(options, RDLP_DOWNLOAD_EVENT_MUXING, destination, 0U, 0U);
-  internal_status =
-      yt_mux_mp4_tracks(video_path, audio_path, destination, &final_bytes);
+  internal_status = yt_mux_mp4_tracks(video_path, audio_path, destination,
+                                      &final_bytes, mux_cancelled,
+                                      (void *)options);
   if (internal_status != YT_OK) {
     value.source_tracks_retained = 1;
     if (result != NULL)
       memcpy(result, &value, result_size);
     status = mux_status(internal_status);
-    set_error(error, status, 0, 0, "MP4 muxing failed");
+    set_error(error, status, 0, 0,
+              status == RDLP_STATUS_CANCELLED ? "operation cancelled"
+                                              : "MP4 muxing failed");
     return status;
   }
   emit_event(options, RDLP_DOWNLOAD_EVENT_CLEANING_UP, destination, 0U, 0U);

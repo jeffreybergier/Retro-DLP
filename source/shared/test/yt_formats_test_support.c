@@ -89,7 +89,7 @@ YTStatus yt_test_parse_player_response_with_format(
 
 YTStatus yt_test_parse_player_response_with_javascript(
     const char *json, size_t length, const char *player_source,
-    YTMediaRequest *result) {
+    YTHttpSession *session, YTMediaRequest *result) {
   cJSON *document;
   YTMediaSelection selection;
   YTStatus status;
@@ -101,7 +101,7 @@ YTStatus yt_test_parse_player_response_with_javascript(
   document = cJSON_ParseWithLength(json, length);
   if (document == NULL)
     return YT_ERR_INVALID_RESPONSE;
-  status = yt_formats_select(NULL, document, player_source, NULL,
+  status = yt_formats_select(session, document, player_source, NULL,
                              YT_DEFAULT_MAX_HEIGHT, 0, &selection);
   if (status == YT_OK) {
     *result = selection.video;

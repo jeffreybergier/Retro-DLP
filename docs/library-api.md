@@ -213,6 +213,11 @@ source tracks if muxing fails. Download events, cancellation, timeouts, and CA
 configuration are supplied through `rdlp_download_options`. The component does
 not write to stdout or stderr.
 
+Cancellation is checked before and during transfers, before muxing, and while
+samples are being muxed. Cancelling or failing during adaptive muxing retains
+the downloaded audio and video tracks and reports that fact through
+`source_tracks_retained`.
+
 The selection and destination string are borrowed for the duration of the
 call. `rdlp_download_options` configures an optional CA bundle, timeout,
 synchronous event callback, cancellation callback, and borrowed callback

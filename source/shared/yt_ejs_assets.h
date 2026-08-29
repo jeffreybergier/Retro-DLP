@@ -22,17 +22,6 @@ typedef struct {
   size_t lib_length;
 } YTEJSAssets;
 
-typedef struct {
-  int installed;
-  int core_valid;
-  int lib_valid;
-  char root[4096];
-} YTEJSAssetsInfo;
-
-YTEJSAssetsStatus yt_ejs_assets_inspect(YTEJSAssetsInfo *info);
-YTEJSAssetsStatus yt_ejs_assets_install(void);
-YTEJSAssetsStatus yt_ejs_assets_remove(void);
-YTEJSAssetsStatus yt_ejs_assets_load(YTEJSAssets *assets);
 YTEJSAssetsStatus yt_ejs_assets_load_from_directory(const char *directory,
                                                     YTEJSAssets *assets);
 void yt_ejs_assets_free(YTEJSAssets *assets);

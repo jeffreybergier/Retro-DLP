@@ -16,6 +16,6 @@ YTStatus yt_test_parse_player_response_with_format(
     YTMediaSelection *result);
 YTStatus yt_test_parse_player_response_with_javascript(
     const char *json, size_t length, const char *player_source,
-    YTMediaRequest *result);
+    YTHttpSession *session, YTMediaRequest *result);
 
 #endif

@@ -130,11 +130,3 @@ void yt_failure_cache_clear(YTHttpSession *session, const char *key) {
   if (key != NULL && key[0] != '\0')
     yt_http_session_cache_remove(session, YT_CACHE_FAILURE, key);
 }
-
-int yt_load_cached_failure(const char *key, YTStatus *status) {
-  return yt_failure_cache_load(NULL, key, status);
-}
-
-void yt_remember_failure(const char *key, YTStatus status) {
-  yt_failure_cache_remember(NULL, key, status);
-}

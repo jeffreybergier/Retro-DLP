@@ -57,12 +57,6 @@ typedef struct YTHttpSession YTHttpSession;
 
 YTEJSConfig yt_ejs_default_config(void);
 
-YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
-                         const char *player_source,
-                         const YTEJSRequest *requests,
-                         size_t request_count,
-                         const YTEJSConfig *config,
-                         YTEJSResult *result);
 YTEJSStatus yt_ejs_solve_with_session(YTHttpSession *session,
                                       YTEJSSourceType source_type,
                                       const char *player_source,

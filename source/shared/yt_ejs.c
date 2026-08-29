@@ -424,9 +424,8 @@ YTEJSStatus yt_ejs_solve_with_session(YTHttpSession *session,
           yt_http_session_ejs_asset_directory(session), &assets);
     else
       assets_status = YT_EJS_ASSETS_MISSING;
-  } else {
-    assets_status = yt_ejs_assets_load(&assets);
-  }
+  } else
+    assets_status = YT_EJS_ASSETS_MISSING;
   if (assets_status != YT_EJS_ASSETS_OK) {
     free(cached_player_source);
     free(request_json);
@@ -540,16 +539,6 @@ cleanup:
   free(request_json);
   free(cached_player_source);
   return status;
-}
-
-YTEJSStatus yt_ejs_solve(YTEJSSourceType source_type,
-                         const char *player_source,
-                         const YTEJSRequest *requests,
-                         size_t request_count,
-                         const YTEJSConfig *config,
-                         YTEJSResult *result) {
-  return yt_ejs_solve_with_session(NULL, source_type, player_source, requests,
-                                   request_count, config, result);
 }
 
 const char *yt_ejs_status_string(YTEJSStatus status) {
