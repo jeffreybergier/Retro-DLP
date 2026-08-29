@@ -143,28 +143,7 @@ static int64_t fixture_clock(void *opaque) {
   return ((fixture_state *)opaque)->now;
 }
 
-static int cache_manifest_exists(const char *root) {
-  char path[1024];
-  struct stat information;
-  if (snprintf(path, sizeof(path), "%s/v1/client-manifest/builtin-v2.entry",
-               root) >= (int)sizeof(path))
-    return 0;
-  return stat(path, &information) == 0 && S_ISREG(information.st_mode);
-}
-
 static void remove_fixture_cache(const char *root) {
-  char path[1024];
-  snprintf(path, sizeof(path), "%s/v1/client-manifest/builtin-v2.entry", root);
-  unlink(path);
-  snprintf(path, sizeof(path), "%s/v1/successful-client/last-authenticated.entry",
-           root);
-  unlink(path);
-  snprintf(path, sizeof(path), "%s/v1/client-manifest", root);
-  rmdir(path);
-  snprintf(path, sizeof(path), "%s/v1/successful-client", root);
-  rmdir(path);
-  snprintf(path, sizeof(path), "%s/v1", root);
-  rmdir(path);
   rmdir(root);
 }
 
@@ -201,8 +180,7 @@ static void *run_thread_case(void *opaque) {
                  rdlp_resolve_video(context, "YE7VzlLtp-4", &options,
                                     &selection, &error) == RDLP_STATUS_OK &&
                  selection != NULL && test->state.requests == 2 &&
-                 test->state.saw_clock &&
-                 cache_manifest_exists(test->cache_directory);
+                 test->state.saw_clock;
   rdlp_selection_destroy(selection);
   rdlp_context_destroy(context);
   return NULL;

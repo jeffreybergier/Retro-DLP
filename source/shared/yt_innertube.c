@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "yt_cache.h"
 #include "yt_http.h"
 #include "yt_util.h"
 
@@ -14,115 +13,18 @@
 #define YT_CLIENT_NAME_ID "2"
 #define YT_CLIENT_VERSION "2.20260708.05.00"
 #define YT_USER_AGENT YT_INNERTUBE_DEFAULT_USER_AGENT
-#define YT_CLIENT_MANIFEST_KEY "builtin-v2"
-#define YT_CLIENT_MANIFEST_TTL (30LL * 24LL * 60LL * 60LL)
-#define YT_SUCCESSFUL_CLIENT_TTL (24LL * 60LL * 60LL)
-
-static const char builtin_client_manifest[] =
-    "{\"version\":1,\"clients\":[{\"name\":\"" YT_CLIENT_NAME
-    "\",\"id\":\"" YT_CLIENT_NAME_ID "\",\"version\":\""
-    YT_CLIENT_VERSION "\",\"userAgent\":\"" YT_USER_AGENT "\"}]}";
-
-static int parse_client_manifest(const char *json, size_t length,
-                                 YTInnertubeClient *client) {
-  cJSON *document;
-  cJSON *clients;
-  cJSON *entry;
-  cJSON *version;
-  cJSON *name;
-  cJSON *id;
-  cJSON *client_version;
-  cJSON *user_agent;
-  int valid;
-
-  document = cJSON_ParseWithLength(json, length);
-  if (document == NULL)
-    return 0;
-  version = cJSON_GetObjectItemCaseSensitive(document, "version");
-  clients = cJSON_GetObjectItemCaseSensitive(document, "clients");
-  entry = cJSON_IsArray(clients) ? cJSON_GetArrayItem(clients, 0) : NULL;
-  name = cJSON_GetObjectItemCaseSensitive(entry, "name");
-  id = cJSON_GetObjectItemCaseSensitive(entry, "id");
-  client_version = cJSON_GetObjectItemCaseSensitive(entry, "version");
-  user_agent = cJSON_GetObjectItemCaseSensitive(entry, "userAgent");
-  valid = cJSON_IsNumber(version) && version->valueint == 1 &&
-          cJSON_IsString(name) && cJSON_IsString(id) &&
-          cJSON_IsString(client_version) && cJSON_IsString(user_agent) &&
-          yt_copy_field(client->name, sizeof(client->name), name->valuestring) &&
-          yt_copy_field(client->id, sizeof(client->id), id->valuestring) &&
-          yt_copy_field(client->version, sizeof(client->version),
-                     client_version->valuestring) &&
-          yt_copy_field(client->user_agent, sizeof(client->user_agent),
-                     user_agent->valuestring);
-  cJSON_Delete(document);
-  return valid;
-}
-
-YTStatus yt_innertube_load_client(YTHttpSession *session,
-                                  YTInnertubeClient *client) {
-  char *cached;
-  size_t cached_length;
-  int64_t now;
-
+YTStatus yt_innertube_load_client(YTInnertubeClient *client) {
   if (client == NULL)
     return YT_ERR_INVALID_RESPONSE;
   memset(client, 0, sizeof(*client));
-  cached = NULL;
-  cached_length = 0;
-  now = yt_http_session_now(session);
-  if (yt_http_session_cache_get(session, YT_CACHE_CLIENT_MANIFEST,
-                                YT_CLIENT_MANIFEST_KEY, now, &cached,
-                                &cached_length) == YT_CACHE_OK) {
-    if (parse_client_manifest(cached, cached_length, client)) {
-      free(cached);
-      return YT_OK;
-    }
-    free(cached);
-    yt_http_session_cache_remove(session, YT_CACHE_CLIENT_MANIFEST,
-                                 YT_CLIENT_MANIFEST_KEY);
-  }
-  if (!parse_client_manifest(builtin_client_manifest,
-                             sizeof(builtin_client_manifest) - 1, client))
+  if (!yt_copy_field(client->name, sizeof(client->name), YT_CLIENT_NAME) ||
+      !yt_copy_field(client->id, sizeof(client->id), YT_CLIENT_NAME_ID) ||
+      !yt_copy_field(client->version, sizeof(client->version),
+                     YT_CLIENT_VERSION) ||
+      !yt_copy_field(client->user_agent, sizeof(client->user_agent),
+                     YT_USER_AGENT))
     return YT_ERR_INVALID_RESPONSE;
-  yt_http_session_cache_put(session, YT_CACHE_CLIENT_MANIFEST,
-                            YT_CLIENT_MANIFEST_KEY, builtin_client_manifest,
-                            sizeof(builtin_client_manifest) - 1,
-                            now == 0 ? 0 : now + YT_CLIENT_MANIFEST_TTL);
   return YT_OK;
-}
-
-static const char *successful_client_key(int authenticated) {
-  return authenticated ? "last-authenticated" : "last-anonymous";
-}
-
-void yt_innertube_prefer_recent_client(YTHttpSession *session,
-                                       YTInnertubeClient *client,
-                                       int authenticated) {
-  char *cached;
-  size_t length;
-  const char *key = successful_client_key(authenticated);
-  cached = NULL;
-  length = 0;
-  if (yt_http_session_cache_get(session, YT_CACHE_SUCCESSFUL_CLIENT, key,
-                                yt_http_session_now(session), &cached, &length) ==
-      YT_CACHE_OK) {
-    /* There is currently one client. Validate the cache now so adding more
-     * clients later cannot select an unknown or stale definition. */
-    if (length != strlen(client->name) ||
-        memcmp(cached, client->name, length) != 0)
-      yt_http_session_cache_remove(session, YT_CACHE_SUCCESSFUL_CLIENT, key);
-    free(cached);
-  }
-}
-
-void yt_innertube_remember_successful_client(YTHttpSession *session,
-                                       const YTInnertubeClient *client,
-                                       int authenticated) {
-  int64_t now = yt_http_session_now(session);
-  yt_http_session_cache_put(session, YT_CACHE_SUCCESSFUL_CLIENT,
-                            successful_client_key(authenticated), client->name,
-                            strlen(client->name),
-                            now == 0 ? 0 : now + YT_SUCCESSFUL_CLIENT_TTL);
 }
 
 static cJSON *create_player_request(const char *video_id,

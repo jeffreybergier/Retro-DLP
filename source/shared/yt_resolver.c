@@ -200,13 +200,12 @@ static YTStatus resolve_exact_selection_document(
   return status;
 }
 
-static YTStatus resolve_video(YTHttpSession *provided_session,
-                              const char *input, const char *cookie_file,
-                              int max_height, int try_adaptive,
-                              const char *format_expression, int list_only,
-                              YTMediaSelection *result,
-                              YTProgressCallback progress,
-                              void *progress_opaque) {
+YTStatus yt_resolver_resolve(YTHttpSession *session, const char *input,
+                             const char *cookie_file, int max_height,
+                             int try_adaptive, YTMediaSelection *result,
+                             const char *format_expression, int list_only,
+                             YTProgressCallback progress,
+                             void *progress_opaque) {
   char video_id[12];
   char failure_key[65];
   YTInnertubeClient client;
@@ -217,17 +216,17 @@ static YTStatus resolve_video(YTHttpSession *provided_session,
   char *bootstrap_player_url;
   int signature_timestamp;
   YTStatus status;
-  YTHttpSession *session;
   YTAccountContext account;
-  int owns_session;
 
-  if (result == NULL || max_height <= 0 ||
+  if (!list_only && format_expression != NULL &&
+      !yt_format_expression_valid(format_expression))
+    return YT_ERR_INVALID_FORMAT;
+  if (session == NULL || result == NULL || max_height <= 0 ||
+      (cookie_file != NULL && cookie_file[0] == '\0') ||
       (try_adaptive && max_height != 720 && max_height != 1080))
     return YT_ERR_INVALID_RESPONSE;
   memset(result, 0, sizeof(*result));
   memset(&account, 0, sizeof(account));
-  session = provided_session;
-  owns_session = provided_session == NULL;
   document = NULL;
   bootstrap_player_url = NULL;
   status = yt_extract_video_id(input, video_id);
@@ -240,13 +239,8 @@ static YTStatus resolve_video(YTHttpSession *provided_session,
     report_progress(progress, progress_opaque,
                     "using authenticated YouTube cookies");
   }
-  if (owns_session) {
-    status = yt_http_session_create(cookie_file, &session);
-    if (status != YT_OK)
-      goto finished;
-  }
   report_progress(progress, progress_opaque, "loading client configuration");
-  status = yt_innertube_load_client(session, &client);
+  status = yt_innertube_load_client(&client);
   if (status != YT_OK)
     goto finished;
   signature_timestamp = 0;
@@ -257,7 +251,6 @@ static YTStatus resolve_video(YTHttpSession *provided_session,
                                           &bootstrap_player_url);
   if (status != YT_OK)
     goto finished;
-  yt_innertube_prefer_recent_client(session, &client, account.authenticated);
   failure_key[0] = '\0';
   if (!list_only) {
     if (format_expression == NULL)
@@ -334,8 +327,6 @@ static YTStatus resolve_video(YTHttpSession *provided_session,
     }
   }
   if (status == YT_OK) {
-    yt_innertube_remember_successful_client(session, &client,
-                                            account.authenticated);
     if (failure_key[0] != '\0')
       yt_failure_cache_clear(session, failure_key);
   } else if (failure_key[0] != '\0' &&
@@ -347,133 +338,8 @@ static YTStatus resolve_video(YTHttpSession *provided_session,
 finished:
   cJSON_Delete(document);
   free(bootstrap_player_url);
-  if (owns_session)
-    yt_http_session_destroy(session);
   yt_account_context_free(&account);
   return status;
-}
-
-YTStatus yt_resolve_video_with_progress(const char *input,
-                                        YTMediaRequest *result,
-                                        YTProgressCallback progress,
-                                        void *progress_opaque) {
-  YTMediaSelection selection;
-  if (result == NULL)
-    return YT_ERR_INVALID_RESPONSE;
-  memset(&selection, 0, sizeof(selection));
-  YTStatus status = resolve_video(NULL, input, NULL, YT_DEFAULT_MAX_HEIGHT, 0,
-                                  NULL, 0, &selection, progress,
-                                  progress_opaque);
-  if (status == YT_OK) {
-    *result = selection.video;
-    memset(&selection.video, 0, sizeof(selection.video));
-  }
-  yt_media_selection_free(&selection);
-  return status;
-}
-
-YTStatus yt_resolve_video_with_cookies_and_progress(
-    const char *input, const char *cookie_file, YTMediaRequest *result,
-    YTProgressCallback progress, void *progress_opaque) {
-  if (cookie_file == NULL || cookie_file[0] == '\0')
-    return YT_ERR_COOKIE_FILE;
-  {
-    YTMediaSelection selection;
-    YTStatus status;
-    if (result == NULL)
-      return YT_ERR_INVALID_RESPONSE;
-    memset(&selection, 0, sizeof(selection));
-    status = resolve_video(NULL, input, cookie_file, YT_DEFAULT_MAX_HEIGHT, 0,
-                           NULL, 0, &selection, progress, progress_opaque);
-    if (status == YT_OK) {
-      *result = selection.video;
-      memset(&selection.video, 0, sizeof(selection.video));
-    }
-    yt_media_selection_free(&selection);
-    return status;
-  }
-}
-
-YTStatus yt_resolve_video_with_http_session_and_progress(
-    YTHttpSession *session, const char *input, const char *cookie_file,
-    YTMediaRequest *result, YTProgressCallback progress,
-    void *progress_opaque) {
-  if (session == NULL || (cookie_file != NULL && cookie_file[0] == '\0'))
-    return YT_ERR_INVALID_RESPONSE;
-  return yt_resolve_video_with_http_session_and_max_height_and_progress(
-      session, input, cookie_file, YT_DEFAULT_MAX_HEIGHT, result, progress,
-      progress_opaque);
-}
-
-YTStatus yt_resolve_video_with_http_session_and_max_height_and_progress(
-    YTHttpSession *session, const char *input, const char *cookie_file,
-    int max_height, YTMediaRequest *result, YTProgressCallback progress,
-    void *progress_opaque) {
-  if (session == NULL || (cookie_file != NULL && cookie_file[0] == '\0'))
-    return YT_ERR_INVALID_RESPONSE;
-  {
-    YTMediaSelection selection;
-    YTStatus status;
-    if (result == NULL)
-      return YT_ERR_INVALID_RESPONSE;
-    memset(&selection, 0, sizeof(selection));
-    status = resolve_video(session, input, cookie_file, max_height, 0, NULL, 0,
-                           &selection, progress, progress_opaque);
-    if (status == YT_OK) {
-      *result = selection.video;
-      memset(&selection.video, 0, sizeof(selection.video));
-    }
-    yt_media_selection_free(&selection);
-    return status;
-  }
-}
-
-YTStatus yt_resolve_video_with_http_session_and_size_and_progress(
-    YTHttpSession *session, const char *input, const char *cookie_file,
-    int max_height, int try_adaptive, YTMediaSelection *result,
-    YTProgressCallback progress, void *progress_opaque) {
-  if (session == NULL || (cookie_file != NULL && cookie_file[0] == '\0'))
-    return YT_ERR_INVALID_RESPONSE;
-  return resolve_video(session, input, cookie_file, max_height, try_adaptive,
-                       NULL, 0, result, progress, progress_opaque);
-}
-
-YTStatus yt_resolve_video_with_http_session_and_format_and_progress(
-    YTHttpSession *session, const char *input, const char *cookie_file,
-    const char *format_expression, int list_only, YTMediaSelection *result,
-    YTProgressCallback progress, void *progress_opaque) {
-  if (session == NULL || result == NULL ||
-      (cookie_file != NULL && cookie_file[0] == '\0') ||
-      (!list_only && !yt_format_expression_valid(format_expression)))
-    return !list_only && !yt_format_expression_valid(format_expression)
-               ? YT_ERR_INVALID_FORMAT
-               : YT_ERR_INVALID_RESPONSE;
-  return resolve_video(session, input, cookie_file, YT_DEFAULT_MAX_HEIGHT, 0,
-                       format_expression, list_only, result, progress,
-                       progress_opaque);
-}
-
-YTStatus yt_resolve_video(const char *input, YTMediaRequest *result) {
-  return yt_resolve_video_with_progress(input, result, NULL, NULL);
-}
-
-YTStatus yt_classify_media_http_status(long http_status) {
-  if (http_status == 403)
-    return YT_ERR_PO_TOKEN_REQUIRED;
-  if (http_status >= 200 && http_status < 400)
-    return YT_OK;
-  return YT_ERR_HTTP;
-}
-
-YTStatus yt_probe_media_head(const YTMediaRequest *media, long *http_status) {
-  YTStatus status;
-
-  if (media == NULL || media->url == NULL)
-    return YT_ERR_INVALID_RESPONSE;
-  status = yt_http_head(media->url, media->user_agent, http_status);
-  if (status != YT_OK)
-    return status;
-  return yt_classify_media_http_status(*http_status);
 }
 
 void yt_media_request_free(YTMediaRequest *media) {

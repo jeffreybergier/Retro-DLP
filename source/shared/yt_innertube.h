@@ -16,14 +16,7 @@ typedef struct {
   "Mozilla/5.0 (iPad; CPU OS 16_7_10 like Mac OS X) AppleWebKit/605.1.15 " \
   "(KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1,gzip(gfe)"
 
-YTStatus yt_innertube_load_client(YTHttpSession *session,
-                                  YTInnertubeClient *client);
-void yt_innertube_prefer_recent_client(YTHttpSession *session,
-                                       YTInnertubeClient *client,
-                                       int authenticated);
-void yt_innertube_remember_successful_client(
-    YTHttpSession *session, const YTInnertubeClient *client,
-    int authenticated);
+YTStatus yt_innertube_load_client(YTInnertubeClient *client);
 YTStatus yt_innertube_call_player(YTHttpSession *session,
                                   const YTAccountContext *account,
                                   const char *video_id,

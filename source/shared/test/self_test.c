@@ -18,12 +18,17 @@
 #include "yt_playlist.h"
 #include "yt_playlist_internal.h"
 #include "yt_resolver.h"
+#include "yt_formats_test_support.h"
 
 #define SELF_TEST_VIDEO_ID "YE7VzlLtp-4"
 
 static void announce_test(const char *description) {
   printf("RUN: %s\n", description);
   fflush(stdout);
+}
+
+static int has_mp4_ftyp(const unsigned char *prefix, size_t length) {
+  return prefix != NULL && length >= 8 && memcmp(prefix + 4, "ftyp", 4) == 0;
 }
 
 static int test_cjson(void) {
@@ -434,13 +439,13 @@ static int test_offline_player_fixtures(void) {
   YTMediaSelection selection;
   YTStatus status;
 
-  if (!yt_http_has_mp4_ftyp(mp4_prefix, sizeof(mp4_prefix)) ||
-      yt_http_has_mp4_ftyp((const unsigned char *)"<html>error", 11)) {
+  if (!has_mp4_ftyp(mp4_prefix, sizeof(mp4_prefix)) ||
+      has_mp4_ftyp((const unsigned char *)"<html>error", 11)) {
     fprintf(stderr, "FAIL: MP4 download prefix validation\n");
     return 1;
   }
 
-  status = yt_parse_player_response(retro_dlp_player_itag18_fixture,
+  status = yt_test_parse_player_response(retro_dlp_player_itag18_fixture,
                                     retro_dlp_player_itag18_fixture_length,
                                     &media);
   if (status != YT_OK || media.itag != 22 || media.width != 1280 ||
@@ -455,7 +460,7 @@ static int test_offline_player_fixtures(void) {
   }
   yt_media_request_free(&media);
 
-  status = yt_parse_player_response_with_adaptive_size(
+  status = yt_test_parse_player_response_with_adaptive_size(
       adaptive_sizes, sizeof(adaptive_sizes) - 1, 720, &selection);
   if (status != YT_OK || !selection.adaptive ||
       selection.video.itag != 136 || selection.video.height != 720 ||
@@ -478,7 +483,7 @@ static int test_offline_player_fixtures(void) {
     return 1;
   }
 
-  status = yt_parse_player_response_with_format(
+  status = yt_test_parse_player_response_with_format(
       adaptive_sizes, sizeof(adaptive_sizes) - 1, "136+140", &selection);
   if (status != YT_OK || !selection.adaptive ||
       selection.video.itag != 136 || selection.audio.itag != 140 ||
@@ -501,7 +506,7 @@ static int test_offline_player_fixtures(void) {
   }
   yt_media_selection_free(&selection);
 
-  status = yt_parse_player_response_with_format(
+  status = yt_test_parse_player_response_with_format(
       adaptive_sizes, sizeof(adaptive_sizes) - 1, "136+599", &selection);
   if (status != YT_OK || !selection.adaptive ||
       selection.video.itag != 136 || selection.audio.itag != 599) {
@@ -512,7 +517,7 @@ static int test_offline_player_fixtures(void) {
   }
   yt_media_selection_free(&selection);
 
-  status = yt_parse_player_response_with_format(
+  status = yt_test_parse_player_response_with_format(
       adaptive_sizes, sizeof(adaptive_sizes) - 1, "999+140/18", &selection);
   if (status != YT_OK || selection.adaptive || selection.video.itag != 18 ||
       selection.format_id == NULL || strcmp(selection.format_id, "18") != 0) {
@@ -523,7 +528,7 @@ static int test_offline_player_fixtures(void) {
   }
   yt_media_selection_free(&selection);
 
-  status = yt_parse_player_response_with_format(
+  status = yt_test_parse_player_response_with_format(
       adaptive_sizes, sizeof(adaptive_sizes) - 1, "137+1399", &selection);
   if (status != YT_ERR_FORMAT_UNAVAILABLE || selection.format_count == 0) {
     fprintf(stderr, "FAIL: unavailable format inventory\n");
@@ -533,7 +538,7 @@ static int test_offline_player_fixtures(void) {
   }
   yt_media_selection_free(&selection);
 
-  status = yt_parse_player_response_with_adaptive_size(
+  status = yt_test_parse_player_response_with_adaptive_size(
       progressive_sizes, sizeof(progressive_sizes) - 1, 720, &selection);
   if (status != YT_OK || selection.adaptive || selection.video.itag != 22 ||
       selection.video.height != 720 || selection.audio.url != NULL) {
@@ -544,7 +549,7 @@ static int test_offline_player_fixtures(void) {
   }
   yt_media_selection_free(&selection);
 
-  status = yt_parse_player_response_with_adaptive_size(
+  status = yt_test_parse_player_response_with_adaptive_size(
       adaptive_sizes, sizeof(adaptive_sizes) - 1, 1080, &selection);
   if (status != YT_OK || !selection.adaptive ||
       selection.video.itag != 137 || selection.video.height != 1080 ||
@@ -556,7 +561,7 @@ static int test_offline_player_fixtures(void) {
   }
   yt_media_selection_free(&selection);
 
-  status = yt_parse_player_response_with_adaptive_size(
+  status = yt_test_parse_player_response_with_adaptive_size(
       adaptive_sizes, sizeof(adaptive_sizes) - 1, 480, &selection);
   if (status != YT_ERR_INVALID_RESPONSE) {
     fprintf(stderr, "FAIL: adaptive selection accepted 480p\n");
@@ -565,7 +570,7 @@ static int test_offline_player_fixtures(void) {
     return 1;
   }
 
-  status = yt_parse_player_response_with_max_height(
+  status = yt_test_parse_player_response_with_max_height(
       adaptive_sizes, sizeof(adaptive_sizes) - 1, 480, &media);
   if (status != YT_OK || media.itag != 18 || media.height != 360) {
     fprintf(stderr, "FAIL: 480p path did not remain progressive-only\n");
@@ -575,7 +580,7 @@ static int test_offline_player_fixtures(void) {
   }
   yt_media_request_free(&media);
 
-  status = yt_parse_player_response_with_max_height(
+  status = yt_test_parse_player_response_with_max_height(
       retro_dlp_player_itag18_fixture,
       retro_dlp_player_itag18_fixture_length, 480, &media);
   if (status != YT_OK || media.itag != 18 || media.width != 640 ||
@@ -589,7 +594,7 @@ static int test_offline_player_fixtures(void) {
   }
   yt_media_request_free(&media);
 
-  status = yt_parse_player_response(progressive_sizes,
+  status = yt_test_parse_player_response(progressive_sizes,
                                     sizeof(progressive_sizes) - 1, &media);
   if (status != YT_OK || media.itag != 22 || media.height != 720) {
     fprintf(stderr, "FAIL: default 720p progressive format selection\n");
@@ -599,7 +604,7 @@ static int test_offline_player_fixtures(void) {
   }
   yt_media_request_free(&media);
 
-  status = yt_parse_player_response_with_max_height(
+  status = yt_test_parse_player_response_with_max_height(
       progressive_sizes, sizeof(progressive_sizes) - 1, 480, &media);
   if (status != YT_OK || media.itag != 18 || media.height != 360) {
     fprintf(stderr, "FAIL: 480p progressive format fallback\n");
@@ -609,7 +614,7 @@ static int test_offline_player_fixtures(void) {
   }
   yt_media_request_free(&media);
 
-  status = yt_parse_player_response_with_max_height(
+  status = yt_test_parse_player_response_with_max_height(
       progressive_sizes, sizeof(progressive_sizes) - 1, 1080, &media);
   if (status != YT_OK || media.itag != 37 || media.height != 1080) {
     fprintf(stderr, "FAIL: 1080p progressive format selection\n");
@@ -619,7 +624,7 @@ static int test_offline_player_fixtures(void) {
   }
   yt_media_request_free(&media);
 
-  status = yt_parse_player_response(direct_after_challenge,
+  status = yt_test_parse_player_response(direct_after_challenge,
                                     sizeof(direct_after_challenge) - 1, &media);
   if (status != YT_OK || media.url == NULL ||
       strstr(media.url, "sig=direct") == NULL ||
@@ -631,7 +636,7 @@ static int test_offline_player_fixtures(void) {
   }
   yt_media_request_free(&media);
 
-  status = yt_parse_player_response(
+  status = yt_test_parse_player_response(
       retro_dlp_player_n_challenge_fixture,
       retro_dlp_player_n_challenge_fixture_length, &media);
   if (status != YT_ERR_NO_PROGRESSIVE_MP4) {
@@ -641,7 +646,7 @@ static int test_offline_player_fixtures(void) {
     return 1;
   }
 
-  status = yt_parse_player_response(retro_dlp_player_unavailable_fixture,
+  status = yt_test_parse_player_response(retro_dlp_player_unavailable_fixture,
                                     retro_dlp_player_unavailable_fixture_length,
                                     &media);
   if (status != YT_ERR_UNAVAILABLE) {
@@ -649,15 +654,7 @@ static int test_offline_player_fixtures(void) {
     return 1;
   }
 
-  if (yt_classify_media_http_status(204) != YT_OK ||
-      yt_classify_media_http_status(302) != YT_OK ||
-      yt_classify_media_http_status(403) != YT_ERR_PO_TOKEN_REQUIRED ||
-      yt_classify_media_http_status(404) != YT_ERR_HTTP) {
-    fprintf(stderr, "FAIL: media HTTP status classification fixture\n");
-    return 1;
-  }
-
-  printf("PASS: deterministic player and HTTP classification fixtures\n");
+  printf("PASS: deterministic player fixtures\n");
   return 0;
 }
 
@@ -691,7 +688,7 @@ int retro_dlp_run_self_tests(void) {
   failures += test_default_output_path();
   announce_test("cJSON parsing");
   failures += test_cjson();
-  announce_test("deterministic player and HTTP fixtures");
+  announce_test("deterministic player fixtures");
   failures += test_offline_player_fixtures();
   announce_test("QuickJS evaluation");
   failures += test_quickjs();

@@ -526,14 +526,9 @@ rdlp_status rdlp_resolve_video(rdlp_context *context, const char *input,
                : operation_session(context, cookie_file, cookie_data,
                                    cookie_data_length, &session);
   if (status == YT_OK) {
-    if (format_expression != NULL)
-      status = yt_resolve_video_with_http_session_and_format_and_progress(
-          session, input, cookie_file, format_expression, 0, &created->value,
-          facade_progress, context);
-    else
-      status = yt_resolve_video_with_http_session_and_size_and_progress(
-          session, input, cookie_file, maximum_height, prefer_adaptive,
-          &created->value, facade_progress, context);
+    status = yt_resolver_resolve(
+        session, input, cookie_file, maximum_height, prefer_adaptive,
+        &created->value, format_expression, 0, facade_progress, context);
   }
   if (session != NULL)
     yt_http_session_set_cookies(session, NULL, NULL, 0);

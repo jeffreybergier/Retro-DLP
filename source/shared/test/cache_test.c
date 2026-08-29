@@ -106,48 +106,53 @@ static int exercise_cache(const char *temporary_home) {
       ++failures;
     }
   }
-  if (yt_cache_put(YT_CACHE_SUCCESSFUL_CLIENT, "last-anonymous", "ANDROID_VR",
-                   10, 2000) != YT_CACHE_OK ||
-      yt_cache_get(YT_CACHE_SUCCESSFUL_CLIENT, "last-anonymous", 1000, &loaded,
-                   &loaded_length) != YT_CACHE_OK ||
-      loaded_length != 10 || memcmp(loaded, "ANDROID_VR", 10) != 0) {
-    fprintf(stderr, "FAIL: successful-client cache\n");
-    ++failures;
-  }
-  free(loaded);
-  loaded = NULL;
-  if (yt_cache_put(YT_CACHE_CLIENT_MANIFEST, "one", payload,
+  if (yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, "one", payload,
                    sizeof(payload) - 1, 0) != YT_CACHE_OK ||
-      yt_cache_put(YT_CACHE_CLIENT_MANIFEST, "two", payload,
+      yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, "two", payload,
                    sizeof(payload) - 1, 0) != YT_CACHE_OK ||
-      yt_cache_put(YT_CACHE_CLIENT_MANIFEST, "three", payload,
+      yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, "three", payload,
+                   sizeof(payload) - 1, 0) != YT_CACHE_OK ||
+      yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, "four", payload,
+                   sizeof(payload) - 1, 0) != YT_CACHE_OK ||
+      yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, "five", payload,
                    sizeof(payload) - 1, 0) != YT_CACHE_OK) {
     fprintf(stderr, "FAIL: bounded cache writes\n");
     ++failures;
   }
   retained = 0;
   loaded = NULL;
-  if (yt_cache_get(YT_CACHE_CLIENT_MANIFEST, "one", 0, &loaded,
+  if (yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, "one", 0, &loaded,
                    &loaded_length) == YT_CACHE_OK)
     ++retained;
   free(loaded);
   loaded = NULL;
-  if (yt_cache_get(YT_CACHE_CLIENT_MANIFEST, "two", 0, &loaded,
+  if (yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, "two", 0, &loaded,
                    &loaded_length) == YT_CACHE_OK)
     ++retained;
   free(loaded);
   loaded = NULL;
-  if (yt_cache_get(YT_CACHE_CLIENT_MANIFEST, "three", 0, &loaded,
+  if (yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, "three", 0, &loaded,
                    &loaded_length) == YT_CACHE_OK)
     ++retained;
   free(loaded);
-  if (retained != 2) {
+  loaded = NULL;
+  if (yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, "four", 0, &loaded,
+                   &loaded_length) == YT_CACHE_OK)
+    ++retained;
+  free(loaded);
+  loaded = NULL;
+  if (yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, "five", 0, &loaded,
+                   &loaded_length) == YT_CACHE_OK)
+    ++retained;
+  free(loaded);
+  if (retained == 0 || retained > 4) {
     fprintf(stderr, "FAIL: bounded cache pruning\n");
     ++failures;
   }
   loaded = NULL;
-  yt_cache_key_for_string("fixture-player", key);
-  if (yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, key, 2000, &loaded,
+  if (yt_cache_put(YT_CACHE_PLAYER_JAVASCRIPT, "expiring", payload,
+                   sizeof(payload) - 1, 2000) != YT_CACHE_OK ||
+      yt_cache_get(YT_CACHE_PLAYER_JAVASCRIPT, "expiring", 2000, &loaded,
                    &loaded_length) != YT_CACHE_EXPIRED) {
     fprintf(stderr, "FAIL: cache expiry\n");
     ++failures;
@@ -164,10 +169,8 @@ static int exercise_cache(const char *temporary_home) {
     ++failures;
   }
   free(loaded);
-  yt_cache_clear(YT_CACHE_CLIENT_MANIFEST);
   yt_cache_clear(YT_CACHE_PLAYER_JAVASCRIPT);
   yt_cache_clear(YT_CACHE_FAILURE);
-  yt_cache_clear(YT_CACHE_SUCCESSFUL_CLIENT);
   if (failures == 0)
     printf("PASS: ~/.retro-dlp/cache atomic, versioned, bounded entries\n");
   return failures;
@@ -176,8 +179,6 @@ static int exercise_cache(const char *temporary_home) {
 static void cleanup_cache_test(const char *temporary_home) {
   static const char *const suffixes[] = {
       "/.retro-dlp/cache/v1/player-javascript",
-      "/.retro-dlp/cache/v1/client-manifest",
-      "/.retro-dlp/cache/v1/successful-client",
       "/.retro-dlp/cache/v1/failures",
       "/.retro-dlp/cache/v1",
       "/.retro-dlp/cache",

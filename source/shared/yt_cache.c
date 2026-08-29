@@ -33,10 +33,8 @@ typedef struct {
 } YTCachePolicy;
 
 static const YTCachePolicy cache_policies[] = {
-    {"client-manifest", 256U * 1024U, 512U * 1024U, 2},
     {"player-javascript", 8U * 1024U * 1024U, 16U * 1024U * 1024U, 4},
     {"preprocessed-player", 8U * 1024U * 1024U, 16U * 1024U * 1024U, 4},
-    {"successful-client", 64U * 1024U, 64U * 1024U, 2},
     {"failures", 64U * 1024U, 4U * 1024U * 1024U, 64}};
 
 static int relative_path_is_safe(const char *path) {

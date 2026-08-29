@@ -79,49 +79,12 @@ typedef void (*YTProgressCallback)(const char *message, void *opaque);
 #define YT_DEFAULT_MAX_HEIGHT 720
 
 YTStatus yt_extract_video_id(const char *input, char video_id[12]);
-YTStatus yt_parse_player_response(const char *json, size_t length,
-                                  YTMediaRequest *result);
-YTStatus yt_parse_player_response_with_max_height(const char *json,
-                                                  size_t length,
-                                                  int max_height,
-                                                  YTMediaRequest *result);
-YTStatus yt_parse_player_response_with_adaptive_size(
-    const char *json, size_t length, int max_height,
-    YTMediaSelection *result);
-YTStatus yt_parse_player_response_with_format(const char *json, size_t length,
-                                              const char *format_expression,
-                                              YTMediaSelection *result);
-YTStatus yt_parse_player_response_with_javascript(const char *json,
-                                                  size_t length,
-                                                  const char *player_source,
-                                                  YTMediaRequest *result);
-YTStatus yt_resolve_video(const char *input, YTMediaRequest *result);
-YTStatus yt_resolve_video_with_progress(const char *input,
-                                        YTMediaRequest *result,
-                                        YTProgressCallback progress,
-                                        void *progress_opaque);
-YTStatus yt_resolve_video_with_cookies_and_progress(
-    const char *input, const char *cookie_file, YTMediaRequest *result,
-    YTProgressCallback progress, void *progress_opaque);
-YTStatus yt_resolve_video_with_http_session_and_progress(
-    YTHttpSession *session, const char *input, const char *cookie_file,
-    YTMediaRequest *result, YTProgressCallback progress,
-    void *progress_opaque);
-YTStatus yt_resolve_video_with_http_session_and_max_height_and_progress(
-    YTHttpSession *session, const char *input, const char *cookie_file,
-    int max_height, YTMediaRequest *result, YTProgressCallback progress,
-    void *progress_opaque);
-YTStatus yt_resolve_video_with_http_session_and_size_and_progress(
+YTStatus yt_resolver_resolve(
     YTHttpSession *session, const char *input, const char *cookie_file,
     int max_height, int try_adaptive, YTMediaSelection *result,
-    YTProgressCallback progress, void *progress_opaque);
-YTStatus yt_resolve_video_with_http_session_and_format_and_progress(
-    YTHttpSession *session, const char *input, const char *cookie_file,
-    const char *format_expression, int list_only, YTMediaSelection *result,
+    const char *format_expression, int list_only,
     YTProgressCallback progress, void *progress_opaque);
 int yt_format_expression_valid(const char *expression);
-YTStatus yt_probe_media_head(const YTMediaRequest *media, long *http_status);
-YTStatus yt_classify_media_http_status(long http_status);
 const char *yt_resolver_user_agent(void);
 void yt_media_request_free(YTMediaRequest *media);
 void yt_format_info_free(YTFormatInfo *format);

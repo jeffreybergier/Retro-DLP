@@ -24,7 +24,8 @@ SHARED_SOURCES := $(CLI_SOURCES) $(CORE_SOURCES) $(DOWNLOAD_SOURCES)
 TEST_SOURCES := \
 	source/shared/test/cache_test.c source/shared/test/cookie_test.c \
 	source/shared/test/ejs_test.c source/shared/test/ejs_test_data.c \
-	source/shared/test/self_test.c source/shared/test/self_test_data.c
+	source/shared/test/self_test.c source/shared/test/self_test_data.c \
+	source/shared/test/yt_formats_test_support.c
 MACOS_COMMON_SOURCES := $(SHARED_SOURCES) source/macOS/platform.c
 IOS_COMMON_SOURCES := $(SHARED_SOURCES) source/iOS/platform.c
 CJSON_DIR := source/deps/cJSON
@@ -368,7 +369,7 @@ clean-macOS:
 	@echo "Cleaning retro-dlp macOS build artifacts..."
 	@for dir in $(MACOS_INT_DIR) $(MACOS_BUILD_DIR); do \
 		if [ -d "$$dir" ]; then \
-			find "$$dir" -mindepth 1 -maxdepth 1 ! -name .gitkeep \
+			find "$$dir" -mindepth 1 -maxdepth 1 \
 				-exec rm -rf {} +; \
 		fi; \
 	done
@@ -377,7 +378,7 @@ clean-iOS:
 	@echo "Cleaning retro-dlp iOS build artifacts..."
 	@for dir in $(IOS_INT_DIR) $(IOS_BUILD_DIR); do \
 		if [ -d "$$dir" ]; then \
-			find "$$dir" -mindepth 1 -maxdepth 1 ! -name .gitkeep \
+			find "$$dir" -mindepth 1 -maxdepth 1 \
 				-exec rm -rf {} +; \
 		fi; \
 	done
@@ -386,7 +387,7 @@ clean-linux:
 	@echo "Cleaning retro-dlp Linux build artifacts..."
 	@for dir in $(LINUX_INT_DIR) $(LINUX_BUILD_DIR); do \
 		if [ -d "$$dir" ]; then \
-			find "$$dir" -mindepth 1 -maxdepth 1 ! -name .gitkeep \
+			find "$$dir" -mindepth 1 -maxdepth 1 \
 				-exec rm -rf {} +; \
 		fi; \
 	done

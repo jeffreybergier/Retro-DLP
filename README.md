@@ -16,6 +16,10 @@ accomplish a singular goal:
   and video downloads
 - [cJSON](https://github.com/DaveGamble/cJSON): Parses JSON responses
 
+Implementation research is maintained as a short list of
+[upstream references](docs/upstream-references.md); the repository does not
+vendor yt-dlp as a build or test dependency.
+
 ## Features
 
 - Downloads videos from a video ID or URL

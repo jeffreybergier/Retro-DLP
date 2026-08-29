@@ -4,9 +4,6 @@
 [submodule "source/deps/QuickJS"]
 	path = source/deps/QuickJS
 	url = https://github.com/bellard/quickjs.git
-[submodule "inspiration/yt-dlp"]
-	path = inspiration/yt-dlp
-	url = https://github.com/yt-dlp/yt-dlp.git
 [submodule "source/deps/L-SMASH"]
 	path = source/deps/L-SMASH
 	url = https://github.com/l-smash/l-smash.git

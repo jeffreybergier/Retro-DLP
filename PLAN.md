@@ -415,24 +415,24 @@ Exit criteria:
 
 ## Phase 7: Migrate and remove superseded code
 
-- [ ] Migrate all tests to the public facade or explicit internal test seams.
-- [ ] Remove superseded `yt_resolve_video_with_*` entry points.
-- [ ] Move low-level player-response parsing into private/test-support headers
+- [x] Migrate all tests to the public facade or explicit internal test seams.
+- [x] Remove superseded `yt_resolve_video_with_*` entry points.
+- [x] Move low-level player-response parsing into private/test-support headers
   unless a concrete public use case exists.
-- [ ] Remove unused stateless HTTP wrappers and other unreachable internals.
-- [ ] Decide whether multi-client configuration is imminent. Retain the client
+- [x] Remove unused stateless HTTP wrappers and other unreachable internals.
+- [x] Decide whether multi-client configuration is imminent. Retain the client
   manifest and successful-client cache behind the context if it is; otherwise
   remove them until the second client is implemented.
-- [ ] Remove obsolete `.gitkeep` files.
-- [ ] Remove the unused `inspiration/yt-dlp` submodule and replace it with source
+- [x] Remove obsolete `.gitkeep` files.
+- [x] Remove the unused `inspiration/yt-dlp` submodule and replace it with source
   links in maintained documentation.
-- [ ] Replace or remove the research-transcript-style `CONTEXT.md`.
+- [x] Replace or remove the research-transcript-style `CONTEXT.md`.
 
 Exit criteria:
 
-- [ ] No unsupported legacy API remains in public headers.
-- [ ] No production source is retained solely because an obsolete test calls it.
-- [ ] Repository setup downloads only dependencies required to build or test.
+- [x] No unsupported legacy API remains in public headers.
+- [x] No production source is retained solely because an obsolete test calls it.
+- [x] Repository setup downloads only dependencies required to build or test.
 
 ## Phase 8: Documentation and stabilization
 

@@ -165,7 +165,7 @@ printf '%s\n' "$self_test_output" | \
   grep -q '^PASS: playlist bootstrap, pagination, duplicate, and error fixtures$' || \
   fail "test binary did not pass playlist page fixtures"
 printf '%s\n' "$self_test_output" | \
-  grep -q '^PASS: deterministic player and HTTP classification fixtures$' || \
+  grep -q '^PASS: deterministic player fixtures$' || \
   fail "test binary did not pass deterministic player fixtures"
 printf '%s\n' "$self_test_output" | grep -q '^PASS: retro-dlp self-test$' || \
   fail "test binary did not report success"

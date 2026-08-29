@@ -8,7 +8,7 @@
 #include "yt_ejs.h"
 #include "yt_ejs_assets.h"
 #include "yt_ejs_internal.h"
-#include "yt_resolver.h"
+#include "yt_formats_test_support.h"
 
 static const char *const signature_challenges[] = {
     RETRO_DLP_EJS_SIG_INPUT_1, RETRO_DLP_EJS_SIG_INPUT_2};
@@ -84,7 +84,7 @@ static int test_resolver_cipher_wiring(void) {
   YTStatus status;
   printf("RUN: resolver signatureCipher and n wiring\n");
   fflush(stdout);
-  status = yt_parse_player_response_with_javascript(
+  status = yt_test_parse_player_response_with_javascript(
       retro_dlp_ejs_cipher_response_fixture,
       (size_t)retro_dlp_ejs_cipher_response_fixture_length,
       retro_dlp_ejs_player_fixture, &media);
