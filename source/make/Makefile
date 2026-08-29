@@ -4,6 +4,8 @@ VERSION ?= $(shell awk '/<key>CFBundleShortVersionString<\/key>/{getline; gsub(/
 BUILD_DIR := build
 INTERMEDIATE_DIR := $(BUILD_DIR)/intermediates
 MACOS_BUILD_DIR := $(BUILD_DIR)/macOS
+MACOS_LEGACY_BUILD_DIR := $(MACOS_BUILD_DIR)/ppc-i386
+MACOS_MODERN_BUILD_DIR := $(MACOS_BUILD_DIR)/x86_64-arm64
 IOS_BUILD_DIR := $(BUILD_DIR)/iOS
 LINUX_BUILD_DIR := $(BUILD_DIR)/linux
 
@@ -59,6 +61,8 @@ LINUX_LIBRARY := $(LINUX_BUILD_DIR)/libretrodlp.a
 LINUX_DOWNLOAD_LIBRARY := $(LINUX_BUILD_DIR)/libretrodlp-download.a
 MACOS_LIBRARY := $(MACOS_BUILD_DIR)/libretrodlp.a
 MACOS_DOWNLOAD_LIBRARY := $(MACOS_BUILD_DIR)/libretrodlp-download.a
+MACOS_LEGACY_PROGRAM := $(MACOS_LEGACY_BUILD_DIR)/$(PROGRAM)
+MACOS_MODERN_PROGRAM := $(MACOS_MODERN_BUILD_DIR)/$(PROGRAM)
 IOS_LIBRARY := $(IOS_BUILD_DIR)/libretrodlp.a
 IOS_DOWNLOAD_LIBRARY := $(IOS_BUILD_DIR)/libretrodlp-download.a
 LINUX_CONSUMER_TEST_SOURCE := source/linux/test/public_consumer.c
@@ -195,7 +199,8 @@ $(IOS_INT_DIR)/source/shared/test/self_test.o: \
 
 release: macOS iOS
 
-macOS: validate $(MACOS_BUILD_DIR)/$(PROGRAM) $(MACOS_LIBRARY) \
+macOS: validate $(MACOS_LEGACY_PROGRAM) $(MACOS_MODERN_PROGRAM) \
+	$(MACOS_LIBRARY) \
 	$(MACOS_DOWNLOAD_LIBRARY) $(MACOS_CA_BUNDLE)
 
 iOS: validate-iOS $(IOS_BUILD_DIR)/$(PROGRAM) $(IOS_LIBRARY) \
@@ -253,9 +258,14 @@ sanitize:
 		CFLAGS="-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined" \
 		LDFLAGS="-fsanitize=address,undefined" test
 
-$(MACOS_BUILD_DIR)/$(PROGRAM): $(PPC_BINARY) $(I386_BINARY) \
-		$(X86_64_BINARY) $(ARM64_BINARY)
-	@echo " [5/5] Merging quad-fat binary (ppc, i386, x86_64, arm64)..."
+$(MACOS_LEGACY_PROGRAM): $(PPC_BINARY) $(I386_BINARY)
+	@echo " [5/5] Merging legacy binary (ppc, i386)..."
+	@mkdir -p $(dir $@)
+	@$(LIPO) -create $^ -output $@
+	@echo "  > $@"
+
+$(MACOS_MODERN_PROGRAM): $(X86_64_BINARY) $(ARM64_BINARY)
+	@echo " [5/5] Merging modern binary (x86_64, arm64)..."
 	@mkdir -p $(dir $@)
 	@$(LIPO) -create $^ -output $@
 	@echo "  > $@"

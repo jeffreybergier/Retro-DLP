@@ -58,11 +58,13 @@ So if you authenticate with cookies, **please be careful.**
 
 | Platform | Architectures | Minimum OS | Tested |
 |---|---|---|---|
-| macOS | PowerPC, i386, x86_64, arm64 | Mac OS X 10.4+ | 10.4 (PPC), 10.5 (PPC), 15 (arm64) |
+| macOS legacy | PowerPC, i386 | Mac OS X 10.4+ | 10.4 (PPC), 10.5 (PPC) |
+| macOS modern | x86_64, arm64 | OS X 10.9+ (Intel), macOS 11+ (Apple Silicon) | macOS 15 (arm64) |
 | iOS | armv7, arm64 | iOS 5+ | iPhone 5 iOS 6 |
 
-The macOS release contains one quad-fat executable. The iOS release contains
-one universal armv7/arm64 executable and requires a jailbroken device.
+The macOS release provides separate `ppc-i386` and `x86_64-arm64` archives so
+each OS selects from compatible executable slices. The iOS release contains one
+universal armv7/arm64 executable and requires a jailbroken device.
 
 ## Install
 
@@ -73,10 +75,14 @@ bundle for HTTPS.
 
 ### Mac
 
-Unzip the macOS release and put both files wherever you want. For example:
+Download the `ppc-i386` archive for PowerPC Macs or Intel Macs running OS X
+10.4 through 10.8. Download the `x86_64-arm64` archive for Intel Macs running
+OS X 10.9 or newer and for Apple Silicon Macs. Unzip it and put both files
+wherever you want. For example:
 
 ```sh
-unzip Retro-DLP-X.Y.Z-macOS.zip
+unzip Retro-DLP-X.Y.Z-macOS-ppc-i386.zip
+# Or: unzip Retro-DLP-X.Y.Z-macOS-x86_64-arm64.zip
 mkdir -p ~/bin
 mv retro-dlp cacert.pem ~/bin/
 chmod +x ~/bin/retro-dlp
@@ -84,14 +90,6 @@ chmod +x ~/bin/retro-dlp
 ```
 
 Add `~/bin` to your `PATH` if your shell does not already include it.
-
-On a 64-bit Intel Mac running OS X 10.4 through 10.8, the system may try to
-launch the x86_64 slice, which requires OS X 10.9. If `retro-dlp` does not
-launch, explicitly select the compatible i386 slice:
-
-```sh
-/usr/bin/arch -i386 ~/bin/retro-dlp [OPTIONS] VIDEO_ID_OR_URL
-```
 
 ### Jailbroken iPhone
 

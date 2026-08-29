@@ -13,14 +13,22 @@ release:
   commit_message: "Version {version}"
 
 targets:
-  - name: macOS
+  - name: macOS ppc-i386
     workdir: .
     build:
       - make clean-macOS
       - make macOS
-      - cd build/macOS && zip -9 retro-dlp-macOS.zip retro-dlp cacert.pem
-    artifact: build/macOS/retro-dlp-macOS.zip
-    asset_name: Retro-DLP-{version}-macOS.zip
+      - cd build/macOS && zip -9 -j retro-dlp-ppc-i386.zip ppc-i386/retro-dlp cacert.pem
+    artifact: build/macOS/retro-dlp-ppc-i386.zip
+    asset_name: Retro-DLP-{version}-macOS-ppc-i386.zip
+
+  - name: macOS x86_64-arm64
+    workdir: .
+    build:
+      - make macOS
+      - cd build/macOS && zip -9 -j retro-dlp-x86_64-arm64.zip x86_64-arm64/retro-dlp cacert.pem
+    artifact: build/macOS/retro-dlp-x86_64-arm64.zip
+    asset_name: Retro-DLP-{version}-macOS-x86_64-arm64.zip
 
   - name: iOS
     workdir: .

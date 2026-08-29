@@ -49,7 +49,8 @@ build/linux/libretrodlp.a
 build/macOS/libretrodlp.a
 build/iOS/libretrodlp.a
 build/linux/retro-dlp
-build/macOS/retro-dlp
+build/macOS/ppc-i386/retro-dlp
+build/macOS/x86_64-arm64/retro-dlp
 build/iOS/retro-dlp
 ```
 
