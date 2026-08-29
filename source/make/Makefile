@@ -54,6 +54,10 @@ LINUX_CONSUMER_TEST_PROGRAM := retro-dlp-consumer-test
 LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM := retro-dlp-download-consumer-test
 LINUX_LIBRARY := $(LINUX_BUILD_DIR)/libretrodlp.a
 LINUX_DOWNLOAD_LIBRARY := $(LINUX_BUILD_DIR)/libretrodlp-download.a
+MACOS_LIBRARY := $(MACOS_BUILD_DIR)/libretrodlp.a
+MACOS_DOWNLOAD_LIBRARY := $(MACOS_BUILD_DIR)/libretrodlp-download.a
+IOS_LIBRARY := $(IOS_BUILD_DIR)/libretrodlp.a
+IOS_DOWNLOAD_LIBRARY := $(IOS_BUILD_DIR)/libretrodlp-download.a
 LINUX_CONSUMER_TEST_SOURCE := source/linux/test/public_consumer.c
 LINUX_DOWNLOAD_CONSUMER_TEST_SOURCE := source/linux/test/download_consumer.c
 LINUX_TEST_SOURCES := $(filter-out source/shared/main.c, \
@@ -83,15 +87,23 @@ MAC_MIN_ARM64 := 11.0
 IOS_MIN_ARMV7 := 5.0
 IOS_MIN_ARM64 := 7.0
 
-CPPFLAGS := -Iinclude -Isource/shared -I$(QUICKJS_DIR) -Isource/deps/L-SMASH \
+CPPFLAGS ?=
+PROJECT_CPPFLAGS := -Iinclude -Isource/shared -I$(QUICKJS_DIR) \
+	-Isource/deps/L-SMASH \
 	-DRETRO_DLP_VERSION=\"$(VERSION)\"
-MACOS_BASE_CPPFLAGS := $(CPPFLAGS) -I$(ALTIVECCORE_DIR)/include
-LINUX_CPPFLAGS := $(CPPFLAGS) -I$(CJSON_DIR)
+MACOS_BASE_CPPFLAGS := $(CPPFLAGS) $(PROJECT_CPPFLAGS) \
+	-I$(ALTIVECCORE_DIR)/include
+LINUX_CPPFLAGS := $(CPPFLAGS) $(PROJECT_CPPFLAGS) -I$(CJSON_DIR)
 QUICKJS_CPPFLAGS := -I$(QUICKJS_DIR) -D_GNU_SOURCE \
 	-DCONFIG_VERSION=\"$(QUICKJS_VERSION)\"
 CFLAGS ?= -O3 -g
 LDFLAGS ?=
 LDLIBS ?=
+PREFIX ?= /usr/local
+DESTDIR ?=
+INSTALL ?= install
+ZERO_AR_DATE ?= 1
+export ZERO_AR_DATE
 COMMON_CFLAGS := $(CFLAGS) -std=c99 -Wall -Wextra -Werror
 QUICKJS_CFLAGS := $(CFLAGS) -std=gnu11 -Wall -Wextra -funsigned-char \
 	-fwrapv -Wno-sign-compare -Wno-missing-field-initializers \
@@ -129,6 +141,8 @@ LINUX_DOWNLOAD_CONSUMER_TEST_OBJECT := \
 include source/make/apple-gcc4.mk
 include source/make/clang.mk
 include source/make/ios-clang.mk
+
+OTOOL_MODERN ?= $(MODERN_BIN)/otool
 
 APPLICATION_DEPENDENCIES := $(LINUX_OBJECTS:.o=.d) \
 	$(LINUX_TEST_OBJECTS:.o=.d) $(PPC_OBJECTS:.o=.d) \
@@ -170,22 +184,50 @@ $(IOS_INT_DIR)/source/shared/test/self_test.o: \
 
 release: macOS iOS
 
-macOS: validate $(MACOS_BUILD_DIR)/$(PROGRAM) $(MACOS_CA_BUNDLE)
+macOS: validate $(MACOS_BUILD_DIR)/$(PROGRAM) $(MACOS_LIBRARY) \
+	$(MACOS_DOWNLOAD_LIBRARY) $(MACOS_CA_BUNDLE)
 
-iOS: validate-iOS $(IOS_BUILD_DIR)/$(PROGRAM) $(IOS_CA_BUNDLE)
+iOS: validate-iOS $(IOS_BUILD_DIR)/$(PROGRAM) $(IOS_LIBRARY) \
+	$(IOS_DOWNLOAD_LIBRARY) $(IOS_CA_BUNDLE)
 
 linux: $(LINUX_BUILD_DIR)/$(PROGRAM) $(LINUX_LIBRARY) \
 	$(LINUX_DOWNLOAD_LIBRARY)
 
 test: linux $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM) \
 		$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM) \
-		$(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM)
+		$(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM) \
+		validate-package
 	@echo "--- Running retro-dlp Linux tests ---"
 	@source/linux/test/cli_test.sh \
 		"$(abspath $(LINUX_BUILD_DIR)/$(PROGRAM))" \
 		"$(abspath $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM))"
 	@$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM)
 	@$(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM)
+
+install: linux
+	@$(INSTALL) -d "$(DESTDIR)$(PREFIX)/include/retrodlp" \
+		"$(DESTDIR)$(PREFIX)/lib" "$(DESTDIR)$(PREFIX)/bin"
+	@$(INSTALL) -m 644 include/retrodlp/retrodlp.h \
+		include/retrodlp/download.h include/retrodlp/version.h \
+		"$(DESTDIR)$(PREFIX)/include/retrodlp/"
+	@$(INSTALL) -m 644 $(LINUX_LIBRARY) $(LINUX_DOWNLOAD_LIBRARY) \
+		"$(DESTDIR)$(PREFIX)/lib/"
+	@$(INSTALL) -m 755 $(LINUX_BUILD_DIR)/$(PROGRAM) \
+		"$(DESTDIR)$(PREFIX)/bin/"
+
+validate-package: $(LINUX_LIBRARY) $(LINUX_DOWNLOAD_LIBRARY)
+	@source/linux/test/package_consumer_test.sh \
+		"$(abspath .)" "$(abspath $(BUILD_DIR))" "$(CC)" \
+		"$(CFLAGS)" "$(LDFLAGS)" "$(LDLIBS)"
+
+package-libraries: linux macOS iOS
+	@source/make/package-library.sh linux "$(BUILD_DIR)"
+	@source/make/package-library.sh macOS "$(BUILD_DIR)"
+	@source/make/package-library.sh iOS "$(BUILD_DIR)"
+
+validate-apple-artifacts: macOS iOS
+	@source/make/validate-apple-artifacts.sh \
+		"$(LIPO)" "$(LIPO_MODERN)" "$(OTOOL_MODERN)" "$(BUILD_DIR)"
 
 sanitize:
 	@$(MAKE) --no-print-directory -f source/make/Makefile \
@@ -199,6 +241,19 @@ $(MACOS_BUILD_DIR)/$(PROGRAM): $(PPC_BINARY) $(I386_BINARY) \
 	@mkdir -p $(dir $@)
 	@$(LIPO) -create $^ -output $@
 	@echo "  > $@"
+
+$(MACOS_LIBRARY): $(PPC_LIBRARY) $(I386_LIBRARY) $(X86_64_LIBRARY) \
+		$(ARM64_LIBRARY)
+	@echo "  > merging quad-fat resolver library"
+	@mkdir -p $(dir $@)
+	@$(LIPO) -create $^ -output $@
+
+$(MACOS_DOWNLOAD_LIBRARY): $(PPC_DOWNLOAD_LIBRARY) \
+		$(I386_DOWNLOAD_LIBRARY) $(X86_64_DOWNLOAD_LIBRARY) \
+		$(ARM64_DOWNLOAD_LIBRARY)
+	@echo "  > merging quad-fat optional download library"
+	@mkdir -p $(dir $@)
+	@$(LIPO) -create $^ -output $@
 
 $(MACOS_CA_BUNDLE): $(MACOS_CA_SOURCE)
 	@echo "  > copying macOS CA certificate bundle"
@@ -336,5 +391,6 @@ clean-linux:
 		fi; \
 	done
 
-.PHONY: release macOS iOS linux test sanitize validate validate-iOS clean \
+.PHONY: release macOS iOS linux test sanitize install package-libraries \
+	validate-package validate-apple-artifacts validate validate-iOS clean \
 	clean-macOS clean-iOS clean-linux

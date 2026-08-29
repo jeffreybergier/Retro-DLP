@@ -394,24 +394,24 @@ Exit criteria:
 
 ## Phase 6: Build and packaging
 
-- [ ] Add static archive targets for Linux, macOS, and iOS.
-- [ ] Produce the existing multi-architecture Apple outputs.
-- [ ] Document all transitive dependencies and platform link flags.
-- [ ] Add a consumer smoke test that links from outside the source tree.
-- [ ] Ensure Makefiles honor standard customization variables where compatible
+- [x] Add static archive targets for Linux, macOS, and iOS.
+- [x] Produce the existing multi-architecture Apple outputs.
+- [x] Document all transitive dependencies and platform link flags.
+- [x] Add a consumer smoke test that links from outside the source tree.
+- [x] Ensure Makefiles honor standard customization variables where compatible
   with the legacy toolchains.
-- [ ] Add installed-header validation and a public-header C99 compile test.
-- [ ] Pin release build containers by immutable digest.
-- [ ] Update release staging to include the desired library packages without
+- [x] Add installed-header validation and a public-header C99 compile test.
+- [x] Pin release build containers by immutable digest.
+- [x] Update release staging to include the desired library packages without
   changing existing CLI packages unexpectedly.
 
 Exit criteria:
 
-- [ ] Each platform produces a library and executable from the same core objects.
-- [ ] A standalone consumer links and runs on Linux.
-- [ ] Apple validation confirms expected architectures and minimum deployment
+- [x] Each platform produces a library and executable from the same core objects.
+- [x] A standalone consumer links and runs on Linux.
+- [x] Apple validation confirms expected architectures and minimum deployment
   targets.
-- [ ] Release inputs are reproducible and pinned.
+- [x] Release inputs are reproducible and pinned.
 
 ## Phase 7: Migrate and remove superseded code
 

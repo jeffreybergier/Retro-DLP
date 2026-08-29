@@ -1,6 +1,6 @@
 services:
   altivec:
-    image: ghcr.io/jeffreybergier/altivec-intelligence:latest
+    image: ghcr.io/jeffreybergier/altivec-intelligence@sha256:c3a8181f6f8fdd4d87857bbfece5d6b9068cac6575662879cd7c2685bae550a9
     working_dir: /repo/user
     environment:
       ALTIVEC_SDK_ARCHIVE_DIR: /altivec-sdk
@@ -15,7 +15,7 @@ services:
   altivec-sdk:
     profiles:
       - tools
-    image: ghcr.io/jeffreybergier/altivec-intelligence:latest
+    image: ghcr.io/jeffreybergier/altivec-intelligence@sha256:c3a8181f6f8fdd4d87857bbfece5d6b9068cac6575662879cd7c2685bae550a9
     environment:
       ALTIVEC_SDK_ARCHIVE_DIR: /altivec-sdk
     volumes:
@@ -25,7 +25,7 @@ services:
     entrypoint: altivec-sdk
 
   altivec-intelligence:
-    image: ghcr.io/jeffreybergier/altivec-intelligence:latest
+    image: ghcr.io/jeffreybergier/altivec-intelligence@sha256:c3a8181f6f8fdd4d87857bbfece5d6b9068cac6575662879cd7c2685bae550a9
     stdin_open: true
     tty: true
     environment:

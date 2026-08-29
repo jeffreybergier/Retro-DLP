@@ -27,6 +27,14 @@ LEGACY_QUICKJS_LIBRARIES := -lm -lpthread
 
 PPC_OBJECTS := $(LEGACY_MACOS_SOURCES:%.c=$(MACOS_INT_DIR)/ppc/%.o)
 I386_OBJECTS := $(LEGACY_MACOS_SOURCES:%.c=$(MACOS_INT_DIR)/i386/%.o)
+PPC_CORE_OBJECTS := $(CORE_SOURCES:%.c=$(MACOS_INT_DIR)/ppc/%.o) \
+	$(MACOS_INT_DIR)/ppc/source/macOS/platform.o
+I386_CORE_OBJECTS := $(CORE_SOURCES:%.c=$(MACOS_INT_DIR)/i386/%.o) \
+	$(MACOS_INT_DIR)/i386/source/macOS/platform.o
+PPC_DOWNLOAD_OBJECTS := \
+	$(DOWNLOAD_SOURCES:%.c=$(MACOS_INT_DIR)/ppc/%.o)
+I386_DOWNLOAD_OBJECTS := \
+	$(DOWNLOAD_SOURCES:%.c=$(MACOS_INT_DIR)/i386/%.o)
 
 PPC_BINARY := $(MACOS_INT_DIR)/ppc/$(PROGRAM)
 I386_BINARY := $(MACOS_INT_DIR)/i386/$(PROGRAM)
@@ -48,6 +56,26 @@ I386_LSMASH_OBJECTS := $(addprefix $(I386_LSMASH_INT_DIR)/, \
 	$(LSMASH_SOURCE_NAMES:.c=.o)) $(I386_LSMASH_INT_DIR)/stdio_compat.o
 PPC_LSMASH_LIBRARY := $(MACOS_INT_DIR)/ppc/liblsmash.a
 I386_LSMASH_LIBRARY := $(MACOS_INT_DIR)/i386/liblsmash.a
+PPC_LIBRARY := $(MACOS_INT_DIR)/ppc/libretrodlp.a
+I386_LIBRARY := $(MACOS_INT_DIR)/i386/libretrodlp.a
+PPC_DOWNLOAD_LIBRARY := $(MACOS_INT_DIR)/ppc/libretrodlp-download.a
+I386_DOWNLOAD_LIBRARY := $(MACOS_INT_DIR)/i386/libretrodlp-download.a
+
+$(PPC_LIBRARY): $(PPC_CORE_OBJECTS) $(PPC_QUICKJS_OBJECTS)
+	@echo "  > archiving ppc resolver library"
+	@$(AR_LEGACY) rcs $@ $^
+
+$(I386_LIBRARY): $(I386_CORE_OBJECTS) $(I386_QUICKJS_OBJECTS)
+	@echo "  > archiving i386 resolver library"
+	@$(AR_LEGACY) rcs $@ $^
+
+$(PPC_DOWNLOAD_LIBRARY): $(PPC_DOWNLOAD_OBJECTS) $(PPC_LSMASH_OBJECTS)
+	@echo "  > archiving ppc optional download library"
+	@$(AR_LEGACY) rcs $@ $^
+
+$(I386_DOWNLOAD_LIBRARY): $(I386_DOWNLOAD_OBJECTS) $(I386_LSMASH_OBJECTS)
+	@echo "  > archiving i386 optional download library"
+	@$(AR_LEGACY) rcs $@ $^
 
 $(PPC_BINARY): $(PPC_OBJECTS) $(ALTIVECCORE) $(PPC_QUICKJS_LIBRARY) \
 		$(PPC_LSMASH_LIBRARY)

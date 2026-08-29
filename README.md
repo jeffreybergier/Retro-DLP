@@ -219,7 +219,8 @@ docker compose run --rm altivec "make clean release"
 ```
 
 The builds land in `build/macOS` and `build/iOS`. Each directory contains the
-executable and its matching `cacert.pem`.
+executable, its matching `cacert.pem`, `libretrodlp.a`, and the optional
+`libretrodlp-download.a`.
 
 Optional: build the native Linux executable or run the offline test suite:
 
@@ -229,6 +230,20 @@ docker compose run --rm altivec "make test"
 ```
 
 The tests use local fixtures and never connect to the internet.
+
+Run `make package-libraries` after all three platform builds to create static
+library ZIPs. Linux supports staged installation with `make install
+PREFIX=/usr/local DESTDIR=/package/root`. Link flags, dependencies, and
+consumer validation are documented in [`docs/library-api.md`](docs/library-api.md).
+
+The container reference in `compose.yml` is pinned by digest so release inputs
+do not change implicitly. Update all occurrences together when intentionally
+adopting a newer Altivec Intelligence image.
+
+Release CI also requires `ALTIVEC_SDK_MACOS_105_SHA256`,
+`ALTIVEC_SDK_MACOS_113_SHA256`, and `ALTIVEC_SDK_IPHONEOS_84_SHA256` repository
+secrets matching the private SDK archives. Downloads are rejected unless both
+their HTTPS URL and immutable SHA-256 digest are configured.
 
 ## License
 

@@ -30,3 +30,29 @@ targets:
       - cd build/iOS && zip -9 retro-dlp-iOS.zip retro-dlp cacert.pem
     artifact: build/iOS/retro-dlp-iOS.zip
     asset_name: Retro-DLP-{version}-iOS.zip
+
+  - name: Linux Library
+    workdir: .
+    build:
+      - make linux
+      - source/make/package-library.sh linux build
+    artifact: build/linux/retro-dlp-library.zip
+    asset_name: Retro-DLP-{version}-linux-library.zip
+
+  - name: macOS Library
+    workdir: .
+    build:
+      - make macOS
+      - make validate-apple-artifacts
+      - source/make/package-library.sh macOS build
+    artifact: build/macOS/retro-dlp-library.zip
+    asset_name: Retro-DLP-{version}-macOS-library.zip
+
+  - name: iOS Library
+    workdir: .
+    build:
+      - make iOS
+      - make validate-apple-artifacts
+      - source/make/package-library.sh iOS build
+    artifact: build/iOS/retro-dlp-library.zip
+    asset_name: Retro-DLP-{version}-iOS-library.zip

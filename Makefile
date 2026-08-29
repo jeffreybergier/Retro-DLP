@@ -14,8 +14,21 @@ test:
 sanitize:
 	@$(MAKE) --no-print-directory -f $(BUILD_MAKEFILE) sanitize
 
+install:
+	@$(MAKE) --no-print-directory -f $(BUILD_MAKEFILE) install
+
+package-libraries:
+	@$(MAKE) --no-print-directory -f $(BUILD_MAKEFILE) package-libraries
+
+validate-package:
+	@$(MAKE) --no-print-directory -f $(BUILD_MAKEFILE) validate-package
+
+validate-apple-artifacts:
+	@$(MAKE) --no-print-directory -f $(BUILD_MAKEFILE) validate-apple-artifacts
+
 macOS iOS linux validate validate-iOS clean-macOS clean-iOS clean-linux:
 	@$(MAKE) --no-print-directory -f $(BUILD_MAKEFILE) $@
 
-.PHONY: release macOS iOS linux test sanitize validate validate-iOS clean \
+.PHONY: release macOS iOS linux test sanitize install package-libraries \
+	validate-package validate-apple-artifacts validate validate-iOS clean \
 	clean-macOS clean-iOS clean-linux

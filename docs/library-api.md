@@ -96,6 +96,38 @@ source tracks if muxing fails. Download events, cancellation, timeouts, and CA
 configuration are supplied through `rdlp_download_options`. The component does
 not write to stdout or stderr.
 
+## Building, installing, and linking
+
+`make linux`, `make macOS`, and `make iOS` each produce `retro-dlp`,
+`libretrodlp.a`, and `libretrodlp-download.a` in their corresponding
+`build/<platform>` directory. The Apple archives have the same architecture
+slices and are compiled with the same deployment targets as the executable.
+`make validate-apple-artifacts` inspects those properties after an Apple build.
+
+On Linux, `make install PREFIX=/usr/local` installs the executable, both
+archives, and only the supported headers. `DESTDIR` is supported for package
+staging. `make validate-package` stages an installation into a temporary
+prefix, compiles the public headers in strict C99 mode, then builds and runs a
+consumer from outside the source tree.
+
+Static-library consumers must specify Retro-DLP's transitive dependencies:
+
+| Platform | Resolver library link dependencies | Additional download dependency |
+|---|---|---|
+| Linux | `-lcurl -lcrypto -lm -ldl -lpthread` | None; L-SMASH is included in `libretrodlp-download.a` |
+| macOS | AltivecCore, `libcrypto.a`, Foundation, CoreFoundation, SystemConfiguration, `-lobjc -lm -lpthread` | None; L-SMASH is included |
+| iOS | AltivecCore, `libcrypto.a`, Foundation, CoreFoundation, SystemConfiguration, Security, `-lobjc -lm -lpthread` | None; L-SMASH is included |
+
+Place `libretrodlp-download.a` before `libretrodlp.a` when using the optional
+download API. QuickJS and cJSON implementation objects needed by the resolver
+are either included in the archive or supplied by AltivecCore on Apple; their
+headers are never required by consumers. The default transport uses libcurl,
+and direct OpenSSL SHA functions require the crypto library.
+
+`make package-libraries` creates one library ZIP per platform containing the
+public headers, both archives, this API guide, and the project license. Release
+automation publishes these alongside the unchanged CLI-only ZIPs.
+
 ## Custom transport
 
 A custom transport's `send` callback is synchronous. Request pointers and their

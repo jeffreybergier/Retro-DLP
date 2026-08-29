@@ -8,7 +8,8 @@ IOS_SOURCES := $(IOS_COMMON_SOURCES) $(IOS_EXTRA_SOURCES)
 IOS_EXTRA_CPPFLAGS ?=
 IOS_EXTRA_CFLAGS ?=
 IOS_EXTRA_LIBRARIES ?=
-IOS_CPPFLAGS := $(CPPFLAGS) -I$(IOS_ALTIVECCORE_DIR)/include \
+IOS_CPPFLAGS := $(CPPFLAGS) $(PROJECT_CPPFLAGS) \
+	-I$(IOS_ALTIVECCORE_DIR)/include \
 	$(IOS_EXTRA_CPPFLAGS)
 IOS_CFLAGS := $(COMMON_CFLAGS) -Wsign-conversion -Wfloat-conversion \
 	-Wno-unused-command-line-argument $(IOS_EXTRA_CFLAGS)
@@ -33,6 +34,9 @@ IOS_QUICKJS_SOURCE_NAMES := $(filter-out quickjs-libc.c, \
 	$(QUICKJS_SOURCE_NAMES))
 
 IOS_OBJECTS := $(IOS_SOURCES:%.c=$(IOS_INT_DIR)/%.o)
+IOS_CORE_OBJECTS := $(CORE_SOURCES:%.c=$(IOS_INT_DIR)/%.o) \
+	$(IOS_INT_DIR)/source/iOS/platform.o
+IOS_DOWNLOAD_OBJECTS := $(DOWNLOAD_SOURCES:%.c=$(IOS_INT_DIR)/%.o)
 IOS_BINARY := $(IOS_BUILD_DIR)/$(PROGRAM)
 IOS_QUICKJS_INT_DIR := $(IOS_INT_DIR)/QuickJS
 IOS_QUICKJS_OBJECTS := $(addprefix $(IOS_QUICKJS_INT_DIR)/, \
@@ -52,6 +56,16 @@ IOS_ARMV7_LSMASH_ARCH_FLAGS := -target armv7-apple-ios$(IOS_MIN_ARMV7) \
 	-arch armv7 -miphoneos-version-min=$(IOS_MIN_ARMV7)
 IOS_ARM64_LSMASH_ARCH_FLAGS := -target arm64-apple-ios$(IOS_MIN_ARM64) \
 	-arch arm64 -miphoneos-version-min=$(IOS_MIN_ARM64)
+
+$(IOS_LIBRARY): $(IOS_CORE_OBJECTS) $(IOS_QUICKJS_OBJECTS)
+	@echo "  > archiving universal iOS resolver library"
+	@mkdir -p $(dir $@)
+	@$(LIBTOOL_MODERN) -static -o $@ $^
+
+$(IOS_DOWNLOAD_LIBRARY): $(IOS_DOWNLOAD_OBJECTS) $(IOS_LSMASH_LIBRARY)
+	@echo "  > archiving universal iOS optional download library"
+	@mkdir -p $(dir $@)
+	@$(LIBTOOL_MODERN) -static -o $@ $^
 
 $(IOS_BINARY): $(IOS_OBJECTS) $(IOS_ALTIVECCORE) \
 		$(IOS_QUICKJS_OBJECTS) $(IOS_LSMASH_LIBRARY)

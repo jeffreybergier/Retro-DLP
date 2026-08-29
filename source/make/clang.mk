@@ -24,6 +24,15 @@ MODERN_QUICKJS_LIBRARIES := -lm -lpthread
 
 X86_64_OBJECTS := $(MODERN_MACOS_SOURCES:%.c=$(MACOS_INT_DIR)/x86_64/%.o)
 ARM64_OBJECTS := $(MODERN_MACOS_SOURCES:%.c=$(MACOS_INT_DIR)/arm64/%.o)
+X86_64_CORE_OBJECTS := \
+	$(CORE_SOURCES:%.c=$(MACOS_INT_DIR)/x86_64/%.o) \
+	$(MACOS_INT_DIR)/x86_64/source/macOS/platform.o
+ARM64_CORE_OBJECTS := $(CORE_SOURCES:%.c=$(MACOS_INT_DIR)/arm64/%.o) \
+	$(MACOS_INT_DIR)/arm64/source/macOS/platform.o
+X86_64_DOWNLOAD_OBJECTS := \
+	$(DOWNLOAD_SOURCES:%.c=$(MACOS_INT_DIR)/x86_64/%.o)
+ARM64_DOWNLOAD_OBJECTS := \
+	$(DOWNLOAD_SOURCES:%.c=$(MACOS_INT_DIR)/arm64/%.o)
 
 X86_64_BINARY := $(MACOS_INT_DIR)/x86_64/$(PROGRAM)
 ARM64_BINARY := $(MACOS_INT_DIR)/arm64/$(PROGRAM)
@@ -45,6 +54,29 @@ ARM64_LSMASH_OBJECTS := $(addprefix $(ARM64_LSMASH_INT_DIR)/, \
 	$(LSMASH_SOURCE_NAMES:.c=.o))
 X86_64_LSMASH_LIBRARY := $(MACOS_INT_DIR)/x86_64/liblsmash.a
 ARM64_LSMASH_LIBRARY := $(MACOS_INT_DIR)/arm64/liblsmash.a
+X86_64_LIBRARY := $(MACOS_INT_DIR)/x86_64/libretrodlp.a
+ARM64_LIBRARY := $(MACOS_INT_DIR)/arm64/libretrodlp.a
+X86_64_DOWNLOAD_LIBRARY := \
+	$(MACOS_INT_DIR)/x86_64/libretrodlp-download.a
+ARM64_DOWNLOAD_LIBRARY := $(MACOS_INT_DIR)/arm64/libretrodlp-download.a
+
+$(X86_64_LIBRARY): $(X86_64_CORE_OBJECTS) $(X86_64_QUICKJS_OBJECTS)
+	@echo "  > archiving x86_64 resolver library"
+	@$(AR_MODERN) rcs $@ $^
+
+$(ARM64_LIBRARY): $(ARM64_CORE_OBJECTS) $(ARM64_QUICKJS_OBJECTS)
+	@echo "  > archiving arm64 resolver library"
+	@$(AR_MODERN) rcs $@ $^
+
+$(X86_64_DOWNLOAD_LIBRARY): $(X86_64_DOWNLOAD_OBJECTS) \
+		$(X86_64_LSMASH_OBJECTS)
+	@echo "  > archiving x86_64 optional download library"
+	@$(AR_MODERN) rcs $@ $^
+
+$(ARM64_DOWNLOAD_LIBRARY): $(ARM64_DOWNLOAD_OBJECTS) \
+		$(ARM64_LSMASH_OBJECTS)
+	@echo "  > archiving arm64 optional download library"
+	@$(AR_MODERN) rcs $@ $^
 
 $(X86_64_BINARY): $(X86_64_OBJECTS) $(ALTIVECCORE) \
 		$(X86_64_QUICKJS_LIBRARY) $(X86_64_LSMASH_LIBRARY)
