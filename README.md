@@ -1,8 +1,10 @@
 # Retro-DLP
 
-The provisional reusable C interface is documented in
+The stable reusable C interface is documented in
 [`docs/library-api.md`](docs/library-api.md). Applications should include only
-headers from `include/retrodlp`.
+headers from `include/retrodlp`; concise resolver, authentication, playlist,
+custom-transport, and optional-download programs are in
+[`examples/`](examples/README.md).
 
 Retro-DLP is a super minimalist/reduced-scope conversion of 
 [yt-dlp](https://github.com/yt-dlp/yt-dlp) from Python into C. I built 

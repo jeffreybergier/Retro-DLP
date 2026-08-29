@@ -305,14 +305,18 @@ rdlp_status rdlp_context_create(const rdlp_config *config,
       created->ejs_stack_limit_bytes = config->ejs_stack_limit_bytes;
     if (HAS_FIELD(config, rdlp_config, transport) &&
         config->transport != NULL) {
-      if (config->transport->struct_size < sizeof(*config->transport) ||
+      if (!HAS_FIELD(config->transport, rdlp_transport, send) ||
           config->transport->send == NULL) {
         rdlp_context_destroy(created);
         publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
                       "transport structure is invalid");
         return RDLP_STATUS_INVALID_ARGUMENT;
       }
-      created->transport = *config->transport;
+      memset(&created->transport, 0, sizeof(created->transport));
+      created->transport.struct_size = sizeof(created->transport);
+      created->transport.send = config->transport->send;
+      if (HAS_FIELD(config->transport, rdlp_transport, context))
+        created->transport.context = config->transport->context;
       created->has_transport = 1;
     }
     if (HAS_FIELD(config, rdlp_config, clock_callback))
@@ -427,6 +431,8 @@ static void facade_progress(const char *message, void *opaque) {
   context->event_callback(&event, context->callback_context);
 }
 
+static void end_operation(rdlp_context *context);
+
 static rdlp_status begin_operation(rdlp_context *context, rdlp_error *error) {
   if (context == NULL) {
     publish_error(error, RDLP_STATUS_INVALID_ARGUMENT, "context is required");
@@ -438,13 +444,13 @@ static rdlp_status begin_operation(rdlp_context *context, rdlp_error *error) {
     publish_error(error, RDLP_STATUS_BUSY, "context is already in use");
     return RDLP_STATUS_BUSY;
   }
+  context->operating = 1;
+  pthread_mutex_unlock(&context->operation_mutex);
   if (context_cancelled(context)) {
-    pthread_mutex_unlock(&context->operation_mutex);
+    end_operation(context);
     publish_error(error, RDLP_STATUS_CANCELLED, "operation cancelled");
     return RDLP_STATUS_CANCELLED;
   }
-  context->operating = 1;
-  pthread_mutex_unlock(&context->operation_mutex);
   return RDLP_STATUS_OK;
 }
 

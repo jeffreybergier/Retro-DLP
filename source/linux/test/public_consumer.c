@@ -19,8 +19,11 @@ typedef struct {
   int requests;
   int events;
   int cancelled;
+  int reenter_cancel;
   int saw_clock;
   int64_t now;
+  rdlp_context *reentry_context;
+  rdlp_status reentry_status;
   fixture_gate *gate;
 } fixture_state;
 
@@ -136,7 +139,19 @@ static void fixture_event(const rdlp_event *event, void *opaque) {
 }
 
 static int fixture_cancel(void *opaque) {
-  return ((fixture_state *)opaque)->cancelled;
+  fixture_state *state = (fixture_state *)opaque;
+  if (state->reenter_cancel) {
+    rdlp_selection *selection = NULL;
+    rdlp_error error;
+    memset(&error, 0, sizeof(error));
+    error.struct_size = sizeof(error);
+    state->reenter_cancel = 0;
+    state->reentry_status =
+        rdlp_resolve_video(state->reentry_context, "YE7VzlLtp-4", NULL,
+                           &selection, &error);
+    rdlp_selection_destroy(selection);
+  }
+  return state->cancelled;
 }
 
 static int64_t fixture_clock(void *opaque) {
@@ -229,6 +244,26 @@ finished:
   return passed;
 }
 
+static int additive_transport_struct_test(void) {
+  rdlp_transport transport;
+  rdlp_config config;
+  rdlp_context *context = NULL;
+  rdlp_error error;
+  rdlp_status status;
+  memset(&transport, 0, sizeof(transport));
+  memset(&config, 0, sizeof(config));
+  memset(&error, 0, sizeof(error));
+  transport.struct_size =
+      offsetof(rdlp_transport, send) + sizeof(transport.send);
+  transport.send = fixture_send;
+  config.struct_size = sizeof(config);
+  config.transport = &transport;
+  error.struct_size = sizeof(error);
+  status = rdlp_context_create(&config, &context, &error);
+  rdlp_context_destroy(context);
+  return status == RDLP_STATUS_OK;
+}
+
 int main(void) {
   fixture_state state;
   rdlp_transport transport;
@@ -317,9 +352,12 @@ int main(void) {
     return 1;
   }
   state.cancelled = 1;
+  state.reenter_cancel = 1;
+  state.reentry_context = context;
   if (rdlp_resolve_video(context, video_id, NULL, &cancelled_selection,
                          &error) != RDLP_STATUS_CANCELLED ||
-      cancelled_selection != NULL || error.status != RDLP_STATUS_CANCELLED) {
+      cancelled_selection != NULL || error.status != RDLP_STATUS_CANCELLED ||
+      state.reentry_status != RDLP_STATUS_BUSY) {
     fprintf(stderr, "FAIL: public cancellation contract\n");
     rdlp_selection_destroy(selection);
     rdlp_context_destroy(context);
@@ -330,6 +368,10 @@ int main(void) {
   if (!independent_context_test()) {
     fprintf(stderr,
             "FAIL: independent contexts, injected clock, or explicit cache\n");
+    return 1;
+  }
+  if (!additive_transport_struct_test()) {
+    fprintf(stderr, "FAIL: additive transport structure contract\n");
     return 1;
   }
   puts("PASS: external public API fixture consumer");

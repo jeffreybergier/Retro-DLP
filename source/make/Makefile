@@ -61,6 +61,13 @@ IOS_LIBRARY := $(IOS_BUILD_DIR)/libretrodlp.a
 IOS_DOWNLOAD_LIBRARY := $(IOS_BUILD_DIR)/libretrodlp-download.a
 LINUX_CONSUMER_TEST_SOURCE := source/linux/test/public_consumer.c
 LINUX_DOWNLOAD_CONSUMER_TEST_SOURCE := source/linux/test/download_consumer.c
+LINUX_EXAMPLE_DIR := $(LINUX_BUILD_DIR)/examples
+LINUX_RESOLVER_EXAMPLE_NAMES := resolve authenticated playlist custom_transport
+LINUX_RESOLVER_EXAMPLES := $(addprefix $(LINUX_EXAMPLE_DIR)/, \
+	$(LINUX_RESOLVER_EXAMPLE_NAMES))
+LINUX_DOWNLOAD_EXAMPLE := $(LINUX_EXAMPLE_DIR)/download
+LINUX_EXAMPLE_OBJECTS := $(addprefix $(LINUX_INT_DIR)/examples/, \
+	$(addsuffix .o,$(LINUX_RESOLVER_EXAMPLE_NAMES) download))
 LINUX_TEST_SOURCES := $(filter-out source/shared/main.c, \
 	$(SHARED_SOURCES)) $(TEST_SOURCES) source/linux/test/test_main.c \
 	source/linux/platform.c $(CJSON_SOURCE)
@@ -149,6 +156,7 @@ APPLICATION_DEPENDENCIES := $(LINUX_OBJECTS:.o=.d) \
 	$(LINUX_TEST_OBJECTS:.o=.d) $(PPC_OBJECTS:.o=.d) \
 	$(LINUX_CONSUMER_TEST_OBJECT:.o=.d) \
 	$(LINUX_DOWNLOAD_CONSUMER_TEST_OBJECT:.o=.d) \
+	$(LINUX_EXAMPLE_OBJECTS:.o=.d) \
 	$(LINUX_LSMASH_OBJECTS:.o=.d) \
 	$(I386_OBJECTS:.o=.d) $(X86_64_OBJECTS:.o=.d) $(ARM64_OBJECTS:.o=.d) \
 	$(IOS_OBJECTS:.o=.d) $(PPC_LSMASH_OBJECTS:.o=.d) \
@@ -197,13 +205,19 @@ linux: $(LINUX_BUILD_DIR)/$(PROGRAM) $(LINUX_LIBRARY) \
 test: linux $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM) \
 		$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM) \
 		$(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM) \
-		validate-package
+		validate-package validate-examples
 	@echo "--- Running retro-dlp Linux tests ---"
 	@source/linux/test/cli_test.sh \
 		"$(abspath $(LINUX_BUILD_DIR)/$(PROGRAM))" \
 		"$(abspath $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM))"
 	@$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM)
 	@$(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM)
+
+examples: $(LINUX_RESOLVER_EXAMPLES) $(LINUX_DOWNLOAD_EXAMPLE)
+
+validate-examples: examples
+	@$(LINUX_EXAMPLE_DIR)/custom_transport
+	@echo "PASS: public API examples compile and offline example runs"
 
 install: linux
 	@$(INSTALL) -d "$(DESTDIR)$(PREFIX)/include/retrodlp" \
@@ -218,7 +232,7 @@ install: linux
 
 validate-package: $(LINUX_LIBRARY) $(LINUX_DOWNLOAD_LIBRARY)
 	@source/linux/test/package_consumer_test.sh \
-		"$(abspath .)" "$(abspath $(BUILD_DIR))" "$(CC)" \
+		"$(abspath .)" "$(abspath $(BUILD_DIR))" "$(CC)" "$(CXX)" \
 		"$(CFLAGS)" "$(LDFLAGS)" "$(LDLIBS)"
 
 package-libraries: linux macOS iOS
@@ -296,6 +310,21 @@ $(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM): \
 	@mkdir -p $(dir $@)
 	@$(CC) $(LDFLAGS) $(LINUX_DOWNLOAD_CONSUMER_TEST_OBJECT) \
 		$(LINUX_DOWNLOAD_LIBRARY) $(LINUX_LIBRARY) \
+		-lcurl -lcrypto -lm -ldl -lpthread $(LDLIBS) -o $@
+	@echo "  > $@"
+
+$(LINUX_EXAMPLE_DIR)/%: $(LINUX_INT_DIR)/examples/%.o $(LINUX_LIBRARY)
+	@echo "--- Building public API example $(@F) ---"
+	@mkdir -p $(dir $@)
+	@$(CC) $(LDFLAGS) $< $(LINUX_LIBRARY) \
+		-lcurl -lcrypto -lm -ldl -lpthread $(LDLIBS) -o $@
+	@echo "  > $@"
+
+$(LINUX_DOWNLOAD_EXAMPLE): $(LINUX_INT_DIR)/examples/download.o \
+		$(LINUX_DOWNLOAD_LIBRARY) $(LINUX_LIBRARY)
+	@echo "--- Building optional download example ---"
+	@mkdir -p $(dir $@)
+	@$(CC) $(LDFLAGS) $< $(LINUX_DOWNLOAD_LIBRARY) $(LINUX_LIBRARY) \
 		-lcurl -lcrypto -lm -ldl -lpthread $(LDLIBS) -o $@
 	@echo "  > $@"
 
@@ -393,5 +422,5 @@ clean-linux:
 	done
 
 .PHONY: release macOS iOS linux test sanitize install package-libraries \
-	validate-package validate-apple-artifacts validate validate-iOS clean \
-	clean-macOS clean-iOS clean-linux
+	examples validate-examples validate-package validate-apple-artifacts \
+	validate validate-iOS clean clean-macOS clean-iOS clean-linux

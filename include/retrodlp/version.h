@@ -6,4 +6,10 @@
 #define RDLP_VERSION_PATCH 0
 #define RDLP_VERSION_STRING "1.0.0"
 
+/*
+ * Public C API generation. This changes only for an incompatible public API
+ * revision; use RDLP_VERSION_* to test for release features and fixes.
+ */
+#define RDLP_API_VERSION 1
+
 #endif

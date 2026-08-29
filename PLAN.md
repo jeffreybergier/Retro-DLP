@@ -436,20 +436,20 @@ Exit criteria:
 
 ## Phase 8: Documentation and stabilization
 
-- [ ] Document context lifecycle, ownership, threading, callbacks, cancellation,
+- [x] Document context lifecycle, ownership, threading, callbacks, cancellation,
   cache behavior, asset provisioning, cookies, and error handling.
-- [ ] Add examples for resolver-only, authenticated, playlist, custom transport,
+- [x] Add examples for resolver-only, authenticated, playlist, custom transport,
   and optional download use.
-- [ ] Add an API version macro and compatibility policy.
-- [ ] Review all public names and structures before declaring the API stable.
-- [ ] Run normal, warning-clean, sanitizer, Linux, macOS, and iOS validation.
+- [x] Add an API version macro and compatibility policy.
+- [x] Review all public names and structures before declaring the API stable.
+- [x] Run normal, warning-clean, sanitizer, Linux, macOS, and iOS validation.
 
 Exit criteria:
 
-- [ ] README build and CLI instructions remain correct.
-- [ ] Library consumers have a concise getting-started example.
-- [ ] The supported API is small enough to document completely.
-- [ ] All validation listed below passes.
+- [x] README build and CLI instructions remain correct.
+- [x] Library consumers have a concise getting-started example.
+- [x] The supported API is small enough to document completely.
+- [x] All validation listed below passes.
 
 ## Validation Matrix
 
