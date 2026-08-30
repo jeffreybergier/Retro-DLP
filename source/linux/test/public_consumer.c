@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <retrodlp/assets.h>
 #include <retrodlp/retrodlp.h>
 
 typedef struct {
@@ -180,6 +181,28 @@ static int fixture_cancel(void *opaque) {
 
 static int64_t fixture_clock(void *opaque) {
   return ((fixture_state *)opaque)->now;
+}
+
+static int asset_api_test(void) {
+  char directory[] = "/tmp/retrodlp-assets-api-XXXXXX";
+  rdlp_ejs_asset_info info;
+  rdlp_error error;
+  int passed;
+  if (mkdtemp(directory) == NULL)
+    return 0;
+  memset(&info, 0, sizeof(info));
+  memset(&error, 0, sizeof(error));
+  info.struct_size = sizeof(info);
+  error.struct_size = sizeof(error);
+  passed = strcmp(rdlp_ejs_asset_version(), RDLP_EJS_ASSET_VERSION) == 0 &&
+           rdlp_ejs_assets_inspect(directory, &info, &error) ==
+               RDLP_STATUS_EJS_ASSETS_MISSING &&
+           !info.installed && !info.core_valid && !info.lib_valid &&
+           error.status == RDLP_STATUS_EJS_ASSETS_MISSING &&
+           rdlp_ejs_assets_remove(directory, &error) == RDLP_STATUS_OK &&
+           error.status == RDLP_STATUS_OK;
+  rmdir(directory);
+  return passed;
 }
 
 static void remove_fixture_cache(const char *root) {
@@ -561,6 +584,10 @@ int main(void) {
   }
   if (!cancellation_boundary_test()) {
     fprintf(stderr, "FAIL: active network or playlist cancellation boundary\n");
+    return 1;
+  }
+  if (!asset_api_test()) {
+    fprintf(stderr, "FAIL: public EJS asset API contract\n");
     return 1;
   }
   puts("PASS: external public API fixture consumer");

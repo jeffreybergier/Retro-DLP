@@ -22,6 +22,7 @@ trap cleanup EXIT HUP INT TERM
   BUILD_DIR="$build_root" DESTDIR="$temporary/stage" PREFIX=/usr >/dev/null
 
 test -f "$temporary/stage/usr/include/retrodlp/retrodlp.h"
+test -f "$temporary/stage/usr/include/retrodlp/assets.h"
 test -f "$temporary/stage/usr/include/retrodlp/download.h"
 test -f "$temporary/stage/usr/include/retrodlp/version.h"
 test -f "$temporary/stage/usr/lib/libretrodlp.a"

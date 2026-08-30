@@ -1,9 +1,9 @@
 # Retro-DLP C API
 
-The supported library interface is declared by
-`include/retrodlp/retrodlp.h`. Applications must not include headers from
-`source/shared`; those headers and all `yt_*` symbols are private and may
-change without notice.
+The supported library interface is declared by `include/retrodlp/retrodlp.h`,
+`include/retrodlp/assets.h`, and `include/retrodlp/download.h`. Applications
+must not include headers from `source/shared`; those headers and all `yt_*`
+symbols are private and may change without notice.
 
 The API described here is stable beginning with Retro-DLP 1.0.0.
 `RDLP_API_VERSION` identifies the incompatible public API generation;
@@ -81,9 +81,40 @@ HTTP session and need remain valid only for the public call.
 | `clock_callback`, `clock_context` | Unix-seconds clock and borrowed context; `NULL` uses system time. |
 
 The library creates cache subdirectories as needed and never derives a core
-library path from `$HOME` or the executable. The caller owns provisioning and
-removing the configured cache and EJS assets. The CLI's `assets` commands are
-not library API.
+library path from `$HOME` or the executable. Applications may bundle the EJS
+files themselves or use the explicit-directory provisioning API described
+below. The CLI chooses its own directory under `$HOME` and delegates asset
+validation and provisioning to that API.
+
+## EJS asset provisioning
+
+The public declarations in `<retrodlp/assets.h>` centralize the EJS version,
+integrity manifest, validation, download, and atomic installation required by
+the resolver. `rdlp_ejs_asset_version` returns the version also available as
+`RDLP_EJS_ASSET_VERSION`.
+
+`rdlp_ejs_assets_inspect` validates `core.min.js` and `lib.min.js` in an
+explicit absolute directory. Initialize `rdlp_ejs_asset_info` to zero and set
+`struct_size`; the call fills `installed`, `core_valid`, and `lib_valid`.
+Missing files return `RDLP_STATUS_EJS_ASSETS_MISSING`, and files with an
+unexpected size or SHA-256 digest return `RDLP_STATUS_EJS_ASSETS_CORRUPT`.
+
+`rdlp_ejs_assets_install` downloads the version-matched assets, validates both
+before installation, and writes them atomically into an explicit absolute
+directory along with `NOTICE.txt`. It never derives a path, reads `$HOME`, or
+runs implicitly during resolution. A `NULL` options pointer selects the
+default libcurl transport, its trust configuration, and the default timeout.
+`rdlp_ejs_asset_options` can supply an absolute CA-bundle path, timeout,
+cancellation callback and borrowed callback context, or borrowed custom
+transport. The custom transport receives two synchronous HTTPS GET requests
+and must honor each request's response-size limit and cancellation fields.
+
+`rdlp_ejs_assets_remove` removes the two managed JavaScript files and notice
+from an explicit absolute directory. Missing files are accepted; the directory
+itself and unrelated files are retained. Provisioning calls are synchronous
+and do not write to stdout or stderr. Applications that bundle the assets as
+resources can skip these calls and pass their directory directly through
+`rdlp_config.ejs_asset_directory`.
 
 ## Operations and options
 
@@ -166,6 +197,7 @@ also resets a supplied error to `RDLP_STATUS_OK`.
 | `RDLP_STATUS_UNAVAILABLE` | The requested service object is unavailable. |
 | `RDLP_STATUS_FORMAT_UNAVAILABLE` | No requested/supported format matched. |
 | `RDLP_STATUS_EJS_ASSETS_MISSING` | Required challenge assets were not provisioned. |
+| `RDLP_STATUS_EJS_ASSETS_CORRUPT` | Installed or downloaded EJS assets do not match the versioned integrity manifest. |
 | `RDLP_STATUS_JS_CHALLENGE` | Player challenge processing failed. |
 | `RDLP_STATUS_AUTHENTICATION_REQUIRED` | Authentication is required or supplied authentication is unusable. |
 | `RDLP_STATUS_COOKIE` | Cookie data cannot be loaded or parsed. |
@@ -244,8 +276,9 @@ Opaque owned types are `rdlp_context`, `rdlp_selection`, `rdlp_playlist`, and
 `rdlp_playlist_collection`. Versioned value types are `rdlp_error`,
 `rdlp_event`, `rdlp_transport_request`, `rdlp_transport_response`,
 `rdlp_transport`, `rdlp_config`, `rdlp_resolve_options`,
-`rdlp_playlist_options`, `rdlp_download_event`, `rdlp_download_options`, and
-`rdlp_download_result`. `rdlp_http_header` is a borrowed name/value pair.
+`rdlp_playlist_options`, `rdlp_ejs_asset_info`, `rdlp_ejs_asset_options`,
+`rdlp_download_event`, `rdlp_download_options`, and `rdlp_download_result`.
+`rdlp_http_header` is a borrowed name/value pair.
 Callback types are `rdlp_event_callback`, `rdlp_cancel_callback`,
 `rdlp_clock_callback`, `rdlp_transport_send_callback`, and
 `rdlp_download_event_callback`; their lifetime and threading rules are given
@@ -257,6 +290,7 @@ above. Enum types are `rdlp_event_type`, `rdlp_download_event_type`, and
 |---|---|
 | Version and status | `rdlp_version_string`, `rdlp_status_string` |
 | Context | `rdlp_context_create`, `rdlp_context_destroy` |
+| EJS assets | `rdlp_ejs_asset_version`, `rdlp_ejs_assets_inspect`, `rdlp_ejs_assets_install`, `rdlp_ejs_assets_remove` |
 | Validation | `rdlp_parse_video_id`, `rdlp_parse_playlist_id`, `rdlp_format_expression_valid`, `rdlp_is_playlist_collection_input` |
 | Operations | `rdlp_resolve_video`, `rdlp_list_playlist`, `rdlp_list_playlist_collection`, `rdlp_download_selection` |
 | Selection identity | `rdlp_selection_destroy`, `rdlp_selection_video_id`, `rdlp_selection_title`, `rdlp_selection_format_id`, `rdlp_selection_is_adaptive` |

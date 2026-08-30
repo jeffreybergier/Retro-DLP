@@ -19,8 +19,9 @@ case "$stage" in
 esac
 
 mkdir -p "$stage/include/retrodlp" "$stage/lib" "$stage/examples"
-cp include/retrodlp/retrodlp.h include/retrodlp/download.h \
-  include/retrodlp/version.h "$stage/include/retrodlp/"
+cp include/retrodlp/retrodlp.h include/retrodlp/assets.h \
+  include/retrodlp/download.h include/retrodlp/version.h \
+  "$stage/include/retrodlp/"
 cp "$platform_root/libretrodlp.a" \
   "$platform_root/libretrodlp-download.a" "$stage/lib/"
 cp docs/library-api.md "$stage/README.md"

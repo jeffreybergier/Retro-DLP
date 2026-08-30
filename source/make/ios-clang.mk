@@ -67,15 +67,14 @@ $(IOS_DOWNLOAD_LIBRARY): $(IOS_DOWNLOAD_OBJECTS) $(IOS_LSMASH_LIBRARY)
 	@mkdir -p $(dir $@)
 	@$(LIBTOOL_MODERN) -static -o $@ $^
 
-$(IOS_BINARY): $(IOS_OBJECTS) $(IOS_ALTIVECCORE) \
-		$(IOS_QUICKJS_OBJECTS) $(IOS_LSMASH_LIBRARY)
+$(IOS_BINARY): $(IOS_OBJECTS) $(IOS_DOWNLOAD_LIBRARY) $(IOS_LIBRARY) \
+		$(IOS_ALTIVECCORE)
 	@echo "--- Building retro-dlp iOS Release (-O3) ---"
 	@echo " [2/2] Linking universal iOS binary (armv7, arm64)..."
 	@mkdir -p $(dir $@)
 	@$(COMPILER_IOS) $(IOS_ARCH_FLAGS) $(IOS_TOOLCHAIN_FLAGS) \
-		$(LDFLAGS) $(IOS_OBJECTS) $(IOS_LIBRARIES) \
-		$(IOS_QUICKJS_OBJECTS) \
-		-Wl,-force_load,$(IOS_LSMASH_LIBRARY) \
+		$(LDFLAGS) $(IOS_OBJECTS) $(IOS_DOWNLOAD_LIBRARY) $(IOS_LIBRARY) \
+		$(IOS_LIBRARIES) \
 		$(IOS_QUICKJS_LIBRARIES) $(LDLIBS) -o $@
 	@echo "  > $@"
 

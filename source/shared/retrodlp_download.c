@@ -15,6 +15,7 @@
 
 #include <curl/curl.h>
 
+#include "rdlp_curl.h"
 #include "yt_mux.h"
 
 #ifndef PATH_MAX
@@ -380,7 +381,7 @@ rdlp_status rdlp_download_selection(
     set_error(error, RDLP_STATUS_CANCELLED, 0, 0, "operation cancelled");
     return RDLP_STATUS_CANCELLED;
   }
-  if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
+  if (!rdlp_curl_acquire()) {
     set_error(error, RDLP_STATUS_NETWORK, 0, 0,
               "could not initialize HTTP transfers");
     return RDLP_STATUS_NETWORK;
@@ -390,7 +391,7 @@ rdlp_status rdlp_download_selection(
     status = download_media(selection, 0, destination, options,
                             RDLP_DOWNLOAD_EVENT_DOWNLOADING_MEDIA,
                             &final_bytes, error);
-    curl_global_cleanup();
+    rdlp_curl_release();
     if (status == RDLP_STATUS_OK)
       set_error(error, RDLP_STATUS_OK, 0, 0, "success");
     value.bytes_written = final_bytes;
@@ -402,7 +403,7 @@ rdlp_status rdlp_download_selection(
           (int)sizeof(video_path) ||
       snprintf(audio_path, sizeof(audio_path), "%s.audio.m4a", destination) >=
           (int)sizeof(audio_path)) {
-    curl_global_cleanup();
+    rdlp_curl_release();
     set_error(error, RDLP_STATUS_STORAGE, 0, 0, "download path is too long");
     return RDLP_STATUS_STORAGE;
   }
@@ -418,10 +419,10 @@ rdlp_status rdlp_download_selection(
   if (status != RDLP_STATUS_OK) {
     if (audio_downloaded)
       unlink(audio_path);
-    curl_global_cleanup();
+    rdlp_curl_release();
     return status;
   }
-  curl_global_cleanup();
+  rdlp_curl_release();
   if (cancelled(options)) {
     value.source_tracks_retained = 1;
     if (result != NULL)

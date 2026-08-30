@@ -8,6 +8,7 @@
 #include <curl/curl.h>
 #include <pthread.h>
 
+#include "rdlp_curl.h"
 #include "yt_http.h"
 #include "yt_playlist.h"
 #include "yt_resolver.h"
@@ -15,28 +16,6 @@
 #define RDLP_DEFAULT_TIMEOUT_MILLISECONDS 20000UL
 #define HAS_FIELD(value, type, field)                                           \
   ((value)->struct_size >= offsetof(type, field) + sizeof((value)->field))
-
-static pthread_mutex_t curl_lifecycle_mutex = PTHREAD_MUTEX_INITIALIZER;
-static size_t curl_context_count;
-
-static int acquire_default_transport(void) {
-  int initialized = 1;
-  pthread_mutex_lock(&curl_lifecycle_mutex);
-  if (curl_context_count == 0 &&
-      curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK)
-    initialized = 0;
-  if (initialized)
-    ++curl_context_count;
-  pthread_mutex_unlock(&curl_lifecycle_mutex);
-  return initialized;
-}
-
-static void release_default_transport(void) {
-  pthread_mutex_lock(&curl_lifecycle_mutex);
-  if (curl_context_count != 0 && --curl_context_count == 0)
-    curl_global_cleanup();
-  pthread_mutex_unlock(&curl_lifecycle_mutex);
-}
 
 struct rdlp_context {
   rdlp_transport transport;
@@ -225,6 +204,8 @@ const char *rdlp_status_string(rdlp_status status) {
     return "storage error";
   case RDLP_STATUS_INTERNAL:
     return "internal error";
+  case RDLP_STATUS_EJS_ASSETS_CORRUPT:
+    return "EJS assets are corrupt";
   }
   return "unknown error";
 }
@@ -324,7 +305,7 @@ rdlp_status rdlp_context_create(const rdlp_config *config,
     if (HAS_FIELD(config, rdlp_config, clock_context))
       created->clock_context = config->clock_context;
   }
-  if (!created->has_transport && !acquire_default_transport()) {
+  if (!created->has_transport && !rdlp_curl_acquire()) {
     rdlp_context_destroy(created);
     publish_error(error, RDLP_STATUS_NETWORK,
                   "could not initialize default HTTP transport");
@@ -350,7 +331,7 @@ void rdlp_context_destroy(rdlp_context *context) {
     return;
   yt_http_session_destroy(context->http_session);
   if (context->owns_default_transport)
-    release_default_transport();
+    rdlp_curl_release();
   pthread_mutex_destroy(&context->operation_mutex);
   free(context->cache_directory);
   free(context->ca_bundle_path);

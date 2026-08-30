@@ -7,7 +7,34 @@
 #include "cJSON.h"
 #include "cli_asset_store.h"
 
-const char *cli_ejs_asset_version(void) { return RDLP_ASSET_TOOL_VERSION; }
+const char *cli_ejs_asset_version(void) { return rdlp_ejs_asset_version(); }
+
+static const char *asset_status_string(CLIAssetStatus status) {
+  switch (status) {
+  case RDLP_STATUS_OK:
+    return "ok";
+  case RDLP_STATUS_EJS_ASSETS_MISSING:
+    return "missing";
+  case RDLP_STATUS_EJS_ASSETS_CORRUPT:
+    return "corrupt";
+  case RDLP_STATUS_NETWORK:
+    return "network";
+  case RDLP_STATUS_HTTP:
+    return "http";
+  case RDLP_STATUS_STORAGE:
+    return "storage";
+  case RDLP_STATUS_OUT_OF_MEMORY:
+    return "out_of_memory";
+  case RDLP_STATUS_CERTIFICATE_BUNDLE:
+    return "certificate_bundle";
+  case RDLP_STATUS_CANCELLED:
+    return "cancelled";
+  case RDLP_STATUS_INVALID_ARGUMENT:
+    return "invalid_argument";
+  default:
+    return "unknown";
+  }
+}
 
 static int print_asset_result(const char *action, CLIAssetStatus status) {
   CLIAssetInfo info;
@@ -18,16 +45,16 @@ static int print_asset_result(const char *action, CLIAssetStatus status) {
     return 1;
   if (!cJSON_AddStringToObject(document, "action", action) ||
       !cJSON_AddStringToObject(document, "status",
-                              rdlp_asset_tool_status_string(status)) ||
+                              asset_status_string(status)) ||
       !cJSON_AddStringToObject(document, "version",
-                              RDLP_ASSET_TOOL_VERSION) ||
+                              rdlp_ejs_asset_version()) ||
       !cJSON_AddBoolToObject(document, "installed", info.installed) ||
       !cJSON_AddBoolToObject(document, "coreValid", info.core_valid) ||
       !cJSON_AddBoolToObject(document, "libValid", info.lib_valid) ||
       !cJSON_AddStringToObject(document, "root",
                               info.root[0] == '\0' ? "" : info.root) ||
       !cJSON_AddStringToObject(document, "inspection",
-                              rdlp_asset_tool_status_string(inspect_status))) {
+                              asset_status_string(inspect_status))) {
     cJSON_Delete(document);
     return 1;
   }
@@ -51,12 +78,12 @@ int cli_run_asset_command(const char *command) {
   if (strcmp(command, "remove") == 0) {
     status = cli_asset_store_remove();
     failed = print_asset_result("remove", status);
-    return failed || status != RDLP_ASSET_TOOL_OK;
+    return failed || status != RDLP_STATUS_OK;
   }
   if (strcmp(command, "install") == 0) {
     status = cli_asset_store_install();
     failed = print_asset_result("install", status);
-    return failed || status != RDLP_ASSET_TOOL_OK;
+    return failed || status != RDLP_STATUS_OK;
   }
   fprintf(stderr, "retro-dlp: unsupported asset command\n");
   return 2;

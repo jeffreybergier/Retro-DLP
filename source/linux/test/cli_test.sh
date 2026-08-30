@@ -47,6 +47,8 @@ if ar t "$resolver_library" | grep -Eq \
     '^(main|cli|cli_options|cli_render|cli_assets|cli_asset_store|retrodlp_download|yt_mux)\.o$'; then
   fail "resolver library contains CLI or download objects"
 fi
+ar t "$resolver_library" | grep -q '^retrodlp_assets\.o$' || \
+  fail "resolver library lacks public EJS asset provisioning"
 if strings "$resolver_library" | grep -q '/.retro-dlp'; then
   fail "resolver library contains an implicit CLI home-directory path"
 fi

@@ -3,7 +3,9 @@
 
 #include <stddef.h>
 
-#define YT_EJS_ASSET_VERSION "0.8.0"
+#include "retrodlp/assets.h"
+
+#define YT_EJS_ASSET_VERSION RDLP_EJS_ASSET_VERSION
 
 typedef enum {
   YT_EJS_ASSETS_OK = 0,

@@ -44,7 +44,8 @@ typedef enum {
   RDLP_STATUS_CANCELLED = 13,
   RDLP_STATUS_BUSY = 14,
   RDLP_STATUS_STORAGE = 15,
-  RDLP_STATUS_INTERNAL = 16
+  RDLP_STATUS_INTERNAL = 16,
+  RDLP_STATUS_EJS_ASSETS_CORRUPT = 17
 } rdlp_status;
 
 typedef struct rdlp_error {

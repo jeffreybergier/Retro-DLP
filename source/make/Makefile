@@ -11,9 +11,10 @@ LINUX_BUILD_DIR := $(BUILD_DIR)/linux
 
 CLI_SOURCES := source/shared/main.c source/shared/cli.c \
 	source/shared/cli_options.c source/shared/cli_render.c \
-	source/shared/cli_assets.c source/shared/cli_asset_store.c \
-	source/shared/rdlp_asset_tool.c
+	source/shared/cli_assets.c source/shared/cli_asset_store.c
 CORE_SOURCES := source/shared/retrodlp.c \
+	source/shared/retrodlp_assets.c source/shared/rdlp_curl.c \
+	source/shared/rdlp_ejs_manifest.c \
 	source/shared/yt_http.c source/shared/yt_resolver.c \
 	source/shared/yt_formats.c source/shared/yt_challenges.c \
 	source/shared/yt_failure_cache.c \
@@ -30,8 +31,8 @@ TEST_SOURCES := \
 	source/shared/test/ejs_test.c source/shared/test/ejs_test_data.c \
 	source/shared/test/self_test.c source/shared/test/self_test_data.c \
 	source/shared/test/yt_formats_test_support.c
-MACOS_COMMON_SOURCES := $(SHARED_SOURCES) source/macOS/platform.c
-IOS_COMMON_SOURCES := $(SHARED_SOURCES) source/iOS/platform.c
+MACOS_COMMON_SOURCES := $(CLI_SOURCES)
+IOS_COMMON_SOURCES := $(CLI_SOURCES)
 CJSON_DIR := source/deps/cJSON
 CJSON_SOURCE := $(CJSON_DIR)/cJSON.c
 QUICKJS_DIR := source/deps/QuickJS
@@ -53,7 +54,7 @@ LSMASH_SOURCE_NAMES := common/alloc.c common/bits.c common/bytes.c \
 	core/write.c
 LSMASH_CPPFLAGS := -I$(LSMASH_DIR)
 LSMASH_CFLAGS := $(CFLAGS) -std=c99 -Wall -Wextra -Wno-unused-parameter
-LINUX_SOURCES := $(SHARED_SOURCES) source/linux/platform.c $(CJSON_SOURCE)
+LINUX_SOURCES := $(CLI_SOURCES)
 LINUX_TEST_PROGRAM := retro-dlp-tests
 LINUX_CONSUMER_TEST_PROGRAM := retro-dlp-consumer-test
 LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM := retro-dlp-download-consumer-test
@@ -232,7 +233,8 @@ install: linux
 	@$(INSTALL) -d "$(DESTDIR)$(PREFIX)/include/retrodlp" \
 		"$(DESTDIR)$(PREFIX)/lib" "$(DESTDIR)$(PREFIX)/bin"
 	@$(INSTALL) -m 644 include/retrodlp/retrodlp.h \
-		include/retrodlp/download.h include/retrodlp/version.h \
+		include/retrodlp/assets.h include/retrodlp/download.h \
+		include/retrodlp/version.h \
 		"$(DESTDIR)$(PREFIX)/include/retrodlp/"
 	@$(INSTALL) -m 644 $(LINUX_LIBRARY) $(LINUX_DOWNLOAD_LIBRARY) \
 		"$(DESTDIR)$(PREFIX)/lib/"
@@ -294,11 +296,13 @@ $(IOS_CA_BUNDLE): $(IOS_CA_SOURCE)
 	@mkdir -p $(dir $@)
 	@cp $< $@
 
-$(LINUX_BUILD_DIR)/$(PROGRAM): $(LINUX_OBJECTS) $(QUICKJS_LIBRARY) \
-		$(LINUX_LSMASH_LIBRARY)
+$(LINUX_BUILD_DIR)/$(PROGRAM): $(LINUX_OBJECTS) \
+		$(LINUX_DOWNLOAD_LIBRARY) $(LINUX_LIBRARY)
 	@echo "--- Building retro-dlp Linux Release (-O3) ---"
 	@mkdir -p $(dir $@)
-	@$(CC) $(LDFLAGS) $(LINUX_OBJECTS) $(LINUX_LIBRARIES) $(LDLIBS) -o $@
+	@$(CC) $(LDFLAGS) $(LINUX_OBJECTS) $(LINUX_DOWNLOAD_LIBRARY) \
+		$(LINUX_LIBRARY) -lcurl -lcrypto -lm -ldl -lpthread \
+		$(LDLIBS) -o $@
 	@echo "  > $@"
 
 $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM): $(LINUX_TEST_OBJECTS) \

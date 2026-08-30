@@ -171,7 +171,7 @@ jobs:
             unzip -t "$asset" >/dev/null
 
             listing="$(unzip -Z1 "$asset" | LC_ALL=C sort)"
-            expected=$'LICENSE\nREADME.md\nexamples/\nexamples/README.md\nexamples/authenticated.c\nexamples/custom_transport.c\nexamples/download.c\nexamples/playlist.c\nexamples/resolve.c\ninclude/\ninclude/retrodlp/\ninclude/retrodlp/download.h\ninclude/retrodlp/retrodlp.h\ninclude/retrodlp/version.h\nlib/\nlib/libretrodlp-download.a\nlib/libretrodlp.a'
+            expected=$'LICENSE\nREADME.md\nexamples/\nexamples/README.md\nexamples/authenticated.c\nexamples/custom_transport.c\nexamples/download.c\nexamples/playlist.c\nexamples/resolve.c\ninclude/\ninclude/retrodlp/\ninclude/retrodlp/assets.h\ninclude/retrodlp/download.h\ninclude/retrodlp/retrodlp.h\ninclude/retrodlp/version.h\nlib/\nlib/libretrodlp-download.a\nlib/libretrodlp.a'
             if [[ "$listing" != "$expected" ]]; then
               echo "Unexpected files in ${asset}:" >&2
               printf '%s\n' "$listing" >&2

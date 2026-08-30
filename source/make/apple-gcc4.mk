@@ -77,26 +77,24 @@ $(I386_DOWNLOAD_LIBRARY): $(I386_DOWNLOAD_OBJECTS) $(I386_LSMASH_OBJECTS)
 	@echo "  > archiving i386 optional download library"
 	@$(AR_LEGACY) rcs $@ $^
 
-$(PPC_BINARY): $(PPC_OBJECTS) $(ALTIVECCORE) $(PPC_QUICKJS_LIBRARY) \
-		$(PPC_LSMASH_LIBRARY)
+$(PPC_BINARY): $(PPC_OBJECTS) $(PPC_DOWNLOAD_LIBRARY) $(PPC_LIBRARY) \
+		$(ALTIVECCORE)
 	@echo "  > linking ppc binary"
 	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_PPC) \
 		-arch ppc -isysroot $(SDK_PPC_PATH) $(LDFLAGS) $(PPC_OBJECTS) \
-		$(LEGACY_MACOS_LIBRARIES) -Wl,-force_load,$(PPC_QUICKJS_LIBRARY) \
-		-Wl,-force_load,$(PPC_LSMASH_LIBRARY) \
+		$(PPC_DOWNLOAD_LIBRARY) $(PPC_LIBRARY) $(LEGACY_MACOS_LIBRARIES) \
 		$(LEGACY_QUICKJS_LIBRARIES) -lgcc_s.10.4 $(LDLIBS) -o $@
 	@if $(NM) -u $@ | grep -E '\$$(UNIX2003|NOCANCEL|INODE64|1050)' \
 		>/dev/null; then \
 		echo "Tiger-incompatible suffixed symbol in $@" >&2; exit 1; \
 	fi
 
-$(I386_BINARY): $(I386_OBJECTS) $(ALTIVECCORE) $(I386_QUICKJS_LIBRARY) \
-		$(I386_LSMASH_LIBRARY)
+$(I386_BINARY): $(I386_OBJECTS) $(I386_DOWNLOAD_LIBRARY) $(I386_LIBRARY) \
+		$(ALTIVECCORE)
 	@echo "  > linking i386 binary"
 	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_X86) \
 		-arch i386 -isysroot $(SDK_X86_PATH) $(LDFLAGS) $(I386_OBJECTS) \
-		$(LEGACY_MACOS_LIBRARIES) -Wl,-force_load,$(I386_QUICKJS_LIBRARY) \
-		-Wl,-force_load,$(I386_LSMASH_LIBRARY) \
+		$(I386_DOWNLOAD_LIBRARY) $(I386_LIBRARY) $(LEGACY_MACOS_LIBRARIES) \
 		$(LEGACY_QUICKJS_LIBRARIES) -lgcc_s.10.4 $(LDLIBS) -o $@
 	@if $(NM) -u $@ | grep -E '\$$(UNIX2003|NOCANCEL|INODE64|1050)' \
 		>/dev/null; then \

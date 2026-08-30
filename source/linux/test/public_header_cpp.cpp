@@ -1,4 +1,5 @@
 extern "C" {
+#include <retrodlp/assets.h>
 #include <retrodlp/download.h>
 #include <retrodlp/retrodlp.h>
 #include <retrodlp/version.h>
