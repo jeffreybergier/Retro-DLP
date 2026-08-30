@@ -3,6 +3,10 @@
 
 #include <stddef.h>
 
+#define CLI_PRESET_LOW_FORMAT "18"
+#define CLI_PRESET_MED_FORMAT "136+140"
+#define CLI_PRESET_HIGH_FORMAT "137+140"
+
 typedef enum {
   CLI_ACTION_RUN = 0,
   CLI_ACTION_HELP,

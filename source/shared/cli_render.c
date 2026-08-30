@@ -5,10 +5,7 @@
 #include <string.h>
 
 #include "cJSON.h"
-
-#define PRESET_LOW_FORMAT "18"
-#define PRESET_MED_FORMAT "135+140/134+140"
-#define PRESET_HIGH_FORMAT "137+140/136+140"
+#include "cli_options.h"
 
 void cli_render_usage(FILE *stream) {
   fprintf(stream,
@@ -24,9 +21,9 @@ void cli_render_usage(FILE *stream) {
           "                   Default: 22/18.\n"
           "  -t, --preset-alias PRESET\n"
           "                   Select a built-in exact-format preset:\n"
-          "                   low=" PRESET_LOW_FORMAT "\n"
-          "                   med=" PRESET_MED_FORMAT "\n"
-          "                   high=" PRESET_HIGH_FORMAT "\n"
+          "                   low=" CLI_PRESET_LOW_FORMAT "\n"
+          "                   med=" CLI_PRESET_MED_FORMAT "\n"
+          "                   high=" CLI_PRESET_HIGH_FORMAT "\n"
           "  -F, --list-formats\n"
           "                   List formats advertised by YouTube and exit.\n"
           "      --flat-playlist\n"

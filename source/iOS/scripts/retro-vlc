@@ -46,4 +46,4 @@ if [ ! -d "$vlc_documents" ] || [ ! -w "$vlc_documents" ]; then
 fi
 
 cd "$vlc_documents"
-exec "$retro_dlp" -t high --cookies-default "$video_input"
+exec "$retro_dlp" -t med --cookies-default "$video_input"

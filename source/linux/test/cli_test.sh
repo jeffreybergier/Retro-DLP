@@ -77,10 +77,10 @@ printf '%s\n' "$help_output" | grep -q -- '-t, --preset-alias PRESET' || \
   fail "--help did not document --preset-alias"
 printf '%s\n' "$help_output" | grep -q -- 'low=18' || \
   fail "--help did not document the low preset"
-printf '%s\n' "$help_output" | grep -q -- 'med=135+140/134+140' || \
+printf '%s\n' "$help_output" | grep -q -- 'med=136+140' || \
   fail "--help did not document the med preset"
 printf '%s\n' "$help_output" | \
-  grep -q -- 'high=137+140/136+140' || \
+  grep -q -- 'high=137+140' || \
   fail "--help did not document the high preset"
 printf '%s\n' "$help_output" | grep -q -- '-F, --list-formats' || \
   fail "--help did not document --list-formats"

@@ -108,7 +108,7 @@ Old iPhones may require the legacy SSH options
 
 I also include [`retro-vlc`](source/iOS/scripts/retro-vlc), a small helper
 script for VLC on iOS. It finds VLC's Documents directory, changes into it, and
-downloads the high preset there so the video immediately appears in VLC. The
+downloads the medium preset there so the video immediately appears in VLC. The
 script requires `ipainstaller`, VLC with the `org.videolan.vlc-ios` identifier,
 and a cookie file at `~/.retro-dlp/cookies.txt`.
 
@@ -133,8 +133,8 @@ The presets provide the easiest way to choose a format:
 
 ```sh
 retro-dlp -t low VIDEO_URL_OR_ID    # 18 (generally 360p)
-retro-dlp -t med VIDEO_URL_OR_ID    # 135+140/134+140 (generally 480p)
-retro-dlp -t high VIDEO_URL_OR_ID   # 137+140/136+140 (generally 1080p)
+retro-dlp -t med VIDEO_URL_OR_ID    # 136+140 (generally 720p)
+retro-dlp -t high VIDEO_URL_OR_ID   # 137+140 (generally 1080p)
 ```
 
 List the formats for a video:

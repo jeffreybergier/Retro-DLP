@@ -5,10 +5,6 @@
 
 #include "retrodlp/retrodlp.h"
 
-#define PRESET_LOW_FORMAT "18"
-#define PRESET_MED_FORMAT "135+140/134+140"
-#define PRESET_HIGH_FORMAT "137+140/136+140"
-
 static const char *known_options[] = {
     "--help",        "--version",      "--format",
     "--preset-alias", "--list-formats", "--flat-playlist",
@@ -17,11 +13,11 @@ static const char *known_options[] = {
 
 static const char *preset_format_expression(const char *preset) {
   if (strcmp(preset, "low") == 0)
-    return PRESET_LOW_FORMAT;
+    return CLI_PRESET_LOW_FORMAT;
   if (strcmp(preset, "med") == 0)
-    return PRESET_MED_FORMAT;
+    return CLI_PRESET_MED_FORMAT;
   if (strcmp(preset, "high") == 0)
-    return PRESET_HIGH_FORMAT;
+    return CLI_PRESET_HIGH_FORMAT;
   return NULL;
 }
 
