@@ -35,7 +35,7 @@ across incompatible C runtimes or platform toolchains.
 
 Initialize every public configuration or option structure to zero and set its
 `struct_size` before use. Passing `NULL` for the configuration or operation
-options selects the documented defaults: a 20-second network timeout, the
+options selects the documented defaults: a 60-second network timeout, the
 default libcurl transport, disabled caching, no cookies, the system libcurl
 trust configuration, progressive MP4 selection, and a maximum height of 720
 pixels.
@@ -74,7 +74,7 @@ HTTP session and need remain valid only for the public call.
 | `cache_directory` | Absolute cache root; `NULL` disables caching. Entries are size-bounded, expired or corrupt entries are removed when read, and each cache class is pruned to its internal size/count limit. |
 | `ca_bundle_path` | Absolute CA bundle used by the default transport; `NULL` uses libcurl's trust configuration. |
 | `ejs_asset_directory` | Absolute directory containing version-matched `core.min.js` and `lib.min.js`; `NULL` means challenge assets are not provisioned by the library. |
-| `network_timeout_milliseconds` | Per-request timeout; zero selects 20,000 milliseconds. |
+| `network_timeout_milliseconds` | Per-request timeout; zero selects 60,000 milliseconds. |
 | `ejs_memory_limit_bytes`, `ejs_stack_limit_bytes` | QuickJS resource limits; zero selects safe internal defaults. |
 | `event_callback`, `cancel_callback`, `callback_context` | Synchronous operation callbacks and their borrowed context. |
 | `transport` | Borrowed custom transport descriptor; `NULL` selects libcurl. The descriptor is copied, but its `context` remains borrowed. |

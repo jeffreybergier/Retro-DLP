@@ -13,7 +13,7 @@
 #include "yt_playlist.h"
 #include "yt_resolver.h"
 
-#define RDLP_DEFAULT_TIMEOUT_MILLISECONDS 20000UL
+#define RDLP_DEFAULT_TIMEOUT_MILLISECONDS 60000UL
 #define HAS_FIELD(value, type, field)                                           \
   ((value)->struct_size >= offsetof(type, field) + sizeof((value)->field))
 
