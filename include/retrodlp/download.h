@@ -44,7 +44,7 @@ typedef struct {
   int source_tracks_retained;
 } rdlp_download_result;
 
-RDLP_API rdlp_status rdlp_download_selection(
+RDLP_API rdlp_error_code rdlp_download_selection(
     const rdlp_selection *selection, const char *destination,
     const rdlp_download_options *options, rdlp_download_result *result,
     rdlp_error *error);

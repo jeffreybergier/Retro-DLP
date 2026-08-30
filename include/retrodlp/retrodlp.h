@@ -28,29 +28,66 @@ typedef struct rdlp_playlist rdlp_playlist;
 typedef struct rdlp_playlist_collection rdlp_playlist_collection;
 
 typedef enum {
-  RDLP_STATUS_OK = 0,
-  RDLP_STATUS_INVALID_ARGUMENT = 1,
-  RDLP_STATUS_OUT_OF_MEMORY = 2,
-  RDLP_STATUS_NETWORK = 3,
-  RDLP_STATUS_CERTIFICATE_BUNDLE = 4,
-  RDLP_STATUS_HTTP = 5,
-  RDLP_STATUS_INVALID_RESPONSE = 6,
-  RDLP_STATUS_UNAVAILABLE = 7,
-  RDLP_STATUS_FORMAT_UNAVAILABLE = 8,
-  RDLP_STATUS_EJS_ASSETS_MISSING = 9,
-  RDLP_STATUS_JS_CHALLENGE = 10,
-  RDLP_STATUS_AUTHENTICATION_REQUIRED = 11,
-  RDLP_STATUS_COOKIE = 12,
-  RDLP_STATUS_CANCELLED = 13,
-  RDLP_STATUS_BUSY = 14,
-  RDLP_STATUS_STORAGE = 15,
-  RDLP_STATUS_INTERNAL = 16,
-  RDLP_STATUS_EJS_ASSETS_CORRUPT = 17
-} rdlp_status;
+  RDLP_OK = 0,
+
+  RDLP_ERROR_INVALID_ARGUMENT = -110,
+  RDLP_ERROR_INVALID_VIDEO_ID = -120,
+  RDLP_ERROR_INVALID_PLAYLIST = -130,
+  RDLP_ERROR_INVALID_FORMAT_EXPRESSION = -140,
+  RDLP_ERROR_INVALID_PATH = -150,
+
+  RDLP_ERROR_OUT_OF_MEMORY = -210,
+
+  RDLP_ERROR_TRANSPORT_INITIALIZATION_FAILED = -310,
+  RDLP_ERROR_TRANSPORT_TIMEOUT = -320,
+  RDLP_ERROR_TRANSPORT_REQUEST_FAILED = -330,
+  RDLP_ERROR_CERTIFICATE_BUNDLE = -340,
+  RDLP_ERROR_HTTP_STATUS = -350,
+  RDLP_ERROR_RESPONSE_TOO_LARGE = -360,
+  RDLP_ERROR_RESPONSE_MALFORMED = -370,
+
+  RDLP_ERROR_VIDEO_UNAVAILABLE = -410,
+  RDLP_ERROR_FORMAT_UNAVAILABLE = -420,
+  RDLP_ERROR_AUTHENTICATION_REQUIRED = -430,
+  RDLP_ERROR_COOKIES_UNREADABLE = -440,
+  RDLP_ERROR_COOKIES_REJECTED = -450,
+
+  RDLP_ERROR_EJS_ASSETS_MISSING = -510,
+  RDLP_ERROR_EJS_ASSETS_CORRUPT = -520,
+  RDLP_ERROR_EJS_TIMEOUT = -530,
+  RDLP_ERROR_EJS_EXCEPTION = -540,
+  RDLP_ERROR_EJS_INVALID_RESULT = -550,
+  RDLP_ERROR_EJS_SIGNATURE_FAILED = -560,
+  RDLP_ERROR_EJS_N_TRANSFORM_FAILED = -570,
+
+  RDLP_ERROR_DESTINATION_EXISTS = -610,
+  RDLP_ERROR_STORAGE_IO = -620,
+  RDLP_ERROR_MEDIA_NOT_MP4 = -630,
+  RDLP_ERROR_MUX_INVALID_INPUT = -640,
+  RDLP_ERROR_MUX_FAILED = -650,
+  RDLP_ERROR_CLEANUP_FAILED = -660,
+
+  RDLP_ERROR_CANCELLED = -710,
+  RDLP_ERROR_CONTEXT_BUSY = -720,
+
+  RDLP_ERROR_INTERNAL = -910
+} rdlp_error_code;
+
+typedef enum {
+  RDLP_ERROR_CATEGORY_NONE = 0,
+  RDLP_ERROR_CATEGORY_INPUT = 1,
+  RDLP_ERROR_CATEGORY_RESOURCE = 2,
+  RDLP_ERROR_CATEGORY_TRANSPORT = 3,
+  RDLP_ERROR_CATEGORY_SERVICE = 4,
+  RDLP_ERROR_CATEGORY_EJS = 5,
+  RDLP_ERROR_CATEGORY_MEDIA = 6,
+  RDLP_ERROR_CATEGORY_OPERATION = 7,
+  RDLP_ERROR_CATEGORY_INTERNAL = 9
+} rdlp_error_category_code;
 
 typedef struct rdlp_error {
   size_t struct_size;
-  rdlp_status status;
+  rdlp_error_code code;
   long http_status;
   int transport_code;
   int retryable;
@@ -114,7 +151,7 @@ typedef struct {
   size_t data_length;
 } rdlp_transport_response;
 
-typedef rdlp_status (*rdlp_transport_send_callback)(
+typedef rdlp_error_code (*rdlp_transport_send_callback)(
     void *context, const rdlp_transport_request *request,
     rdlp_transport_response *response, rdlp_error *error);
 
@@ -159,31 +196,33 @@ typedef struct {
 } rdlp_playlist_options;
 
 RDLP_API const char *rdlp_version_string(void);
-RDLP_API const char *rdlp_status_string(rdlp_status status);
-RDLP_API rdlp_status rdlp_context_create(const rdlp_config *config,
-                                         rdlp_context **context,
-                                         rdlp_error *error);
+RDLP_API const char *rdlp_error_name(rdlp_error_code code);
+RDLP_API rdlp_error_category_code
+rdlp_error_category(rdlp_error_code code);
+RDLP_API int rdlp_error_is_retryable(rdlp_error_code code);
+RDLP_API rdlp_error_code rdlp_context_create(const rdlp_config *config,
+                                             rdlp_context **context,
+                                             rdlp_error *error);
 RDLP_API void rdlp_context_destroy(rdlp_context *context);
 
-RDLP_API rdlp_status rdlp_parse_video_id(const char *input, char video_id[12],
-                                         rdlp_error *error);
-RDLP_API rdlp_status rdlp_parse_playlist_id(const char *input,
-                                            char *playlist_id,
-                                            size_t playlist_id_size,
-                                            rdlp_error *error);
+RDLP_API rdlp_error_code rdlp_parse_video_id(const char *input,
+                                             char video_id[12],
+                                             rdlp_error *error);
+RDLP_API rdlp_error_code rdlp_parse_playlist_id(const char *input,
+                                                char *playlist_id,
+                                                size_t playlist_id_size,
+                                                rdlp_error *error);
 RDLP_API int rdlp_format_expression_valid(const char *expression);
 RDLP_API int rdlp_is_playlist_collection_input(const char *input);
-RDLP_API rdlp_status rdlp_resolve_video(rdlp_context *context,
-                                        const char *input,
-                                        const rdlp_resolve_options *options,
-                                        rdlp_selection **selection,
-                                        rdlp_error *error);
-RDLP_API rdlp_status rdlp_list_playlist(rdlp_context *context,
-                                        const char *input,
-                                        const rdlp_playlist_options *options,
-                                        rdlp_playlist **playlist,
-                                        rdlp_error *error);
-RDLP_API rdlp_status rdlp_list_playlist_collection(
+RDLP_API rdlp_error_code rdlp_resolve_video(
+    rdlp_context *context, const char *input,
+    const rdlp_resolve_options *options, rdlp_selection **selection,
+    rdlp_error *error);
+RDLP_API rdlp_error_code rdlp_list_playlist(
+    rdlp_context *context, const char *input,
+    const rdlp_playlist_options *options, rdlp_playlist **playlist,
+    rdlp_error *error);
+RDLP_API rdlp_error_code rdlp_list_playlist_collection(
     rdlp_context *context, const char *input,
     const rdlp_playlist_options *options,
     rdlp_playlist_collection **collection, rdlp_error *error);

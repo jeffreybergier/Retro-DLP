@@ -16,7 +16,7 @@
 #include "yt_cookies.h"
 
 #define YT_HTTP_MAX_RESPONSE (8U * 1024U * 1024U)
-#define YT_HTTP_TIMEOUT_SECONDS 20L
+#define YT_HTTP_TIMEOUT_SECONDS 60L
 
 typedef struct {
   char *data;
@@ -117,20 +117,24 @@ out_of_memory:
   return YT_ERR_OUT_OF_MEMORY;
 }
 
-static YTStatus transport_status(rdlp_status status) {
+static YTStatus transport_status(rdlp_error_code status) {
   switch (status) {
-  case RDLP_STATUS_OK:
+  case RDLP_OK:
     return YT_OK;
-  case RDLP_STATUS_OUT_OF_MEMORY:
+  case RDLP_ERROR_OUT_OF_MEMORY:
     return YT_ERR_OUT_OF_MEMORY;
-  case RDLP_STATUS_CERTIFICATE_BUNDLE:
+  case RDLP_ERROR_CERTIFICATE_BUNDLE:
     return YT_ERR_CERTIFICATE_BUNDLE;
-  case RDLP_STATUS_HTTP:
+  case RDLP_ERROR_TRANSPORT_TIMEOUT:
+    return YT_ERR_TRANSPORT_TIMEOUT;
+  case RDLP_ERROR_HTTP_STATUS:
     return YT_ERR_HTTP;
-  case RDLP_STATUS_CANCELLED:
+  case RDLP_ERROR_RESPONSE_TOO_LARGE:
+    return YT_ERR_RESPONSE_TOO_LARGE;
+  case RDLP_ERROR_CANCELLED:
     return YT_ERR_CANCELLED;
-  case RDLP_STATUS_INVALID_RESPONSE:
-  case RDLP_STATUS_INVALID_ARGUMENT:
+  case RDLP_ERROR_RESPONSE_MALFORMED:
+  case RDLP_ERROR_INVALID_ARGUMENT:
     return YT_ERR_INVALID_RESPONSE;
   default:
     return YT_ERR_NETWORK;
@@ -173,7 +177,7 @@ static YTStatus custom_request(YTHttpSession *session, rdlp_http_method method,
   rdlp_error error;
   rdlp_http_header *converted;
   char **storage;
-  rdlp_status sent;
+  rdlp_error_code sent;
   size_t index;
   char *copy;
   if (session == NULL || session->transport.send == NULL || response == NULL)
@@ -218,7 +222,7 @@ static YTStatus custom_request(YTHttpSession *session, rdlp_http_method method,
   error.struct_size = sizeof(error);
   if (session->cancel_callback != NULL &&
       session->cancel_callback(session->cancel_opaque))
-    sent = RDLP_STATUS_CANCELLED;
+    sent = RDLP_ERROR_CANCELLED;
   else
     sent = session->transport.send(session->transport.context, &request,
                                    &transported, &error);
@@ -233,10 +237,11 @@ static YTStatus custom_request(YTHttpSession *session, rdlp_http_method method,
     free(storage[index]);
   free(converted);
   free(storage);
-  if (sent != RDLP_STATUS_OK)
+  if (sent != RDLP_OK)
     return transport_status(sent);
-  if (transported.data_length > maximum_size ||
-      (transported.data_length != 0 && transported.data == NULL))
+  if (transported.data_length > maximum_size)
+    return YT_ERR_RESPONSE_TOO_LARGE;
+  if (transported.data_length != 0 && transported.data == NULL)
     return YT_ERR_INVALID_RESPONSE;
   copy = (char *)malloc(transported.data_length + 1);
   if (copy == NULL)
@@ -601,6 +606,10 @@ YTStatus yt_http_session_post_json(YTHttpSession *session, const char *url,
     free(buffer.data);
     if (code == CURLE_ABORTED_BY_CALLBACK && yt_http_session_cancelled(session))
       return YT_ERR_CANCELLED;
+    if (buffer.too_large)
+      return YT_ERR_RESPONSE_TOO_LARGE;
+    if (code == CURLE_OPERATION_TIMEDOUT)
+      return YT_ERR_TRANSPORT_TIMEOUT;
     return buffer.failed ? YT_ERR_OUT_OF_MEMORY : YT_ERR_NETWORK;
   }
   response->data = buffer.data;
@@ -670,9 +679,11 @@ static YTStatus http_get(YTHttpSession *session, const char *url,
     free(buffer.data);
     if (code == CURLE_ABORTED_BY_CALLBACK && yt_http_session_cancelled(session))
       return YT_ERR_CANCELLED;
-    return buffer.too_large ? YT_ERR_INVALID_RESPONSE
-                            : (buffer.failed ? YT_ERR_OUT_OF_MEMORY
-                                             : YT_ERR_NETWORK);
+    if (buffer.too_large)
+      return YT_ERR_RESPONSE_TOO_LARGE;
+    if (code == CURLE_OPERATION_TIMEDOUT)
+      return YT_ERR_TRANSPORT_TIMEOUT;
+    return buffer.failed ? YT_ERR_OUT_OF_MEMORY : YT_ERR_NETWORK;
   }
   response->data = buffer.data;
   response->length = buffer.length;

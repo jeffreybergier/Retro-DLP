@@ -684,17 +684,22 @@ static YTStatus solve_candidates(YTHttpSession *session,
   }
   status = yt_challenges_solve(session, player_source, requests,
                                request_count, &solved);
-  if (status != YT_OK)
+  if (status != YT_OK) {
+    yt_challenges_result_free(&solved);
     return status;
+  }
   status = YT_OK;
-  if (solved.responses == NULL || solved.response_count != request_count ||
-      (signature_index != (size_t)-1 &&
-       (solved.responses[signature_index].error != NULL ||
-        solved.responses[signature_index].solution_count != signature_count)) ||
-      (n_index != (size_t)-1 &&
-       (solved.responses[n_index].error != NULL ||
-        solved.responses[n_index].solution_count != n_count)))
-    status = YT_ERR_JS_CHALLENGE;
+  if (solved.responses == NULL || solved.response_count != request_count)
+    status = YT_ERR_EJS_INVALID_RESULT;
+  else if (signature_index != (size_t)-1 &&
+           (solved.responses[signature_index].error != NULL ||
+            solved.responses[signature_index].solution_count !=
+                signature_count))
+    status = YT_ERR_EJS_SIGNATURE_FAILED;
+  else if (n_index != (size_t)-1 &&
+           (solved.responses[n_index].error != NULL ||
+            solved.responses[n_index].solution_count != n_count))
+    status = YT_ERR_EJS_N_TRANSFORM_FAILED;
   for (index = 0; status == YT_OK && index < candidate_count; ++index) {
     YTFormatCandidate *candidate = &candidates[index];
     char *url = yt_copy_string(candidate->url);
@@ -728,10 +733,11 @@ static YTStatus solve_candidates(YTHttpSession *session,
     }
     remaining_n = query_value(
         strchr(url, '?') == NULL ? "" : strchr(url, '?') + 1, "n");
-    if (url_has_query_parameter(url, "s") ||
-        (candidate->n_challenge != NULL && remaining_n != NULL &&
-         strcmp(remaining_n, candidate->n_challenge) == 0))
-      status = YT_ERR_JS_CHALLENGE;
+    if (url_has_query_parameter(url, "s"))
+      status = YT_ERR_EJS_SIGNATURE_FAILED;
+    else if (candidate->n_challenge != NULL && remaining_n != NULL &&
+             strcmp(remaining_n, candidate->n_challenge) == 0)
+      status = YT_ERR_EJS_N_TRANSFORM_FAILED;
     free(remaining_n);
     if (status == YT_OK)
       status = finish_candidate(candidate, url, client, &results[index]);

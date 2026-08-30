@@ -7,7 +7,7 @@ typedef struct {
   unsigned int request_count;
 } example_transport;
 
-static rdlp_status send_fixture(void *opaque,
+static rdlp_error_code send_fixture(void *opaque,
                                 const rdlp_transport_request *request,
                                 rdlp_transport_response *response,
                                 rdlp_error *error) {
@@ -29,27 +29,27 @@ static rdlp_status send_fixture(void *opaque,
 
   if (request->cancel_callback != NULL &&
       request->cancel_callback(request->cancel_context))
-    return RDLP_STATUS_CANCELLED;
+    return RDLP_ERROR_CANCELLED;
   if (strncmp(request->url, "https://", 8) != 0)
-    return RDLP_STATUS_NETWORK;
+    return RDLP_ERROR_TRANSPORT_REQUEST_FAILED;
   if (request->method == RDLP_HTTP_GET && strstr(request->url, "/watch") != NULL)
     body = bootstrap;
   else if (request->method == RDLP_HTTP_POST &&
            strstr(request->url, "/youtubei/v1/player") != NULL)
     body = player;
   else
-    return RDLP_STATUS_NETWORK;
+    return RDLP_ERROR_TRANSPORT_REQUEST_FAILED;
 
   body_length = strlen(body);
   if (request->maximum_response_bytes != 0 &&
       body_length > request->maximum_response_bytes)
-    return RDLP_STATUS_INVALID_RESPONSE;
+    return RDLP_ERROR_RESPONSE_MALFORMED;
   ++transport->request_count;
   response->http_status = 200;
   response->transport_code = 0;
   response->data = body;
   response->data_length = body_length;
-  return RDLP_STATUS_OK;
+  return RDLP_OK;
 }
 
 int main(void) {
@@ -59,7 +59,7 @@ int main(void) {
   rdlp_context *context = NULL;
   rdlp_selection *selection = NULL;
   rdlp_error error = {0};
-  rdlp_status status;
+  rdlp_error_code status;
 
   transport.struct_size = sizeof(transport);
   transport.send = send_fixture;
@@ -69,11 +69,11 @@ int main(void) {
   error.struct_size = sizeof(error);
 
   status = rdlp_context_create(&config, &context, &error);
-  if (status == RDLP_STATUS_OK)
+  if (status == RDLP_OK)
     status = rdlp_resolve_video(context, "YE7VzlLtp-4", NULL, &selection,
                                 &error);
-  if (status != RDLP_STATUS_OK) {
-    fprintf(stderr, "%s: %s\n", rdlp_status_string(status), error.message);
+  if (status != RDLP_OK) {
+    fprintf(stderr, "%s (%d)\n", rdlp_error_name(status), (int)status);
     rdlp_context_destroy(context);
     return 1;
   }

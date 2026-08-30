@@ -196,7 +196,7 @@ int cli_options_parse(int argc, char **argv, CLIOptions *options,
       parse_error.struct_size = sizeof(parse_error);
       if (argv[index][0] == '-' &&
           rdlp_parse_video_id(argv[index], video_id, &parse_error) !=
-              RDLP_STATUS_OK)
+              RDLP_OK)
         return fail_unknown_option(error, error_size, argv[index]);
       options->input = argv[index];
     } else {

@@ -10,7 +10,7 @@ typedef struct {
   char root[4096];
 } CLIAssetInfo;
 
-typedef rdlp_status CLIAssetStatus;
+typedef rdlp_error_code CLIAssetStatus;
 
 CLIAssetStatus cli_asset_store_inspect(CLIAssetInfo *info);
 CLIAssetStatus cli_asset_store_install(void);

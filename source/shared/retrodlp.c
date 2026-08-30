@@ -51,7 +51,7 @@ struct rdlp_playlist_collection {
   YTPlaylistCollection value;
 };
 
-static void publish_error(rdlp_error *error, rdlp_status status,
+static void publish_error(rdlp_error *error, rdlp_error_code code,
                           const char *message) {
   rdlp_error value;
   size_t size;
@@ -62,66 +62,89 @@ static void publish_error(rdlp_error *error, rdlp_status status,
     size = sizeof(value);
   memset(&value, 0, sizeof(value));
   value.struct_size = sizeof(value);
-  value.status = status;
-  value.retryable = status == RDLP_STATUS_NETWORK || status == RDLP_STATUS_HTTP;
+  value.code = code;
+  value.retryable = rdlp_error_is_retryable(code);
   if (message != NULL)
     snprintf(value.message, sizeof(value.message), "%s", message);
   memcpy(error, &value, size);
 }
 
-static rdlp_status public_status(YTStatus status) {
+static rdlp_error_code public_error(YTStatus status) {
   switch (status) {
   case YT_OK:
-    return RDLP_STATUS_OK;
+    return RDLP_OK;
   case YT_ERR_INVALID_VIDEO_ID:
+    return RDLP_ERROR_INVALID_VIDEO_ID;
   case YT_ERR_INVALID_PLAYLIST:
+    return RDLP_ERROR_INVALID_PLAYLIST;
   case YT_ERR_INVALID_FORMAT:
-    return RDLP_STATUS_INVALID_ARGUMENT;
+    return RDLP_ERROR_INVALID_FORMAT_EXPRESSION;
   case YT_ERR_OUT_OF_MEMORY:
-    return RDLP_STATUS_OUT_OF_MEMORY;
+    return RDLP_ERROR_OUT_OF_MEMORY;
   case YT_ERR_NETWORK:
-    return RDLP_STATUS_NETWORK;
+    return RDLP_ERROR_TRANSPORT_REQUEST_FAILED;
+  case YT_ERR_TRANSPORT_TIMEOUT:
+    return RDLP_ERROR_TRANSPORT_TIMEOUT;
   case YT_ERR_CERTIFICATE_BUNDLE:
-    return RDLP_STATUS_CERTIFICATE_BUNDLE;
+    return RDLP_ERROR_CERTIFICATE_BUNDLE;
   case YT_ERR_HTTP:
-    return RDLP_STATUS_HTTP;
+    return RDLP_ERROR_HTTP_STATUS;
   case YT_ERR_INVALID_RESPONSE:
-    return RDLP_STATUS_INVALID_RESPONSE;
+    return RDLP_ERROR_RESPONSE_MALFORMED;
+  case YT_ERR_RESPONSE_TOO_LARGE:
+    return RDLP_ERROR_RESPONSE_TOO_LARGE;
   case YT_ERR_UNAVAILABLE:
-    return RDLP_STATUS_UNAVAILABLE;
+    return RDLP_ERROR_VIDEO_UNAVAILABLE;
   case YT_ERR_NO_PROGRESSIVE_MP4:
   case YT_ERR_FORMAT_UNAVAILABLE:
-    return RDLP_STATUS_FORMAT_UNAVAILABLE;
+    return RDLP_ERROR_FORMAT_UNAVAILABLE;
   case YT_ERR_EJS_ASSETS_MISSING:
-    return RDLP_STATUS_EJS_ASSETS_MISSING;
+    return RDLP_ERROR_EJS_ASSETS_MISSING;
+  case YT_ERR_EJS_ASSETS_CORRUPT:
+    return RDLP_ERROR_EJS_ASSETS_CORRUPT;
+  case YT_ERR_EJS_TIMEOUT:
+    return RDLP_ERROR_EJS_TIMEOUT;
+  case YT_ERR_EJS_EXCEPTION:
   case YT_ERR_JS_CHALLENGE:
-    return RDLP_STATUS_JS_CHALLENGE;
+    return RDLP_ERROR_EJS_EXCEPTION;
+  case YT_ERR_EJS_INVALID_RESULT:
+    return RDLP_ERROR_EJS_INVALID_RESULT;
+  case YT_ERR_EJS_SIGNATURE_FAILED:
+    return RDLP_ERROR_EJS_SIGNATURE_FAILED;
+  case YT_ERR_EJS_N_TRANSFORM_FAILED:
+    return RDLP_ERROR_EJS_N_TRANSFORM_FAILED;
   case YT_ERR_PO_TOKEN_REQUIRED:
+    return RDLP_ERROR_AUTHENTICATION_REQUIRED;
   case YT_ERR_AUTH_COOKIES_INVALID:
-    return RDLP_STATUS_AUTHENTICATION_REQUIRED;
+    return RDLP_ERROR_COOKIES_REJECTED;
   case YT_ERR_COOKIE_FILE:
-    return RDLP_STATUS_COOKIE;
+    return RDLP_ERROR_COOKIES_UNREADABLE;
   case YT_ERR_CANCELLED:
-    return RDLP_STATUS_CANCELLED;
+    return RDLP_ERROR_CANCELLED;
   case YT_ERR_FILE_EXISTS:
+    return RDLP_ERROR_DESTINATION_EXISTS;
   case YT_ERR_STORAGE:
-    return RDLP_STATUS_STORAGE;
+    return RDLP_ERROR_STORAGE_IO;
+  case YT_ERR_INVALID_MEDIA:
+    return RDLP_ERROR_MEDIA_NOT_MP4;
+  case YT_ERR_MUX:
+    return RDLP_ERROR_MUX_FAILED;
   default:
-    return RDLP_STATUS_INTERNAL;
+    return RDLP_ERROR_INTERNAL;
   }
 }
 
-static rdlp_status finish_status(YTStatus status, rdlp_error *error) {
-  rdlp_status result = public_status(status);
+static rdlp_error_code finish_status(YTStatus status, rdlp_error *error) {
+  rdlp_error_code result = public_error(status);
   publish_error(error, result, yt_status_string(status));
   return result;
 }
 
-static rdlp_status finish_session_status(YTStatus status,
+static rdlp_error_code finish_session_status(YTStatus status,
                                          YTHttpSession *session,
                                          rdlp_error *error) {
   YTHttpDiagnostic diagnostic;
-  rdlp_status result = finish_status(status, error);
+  rdlp_error_code result = finish_status(status, error);
   yt_http_session_diagnostic(session, &diagnostic);
   if (error != NULL) {
     if (HAS_FIELD(error, rdlp_error, http_status))
@@ -168,74 +191,99 @@ static void fill_session_config(rdlp_context *context,
 
 const char *rdlp_version_string(void) { return RDLP_VERSION_STRING; }
 
-const char *rdlp_status_string(rdlp_status status) {
-  switch (status) {
-  case RDLP_STATUS_OK:
-    return "success";
-  case RDLP_STATUS_INVALID_ARGUMENT:
-    return "invalid argument";
-  case RDLP_STATUS_OUT_OF_MEMORY:
-    return "out of memory";
-  case RDLP_STATUS_NETWORK:
-    return "network request failed";
-  case RDLP_STATUS_CERTIFICATE_BUNDLE:
-    return "CA certificate bundle unavailable";
-  case RDLP_STATUS_HTTP:
-    return "HTTP request failed";
-  case RDLP_STATUS_INVALID_RESPONSE:
-    return "invalid service response";
-  case RDLP_STATUS_UNAVAILABLE:
-    return "media unavailable";
-  case RDLP_STATUS_FORMAT_UNAVAILABLE:
-    return "requested format unavailable";
-  case RDLP_STATUS_EJS_ASSETS_MISSING:
-    return "EJS assets unavailable";
-  case RDLP_STATUS_JS_CHALLENGE:
-    return "JavaScript challenge failed";
-  case RDLP_STATUS_AUTHENTICATION_REQUIRED:
-    return "authentication required";
-  case RDLP_STATUS_COOKIE:
-    return "invalid cookie data";
-  case RDLP_STATUS_CANCELLED:
-    return "operation cancelled";
-  case RDLP_STATUS_BUSY:
-    return "context is busy";
-  case RDLP_STATUS_STORAGE:
-    return "storage error";
-  case RDLP_STATUS_INTERNAL:
-    return "internal error";
-  case RDLP_STATUS_EJS_ASSETS_CORRUPT:
-    return "EJS assets are corrupt";
+const char *rdlp_error_name(rdlp_error_code code) {
+#define RDLP_ERROR_NAME(value) case value: return #value
+  switch (code) {
+    RDLP_ERROR_NAME(RDLP_OK);
+    RDLP_ERROR_NAME(RDLP_ERROR_INVALID_ARGUMENT);
+    RDLP_ERROR_NAME(RDLP_ERROR_INVALID_VIDEO_ID);
+    RDLP_ERROR_NAME(RDLP_ERROR_INVALID_PLAYLIST);
+    RDLP_ERROR_NAME(RDLP_ERROR_INVALID_FORMAT_EXPRESSION);
+    RDLP_ERROR_NAME(RDLP_ERROR_INVALID_PATH);
+    RDLP_ERROR_NAME(RDLP_ERROR_OUT_OF_MEMORY);
+    RDLP_ERROR_NAME(RDLP_ERROR_TRANSPORT_INITIALIZATION_FAILED);
+    RDLP_ERROR_NAME(RDLP_ERROR_TRANSPORT_TIMEOUT);
+    RDLP_ERROR_NAME(RDLP_ERROR_TRANSPORT_REQUEST_FAILED);
+    RDLP_ERROR_NAME(RDLP_ERROR_CERTIFICATE_BUNDLE);
+    RDLP_ERROR_NAME(RDLP_ERROR_HTTP_STATUS);
+    RDLP_ERROR_NAME(RDLP_ERROR_RESPONSE_TOO_LARGE);
+    RDLP_ERROR_NAME(RDLP_ERROR_RESPONSE_MALFORMED);
+    RDLP_ERROR_NAME(RDLP_ERROR_VIDEO_UNAVAILABLE);
+    RDLP_ERROR_NAME(RDLP_ERROR_FORMAT_UNAVAILABLE);
+    RDLP_ERROR_NAME(RDLP_ERROR_AUTHENTICATION_REQUIRED);
+    RDLP_ERROR_NAME(RDLP_ERROR_COOKIES_UNREADABLE);
+    RDLP_ERROR_NAME(RDLP_ERROR_COOKIES_REJECTED);
+    RDLP_ERROR_NAME(RDLP_ERROR_EJS_ASSETS_MISSING);
+    RDLP_ERROR_NAME(RDLP_ERROR_EJS_ASSETS_CORRUPT);
+    RDLP_ERROR_NAME(RDLP_ERROR_EJS_TIMEOUT);
+    RDLP_ERROR_NAME(RDLP_ERROR_EJS_EXCEPTION);
+    RDLP_ERROR_NAME(RDLP_ERROR_EJS_INVALID_RESULT);
+    RDLP_ERROR_NAME(RDLP_ERROR_EJS_SIGNATURE_FAILED);
+    RDLP_ERROR_NAME(RDLP_ERROR_EJS_N_TRANSFORM_FAILED);
+    RDLP_ERROR_NAME(RDLP_ERROR_DESTINATION_EXISTS);
+    RDLP_ERROR_NAME(RDLP_ERROR_STORAGE_IO);
+    RDLP_ERROR_NAME(RDLP_ERROR_MEDIA_NOT_MP4);
+    RDLP_ERROR_NAME(RDLP_ERROR_MUX_INVALID_INPUT);
+    RDLP_ERROR_NAME(RDLP_ERROR_MUX_FAILED);
+    RDLP_ERROR_NAME(RDLP_ERROR_CLEANUP_FAILED);
+    RDLP_ERROR_NAME(RDLP_ERROR_CANCELLED);
+    RDLP_ERROR_NAME(RDLP_ERROR_CONTEXT_BUSY);
+    RDLP_ERROR_NAME(RDLP_ERROR_INTERNAL);
   }
-  return "unknown error";
+#undef RDLP_ERROR_NAME
+  return "RDLP_ERROR_UNKNOWN";
 }
 
-rdlp_status rdlp_context_create(const rdlp_config *config,
+rdlp_error_category_code rdlp_error_category(rdlp_error_code code) {
+  int category;
+  if (code >= 0)
+    return RDLP_ERROR_CATEGORY_NONE;
+  category = -(int)code / 100;
+  switch (category) {
+  case 1: return RDLP_ERROR_CATEGORY_INPUT;
+  case 2: return RDLP_ERROR_CATEGORY_RESOURCE;
+  case 3: return RDLP_ERROR_CATEGORY_TRANSPORT;
+  case 4: return RDLP_ERROR_CATEGORY_SERVICE;
+  case 5: return RDLP_ERROR_CATEGORY_EJS;
+  case 6: return RDLP_ERROR_CATEGORY_MEDIA;
+  case 7: return RDLP_ERROR_CATEGORY_OPERATION;
+  case 9: return RDLP_ERROR_CATEGORY_INTERNAL;
+  default: return RDLP_ERROR_CATEGORY_NONE;
+  }
+}
+
+int rdlp_error_is_retryable(rdlp_error_code code) {
+  return code == RDLP_ERROR_TRANSPORT_TIMEOUT ||
+         code == RDLP_ERROR_TRANSPORT_REQUEST_FAILED ||
+         code == RDLP_ERROR_HTTP_STATUS;
+}
+
+rdlp_error_code rdlp_context_create(const rdlp_config *config,
                                 rdlp_context **context, rdlp_error *error) {
   rdlp_context *created;
   YTHttpSessionConfig session_config;
   YTStatus session_status;
   if (context == NULL) {
-    publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+    publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                   "context output pointer is required");
-    return RDLP_STATUS_INVALID_ARGUMENT;
+    return RDLP_ERROR_INVALID_ARGUMENT;
   }
   *context = NULL;
   if (config != NULL && config->struct_size < sizeof(config->struct_size)) {
-    publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+    publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                   "configuration structure is too small");
-    return RDLP_STATUS_INVALID_ARGUMENT;
+    return RDLP_ERROR_INVALID_ARGUMENT;
   }
   created = (rdlp_context *)calloc(1, sizeof(*created));
   if (created == NULL) {
-    publish_error(error, RDLP_STATUS_OUT_OF_MEMORY, "out of memory");
-    return RDLP_STATUS_OUT_OF_MEMORY;
+    publish_error(error, RDLP_ERROR_OUT_OF_MEMORY, "out of memory");
+    return RDLP_ERROR_OUT_OF_MEMORY;
   }
   if (pthread_mutex_init(&created->operation_mutex, NULL) != 0) {
     free(created);
-    publish_error(error, RDLP_STATUS_INTERNAL,
+    publish_error(error, RDLP_ERROR_INTERNAL,
                   "could not initialize context synchronization");
-    return RDLP_STATUS_INTERNAL;
+    return RDLP_ERROR_INTERNAL;
   }
   created->timeout_milliseconds = RDLP_DEFAULT_TIMEOUT_MILLISECONDS;
   if (config != NULL) {
@@ -266,8 +314,8 @@ rdlp_status rdlp_context_create(const rdlp_config *config,
          config->ejs_asset_directory != NULL &&
          created->ejs_asset_directory == NULL)) {
       rdlp_context_destroy(created);
-      publish_error(error, RDLP_STATUS_OUT_OF_MEMORY, "out of memory");
-      return RDLP_STATUS_OUT_OF_MEMORY;
+      publish_error(error, RDLP_ERROR_OUT_OF_MEMORY, "out of memory");
+      return RDLP_ERROR_OUT_OF_MEMORY;
     }
     if ((created->cache_directory != NULL &&
          created->cache_directory[0] != '/') ||
@@ -276,9 +324,9 @@ rdlp_status rdlp_context_create(const rdlp_config *config,
         (created->ejs_asset_directory != NULL &&
          created->ejs_asset_directory[0] != '/')) {
       rdlp_context_destroy(created);
-      publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+      publish_error(error, RDLP_ERROR_INVALID_PATH,
                     "configured paths must be absolute");
-      return RDLP_STATUS_INVALID_ARGUMENT;
+      return RDLP_ERROR_INVALID_PATH;
     }
     if (HAS_FIELD(config, rdlp_config, ejs_memory_limit_bytes))
       created->ejs_memory_limit_bytes = config->ejs_memory_limit_bytes;
@@ -289,9 +337,9 @@ rdlp_status rdlp_context_create(const rdlp_config *config,
       if (!HAS_FIELD(config->transport, rdlp_transport, send) ||
           config->transport->send == NULL) {
         rdlp_context_destroy(created);
-        publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+        publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                       "transport structure is invalid");
-        return RDLP_STATUS_INVALID_ARGUMENT;
+        return RDLP_ERROR_INVALID_ARGUMENT;
       }
       memset(&created->transport, 0, sizeof(created->transport));
       created->transport.struct_size = sizeof(created->transport);
@@ -307,9 +355,9 @@ rdlp_status rdlp_context_create(const rdlp_config *config,
   }
   if (!created->has_transport && !rdlp_curl_acquire()) {
     rdlp_context_destroy(created);
-    publish_error(error, RDLP_STATUS_NETWORK,
+    publish_error(error, RDLP_ERROR_TRANSPORT_INITIALIZATION_FAILED,
                   "could not initialize default HTTP transport");
-    return RDLP_STATUS_NETWORK;
+    return RDLP_ERROR_TRANSPORT_INITIALIZATION_FAILED;
   }
   if (!created->has_transport)
     created->owns_default_transport = 1;
@@ -322,8 +370,8 @@ rdlp_status rdlp_context_create(const rdlp_config *config,
     return finish_status(session_status, error);
   }
   *context = created;
-  publish_error(error, RDLP_STATUS_OK, "success");
-  return RDLP_STATUS_OK;
+  publish_error(error, RDLP_OK, "success");
+  return RDLP_OK;
 }
 
 void rdlp_context_destroy(rdlp_context *context) {
@@ -339,30 +387,30 @@ void rdlp_context_destroy(rdlp_context *context) {
   free(context);
 }
 
-rdlp_status rdlp_parse_video_id(const char *input, char video_id[12],
+rdlp_error_code rdlp_parse_video_id(const char *input, char video_id[12],
                                 rdlp_error *error) {
   YTStatus status;
   if (video_id != NULL)
     video_id[0] = '\0';
   if (input == NULL || video_id == NULL) {
-    publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+    publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                   "input and video ID output are required");
-    return RDLP_STATUS_INVALID_ARGUMENT;
+    return RDLP_ERROR_INVALID_ARGUMENT;
   }
   status = yt_extract_video_id(input, video_id);
   return finish_status(status, error);
 }
 
-rdlp_status rdlp_parse_playlist_id(const char *input, char *playlist_id,
+rdlp_error_code rdlp_parse_playlist_id(const char *input, char *playlist_id,
                                    size_t playlist_id_size,
                                    rdlp_error *error) {
   YTStatus status;
   if (playlist_id != NULL && playlist_id_size != 0)
     playlist_id[0] = '\0';
   if (input == NULL || playlist_id == NULL || playlist_id_size == 0) {
-    publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+    publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                   "input and playlist ID output are required");
-    return RDLP_STATUS_INVALID_ARGUMENT;
+    return RDLP_ERROR_INVALID_ARGUMENT;
   }
   status = yt_extract_playlist_id(input, playlist_id, playlist_id_size);
   return finish_status(status, error);
@@ -418,25 +466,25 @@ static void facade_progress(const char *message, void *opaque) {
 
 static void end_operation(rdlp_context *context);
 
-static rdlp_status begin_operation(rdlp_context *context, rdlp_error *error) {
+static rdlp_error_code begin_operation(rdlp_context *context, rdlp_error *error) {
   if (context == NULL) {
-    publish_error(error, RDLP_STATUS_INVALID_ARGUMENT, "context is required");
-    return RDLP_STATUS_INVALID_ARGUMENT;
+    publish_error(error, RDLP_ERROR_INVALID_ARGUMENT, "context is required");
+    return RDLP_ERROR_INVALID_ARGUMENT;
   }
   pthread_mutex_lock(&context->operation_mutex);
   if (context->operating) {
     pthread_mutex_unlock(&context->operation_mutex);
-    publish_error(error, RDLP_STATUS_BUSY, "context is already in use");
-    return RDLP_STATUS_BUSY;
+    publish_error(error, RDLP_ERROR_CONTEXT_BUSY, "context is already in use");
+    return RDLP_ERROR_CONTEXT_BUSY;
   }
   context->operating = 1;
   pthread_mutex_unlock(&context->operation_mutex);
   if (context_cancelled(context)) {
     end_operation(context);
-    publish_error(error, RDLP_STATUS_CANCELLED, "operation cancelled");
-    return RDLP_STATUS_CANCELLED;
+    publish_error(error, RDLP_ERROR_CANCELLED, "operation cancelled");
+    return RDLP_ERROR_CANCELLED;
   }
-  return RDLP_STATUS_OK;
+  return RDLP_OK;
 }
 
 static void end_operation(rdlp_context *context) {
@@ -456,14 +504,14 @@ static YTStatus operation_session(rdlp_context *context,
   return status;
 }
 
-rdlp_status rdlp_resolve_video(rdlp_context *context, const char *input,
+rdlp_error_code rdlp_resolve_video(rdlp_context *context, const char *input,
                                const rdlp_resolve_options *options,
                                rdlp_selection **selection,
                                rdlp_error *error) {
   rdlp_selection *created;
   YTHttpSession *session;
   YTStatus status;
-  rdlp_status started;
+  rdlp_error_code started;
   const char *cookie_file = NULL;
   const void *cookie_data = NULL;
   size_t cookie_data_length = 0;
@@ -472,17 +520,17 @@ rdlp_status rdlp_resolve_video(rdlp_context *context, const char *input,
   int prefer_adaptive = 0;
   int include_format_inventory = 0;
   if (selection == NULL) {
-    publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+    publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                   "selection output pointer is required");
-    return RDLP_STATUS_INVALID_ARGUMENT;
+    return RDLP_ERROR_INVALID_ARGUMENT;
   }
   *selection = NULL;
   if (input == NULL ||
       (options != NULL &&
        options->struct_size < sizeof(options->struct_size))) {
-    publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+    publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                   "input or resolve options are invalid");
-    return RDLP_STATUS_INVALID_ARGUMENT;
+    return RDLP_ERROR_INVALID_ARGUMENT;
   }
   if (options != NULL) {
     if (HAS_FIELD(options, rdlp_resolve_options, cookie_file))
@@ -493,9 +541,9 @@ rdlp_status rdlp_resolve_video(rdlp_context *context, const char *input,
       cookie_data_length = options->cookie_data_length;
     if ((cookie_data == NULL) != (cookie_data_length == 0) ||
         (cookie_file != NULL && cookie_data != NULL)) {
-      publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+      publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                     "cookie file and cookie data options are invalid");
-      return RDLP_STATUS_INVALID_ARGUMENT;
+      return RDLP_ERROR_INVALID_ARGUMENT;
     }
     if (HAS_FIELD(options, rdlp_resolve_options, format_expression))
       format_expression = options->format_expression;
@@ -508,7 +556,7 @@ rdlp_status rdlp_resolve_video(rdlp_context *context, const char *input,
       include_format_inventory = options->include_format_inventory != 0;
   }
   started = begin_operation(context, error);
-  if (started != RDLP_STATUS_OK)
+  if (started != RDLP_OK)
     return started;
   created = (rdlp_selection *)calloc(1, sizeof(*created));
   session = NULL;
@@ -545,31 +593,31 @@ rdlp_status rdlp_resolve_video(rdlp_context *context, const char *input,
   created->headers[1].value = created->value.audio.user_agent;
   created->header_counts[1] = created->value.audio.user_agent != NULL ? 1 : 0;
   *selection = created;
-  publish_error(error, RDLP_STATUS_OK, "success");
-  return RDLP_STATUS_OK;
+  publish_error(error, RDLP_OK, "success");
+  return RDLP_OK;
 }
 
-rdlp_status rdlp_list_playlist(rdlp_context *context, const char *input,
+rdlp_error_code rdlp_list_playlist(rdlp_context *context, const char *input,
                                const rdlp_playlist_options *options,
                                rdlp_playlist **playlist, rdlp_error *error) {
   rdlp_playlist *created;
   YTHttpSession *session;
   YTStatus status;
-  rdlp_status started;
+  rdlp_error_code started;
   const char *cookie_file = NULL;
   const void *cookie_data = NULL;
   size_t cookie_data_length = 0;
   if (playlist == NULL) {
-    publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+    publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                   "playlist output pointer is required");
-    return RDLP_STATUS_INVALID_ARGUMENT;
+    return RDLP_ERROR_INVALID_ARGUMENT;
   }
   *playlist = NULL;
   if (input == NULL ||
       (options != NULL && options->struct_size < sizeof(options->struct_size))) {
-    publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+    publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                   "input or playlist options are invalid");
-    return RDLP_STATUS_INVALID_ARGUMENT;
+    return RDLP_ERROR_INVALID_ARGUMENT;
   }
   if (options != NULL) {
     if (HAS_FIELD(options, rdlp_playlist_options, cookie_file))
@@ -580,13 +628,13 @@ rdlp_status rdlp_list_playlist(rdlp_context *context, const char *input,
       cookie_data_length = options->cookie_data_length;
     if ((cookie_data == NULL) != (cookie_data_length == 0) ||
         (cookie_file != NULL && cookie_data != NULL)) {
-      publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+      publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                     "cookie file and cookie data options are invalid");
-      return RDLP_STATUS_INVALID_ARGUMENT;
+      return RDLP_ERROR_INVALID_ARGUMENT;
     }
   }
   started = begin_operation(context, error);
-  if (started != RDLP_STATUS_OK)
+  if (started != RDLP_OK)
     return started;
   created = (rdlp_playlist *)calloc(1, sizeof(*created));
   session = NULL;
@@ -607,32 +655,32 @@ rdlp_status rdlp_list_playlist(rdlp_context *context, const char *input,
     return finish_session_status(status, context->http_session, error);
   }
   *playlist = created;
-  publish_error(error, RDLP_STATUS_OK, "success");
-  return RDLP_STATUS_OK;
+  publish_error(error, RDLP_OK, "success");
+  return RDLP_OK;
 }
 
-rdlp_status rdlp_list_playlist_collection(
+rdlp_error_code rdlp_list_playlist_collection(
     rdlp_context *context, const char *input,
     const rdlp_playlist_options *options,
     rdlp_playlist_collection **collection, rdlp_error *error) {
   rdlp_playlist_collection *created;
   YTHttpSession *session;
   YTStatus status;
-  rdlp_status started;
+  rdlp_error_code started;
   const char *cookie_file = NULL;
   const void *cookie_data = NULL;
   size_t cookie_data_length = 0;
   if (collection == NULL) {
-    publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+    publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                   "playlist collection output pointer is required");
-    return RDLP_STATUS_INVALID_ARGUMENT;
+    return RDLP_ERROR_INVALID_ARGUMENT;
   }
   *collection = NULL;
   if (input == NULL || !yt_is_playlist_collection_url(input) ||
       (options != NULL && options->struct_size < sizeof(options->struct_size))) {
-    publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+    publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                   "input or playlist options are invalid");
-    return RDLP_STATUS_INVALID_ARGUMENT;
+    return RDLP_ERROR_INVALID_ARGUMENT;
   }
   if (options != NULL) {
     if (HAS_FIELD(options, rdlp_playlist_options, cookie_file))
@@ -643,13 +691,13 @@ rdlp_status rdlp_list_playlist_collection(
       cookie_data_length = options->cookie_data_length;
     if ((cookie_data == NULL) != (cookie_data_length == 0) ||
         (cookie_file != NULL && cookie_data != NULL)) {
-      publish_error(error, RDLP_STATUS_INVALID_ARGUMENT,
+      publish_error(error, RDLP_ERROR_INVALID_ARGUMENT,
                     "cookie file and cookie data options are invalid");
-      return RDLP_STATUS_INVALID_ARGUMENT;
+      return RDLP_ERROR_INVALID_ARGUMENT;
     }
   }
   started = begin_operation(context, error);
-  if (started != RDLP_STATUS_OK)
+  if (started != RDLP_OK)
     return started;
   created = (rdlp_playlist_collection *)calloc(1, sizeof(*created));
   session = NULL;
@@ -671,8 +719,8 @@ rdlp_status rdlp_list_playlist_collection(
     return finish_session_status(status, context->http_session, error);
   }
   *collection = created;
-  publish_error(error, RDLP_STATUS_OK, "success");
-  return RDLP_STATUS_OK;
+  publish_error(error, RDLP_OK, "success");
+  return RDLP_OK;
 }
 
 void rdlp_selection_destroy(rdlp_selection *selection) {

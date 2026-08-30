@@ -55,14 +55,14 @@ static void reset_allocation_failure(void) {
   allocation_failure_size = 0;
 }
 
-static rdlp_status unused_transport_send(
+static rdlp_error_code unused_transport_send(
     void *context, const rdlp_transport_request *request,
     rdlp_transport_response *response, rdlp_error *error) {
   (void)context;
   (void)request;
   (void)response;
   (void)error;
-  return RDLP_STATUS_NETWORK;
+  return RDLP_ERROR_TRANSPORT_REQUEST_FAILED;
 }
 
 static int test_owned_result_allocations(void) {
@@ -84,7 +84,7 @@ static int test_owned_result_allocations(void) {
   config.transport = &transport;
   error.struct_size = sizeof(error);
   context = NULL;
-  if (rdlp_context_create(&config, &context, &error) != RDLP_STATUS_OK) {
+  if (rdlp_context_create(&config, &context, &error) != RDLP_OK) {
     fprintf(stderr, "FAIL: allocation fixture context setup\n");
     return 1;
   }
@@ -92,8 +92,8 @@ static int test_owned_result_allocations(void) {
   selection = (rdlp_selection *)(size_t)1;
   fail_next_calloc();
   if (rdlp_resolve_video(context, "YE7VzlLtp-4", NULL, &selection, &error) !=
-          RDLP_STATUS_OUT_OF_MEMORY ||
-      selection != NULL || error.status != RDLP_STATUS_OUT_OF_MEMORY) {
+          RDLP_ERROR_OUT_OF_MEMORY ||
+      selection != NULL || error.code != RDLP_ERROR_OUT_OF_MEMORY) {
     reset_allocation_failure();
     fprintf(stderr, "FAIL: selection result allocation failure contract\n");
     ++failures;
@@ -102,8 +102,8 @@ static int test_owned_result_allocations(void) {
   playlist = (rdlp_playlist *)(size_t)1;
   fail_next_calloc();
   if (rdlp_list_playlist(context, "PL_allocation_fixture", NULL, &playlist,
-                         &error) != RDLP_STATUS_OUT_OF_MEMORY ||
-      playlist != NULL || error.status != RDLP_STATUS_OUT_OF_MEMORY) {
+                         &error) != RDLP_ERROR_OUT_OF_MEMORY ||
+      playlist != NULL || error.code != RDLP_ERROR_OUT_OF_MEMORY) {
     reset_allocation_failure();
     fprintf(stderr, "FAIL: playlist result allocation failure contract\n");
     ++failures;
@@ -113,8 +113,8 @@ static int test_owned_result_allocations(void) {
   fail_next_calloc();
   if (rdlp_list_playlist_collection(
           context, "https://www.youtube.com/feed/playlists", NULL,
-          &collection, &error) != RDLP_STATUS_OUT_OF_MEMORY ||
-      collection != NULL || error.status != RDLP_STATUS_OUT_OF_MEMORY) {
+          &collection, &error) != RDLP_ERROR_OUT_OF_MEMORY ||
+      collection != NULL || error.code != RDLP_ERROR_OUT_OF_MEMORY) {
     reset_allocation_failure();
     fprintf(stderr,
             "FAIL: playlist collection result allocation failure contract\n");

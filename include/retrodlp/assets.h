@@ -28,13 +28,13 @@ typedef struct {
 } rdlp_ejs_asset_options;
 
 RDLP_API const char *rdlp_ejs_asset_version(void);
-RDLP_API rdlp_status rdlp_ejs_assets_inspect(
+RDLP_API rdlp_error_code rdlp_ejs_assets_inspect(
     const char *directory, rdlp_ejs_asset_info *info, rdlp_error *error);
-RDLP_API rdlp_status rdlp_ejs_assets_install(
+RDLP_API rdlp_error_code rdlp_ejs_assets_install(
     const char *directory, const rdlp_ejs_asset_options *options,
     rdlp_error *error);
-RDLP_API rdlp_status rdlp_ejs_assets_remove(const char *directory,
-                                            rdlp_error *error);
+RDLP_API rdlp_error_code rdlp_ejs_assets_remove(const char *directory,
+                                                rdlp_error *error);
 
 #ifdef __cplusplus
 }

@@ -128,17 +128,17 @@ export RETRO_DLP_TEST_EJS_DIR
 cp "$asset_dir/core.min.js" "$asset_dir/core.saved"
 printf 'corrupt' > "$asset_dir/core.min.js"
 asset_status=$($binary assets status)
-printf '%s\n' "$asset_status" | grep -q '"status":[[:space:]]*"corrupt"' || \
+printf '%s\n' "$asset_status" | grep -q '"status":[[:space:]]*"RDLP_ERROR_EJS_ASSETS_CORRUPT"' || \
   fail "truncated EJS asset was accepted"
 cp "$asset_dir/core.saved" "$asset_dir/core.min.js"
 printf 'X' | dd of="$asset_dir/core.min.js" bs=1 seek=100 conv=notrunc 2>/dev/null
 asset_status=$($binary assets status)
-printf '%s\n' "$asset_status" | grep -q '"status":[[:space:]]*"corrupt"' || \
+printf '%s\n' "$asset_status" | grep -q '"status":[[:space:]]*"RDLP_ERROR_EJS_ASSETS_CORRUPT"' || \
   fail "wrong-hash EJS asset was accepted"
 cp "$asset_dir/core.saved" "$asset_dir/core.min.js"
 dd if=/dev/zero bs=1 count=1 >> "$asset_dir/core.min.js" 2>/dev/null
 asset_status=$($binary assets status)
-printf '%s\n' "$asset_status" | grep -q '"status":[[:space:]]*"corrupt"' || \
+printf '%s\n' "$asset_status" | grep -q '"status":[[:space:]]*"RDLP_ERROR_EJS_ASSETS_CORRUPT"' || \
   fail "oversized EJS asset was accepted"
 mv "$asset_dir/core.saved" "$asset_dir/core.min.js"
 printf 'partial' > "$asset_dir/core.min.js.tmp.interrupted"
@@ -200,14 +200,14 @@ grep -q '^retro-dlp: did you mean "--cookies-default"?$' "$error_file" || \
 if $binary --flat-playlist YE7VzlLtp-4 2>"$error_file"; then
   fail "--flat-playlist accepted a video ID"
 fi
-grep -q '^retro-dlp: invalid or unsupported YouTube playlist URL$' \
+grep -q '^retro-dlp: RDLP_ERROR_INVALID_PLAYLIST (-130)$' \
   "$error_file" || fail "invalid flat-playlist input was misclassified"
 
 if $binary --flat-playlist \
     'https://www.youtube.com/feed/playlists' 2>"$error_file"; then
   fail "account playlist collection did not require cookies"
 fi
-grep -q '^retro-dlp: YouTube authentication cookies are missing, expired, or invalid$' \
+grep -q '^retro-dlp: RDLP_ERROR_COOKIES_REJECTED (-450)$' \
   "$error_file" || fail "account playlist collection lacked cookie guidance"
 
 invalid_cookie_file=$test_home/invalid-cookies.txt
@@ -219,7 +219,7 @@ if $binary --cookies "$invalid_cookie_file" --dump-json YE7VzlLtp-4 \
     2>"$error_file"; then
   fail "incomplete authentication cookies returned success"
 fi
-grep -q '^retro-dlp: YouTube authentication cookies are missing, expired, or invalid$' \
+grep -q '^retro-dlp: RDLP_ERROR_COOKIES_REJECTED (-450)$' \
   "$error_file" || fail "invalid authentication cookies were misclassified"
 if grep -q 'hl=en' "$error_file"; then
   fail "cookie value was written to an error message"
@@ -230,7 +230,7 @@ chmod 600 "$test_home/.retro-dlp/cookies.txt"
 if $binary --cookies-default --dump-json YE7VzlLtp-4 2>"$error_file"; then
   fail "incomplete default authentication cookies returned success"
 fi
-grep -q '^retro-dlp: YouTube authentication cookies are missing, expired, or invalid$' \
+grep -q '^retro-dlp: RDLP_ERROR_COOKIES_REJECTED (-450)$' \
   "$error_file" || fail "--cookies-default did not use ~/.retro-dlp/cookies.txt"
 if grep -q 'YE7VzlLtp-4.*cookie' "$error_file"; then
   fail "video ID was misclassified as an explicit cookie path"
@@ -240,7 +240,7 @@ asset_remove=$($binary assets remove)
 printf '%s\n' "$asset_remove" | grep -q '"installed":[[:space:]]*false' || \
   fail "asset remove did not remove EJS files"
 asset_status=$($binary assets status)
-printf '%s\n' "$asset_status" | grep -q '"status":[[:space:]]*"missing"' || \
+printf '%s\n' "$asset_status" | grep -q '"status":[[:space:]]*"RDLP_ERROR_EJS_ASSETS_MISSING"' || \
   fail "wrong-version asset directory was accepted"
 
 echo "PASS: Linux CLI"

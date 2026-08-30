@@ -419,6 +419,22 @@ const char *yt_status_string(YTStatus status) {
     return "invalid or unsupported YouTube playlist URL";
   case YT_ERR_CANCELLED:
     return "operation cancelled";
+  case YT_ERR_TRANSPORT_TIMEOUT:
+    return "transport request timed out";
+  case YT_ERR_RESPONSE_TOO_LARGE:
+    return "response exceeds its size limit";
+  case YT_ERR_EJS_ASSETS_CORRUPT:
+    return "EJS assets are corrupt";
+  case YT_ERR_EJS_TIMEOUT:
+    return "EJS execution deadline exceeded";
+  case YT_ERR_EJS_EXCEPTION:
+    return "EJS execution failed";
+  case YT_ERR_EJS_INVALID_RESULT:
+    return "EJS returned an invalid result";
+  case YT_ERR_EJS_SIGNATURE_FAILED:
+    return "EJS signature transformation failed";
+  case YT_ERR_EJS_N_TRANSFORM_FAILED:
+    return "EJS n transformation failed";
   }
   return "unknown error";
 }

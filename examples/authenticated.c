@@ -7,7 +7,7 @@ int main(int argc, char **argv) {
   rdlp_selection *selection = NULL;
   rdlp_resolve_options options = {0};
   rdlp_error error = {0};
-  rdlp_status status;
+  rdlp_error_code status;
 
   if (argc != 3) {
     fprintf(stderr, "usage: %s VIDEO_URL_OR_ID COOKIES_TXT\n", argv[0]);
@@ -18,11 +18,11 @@ int main(int argc, char **argv) {
   options.cookie_file = argv[2];
   error.struct_size = sizeof(error);
   status = rdlp_context_create(NULL, &context, &error);
-  if (status == RDLP_STATUS_OK)
+  if (status == RDLP_OK)
     status =
         rdlp_resolve_video(context, argv[1], &options, &selection, &error);
-  if (status != RDLP_STATUS_OK) {
-    fprintf(stderr, "%s: %s\n", rdlp_status_string(status), error.message);
+  if (status != RDLP_OK) {
+    fprintf(stderr, "%s (%d)\n", rdlp_error_name(status), (int)status);
     rdlp_context_destroy(context);
     return 1;
   }

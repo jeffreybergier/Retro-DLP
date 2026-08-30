@@ -66,11 +66,18 @@ YTStatus yt_challenges_solve(YTHttpSession *session,
                                      &config, result);
   if (status == YT_EJS_ERR_ASSETS_MISSING)
     return YT_ERR_EJS_ASSETS_MISSING;
+  if (status == YT_EJS_ERR_ASSETS_INVALID)
+    return YT_ERR_EJS_ASSETS_CORRUPT;
   if (status == YT_EJS_ERR_OUT_OF_MEMORY)
     return YT_ERR_OUT_OF_MEMORY;
   if (status == YT_EJS_ERR_CANCELLED)
     return YT_ERR_CANCELLED;
-  return status == YT_EJS_OK ? YT_OK : YT_ERR_JS_CHALLENGE;
+  if (status == YT_EJS_ERR_TIMEOUT)
+    return YT_ERR_EJS_TIMEOUT;
+  if (status == YT_EJS_ERR_INVALID_RESULT ||
+      status == YT_EJS_ERR_INVALID_ARGUMENT)
+    return YT_ERR_EJS_INVALID_RESULT;
+  return status == YT_EJS_OK ? YT_OK : YT_ERR_EJS_EXCEPTION;
 }
 
 void yt_challenges_result_free(YTEJSResult *result) {

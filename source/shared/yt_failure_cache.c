@@ -19,6 +19,11 @@ int yt_failure_cache_ttl(YTStatus status) {
       return 2 * 60;
     case YT_ERR_INVALID_RESPONSE:
     case YT_ERR_JS_CHALLENGE:
+    case YT_ERR_EJS_TIMEOUT:
+    case YT_ERR_EJS_EXCEPTION:
+    case YT_ERR_EJS_INVALID_RESULT:
+    case YT_ERR_EJS_SIGNATURE_FAILED:
+    case YT_ERR_EJS_N_TRANSFORM_FAILED:
       return 30;
     case YT_ERR_HTTP:
       return 15;
@@ -100,7 +105,7 @@ int yt_failure_cache_load(YTHttpSession *session, const char *key,
     return 0;
   parsed = strtol(value, &end, 10);
   if (end != value + length || parsed <= YT_OK ||
-      parsed > YT_ERR_AUTH_COOKIES_INVALID ||
+      parsed > YT_ERR_EJS_N_TRANSFORM_FAILED ||
       yt_failure_cache_ttl((YTStatus)parsed) == 0) {
     free(value);
     yt_http_session_cache_remove(session, YT_CACHE_FAILURE, key);

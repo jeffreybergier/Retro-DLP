@@ -493,15 +493,9 @@ static void cli_download_event(const rdlp_download_event *event, void *opaque) {
   }
 }
 
-static void print_error(const rdlp_error *error, rdlp_status status) {
-  const char *message = error != NULL && error->message[0] != '\0'
-                            ? error->message
-                            : rdlp_status_string(status);
-  if (status == RDLP_STATUS_HTTP && error != NULL && error->http_status != 0)
-    fprintf(stderr, "retro-dlp: %s (HTTP %ld)\n", message,
-            error->http_status);
-  else
-    fprintf(stderr, "retro-dlp: %s\n", message);
+static void print_error(const rdlp_error *error, rdlp_error_code code) {
+  (void)error;
+  fprintf(stderr, "retro-dlp: %s (%d)\n", rdlp_error_name(code), (int)code);
 }
 
 static int create_cli_context(rdlp_context **context, rdlp_error *error,
@@ -520,7 +514,7 @@ static int create_cli_context(rdlp_context **context, rdlp_error *error,
   if (retro_dlp_default_ca_bundle_path(ca_bundle, PATH_MAX))
     config.ca_bundle_path = ca_bundle;
   config.event_callback = cli_event;
-  return rdlp_context_create(&config, context, error) == RDLP_STATUS_OK;
+  return rdlp_context_create(&config, context, error) == RDLP_OK;
 }
 
 static int resolve_argument(const CLIOptions *cli, const char *cookie_file,
@@ -528,7 +522,7 @@ static int resolve_argument(const CLIOptions *cli, const char *cookie_file,
   rdlp_resolve_options options;
   rdlp_selection *selection = NULL;
   rdlp_error error;
-  rdlp_status status;
+  rdlp_error_code status;
   char destination[PATH_MAX];
   int failed;
   memset(&options, 0, sizeof(options));
@@ -542,7 +536,7 @@ static int resolve_argument(const CLIOptions *cli, const char *cookie_file,
   error.struct_size = sizeof(error);
   print_operation("resolve", cli->input);
   status = rdlp_resolve_video(context, cli->input, &options, &selection, &error);
-  if (status != RDLP_STATUS_OK) {
+  if (status != RDLP_OK) {
     print_error(&error, status);
     return 1;
   }
@@ -595,12 +589,10 @@ static int resolve_argument(const CLIOptions *cli, const char *cookie_file,
                                      &result, &error);
     cli_download_progress_finish(&event_state);
     rdlp_selection_destroy(selection);
-    if (status != RDLP_STATUS_OK) {
+    if (status != RDLP_OK) {
       if (result.source_tracks_retained)
-        fprintf(stderr,
-                "retro-dlp: %s; downloaded tracks were retained\n",
-                error.message[0] == '\0' ? rdlp_status_string(status)
-                                         : error.message);
+        fprintf(stderr, "retro-dlp: %s (%d); downloaded tracks were retained\n",
+                rdlp_error_name(status), (int)status);
       else
         print_error(&error, status);
       return 1;
@@ -625,7 +617,7 @@ static int list_playlist_argument(const CLIOptions *cli,
   rdlp_playlist *playlist = NULL;
   rdlp_playlist_collection *collection = NULL;
   rdlp_error error;
-  rdlp_status status;
+  rdlp_error_code status;
   int failed;
   memset(&options, 0, sizeof(options));
   memset(&error, 0, sizeof(error));
@@ -638,7 +630,7 @@ static int list_playlist_argument(const CLIOptions *cli,
   else
     status = rdlp_list_playlist(context, cli->input, &options, &playlist,
                                 &error);
-  if (status != RDLP_STATUS_OK) {
+  if (status != RDLP_OK) {
     print_error(&error, status);
     return 1;
   }
@@ -708,7 +700,7 @@ int retro_dlp_run(int argc, char **argv) {
   error.struct_size = sizeof(error);
   if (!create_cli_context(&context, &error, cache_directory, ejs_directory,
                           ca_bundle)) {
-    print_error(&error, error.status);
+    print_error(&error, error.code);
     return 1;
   }
   if (cli.flat_playlist)

@@ -21,7 +21,7 @@ typedef struct {
   const char *destination;
 } download_fixture;
 
-static rdlp_status fixture_send(void *opaque,
+static rdlp_error_code fixture_send(void *opaque,
                                 const rdlp_transport_request *request,
                                 rdlp_transport_response *response,
                                 rdlp_error *error) {
@@ -38,11 +38,11 @@ static rdlp_status fixture_send(void *opaque,
            strstr(request->url, "/youtubei/v1/player") != NULL)
     data = fixture->player;
   else
-    return RDLP_STATUS_NETWORK;
+    return RDLP_ERROR_TRANSPORT_REQUEST_FAILED;
   response->http_status = 200;
   response->data = data;
   response->data_length = strlen(data);
-  return RDLP_STATUS_OK;
+  return RDLP_OK;
 }
 
 static rdlp_selection *make_selection(resolver_fixture *fixture,
@@ -87,9 +87,9 @@ static rdlp_selection *make_selection(resolver_fixture *fixture,
   options.struct_size = sizeof(options);
   options.format_expression = adaptive ? "137+140" : "18";
   error.struct_size = sizeof(error);
-  if (rdlp_context_create(&config, &context, &error) != RDLP_STATUS_OK ||
+  if (rdlp_context_create(&config, &context, &error) != RDLP_OK ||
       rdlp_resolve_video(context, "YE7VzlLtp-4", &options, &selection,
-                         &error) != RDLP_STATUS_OK) {
+                         &error) != RDLP_OK) {
     fprintf(stderr, "FAIL: download selection fixture: %s\n", error.message);
     rdlp_selection_destroy(selection);
     selection = NULL;
@@ -142,7 +142,7 @@ static int file_equals(const char *path, const char *value) {
   return count == expected && memcmp(buffer, value, expected) == 0;
 }
 
-static rdlp_status run_download(const rdlp_selection *selection,
+static rdlp_error_code run_download(const rdlp_selection *selection,
                                 const char *destination, const char *ca_path,
                                 unsigned long timeout,
                                 download_fixture *fixture,
@@ -177,7 +177,7 @@ int main(void) {
   rdlp_selection *selection;
   rdlp_download_result result;
   rdlp_error error;
-  rdlp_status status;
+  rdlp_error_code status;
   int failures = 0;
 
   memset(&result, 0, sizeof(result));
@@ -185,8 +185,8 @@ int main(void) {
   result.struct_size = sizeof(result);
   error.struct_size = sizeof(error);
   if (rdlp_download_selection(NULL, "unused.mp4", NULL, &result, &error) !=
-          RDLP_STATUS_INVALID_ARGUMENT ||
-      error.status != RDLP_STATUS_INVALID_ARGUMENT) {
+          RDLP_ERROR_INVALID_ARGUMENT ||
+      error.code != RDLP_ERROR_INVALID_ARGUMENT) {
     fprintf(stderr, "FAIL: optional download public API contract\n");
     return 1;
   }
@@ -205,7 +205,7 @@ int main(void) {
   memset(&fixture, 0, sizeof(fixture));
   if (selection == NULL || !write_text(destination, "original") ||
       run_download(selection, destination, ca_path, 5000, &fixture, &result,
-                   &error) != RDLP_STATUS_STORAGE ||
+                   &error) != RDLP_ERROR_DESTINATION_EXISTS ||
       !file_equals(destination, "original")) {
     fprintf(stderr, "FAIL: existing destination preservation\n");
     ++failures;
@@ -213,7 +213,7 @@ int main(void) {
   unlink(destination);
   if (!write_text(partial, "original") ||
       run_download(selection, destination, ca_path, 5000, &fixture, &result,
-                   &error) != RDLP_STATUS_STORAGE ||
+                   &error) != RDLP_ERROR_DESTINATION_EXISTS ||
       !file_equals(partial, "original")) {
     fprintf(stderr, "FAIL: existing partial-file preservation\n");
     ++failures;
@@ -221,7 +221,7 @@ int main(void) {
   unlink(partial);
   status = run_download(selection, destination, ca_path, 5000, &fixture,
                         &result, &error);
-  if (status != RDLP_STATUS_OK || !exists(destination) || exists(partial)) {
+  if (status != RDLP_OK || !exists(destination) || exists(partial)) {
     fprintf(stderr, "FAIL: progressive download success and cleanup\n");
     ++failures;
   }
@@ -231,7 +231,7 @@ int main(void) {
   selection = make_selection(&resolver, "invalid", 0);
   status = run_download(selection, destination, ca_path, 5000, &fixture,
                         &result, &error);
-  if (status != RDLP_STATUS_INVALID_RESPONSE || exists(destination) ||
+  if (status != RDLP_ERROR_MEDIA_NOT_MP4 || exists(destination) ||
       exists(partial)) {
     fprintf(stderr, "FAIL: malformed download cleanup\n");
     ++failures;
@@ -241,7 +241,7 @@ int main(void) {
   selection = make_selection(&resolver, "status", 0);
   status = run_download(selection, destination, ca_path, 5000, &fixture,
                         &result, &error);
-  if (status != RDLP_STATUS_HTTP || error.http_status != 503 ||
+  if (status != RDLP_ERROR_HTTP_STATUS || error.http_status != 503 ||
       exists(partial)) {
     fprintf(stderr, "FAIL: media HTTP error classification\n");
     ++failures;
@@ -253,7 +253,7 @@ int main(void) {
   fixture.cancel_on_progress = 1;
   status = run_download(selection, destination, ca_path, 5000, &fixture,
                         &result, &error);
-  if (status != RDLP_STATUS_CANCELLED || exists(destination) ||
+  if (status != RDLP_ERROR_CANCELLED || exists(destination) ||
       exists(partial)) {
     fprintf(stderr, "FAIL: active download cancellation and cleanup\n");
     ++failures;
@@ -261,7 +261,7 @@ int main(void) {
   memset(&fixture, 0, sizeof(fixture));
   status = run_download(selection, destination, ca_path, 10, &fixture, &result,
                         &error);
-  if (status != RDLP_STATUS_NETWORK || exists(partial)) {
+  if (status != RDLP_ERROR_TRANSPORT_TIMEOUT || exists(partial)) {
     fprintf(stderr, "FAIL: media timeout classification and cleanup\n");
     ++failures;
   }
@@ -273,7 +273,8 @@ int main(void) {
   fixture.destination = destination;
   status = run_download(selection, destination, ca_path, 5000, &fixture,
                         &result, &error);
-  if (status != RDLP_STATUS_STORAGE || !result.source_tracks_retained ||
+  if (status != RDLP_ERROR_DESTINATION_EXISTS ||
+      !result.source_tracks_retained ||
       !exists(audio) || !exists(video) ||
       !file_equals(destination, "blocked")) {
     fprintf(stderr, "FAIL: mux failure source-track retention\n");
@@ -286,7 +287,7 @@ int main(void) {
   fixture.cancel_on_mux = 1;
   status = run_download(selection, destination, ca_path, 5000, &fixture,
                         &result, &error);
-  if (status != RDLP_STATUS_CANCELLED || !result.source_tracks_retained ||
+  if (status != RDLP_ERROR_CANCELLED || !result.source_tracks_retained ||
       !exists(audio) || !exists(video) || exists(destination)) {
     fprintf(stderr, "FAIL: mux-boundary cancellation and source retention\n");
     ++failures;

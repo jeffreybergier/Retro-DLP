@@ -5,7 +5,8 @@ The supported library interface is declared by `include/retrodlp/retrodlp.h`,
 must not include headers from `source/shared`; those headers and all `yt_*`
 symbols are private and may change without notice.
 
-The API described here is stable beginning with Retro-DLP 1.0.0.
+The API described here is stable beginning with Retro-DLP 1.0.0 and uses
+specific negative `rdlp_error_code` values.
 `RDLP_API_VERSION` identifies the incompatible public API generation;
 `RDLP_VERSION_MAJOR`, `RDLP_VERSION_MINOR`, `RDLP_VERSION_PATCH`, and
 `RDLP_VERSION_STRING` identify the library release. `rdlp_version_string()`
@@ -42,17 +43,17 @@ pixels.
 
 `rdlp_context_create` returns an owned context through its output pointer.
 Destroy it with `rdlp_context_destroy`. A context accepts only one operation at
-a time; reentrant use from an event callback returns `RDLP_STATUS_BUSY`.
+a time; reentrant use from an event callback returns `RDLP_ERROR_CONTEXT_BUSY`.
 Creation and destruction of default-transport contexts safely reference-counts
 the libcurl lifecycle. Independent contexts may operate concurrently. The
 one-operation rule is enforced per context and reentrant or concurrent use of
-the same context returns `RDLP_STATUS_BUSY`.
+the same context returns `RDLP_ERROR_CONTEXT_BUSY`.
 
 The callback context, clock context, and custom transport context are borrowed.
 They must remain valid until the `rdlp_context` is destroyed. Callbacks are
 synchronous and run on the thread performing the operation. Configuration path
 strings are copied during context creation. No callback may start another
-operation on the same context; such an attempt returns `RDLP_STATUS_BUSY`.
+operation on the same context; such an attempt returns `RDLP_ERROR_CONTEXT_BUSY`.
 
 `cache_directory`, `ca_bundle_path`, and `ejs_asset_directory` must be absolute
 when supplied. A `NULL` cache directory disables all resolver caching. An EJS
@@ -96,8 +97,8 @@ the resolver. `rdlp_ejs_asset_version` returns the version also available as
 `rdlp_ejs_assets_inspect` validates `core.min.js` and `lib.min.js` in an
 explicit absolute directory. Initialize `rdlp_ejs_asset_info` to zero and set
 `struct_size`; the call fills `installed`, `core_valid`, and `lib_valid`.
-Missing files return `RDLP_STATUS_EJS_ASSETS_MISSING`, and files with an
-unexpected size or SHA-256 digest return `RDLP_STATUS_EJS_ASSETS_CORRUPT`.
+Missing files return `RDLP_ERROR_EJS_ASSETS_MISSING`, and files with an
+unexpected size or SHA-256 digest return `RDLP_ERROR_EJS_ASSETS_CORRUPT`.
 
 `rdlp_ejs_assets_install` downloads the version-matched assets, validates both
 before installation, and writes them atomically into an explicit absolute
@@ -139,8 +140,8 @@ to choose between the two calls.
 The non-network helpers `rdlp_parse_video_id`, `rdlp_parse_playlist_id`, and
 `rdlp_format_expression_valid` validate input without a context. A parsed video
 ID output is always a 12-byte array (11 characters plus NUL). The playlist
-parser accepts a caller-sized buffer. `rdlp_status_string` returns a static,
-human-readable description for any public status.
+parser accepts a caller-sized buffer. `rdlp_error_name` returns the stable enum
+name for any public result code.
 
 ## Results and ownership
 
@@ -174,37 +175,60 @@ functions accept `NULL`.
 ## Errors
 
 An error argument is optional. When supplied, initialize it to zero and set
-`struct_size`. The operation returns the same high-level status stored in the
-error. `message` is intended for diagnostics, not programmatic matching.
+`struct_size`. The operation returns the same code stored in `error.code`.
+`message` is intended for diagnostics, not programmatic matching.
 `http_status` and `transport_code` are zero when the underlying adapter cannot
 provide more detail. `retryable` is set for network and HTTP failures.
 
-Programs should branch on `rdlp_status`, not `message` or third-party transport
-codes. In particular, cancellation, authentication, missing EJS assets,
-certificate configuration, service unavailability, format unavailability,
-storage failures, and a busy context have distinct statuses. A successful call
-also resets a supplied error to `RDLP_STATUS_OK`.
+Every successful operation returns `RDLP_OK`; every failure returns a negative
+`rdlp_error_code`. Programs should branch on that code, not `message` or
+third-party transport codes. A successful call also resets a supplied error to
+`RDLP_OK`.
+
+`rdlp_error_name` returns the exact enum name, `rdlp_error_category` returns its
+hundreds-based category, and `rdlp_error_is_retryable` identifies transport
+timeouts, transport request failures, and HTTP status failures. Category ranges
+are `-1xx` input, `-2xx` resources, `-3xx` transport, `-4xx` service and
+authentication, `-5xx` EJS, `-6xx` storage/media/mux, `-7xx` operation state,
+and `-9xx` internal failures. Values are spaced by ten for compatible additions.
 
 | Status | Meaning |
 |---|---|
-| `RDLP_STATUS_OK` | Success. |
-| `RDLP_STATUS_INVALID_ARGUMENT` | A required value, structure size, path, ID, URL, format expression, or option combination is invalid. |
-| `RDLP_STATUS_OUT_OF_MEMORY` | An allocation failed. |
-| `RDLP_STATUS_NETWORK` | The transport could not complete a request. |
-| `RDLP_STATUS_CERTIFICATE_BUNDLE` | The configured CA bundle cannot be used. |
-| `RDLP_STATUS_HTTP` | A completed HTTP response indicates failure. |
-| `RDLP_STATUS_INVALID_RESPONSE` | Response data or downloaded media is malformed or exceeds a limit. |
-| `RDLP_STATUS_UNAVAILABLE` | The requested service object is unavailable. |
-| `RDLP_STATUS_FORMAT_UNAVAILABLE` | No requested/supported format matched. |
-| `RDLP_STATUS_EJS_ASSETS_MISSING` | Required challenge assets were not provisioned. |
-| `RDLP_STATUS_EJS_ASSETS_CORRUPT` | Installed or downloaded EJS assets do not match the versioned integrity manifest. |
-| `RDLP_STATUS_JS_CHALLENGE` | Player challenge processing failed. |
-| `RDLP_STATUS_AUTHENTICATION_REQUIRED` | Authentication is required or supplied authentication is unusable. |
-| `RDLP_STATUS_COOKIE` | Cookie data cannot be loaded or parsed. |
-| `RDLP_STATUS_CANCELLED` | A cancellation callback stopped the operation. |
-| `RDLP_STATUS_BUSY` | Another operation owns the same context. |
-| `RDLP_STATUS_STORAGE` | A cache, destination, temporary file, or cleanup operation failed. |
-| `RDLP_STATUS_INTERNAL` | An uncategorized internal failure occurred. |
+| `RDLP_OK` | Success. |
+| `RDLP_ERROR_INVALID_ARGUMENT` | A required value, structure size, or option combination is invalid. |
+| `RDLP_ERROR_INVALID_VIDEO_ID` | The video ID or URL is invalid. |
+| `RDLP_ERROR_INVALID_PLAYLIST` | The playlist ID, URL, or collection URL is invalid. |
+| `RDLP_ERROR_INVALID_FORMAT_EXPRESSION` | The requested format expression is invalid. |
+| `RDLP_ERROR_INVALID_PATH` | A path is empty, relative where absolute is required, or too long. |
+| `RDLP_ERROR_OUT_OF_MEMORY` | An allocation failed. |
+| `RDLP_ERROR_TRANSPORT_INITIALIZATION_FAILED` | The default or per-download transport could not be created. |
+| `RDLP_ERROR_TRANSPORT_TIMEOUT` | A transport request exceeded its timeout. |
+| `RDLP_ERROR_TRANSPORT_REQUEST_FAILED` | The transport could not complete a request. |
+| `RDLP_ERROR_CERTIFICATE_BUNDLE` | The configured CA bundle cannot be used. |
+| `RDLP_ERROR_HTTP_STATUS` | A completed HTTP response indicates failure. |
+| `RDLP_ERROR_RESPONSE_TOO_LARGE` | A service or custom-transport response exceeds its limit. |
+| `RDLP_ERROR_RESPONSE_MALFORMED` | Service response data is malformed or incomplete. |
+| `RDLP_ERROR_VIDEO_UNAVAILABLE` | The requested video is unavailable. |
+| `RDLP_ERROR_FORMAT_UNAVAILABLE` | No requested/supported format matched. |
+| `RDLP_ERROR_AUTHENTICATION_REQUIRED` | The operation requires authentication or a PO token. |
+| `RDLP_ERROR_COOKIES_UNREADABLE` | Cookie data cannot be loaded or parsed. |
+| `RDLP_ERROR_COOKIES_REJECTED` | Supplied cookies do not contain usable YouTube authentication. |
+| `RDLP_ERROR_EJS_ASSETS_MISSING` | Required challenge assets were not provisioned. |
+| `RDLP_ERROR_EJS_ASSETS_CORRUPT` | Installed or downloaded EJS assets do not match the versioned integrity manifest. |
+| `RDLP_ERROR_EJS_TIMEOUT` | EJS execution exceeded its deadline. |
+| `RDLP_ERROR_EJS_EXCEPTION` | QuickJS raised an exception while processing challenges. |
+| `RDLP_ERROR_EJS_INVALID_RESULT` | EJS returned malformed or inconsistent output. |
+| `RDLP_ERROR_EJS_SIGNATURE_FAILED` | Signature transformation failed. |
+| `RDLP_ERROR_EJS_N_TRANSFORM_FAILED` | The `n` parameter transformation failed. |
+| `RDLP_ERROR_DESTINATION_EXISTS` | A destination or partial download already exists. |
+| `RDLP_ERROR_STORAGE_IO` | A cache, temporary-file, or destination I/O operation failed. |
+| `RDLP_ERROR_MEDIA_NOT_MP4` | Downloaded media does not contain an MP4 file signature. |
+| `RDLP_ERROR_MUX_INVALID_INPUT` | Downloaded tracks are not valid mux inputs. |
+| `RDLP_ERROR_MUX_FAILED` | MP4 muxing failed. |
+| `RDLP_ERROR_CLEANUP_FAILED` | Muxing succeeded but source-track cleanup failed. |
+| `RDLP_ERROR_CANCELLED` | A cancellation callback stopped the operation. |
+| `RDLP_ERROR_CONTEXT_BUSY` | Another operation owns the same context. |
+| `RDLP_ERROR_INTERNAL` | An uncategorized internal failure occurred. |
 
 ## Events and cancellation
 
@@ -215,7 +239,7 @@ The cancellation callback should return nonzero to cancel. It is checked before
 an operation, around custom-transport requests, during default libcurl
 transfers, between playlist pages, and through the QuickJS interrupt handler. A
 custom transport also receives the callback in every request and should check
-it while blocking. A cancelled call returns `RDLP_STATUS_CANCELLED` and no
+it while blocking. A cancelled call returns `RDLP_ERROR_CANCELLED` and no
 result.
 
 Library facade operations never write to stdout or stderr. Event callbacks are
@@ -282,13 +306,13 @@ Opaque owned types are `rdlp_context`, `rdlp_selection`, `rdlp_playlist`, and
 Callback types are `rdlp_event_callback`, `rdlp_cancel_callback`,
 `rdlp_clock_callback`, `rdlp_transport_send_callback`, and
 `rdlp_download_event_callback`; their lifetime and threading rules are given
-above. Enum types are `rdlp_event_type`, `rdlp_download_event_type`, and
-`rdlp_http_method`. HTTP methods are `RDLP_HTTP_GET`, `RDLP_HTTP_POST`, and
-`RDLP_HTTP_HEAD`.
+above. Enum types are `rdlp_error_code`, `rdlp_error_category_code`,
+`rdlp_event_type`, `rdlp_download_event_type`, and `rdlp_http_method`. HTTP
+methods are `RDLP_HTTP_GET`, `RDLP_HTTP_POST`, and `RDLP_HTTP_HEAD`.
 
 | Function family | Functions |
 |---|---|
-| Version and status | `rdlp_version_string`, `rdlp_status_string` |
+| Version and errors | `rdlp_version_string`, `rdlp_error_name`, `rdlp_error_category`, `rdlp_error_is_retryable` |
 | Context | `rdlp_context_create`, `rdlp_context_destroy` |
 | EJS assets | `rdlp_ejs_asset_version`, `rdlp_ejs_assets_inspect`, `rdlp_ejs_assets_install`, `rdlp_ejs_assets_remove` |
 | Validation | `rdlp_parse_video_id`, `rdlp_parse_playlist_id`, `rdlp_format_expression_valid`, `rdlp_is_playlist_collection_input` |
@@ -349,7 +373,7 @@ The transport must enforce HTTPS and its redirect policy, honor
 `maximum_response_bytes`, the timeout, and cancellation, and return the final
 HTTP status. It owns cookie behavior. An HTTP response, including a non-2xx
 response, is a successful transport operation with its status in
-`http_status`; connection and policy failures are returned as an `rdlp_status`.
+`http_status`; connection and policy failures are returned as an `rdlp_error_code`.
 
 The request method, URL, headers, optional body, response limit, timeout, and
 cancellation hook are fully populated by Retro-DLP. Initialize the response
@@ -368,9 +392,9 @@ rdlp_selection *selection = NULL;
 rdlp_error error = {0};
 
 error.struct_size = sizeof(error);
-if (rdlp_context_create(NULL, &context, &error) == RDLP_STATUS_OK &&
+if (rdlp_context_create(NULL, &context, &error) == RDLP_OK &&
     rdlp_resolve_video(context, "YE7VzlLtp-4", NULL, &selection, &error) ==
-        RDLP_STATUS_OK) {
+        RDLP_OK) {
   const char *url = rdlp_selection_media_url(selection, 0);
   /* Use url and the media headers before destroying selection. */
 }
