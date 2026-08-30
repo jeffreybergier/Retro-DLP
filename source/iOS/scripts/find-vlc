@@ -1,0 +1,44 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$#" -ne 0 ]; then
+  printf '%s\n' "Usage: find-vlc" >&2
+  exit 2
+fi
+
+vlc_identifier=org.videolan.vlc-ios
+
+if [ ! -x /usr/bin/ipainstaller ]; then
+  printf '%s\n' \
+    "find-vlc: ipainstaller is required to find VLC's data container" >&2
+  exit 1
+fi
+
+vlc_data=$(/usr/bin/ipainstaller -i "$vlc_identifier" 2>/dev/null |
+  sed -n 's/^Data: //p' | sed -n '1p')
+if [ -z "$vlc_data" ]; then
+  printf '%s\n' \
+    "find-vlc: could not find VLC identifier $vlc_identifier" >&2
+  exit 1
+fi
+
+case "$vlc_data" in
+  /private/var/mobile/Applications/*|/var/mobile/Applications/*|\
+  /private/var/mobile/Containers/Data/Application/*|\
+  /var/mobile/Containers/Data/Application/*)
+    ;;
+  *)
+    printf '%s\n' "find-vlc: could not find VLC's data container" >&2
+    exit 1
+    ;;
+esac
+
+vlc_documents=$vlc_data/Documents
+if [ ! -d "$vlc_documents" ] || [ ! -x "$vlc_documents" ]; then
+  printf '%s\n' \
+    "find-vlc: VLC Documents directory is unavailable: $vlc_documents" >&2
+  exit 1
+fi
+
+printf '%s\n' "$vlc_documents"

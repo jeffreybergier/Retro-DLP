@@ -106,17 +106,16 @@ ssh mobile@iphone-ip-address \
 Old iPhones may require the legacy SSH options
 `HostKeyAlgorithms=+ssh-rsa` and `PubkeyAcceptedAlgorithms=+ssh-rsa`.
 
-I also include [`retro-vlc`](source/iOS/scripts/retro-vlc), a small helper
-script for VLC on iOS. It finds VLC's Documents directory, changes into it, and
-downloads the medium preset there so the video immediately appears in VLC. The
-script requires `ipainstaller`, VLC with the `org.videolan.vlc-ios` identifier,
-and a cookie file at `~/.retro-dlp/cookies.txt`.
+I also include [`find-vlc`](source/iOS/scripts/find-vlc), a small helper script
+that prints VLC's Documents directory on iOS. Use its output with `cd` to change
+the current shell's working directory. The script requires `ipainstaller` and
+VLC with the `org.videolan.vlc-ios` identifier.
 
 #### Install
 
 ```sh
-scp source/iOS/scripts/retro-vlc mobile@iphone-ip-address:/var/mobile/bin/
-ssh mobile@iphone-ip-address 'chmod 755 /var/mobile/bin/retro-vlc'
+scp source/iOS/scripts/find-vlc mobile@iphone-ip-address:/var/mobile/bin/
+ssh mobile@iphone-ip-address 'chmod 755 /var/mobile/bin/find-vlc'
 ```
 
 #### Use
@@ -124,7 +123,7 @@ ssh mobile@iphone-ip-address 'chmod 755 /var/mobile/bin/retro-vlc'
 Run this command on your iPhone using a terminal app.
 
 ```sh
-~/bin/retro-vlc VIDEO_ID_OR_URL
+cd $(find-vlc) && retro-dlp --cookies-default -t med 'VIDEO_ID_OR_URL'
 ```
 
 ## Usage
@@ -132,23 +131,23 @@ Run this command on your iPhone using a terminal app.
 The presets provide the easiest way to choose a format:
 
 ```sh
-retro-dlp -t low VIDEO_URL_OR_ID    # 18 (generally 360p)
-retro-dlp -t med VIDEO_URL_OR_ID    # 136+140 (generally 720p)
-retro-dlp -t high VIDEO_URL_OR_ID   # 137+140 (generally 1080p)
+retro-dlp -t low VIDEO_ID_OR_URL    # 18 (generally 360p)
+retro-dlp -t med VIDEO_ID_OR_URL    # 136+140 (generally 720p)
+retro-dlp -t high VIDEO_ID_OR_URL   # 137+140 (generally 1080p)
 ```
 
 List the formats for a video:
 
 ```sh
-retro-dlp -F VIDEO_URL_OR_ID
+retro-dlp -F VIDEO_ID_OR_URL
 ```
 
 Choose exact formats:
 
 ```sh
-retro-dlp -f 18 VIDEO_URL_OR_ID
-retro-dlp -f 136+140 VIDEO_URL_OR_ID
-retro-dlp -f '137+599/137+140/136+140' VIDEO_URL_OR_ID
+retro-dlp -f 18 VIDEO_ID_OR_URL
+retro-dlp -f 136+140 VIDEO_ID_OR_URL
+retro-dlp -f '137+599/137+140/136+140' VIDEO_ID_OR_URL
 ```
 
 `+` combines one video-only stream with one audio-only stream. `/` tries exact
@@ -158,7 +157,7 @@ fallback. Its default format expression is `22/18`.
 Print metadata without downloading:
 
 ```sh
-retro-dlp --dump-json VIDEO_URL_OR_ID
+retro-dlp --dump-json VIDEO_ID_OR_URL
 ```
 
 Use `--simulate` to resolve a video without downloading it or writing a file.
@@ -188,8 +187,8 @@ This account collection URL requires signed-in cookies. Add
 Use exported account cookies:
 
 ```sh
-retro-dlp --cookies /path/to/cookies.txt VIDEO_URL_OR_ID
-retro-dlp --cookies-default VIDEO_URL_OR_ID
+retro-dlp --cookies /path/to/cookies.txt VIDEO_ID_OR_URL
+retro-dlp --cookies-default VIDEO_ID_OR_URL
 ```
 
 `--cookies-default` reads `~/.retro-dlp/cookies.txt`. Cookie files grant access
