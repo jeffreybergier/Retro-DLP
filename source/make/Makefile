@@ -79,7 +79,8 @@ LINUX_TEST_SOURCES := $(filter-out source/shared/main.c, \
 	source/linux/platform.c $(CJSON_SOURCE)
 
 ALTIVEC_ROOT ?= /altivec
-include $(ALTIVEC_ROOT)/altivec_toolchains.mk
+# Linux-only targets must remain usable outside the Apple build container.
+-include $(ALTIVEC_ROOT)/altivec_toolchains.mk
 
 ALTIVECCORE_DIR ?= $(ALTIVEC_ROOT)/libs/core/build-mac
 ALTIVECCORE := $(ALTIVECCORE_DIR)/lib/libAltivecCore.a

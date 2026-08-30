@@ -78,11 +78,8 @@ jobs:
       - name: Fetch and preflight secret SDK inputs
         env:
           ALTIVEC_SDK_MACOS_105_URL: ${{ secrets.ALTIVEC_SDK_MACOS_105_URL }}
-          ALTIVEC_SDK_MACOS_105_SHA256: ${{ secrets.ALTIVEC_SDK_MACOS_105_SHA256 }}
           ALTIVEC_SDK_MACOS_113_URL: ${{ secrets.ALTIVEC_SDK_MACOS_113_URL }}
-          ALTIVEC_SDK_MACOS_113_SHA256: ${{ secrets.ALTIVEC_SDK_MACOS_113_SHA256 }}
           ALTIVEC_SDK_IPHONEOS_84_URL: ${{ secrets.ALTIVEC_SDK_IPHONEOS_84_URL }}
-          ALTIVEC_SDK_IPHONEOS_84_SHA256: ${{ secrets.ALTIVEC_SDK_IPHONEOS_84_SHA256 }}
         run: |
           set -euo pipefail
           archive_dir="${RUNNER_TEMP}/.altivec-sdk"
@@ -90,18 +87,13 @@ jobs:
           chmod 0700 "$archive_dir"
 
           for archive_input in \
-              'ALTIVEC_SDK_MACOS_105_URL|ALTIVEC_SDK_MACOS_105_SHA256|MacOSX10.5.sdk.tar.xz' \
-              'ALTIVEC_SDK_MACOS_113_URL|ALTIVEC_SDK_MACOS_113_SHA256|MacOSX11.3.sdk.tar.xz' \
-              'ALTIVEC_SDK_IPHONEOS_84_URL|ALTIVEC_SDK_IPHONEOS_84_SHA256|iPhoneOS8.4.sdk.tar.gz'; do
-            IFS='|' read -r secret_name digest_name filename <<< "$archive_input"
+              'ALTIVEC_SDK_MACOS_105_URL|MacOSX10.5.sdk.tar.xz' \
+              'ALTIVEC_SDK_MACOS_113_URL|MacOSX11.3.sdk.tar.xz' \
+              'ALTIVEC_SDK_IPHONEOS_84_URL|iPhoneOS8.4.sdk.tar.gz'; do
+            IFS='|' read -r secret_name filename <<< "$archive_input"
             archive_url="${!secret_name:-}"
-            expected_digest="${!digest_name:-}"
             if [[ ! "$archive_url" =~ ^https://[^[:space:]]+$ ]]; then
               echo "${secret_name} must be configured as an HTTPS repository secret." >&2
-              exit 1
-            fi
-            if [[ ! "$expected_digest" =~ ^[0-9a-fA-F]{64}$ ]]; then
-              echo "${digest_name} must be configured as a SHA-256 digest." >&2
               exit 1
             fi
             temporary="${archive_dir}/${filename}.part"
@@ -120,12 +112,6 @@ jobs:
                 "$archive_url"; then
               rm -f -- "$temporary"
               echo "Failed to fetch ${filename}." >&2
-              exit 1
-            fi
-            actual_digest="$(sha256sum "$temporary" | cut -d ' ' -f 1)"
-            if [[ "${actual_digest,,}" != "${expected_digest,,}" ]]; then
-              rm -f -- "$temporary"
-              echo "SHA-256 mismatch for ${filename}." >&2
               exit 1
             fi
             mv "$temporary" "${archive_dir}/${filename}"

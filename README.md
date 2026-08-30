@@ -252,10 +252,10 @@ The container reference in `compose.yml` is pinned by digest so release inputs
 do not change implicitly. Update all occurrences together when intentionally
 adopting a newer Altivec Intelligence image.
 
-Release CI also requires `ALTIVEC_SDK_MACOS_105_SHA256`,
-`ALTIVEC_SDK_MACOS_113_SHA256`, and `ALTIVEC_SDK_IPHONEOS_84_SHA256` repository
-secrets matching the private SDK archives. Downloads are rejected unless both
-their HTTPS URL and immutable SHA-256 digest are configured.
+Release CI requires repository secrets containing the HTTPS URLs for the three
+private SDK archives. The pinned build image's `altivec-sdk preflight` and
+`altivec-sdk install` commands verify each archive's byte size, SHA-256 digest,
+format, and paths against the image's embedded catalog before extraction.
 
 ## License
 
