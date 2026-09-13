@@ -22,6 +22,16 @@ Implementation research is maintained as a short list of
 [upstream references](docs/upstream-references.md); the repository does not
 vendor yt-dlp as a build or test dependency.
 
+## Cocoa applications
+
+Native macOS and iOS frontends provide a SQLite playlist library, quality-specific
+download queue, and offline playback. macOS exports VLC playlists under
+`~/Documents/RetroDLP`; iOS keeps videos inside its own Documents directory and
+uses the native player. See [app usage, builds, and architecture](docs/cocoa-apps.md).
+
+Build both frontends with `make apps`; run their offline Linux tests with
+`make app-test`.
+
 ## Features
 
 - Downloads videos from a video ID or URL
