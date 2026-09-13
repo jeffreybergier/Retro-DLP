@@ -36,11 +36,12 @@ static int cancelled(void *ctx) { return ((fixture *)ctx)->cancel; }
 static void progress(const rdlp_download_event *event,void *ctx) {
   fixture *f=ctx; assert(!f->depth); if(f->cancel_on_progress && event->completed_bytes) f->cancel=1;
 }
-typedef struct { rdapp_job job; char video[64],format[64],path[1024],state[64]; int count; } claimed;
+typedef struct { rdapp_job job; char video[64],format[64],path[1024],state[64]; int count, account_count; } claimed;
 static int collect(void *ctx,int count,const char *const *names,const char *const *values) {
   claimed *c=ctx; int i; ++c->count;
   for(i=0;i<count;++i) {
     const char *v=values[i]?values[i]:"";
+    if(!strcmp(names[i],"source") && !strcmp(v,"account")) ++c->account_count;
     if(!strcmp(names[i],"id")) c->job.id=atoll(v);
     if(!strcmp(names[i],"playlist_id")) c->job.playlist_id=atoll(v);
     if(!strcmp(names[i],"video_id")) snprintf(c->video,sizeof(c->video),"%s",v);
@@ -75,7 +76,7 @@ int main(int argc,char **argv) {
   snprintf(cookies,sizeof(cookies),"%s/cookies.txt",argv[1]); output=fopen(cookies,"w"); assert(output);
   fputs("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t4102444800\tLOGIN_INFO\tfixture\n.youtube.com\tTRUE\t/\tTRUE\t4102444800\tSAPISID\tfixture\n",output); fclose(output); config.cookie_file=cookies;
   require(rdapp_service_run(s,&config,RDAPP_DISCOVER,NULL,NULL,message,sizeof(message)),message);
-  memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_PLAYLISTS,0,collect,&c)); assert(c.count==2); config.cookie_file=NULL;
+  memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_PLAYLISTS,0,collect,&c)); assert(c.count==2 && c.account_count==1); config.cookie_file=NULL;
   assert(rdapp_store_enqueue(s,key,NULL,"18")); claim(s,&c);
   require(rdapp_service_run(s,&config,RDAPP_DOWNLOAD,NULL,&c.job,message,sizeof(message)),message);
   snprintf(file,sizeof(file),"%s/%s",argv[1],c.path); assert(stat(file,&st)==0 && st.st_size>0);

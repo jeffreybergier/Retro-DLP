@@ -66,6 +66,37 @@
   return [super menuForEvent:event];
 }
 @end
+@interface RDOutlineView : NSOutlineView
+@end
+@implementation RDOutlineView
+- (void)mouseDown:(NSEvent *)event;
+{
+  [super mouseDown:event];
+  [[self delegate] performSelector:@selector(tableWasUsed:) withObject:self];
+}
+- (BOOL)becomeFirstResponder;
+{
+  BOOL result=[super becomeFirstResponder];
+  if(result) [[self delegate] performSelector:@selector(tableWasUsed:) withObject:self];
+  return result;
+}
+@end
+static BOOL sidebarGroup(id item) {
+  return [item isEqual:@"System"] || [item isEqual:@"Added Playlists"] || [item isEqual:@"My Playlists"];
+}
+static NSString *playlistGroup(NSDictionary *playlist) {
+  return [[playlist objectForKey:@"source"] isEqualToString:@"account"]?@"My Playlists":@"Added Playlists";
+}
+static NSOutlineView *sidebarOutline(NSView *view,id owner) {
+  NSScrollView *scroll=[[[NSScrollView alloc] initWithFrame:[view bounds]] autorelease];
+  NSOutlineView *outline=[[[RDOutlineView alloc] initWithFrame:[scroll bounds]] autorelease];
+  NSTableColumn *column=[[[NSTableColumn alloc] initWithIdentifier:@"title"] autorelease];
+  [column setWidth:240]; [column setEditable:NO]; [outline addTableColumn:column];
+  [outline setOutlineTableColumn:column]; [outline setHeaderView:nil];
+  [outline setAllowsMultipleSelection:NO]; [outline setDataSource:owner]; [outline setDelegate:owner];
+  [scroll setDocumentView:outline]; [scroll setHasVerticalScroller:YES]; [scroll setHasHorizontalScroller:YES];
+  [scroll setAutoresizingMask:NSViewWidthSizable|NSViewHeightSizable]; [view addSubview:scroll]; return outline;
+}
 static NSButton *button(NSView *view,NSString *title,SEL action,id target,NSRect frame) {
   NSButton *b=[[[NSButton alloc] initWithFrame:frame] autorelease];
   [b setTitle:title]; [b setTarget:target]; [b setAction:action]; RDStyleButton(b); [view addSubview:b]; return b;
@@ -230,7 +261,8 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   library_=[library retain]; mode_=1;
   AIViewController *left=[[[AIViewController alloc] init] autorelease];
   NSView *sidebar=[[[RDLayoutView alloc] initWithFrame:NSMakeRect(0,0,200,600)] autorelease];
-  sidebar_=table(sidebar,[sidebar bounds],self,[NSArray arrayWithObject:@"title"],[NSArray arrayWithObject:@"Library"]);
+  sidebarItems_=[[NSMutableDictionary alloc] init];
+  sidebar_=sidebarOutline(sidebar,self);
   [left setView:sidebar]; [self setSidebarViewController:left];
   AIViewController *middle=[[[AIViewController alloc] init] autorelease];
   NSView *detail=[[[RDLayoutView alloc] initWithFrame:NSMakeRect(0,0,540,600)] autorelease];
@@ -465,7 +497,7 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
 - (void)dealloc;
 {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
-  [library_ release]; [playlists_ release]; [rows_ release]; [jobs_ release]; [selectedPlaylist_ release];
+  [sidebarItems_ release]; [library_ release]; [playlists_ release]; [rows_ release]; [jobs_ release]; [selectedPlaylist_ release];
   [addSheet_ release]; [downloadSheet_ release]; [downloadRequest_ release]; [downloadFormat_ release];  [toolbarItems_ release]; [confirmation_ release]; [confirmationRequest_ release]; [super dealloc];
 }
 - (NSDictionary *)selectedRow;
@@ -493,14 +525,26 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   NSString *key=mode_==0?@"position":@"id";
   NSString *selection=[[[self selectedRow] objectForKey:key] copy];
   NSString *queueSelection=[[[self selectedJob] objectForKey:@"id"] copy];
+  NSString *oldGroup=selectedPlaylist_?playlistGroup([self selectedPlaylist]):nil;
   [playlists_ release]; playlists_=[[library_ playlists] copy];
+  NSEnumerator *pe=[playlists_ objectEnumerator]; NSDictionary *p;
+  while((p=[pe nextObject])) {
+    NSString *identifier=[p objectForKey:@"id"];
+    if(![sidebarItems_ objectForKey:identifier]) [sidebarItems_ setObject:identifier forKey:identifier];
+  }
   if(mode_==0 && ![self selectedPlaylist]) { mode_=1; [selectedPlaylist_ release]; selectedPlaylist_=nil; [selection release]; selection=nil; }
   [rows_ release]; rows_=[(mode_==0?[library_ entriesForPlaylist:selectedPlaylist_]:[library_ jobsForPlaylist:nil completedOnly:YES]) copy];
   [jobs_ release]; jobs_=[[library_ jobsForPlaylist:nil completedOnly:NO] copy];
   [sidebar_ reloadData]; [table_ reloadData]; [queue_ reloadData];
-  NSUInteger selectedSidebar=0; unsigned int i;
-  for(i=0;mode_==0 && i<[playlists_ count];++i) if([[[playlists_ objectAtIndex:i] objectForKey:@"id"] isEqualToString:selectedPlaylist_]) selectedSidebar=i+1;
-  [sidebar_ selectRowIndexes:[NSIndexSet indexSetWithIndex:selectedSidebar] byExtendingSelection:NO];
+  if(!sidebarLoaded_) {
+    [sidebar_ expandItem:@"System"]; [sidebar_ expandItem:@"Added Playlists"]; [sidebar_ expandItem:@"My Playlists"]; sidebarLoaded_=YES;
+  } else if(selectedPlaylist_ && ![oldGroup isEqualToString:playlistGroup([self selectedPlaylist])]) {
+    [sidebar_ expandItem:playlistGroup([self selectedPlaylist])];
+  }
+  id selectedItem=mode_==0?[sidebarItems_ objectForKey:selectedPlaylist_]:@"All Downloads";
+  NSInteger selectedSidebar=[sidebar_ rowForItem:selectedItem];
+  if(selectedSidebar>=0) [sidebar_ selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)selectedSidebar] byExtendingSelection:NO];
+  else [sidebar_ deselectAll:nil];
   restoreSelection(table_,rows_,mode_==0?@"position":@"id",selection);
   restoreSelection(queue_,jobs_,@"id",queueSelection);
   [selection release]; [queueSelection release]; refreshing_=NO; [self updateCustomSummary]; [self updateControls];
@@ -608,17 +652,11 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
     if(delete) enabled=[self canRemove:job];
     tip=[NSString stringWithFormat:@"%@ — %@ (%@)",delete?@"Delete downloaded video…":([self canCancel:job]?@"Show in Queue":@"Download video"),job?[job objectForKey:@"title"]:[[self selectedRow] objectForKey:@"title"],[self targetFormat]];
   } else if(playlist) {
-    NSString *key=[playlist objectForKey:@"id"];
-    if(![[library_ entriesForPlaylist:key] count]) {
-      icon=AIFAArrowsRotate; enabled=![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
-      tip=[NSString stringWithFormat:@"Sync ‘%@’ to load its videos",[playlist objectForKey:@"title"]];
-    } else {
-      NSUInteger count=[[self missingPlanForPlaylist:key format:downloadFormat_] count];
-      icon=count?AIFADownload:AIFAHourglass;
-      tip=count?[NSString stringWithFormat:@"Download %lu missing videos in ‘%@’ (%@)…",(unsigned long)count,[playlist objectForKey:@"title"],downloadFormat_]:@"Show Download Queue";
-    }
+    icon=AIFAArrowsRotate;
+    enabled=![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
+    tip=[NSString stringWithFormat:@"Sync ‘%@’",[playlist objectForKey:@"title"]];
   } else { icon=(AIFontAwesomeIcon)0x2b; tip=@"Add a playlist…"; }
-  [self setToolbarItem:@"download" title:delete?@"Delete":@"Download" tip:tip icon:toolbarIcon(icon,[self window]) enabled:enabled];
+  [self setToolbarItem:@"download" title:delete?@"Delete":(!video && playlist?@"Sync":@"Download") tip:tip icon:toolbarIcon(icon,[self window]) enabled:enabled];
   NSString *path=[self selectionPlayFile], *application=RDDefaultApplication(path);
   NSString *object=video?@"video":@"playlist";
   NSString *playTip=path?(application?[NSString stringWithFormat:@"Play %@ in %@",object,[[[NSFileManager defaultManager] displayNameAtPath:application] stringByDeletingPathExtension]]:[NSString stringWithFormat:@"Reveal %@ in Finder",object]):@"Select a downloaded video or playlist to play";
@@ -649,15 +687,41 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   [queueStatus_ setStringValue:[error length]?error:([library_ isPaused]?@"Queue paused. Pausing stops active transfers; Download Video restarts them.":([jobs_ count]?[library_ status]:@"No downloads queued."))];
 
 }
+- (NSInteger)outlineView:(NSOutlineView *)outline numberOfChildrenOfItem:(id)item;
+{
+  (void)outline; if(!item) return 3; if([item isEqual:@"System"]) return 1;
+  NSInteger count=0; NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
+  while((playlist=[e nextObject])) if([playlistGroup(playlist) isEqual:item]) ++count;
+  return count;
+}
+- (id)outlineView:(NSOutlineView *)outline child:(NSInteger)index ofItem:(id)item;
+{
+  (void)outline;
+  if(!item) return [[NSArray arrayWithObjects:@"System",@"Added Playlists",@"My Playlists",nil] objectAtIndex:(NSUInteger)index];
+  if([item isEqual:@"System"]) return @"All Downloads";
+  NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
+  while((playlist=[e nextObject])) if([playlistGroup(playlist) isEqual:item] && index--==0) return [sidebarItems_ objectForKey:[playlist objectForKey:@"id"]];
+  return nil;
+}
+- (BOOL)outlineView:(NSOutlineView *)outline isItemExpandable:(id)item;
+{ (void)outline; return sidebarGroup(item); }
+- (BOOL)outlineView:(NSOutlineView *)outline shouldSelectItem:(id)item;
+{ (void)outline; return !sidebarGroup(item); }
+- (id)outlineView:(NSOutlineView *)outline objectValueForTableColumn:(NSTableColumn *)column byItem:(id)item;
+{
+  (void)outline; (void)column; if(sidebarGroup(item) || [item isEqual:@"All Downloads"]) return item;
+  NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
+  while((playlist=[e nextObject])) if([[playlist objectForKey:@"id"] isEqual:item]) return [NSString stringWithFormat:@"%@ (%@)",[playlist objectForKey:@"title"],[playlist objectForKey:@"count"]];
+  return @"";
+}
+- (void)outlineView:(NSOutlineView *)outline willDisplayCell:(id)cell forTableColumn:(NSTableColumn *)column item:(id)item;
+{ (void)outline; (void)column; [cell setFont:sidebarGroup(item)?[NSFont boldSystemFontOfSize:12]:[NSFont systemFontOfSize:12]]; }
+- (void)outlineViewSelectionDidChange:(NSNotification *)notification;
+{ [self tableViewSelectionDidChange:notification]; }
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)view;
-{ return (NSInteger)(view==sidebar_?[playlists_ count]+1:(view==queue_?[jobs_ count]:[rows_ count])); }
+{ return (NSInteger)(view==queue_?[jobs_ count]:[rows_ count]); }
 - (id)tableView:(NSTableView *)view objectValueForTableColumn:(NSTableColumn *)column row:(NSInteger)row;
 {
-  if(view==sidebar_) {
-    if(row==0) return @"All Downloads";
-    NSDictionary *p=[playlists_ objectAtIndex:(NSUInteger)row-1];
-    return [NSString stringWithFormat:@"%@ (%@)",[p objectForKey:@"title"],[p objectForKey:@"count"]];
-  }
   if(view==queue_) {
     NSDictionary *job=[jobs_ objectAtIndex:(NSUInteger)row];
     return [NSString stringWithFormat:@"%@\n%@\n%@ · %@",[job objectForKey:@"title"],[job objectForKey:@"playlist_title"],[job objectForKey:@"format"],[job objectForKey:@"state"]];
@@ -675,8 +739,9 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   if([notification object]==sidebar_) {
     NSInteger row=[sidebar_ selectedRow]; if(row<0) return;
     refreshing_=YES; [table_ deselectAll:nil]; refreshing_=NO;
-    mode_=row==0?1:0; [selectedPlaylist_ release];
-    selectedPlaylist_=row>=1?[[[playlists_ objectAtIndex:(NSUInteger)row-1] objectForKey:@"id"] copy]:nil;
+    id item=[sidebar_ itemAtRow:row]; if(sidebarGroup(item)) return;
+    mode_=[item isEqual:@"All Downloads"]?1:0; [selectedPlaylist_ release];
+    selectedPlaylist_=mode_==0?[item copy]:nil;
     [self refresh:nil];
   } else [self updateControls];
 }
@@ -873,10 +938,7 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
     if(job) { [self showTargetInQueue:sender]; return; }
     if(playlist) [self enqueueRequest:[NSDictionary dictionaryWithObjectsAndKeys:[playlist objectForKey:@"id"],@"playlist",[self targetVideoID],@"video",[self targetFormat],@"format",nil]];
   } else if(playlist) {
-    NSString *key=[playlist objectForKey:@"id"];
-    if(![[library_ entriesForPlaylist:key] count]) { [self sync:sender]; return; }
-    if([[self missingPlanForPlaylist:key format:downloadFormat_] count]) [self requestBulk:[NSDictionary dictionaryWithObjectsAndKeys:key,@"playlist",[playlist objectForKey:@"title"],@"title",downloadFormat_,@"format",nil]];
-    else [self showQueue:sender];
+    [self sync:sender];
   } else [self addPlaylist:sender];
 }
 - (void)sync:(id)sender;

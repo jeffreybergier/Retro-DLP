@@ -23,7 +23,7 @@ CB = C.CFUNCTYPE(C.c_int, P, C.c_int, C.POINTER(S), C.POINTER(S))
 for name, args in {
     'open':[S,C.POINTER(P)], 'close':[P], 'error':[P],
     'snapshot':[P,S,S,C.POINTER(Entry),C.c_size_t,C.POINTER(I)],
-    'playlist':[P,S,S,C.POINTER(I)], 'enqueue':[P,I,S,S],
+    'discovered_playlist':[P,S,S], 'playlist':[P,S,S,C.POINTER(I)], 'enqueue':[P,I,S,S],
     'claim':[P,CB,P], 'finish':[P,I,S,S,S], 'retry':[P,I],
     'cancel':[P,I], 'forget_file':[P,I], 'remove_playlist':[P,I,S],
     'reconcile':[P,S], 'remove_file':[P,I,S],
@@ -160,6 +160,36 @@ class StoreTests(unittest.TestCase):
         self.check(lib.rdapp_store_remove_playlist(self.db,self.key,os.fsencode(self.path)))
         self.assertFalse(staging.exists())
         self.assertEqual(self.rows(0),[])
+    def test_discovery_promotes_without_duplicate_or_data_loss(self):
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
+        original=self.rows(0)[0]
+        self.assertEqual(original['source'],'added')
+        self.check(lib.rdapp_store_discovered_playlist(self.db,b'PLtest',b'Account playlist'))
+        self.check(lib.rdapp_store_discovered_playlist(self.db,b'PLtest',b'Account playlist'))
+        self.assertEqual(len(self.rows(0)),1)
+        current=self.rows(0)[0]
+        self.assertEqual(current['source'],'account')
+        self.assertEqual(current['id'],original['id'])
+        self.assertEqual(current['directory'],original['directory'])
+        self.assertEqual(len(self.rows(1)),3)
+        self.assertEqual(len(self.rows(2)),1)
+        self.check(self.snapshot())
+        self.assertEqual(self.rows(0)[0]['source'],'account')
+        lib.rdapp_store_close(self.db)
+        self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
+        self.assertEqual(self.rows(0)[0]['source'],'account')
+
+    def test_version_one_migration_preserves_playlist(self):
+        path=self.path/'legacy.sqlite'
+        with sqlite3.connect(path) as db:
+            db.executescript("CREATE TABLE playlists (id INTEGER PRIMARY KEY, service_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, directory TEXT NOT NULL, synced_at INTEGER); INSERT INTO playlists VALUES(7,'PLold','Old','Playlists/Old',42); PRAGMA user_version=1;")
+        other=P()
+        self.check(lib.rdapp_store_open(os.fsencode(path),C.byref(other)))
+        lib.rdapp_store_close(other)
+        with sqlite3.connect(path) as db:
+            self.assertEqual(db.execute('SELECT id,service_id,directory,synced_at,source FROM playlists').fetchone(),(7,'PLold','Playlists/Old',42,'added'))
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],2)
+
     def test_rejects_path_injection_and_future_schema(self):
         self.assertEqual(lib.rdapp_store_playlist(self.db,b'../../escape',b'Bad',None),0)
         future=self.path/'future.sqlite'

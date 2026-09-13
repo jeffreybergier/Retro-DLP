@@ -13,6 +13,7 @@ void rdapp_store_close(rdapp_store *store);
 const char *rdapp_store_error(rdapp_store *store);
 int rdapp_store_list(rdapp_store *, rdapp_query, int64_t playlist, rdapp_row_callback, void *);
 int rdapp_store_playlist(rdapp_store *, const char *id, const char *title, int64_t *key);
+int rdapp_store_discovered_playlist(rdapp_store *, const char *id, const char *title);
 int rdapp_store_snapshot(rdapp_store *, const char *id, const char *title,
                          const rdapp_entry *, size_t count, int64_t *key);
 int rdapp_store_enqueue(rdapp_store *, int64_t playlist, const char *video_id,

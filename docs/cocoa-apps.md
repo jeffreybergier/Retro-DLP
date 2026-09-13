@@ -33,6 +33,20 @@ not produce an Apple distribution signature or provisioning profile.
 
 ## Mac workflow
 
+The sidebar is an NSOutlineView with three collapsible, nonselectable parent
+rows: System (All Downloads), Added Playlists (manually added), and My Playlists
+(discovered through Load My Playlists). Groups start expanded and keep their
+collapse state during library refreshes. Selecting a child keeps the existing
+Download/Play targeting behavior. Discovery promotes an existing manual playlist
+without duplicating it and preserves its selection, membership, and downloads.
+
+Database version 2 records discovery origin. Existing version-1 playlists migrate
+to Added Playlists because their original source was not recorded. Running Load
+My Playlists moves discovered matches into My Playlists. Using cookies for an
+ordinary playlist sync does not change its group; clearing cookies does not
+change stored provenance. Both app platforms can read the upgraded database.
+
+
 The toolbar is arranged as Download, Play, flexible space, Cookies, and Queue.
 Download and Play precede Edit in the menu bar and share their toolbar menu
 builders and validation. The application menu uses `setAppleMenu:` and contains
@@ -61,9 +75,7 @@ playlist, including Queue selections whose playlist is not selected in the sideb
 | Download / existing downloaded video | Confirm deletion; toolbar label becomes Delete | Solid trash |
 | Download / queued or running job | Show the job in Queue | Solid hourglass |
 | Download / failed, cancelled, interrupted, removed, or missing-file job | Restart download and reveal/select it in Queue | Solid download |
-| Download / playlist with missing videos | Confirm bulk download at remembered quality | Solid download |
-| Download / playlist without entries | Sync metadata, disabled if already syncing | Solid arrows-rotate |
-| Download / playlist with no eligible missing videos | Show Download Queue | Solid hourglass |
+| Download / selected playlist | Sync metadata, disabled if already syncing | Solid arrows-rotate |
 | Download / no target | Add Playlist sheet | Solid plus |
 | Play / playable video or exported playlist | Open in default app; Reveal in Finder if no handler | YouTube Brands |
 | Play / no playable target | Disabled | Dimmed YouTube Brands |
@@ -321,3 +333,10 @@ Download Video handles new, failed, cancelled, interrupted, removed, and missing
 jobs at the selected quality. Retry Download and Download Again are no longer
 separate menu entries. Queue offers one Download Selected Queue Video command
 using that job’s exact quality. Delete Download remains for local deletion.
+
+Outline sidebar validation: 13 portable store tests (including version-1 migration
+and discovery promotion), the local service discovery test, all Mac/iOS builds
+and static analysis, and artifact checks passed. One automated Tiger run checked
+outline groups, collapse persistence, existing action targeting, and promotion
+to My Playlists while retaining the selected playlist. No manual UI tour or live
+YouTube discovery was performed.

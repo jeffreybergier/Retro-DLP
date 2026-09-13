@@ -9,9 +9,9 @@ on run argv
       set frontmost to true
       key code 53
       tell splitter group 1 of window 1 of process appProcess of application "System Events"
-        if (count of rows of table 1 of scroll area 1) is not 2 then error "Wrong fixture library"
-        if value of text field 1 of row 2 of table 1 of scroll area 1 does not start with "Offline test playlist" then error "Wrong fixture playlist"
-        select row 2 of table 1 of scroll area 1
+        if (count of rows of outline 1 of scroll area 1) is not 5 then error "Wrong fixture library"
+        if value of text field 1 of row 4 of outline 1 of scroll area 1 does not start with "Offline test playlist" then error "Wrong fixture playlist"
+        select row 4 of outline 1 of scroll area 1
         delay 0.5
         if (count of rows of table 1 of scroll area 2) is not 2 then error "Missing playlist entries"
         select row 1 of table 1 of scroll area 2
@@ -27,10 +27,10 @@ on run argv
         delay 1
         if not (enabled of button "Download Video") then error "Failed job should allow retry"
         set selectedQueueText to value of text field 1 of row 2 of table 1 of scroll area 3
-        select row 1 of table 1 of scroll area 1
+        select row 2 of outline 1 of scroll area 1
         delay 0.5
         if value of text field 1 of (first row of table 1 of scroll area 3 whose selected is true) is not selectedQueueText then error "Sidebar changed queue selection"
-        select row 2 of table 1 of scroll area 1
+        select row 4 of outline 1 of scroll area 1
         delay 0.5
         select row 2 of table 1 of scroll area 2
       end tell
@@ -70,7 +70,7 @@ on run argv
       click button 1 of group 4 of tool bar 1 of window 1 of process appProcess of application "System Events"
       delay 0.5
       if not (exists scroll area 3 of splitter group 1 of window 1 of process appProcess of application "System Events") then error "Queue toggle did not reveal inspector"
-      select row 1 of table 1 of scroll area 1 of splitter group 1 of window 1 of process appProcess of application "System Events"
+      select row 2 of outline 1 of scroll area 1 of splitter group 1 of window 1 of process appProcess of application "System Events"
       delay 0.5
       click button 1 of group 1 of tool bar 1 of window 1 of process appProcess of application "System Events"
       delay 0.5

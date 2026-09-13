@@ -50,7 +50,7 @@ static rdlp_error_code discover(rdapp_store *s,const rdapp_service_config *c,
   if(code!=RDLP_OK) return code;
   n=rdlp_playlist_collection_count(p);
   lock_store(c);
-  for(i=0;i<n && ok;++i) ok=rdapp_store_playlist(s,rdlp_playlist_collection_id(p,i),rdlp_playlist_collection_title(p,i),NULL);
+  for(i=0;i<n && ok;++i) ok=rdapp_store_discovered_playlist(s,rdlp_playlist_collection_id(p,i),rdlp_playlist_collection_title(p,i));
   if(ok) snprintf(message,cap,"Found %lu playlists. Select a playlist and Sync, or Sync All.",(unsigned long)n);
   else { snprintf(error->message,sizeof(error->message),"%s",rdapp_store_error(s)); code=RDLP_ERROR_STORAGE_IO; }
   unlock_store(c); rdlp_playlist_collection_destroy(p); return code;

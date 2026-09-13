@@ -21,7 +21,7 @@ on run argv
       delay 1
       if not (exists button "Cookies" of group 3 of tool bar 1 of window 1 of process appProcess of application "System Events") then error "Cookies toolbar button missing after import"
       tell splitter group 1 of window 1 of process appProcess of application "System Events"
-        select row 2 of table 1 of scroll area 1
+        select row 4 of outline 1 of scroll area 1
         select row 1 of table 1 of scroll area 2
       end tell
       if not (exists button "Cookies" of group 3 of tool bar 1 of window 1 of process appProcess of application "System Events") then error "Selection changed Cookies label"

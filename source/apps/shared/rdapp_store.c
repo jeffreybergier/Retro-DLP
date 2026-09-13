@@ -38,15 +38,16 @@ const char *rdapp_store_error(rdapp_store *s) { return s ? s->error : "Cannot op
 void rdapp_store_close(rdapp_store *s) { if (s) { sqlite3_close(s->db); free(s); } }
 int rdapp_store_open(const char *path, rdapp_store **out) {
   rdapp_store *s = calloc(1, sizeof(*s));
-  sqlite3_stmt *p;
+  sqlite3_stmt *p; int version;
   *out = NULL;
   if (!s) return 0;
   if (sqlite3_open(path, &s->db) != SQLITE_OK) { rdapp_store_close(s); return 0; }
   sqlite3_busy_timeout(s->db, 5000);
   p = prepare(s, "PRAGMA user_version");
-  if (!p || sqlite3_step(p) != SQLITE_ROW || sqlite3_column_int(p,0) > 1) {
+  if (!p || sqlite3_step(p) != SQLITE_ROW || sqlite3_column_int(p,0) > 2) {
     sqlite3_finalize(p); rdapp_store_close(s); return 0;
   }
+  version=sqlite3_column_int(p,0);
   sqlite3_finalize(p);
   if (!sql(s, "PRAGMA foreign_keys=ON; BEGIN IMMEDIATE;"
     "CREATE TABLE IF NOT EXISTS playlists (id INTEGER PRIMARY KEY, service_id TEXT NOT NULL UNIQUE,"
@@ -61,10 +62,11 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
     " path TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'queued', error TEXT NOT NULL DEFAULT '',"
     " UNIQUE(playlist_id,video_id,format));"
     "CREATE INDEX IF NOT EXISTS jobs_state ON jobs(state,id);"
-    "PRAGMA user_version=1; COMMIT;"
     "UPDATE jobs SET state='interrupted', error='Interrupted. Retry restarts the download.' WHERE state='running';")) {
     rdapp_store_close(s); return 0;
   }
+  if ((version<2 && !sql(s,"ALTER TABLE playlists ADD COLUMN source TEXT NOT NULL DEFAULT 'added';")) ||
+      !sql(s,"PRAGMA user_version=2; COMMIT;")) { rdapp_store_close(s); return 0; }
   *out = s; return 1;
 }
 void rdapp_filename(const char *text, char *out, size_t cap) {
@@ -140,6 +142,19 @@ int rdapp_store_playlist(rdapp_store *s,const char *id,const char *title,int64_t
   bind_text(p,1,id); ok=sqlite3_step(p)==SQLITE_ROW;
   if(ok && key) *key=sqlite3_column_int64(p,0);
   sqlite3_finalize(p); return ok;
+}
+/* Discovery promotes an existing manual entry without changing its key,
+   directory, membership, or downloads. Ordinary sync never demotes it. */
+int rdapp_store_discovered_playlist(rdapp_store *s,const char *id,const char *title) {
+  sqlite3_stmt *p;
+  if(!sql(s,"BEGIN IMMEDIATE")) return 0;
+  if(!rdapp_store_playlist(s,id,title,NULL)) goto rollback;
+  p=prepare(s,"UPDATE playlists SET source='account' WHERE service_id=?");
+  if(!p) goto rollback;
+  bind_text(p,1,id); if(!done(s,p)) goto rollback;
+  if(sql(s,"COMMIT")) return 1;
+rollback:
+  sql(s,"ROLLBACK"); return 0;
 }
 int rdapp_store_snapshot(rdapp_store *s,const char *id,const char *title,const rdapp_entry *entries,size_t count,int64_t *key) {
   int64_t k; size_t i; sqlite3_stmt *p;

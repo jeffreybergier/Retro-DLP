@@ -2,7 +2,10 @@
 #import "RetroDLPLibrary.h"
 @interface LibraryWindow : AICookieCutterWindowController {
   RetroDLPLibrary *library_;
-  NSTableView *sidebar_, *table_, *queue_;
+  NSOutlineView *sidebar_;
+  NSTableView *table_, *queue_;
+  NSMutableDictionary *sidebarItems_;
+  BOOL sidebarLoaded_;
   NSTextField *input_, *status_, *title_, *queueTitle_, *queueStatus_, *customFormat_, *customError_, *customSummary_;
   NSButton *pause_, *primary_, *jobAction_;
   NSMutableDictionary *toolbarItems_;

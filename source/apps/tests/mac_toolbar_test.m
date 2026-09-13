@@ -4,6 +4,7 @@
 #import "../macOS/LibraryWindow.h"
 #import "../macOS/RDToolbarButton.h"
 #import "../macOS/XPAppKit.h"
+#import "../shared/rdapp_store.h"
 @interface LibraryWindow (ToolbarTest)
 - (void)tableWasUsed:(NSTableView *)view;
 - (BOOL)validateMenuItem:(NSMenuItem *)item;
@@ -22,6 +23,13 @@ static RDToolbarButton *toolbarButton(LibraryWindow *window,NSString *key) {
 }
 static void selectRow(LibraryWindow *window,NSString *key,NSUInteger row) {
   NSTableView *table=[window valueForKey:key];
+  if([table isKindOfClass:[NSOutlineView class]]) {
+    NSOutlineView *outline=(NSOutlineView *)table;
+    id item=row==0?@"All Downloads":[[[window valueForKey:@"playlists_"] objectAtIndex:row-1] objectForKey:@"id"];
+    if(row>0) item=[[window valueForKey:@"sidebarItems_"] objectForKey:item];
+    [outline expandItem:@"System"]; [outline expandItem:@"Added Playlists"]; [outline expandItem:@"My Playlists"];
+    row=(NSUInteger)[outline rowForItem:item];
+  }
   [window tableWasUsed:table]; [table selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO]; [window tableWasUsed:table];
 }
 static NSMenuItem *choice(NSMenu *menu,NSString *title) {
@@ -60,6 +68,12 @@ static NSArray *titles(NSMenu *menu) {
     requireCondition(library_!=nil,@"Fixture failed to open");
     requireCondition([[library_ playlists] count]==1 && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Use a fresh fixture");
     window_=[[LibraryWindow alloc] initWithLibrary:library_]; [window_ showWindow:nil]; [NSApp activateIgnoringOtherApps:YES]; pump();
+    NSOutlineView *outline=[window_ valueForKey:@"sidebar_"];
+    requireCondition([outline isKindOfClass:[NSOutlineView class]],@"Sidebar must be an outline");
+    requireCondition([outline numberOfRows]==5 && [[outline itemAtRow:0] isEqual:@"System"] && [[outline itemAtRow:2] isEqual:@"Added Playlists"] && [[outline itemAtRow:4] isEqual:@"My Playlists"],@"Expected three groups and fixture children");
+    [outline collapseItem:@"Added Playlists"]; [window_ refresh:nil];
+    requireCondition(![outline isItemExpanded:@"Added Playlists"],@"Refresh must retain collapsed group");
+    [outline expandItem:@"Added Playlists"];
     NSDictionary *items=[window_ valueForKey:@"toolbarItems_"];
     requireCondition([items count]==4 && [items objectForKey:@"download"] && [items objectForKey:@"play"],@"Expected Download and Play toolbar items");
     requireCondition(![toolbarButton(window_,@"play") isDefaultEnabled],@"No selection must disable Play");
@@ -146,7 +160,17 @@ static NSArray *titles(NSMenu *menu) {
     download=[window_ menuForToolbarIdentifier:@"download"];
     invoke(window_,choice(download,@"Download Video"));
     requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==4 && [[RetroDLPLibrary preferredFormat] isEqualToString:@"137+140"] && [library_ isPaused],@"Direct Download Video must reuse last selected High quality and preserve Pause");
-    report=@"PASS: Download/Play targeting, adaptive menus, playlist bulk cancellation, completed default confirms Delete; failed default retries and reveals Queue, exact Queue quality, explicit paused retry, confirmation cancellation, and no playback fallback to another selection; no network work.";
+    selectRow(window_,@"sidebar_",1);
+    NSString *selectedKey=[[[window_ valueForKey:@"selectedPlaylist_"] copy] autorelease];
+    [outline collapseItem:@"My Playlists"];
+    rdapp_store *discoveryStore=NULL;
+    requireCondition(rdapp_store_open("/tmp/retrodlp-toolbar-fixture/Support/retrodlp.sqlite",&discoveryStore),@"Could not open isolated discovery store");
+    requireCondition(rdapp_store_discovered_playlist(discoveryStore,"PLfixture","Offline test playlist"),@"Discovery promotion failed");
+    rdapp_store_close(discoveryStore); [window_ refresh:nil];
+    requireCondition([[window_ valueForKey:@"playlists_"] count]==1 && [outline numberOfRows]==5,@"Discovery must not duplicate playlist");
+    requireCondition([[outline itemAtRow:3] isEqual:@"My Playlists"] && [[outline itemAtRow:4] isEqual:selectedKey],@"Discovered playlist must move to My Playlists");
+    requireCondition([[window_ valueForKey:@"selectedPlaylist_"] isEqual:selectedKey] && [outline selectedRow]==4,@"Promotion must preserve selected playlist");
+    report=@"PASS: outline groups, collapse persistence, discovery promotion with selection preserved, Download/Play targeting, adaptive menus, playlist bulk cancellation, completed default confirms Delete; failed default retries and reveals Queue, exact Queue quality, explicit paused retry, confirmation cancellation, and no playback fallback to another selection; no network work.";
 
   } @catch(NSException *exception) { report=[NSString stringWithFormat:@"FAIL: %@",exception]; }
   [report writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
