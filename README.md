@@ -25,7 +25,7 @@ vendor yt-dlp as a build or test dependency.
 ## Cocoa applications
 
 Native macOS and iOS frontends provide a SQLite playlist library, quality-specific
-download queue, and offline playback. macOS exports VLC playlists under
+download queue, and offline playback. macOS opens media in its default app and exports M3U8 playlists under
 `~/Documents/RetroDLP`; iOS keeps videos inside its own Documents directory and
 uses the native player. See [app usage, builds, and architecture](docs/cocoa-apps.md).
 

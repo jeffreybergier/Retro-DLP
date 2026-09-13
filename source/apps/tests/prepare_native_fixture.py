@@ -25,4 +25,13 @@ subprocess.run(['ffmpeg','-nostdin','-v','error','-f','lavfi','-i','testsrc2=siz
     '-level','3.0','-pix_fmt','yuv420p','-c:a','aac','-b:a','64k','-movflags','+faststart',str(video)],check=True)
 assert lib.rdapp_store_finish(store,int(job['id']),b'complete',b'18',b'')
 assert lib.rdapp_store_export(store,key,str(downloads).encode())
+# Additional states exercise inspector controls without starting any transfers.
+assert lib.rdapp_store_enqueue(store,key,b'AAAAAAAAAAA',b'136+140')
+rows.clear()
+assert lib.rdapp_store_claim(store,collect,None)
+assert lib.rdapp_store_finish(store,int(rows[0]['id']),b'failed',b'',b'Synthetic failure. Retry restarts the download.')
+assert lib.rdapp_store_enqueue(store,key,b'AAAAAAAAAAA',b'18')
 lib.rdapp_store_close(store)
+
+(root/'synthetic-cookies.txt').write_text(
+    '# Netscape HTTP Cookie File\n.example.invalid\tTRUE\t/\tFALSE\t0\tfixture\tsynthetic\n')

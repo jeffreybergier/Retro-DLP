@@ -50,6 +50,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   NSString *format=[[NSUserDefaults standardUserDefaults] stringForKey:@"downloadFormat"];
   return format && rdlp_format_expression_valid([format UTF8String])?format:@"18";
 }
++ (BOOL)validFormat:(NSString *)format;
+{ return format && rdlp_format_expression_valid([format UTF8String]); }
 + (BOOL)savePreferredFormat:(NSString *)format;
 {
   if(!rdlp_format_expression_valid([format UTF8String])) return NO;
@@ -79,7 +81,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 }
 - (void)dealloc;
 {
-  rdapp_store_close(store_); [lock_ release]; [commands_ release]; [support_ release]; [root_ release];
+  rdapp_store_close(store_); [lock_ release]; [commands_ release]; [activeCommand_ release]; [support_ release]; [root_ release];
   [ca_ release]; [assets_ release]; [cookies_ release]; [status_ release]; [super dealloc];
 }
 - (void)changed; { [[NSNotificationCenter defaultCenter] postNotificationName:RetroDLPLibraryDidChange object:self]; }
@@ -87,6 +89,28 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 { [status_ release]; status_=[message copy]; [self changed]; }
 - (NSString *)status; { return status_; }
 - (BOOL)isBusy; { return busy_; }
+- (NSString *)downloadsDirectory; { return root_; }
+- (BOOL)isSyncPendingForInput:(NSString *)input;
+{
+  if([[activeCommand_ objectForKey:@"type"] isEqualToString:@"sync"] && [[activeCommand_ objectForKey:@"input"] isEqualToString:input]) return YES;
+  NSEnumerator *e=[commands_ objectEnumerator]; NSDictionary *command;
+  while((command=[e nextObject])) if([[command objectForKey:@"type"] isEqualToString:@"sync"] && [[command objectForKey:@"input"] isEqualToString:input]) return YES;
+  return NO;
+}
+- (BOOL)isDiscoveryPending;
+{
+  if([[activeCommand_ objectForKey:@"type"] isEqualToString:@"discover"]) return YES;
+  NSEnumerator *e=[commands_ objectEnumerator]; NSDictionary *command;
+  while((command=[e nextObject])) if([[command objectForKey:@"type"] isEqualToString:@"discover"]) return YES;
+  return NO;
+}
+- (NSString *)cookieStatus;
+{
+  struct stat info;
+  if(stat([cookies_ fileSystemRepresentation],&info)) return errno==ENOENT?@"Not Imported":@"Unavailable";
+  if(!S_ISREG(info.st_mode) || info.st_size<=0 || info.st_size>4*1024*1024 || access([cookies_ fileSystemRepresentation],R_OK)) return @"Unavailable";
+  return @"Imported";
+}
 - (BOOL)isPaused; { return paused_; }
 - (NSArray *)rows:(rdapp_query)query playlist:(NSString *)key;
 {
@@ -124,16 +148,17 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 {
   input=[input stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
   if(![input length]) { [self showStatus:@"Enter a playlist URL or ID."]; return; }
+  if([self isSyncPendingForInput:input]) return;
   [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",input,@"input",nil]]; [self startNext];
 }
 - (void)syncAll;
 {
   NSArray *rows=[self playlists]; unsigned int i;
-  for(i=0;i<[rows count];++i) [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",[[rows objectAtIndex:i] objectForKey:@"service_id"],@"input",nil]];
+  for(i=0;i<[rows count];++i) if(![self isSyncPendingForInput:[[rows objectAtIndex:i] objectForKey:@"service_id"]]) [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",[[rows objectAtIndex:i] objectForKey:@"service_id"],@"input",nil]];
   [self startNext];
 }
 - (void)discoverPlaylists;
-{ [commands_ addObject:[NSDictionary dictionaryWithObject:@"discover" forKey:@"type"]]; [self startNext]; }
+{ if([self isDiscoveryPending]) return; [commands_ addObject:[NSDictionary dictionaryWithObject:@"discover" forKey:@"type"]]; [self startNext]; }
 - (void)enqueuePlaylist:(NSString *)key video:(NSString *)video format:(NSString *)format;
 {
   int ok;
@@ -142,13 +167,13 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   [lock_ lock]; ok=rdapp_store_enqueue(store_,identifier(key),[video UTF8String],[format UTF8String]);
   NSString *message=ok?@"Added missing downloads. Existing jobs can be retried in Queue.":string(rdapp_store_error(store_));
   [message retain]; [lock_ unlock]; [self showStatus:message]; [message release];
-  paused_=NO; [self startNext];
+  [self startNext];
 }
 - (void)retryJob:(NSString *)key;
 {
   [lock_ lock]; rdapp_store_reconcile(store_,[root_ fileSystemRepresentation]);
   int ok=rdapp_store_retry(store_,identifier(key)); [lock_ unlock];
-  if(ok) { paused_=NO; [self changed]; [self startNext]; }
+  if(ok) { [self changed]; [self startNext]; }
 }
 - (void)cancelJob:(NSString *)key;
 {
@@ -205,12 +230,14 @@ static void download_callback(const rdlp_download_event *event,void *context) {
     if([rows count]) command=[NSDictionary dictionaryWithObjectsAndKeys:@"download",@"type",[rows objectAtIndex:0],@"job",nil];
   }
   if(!command) { [self changed]; return; }
+  [activeCommand_ release]; activeCommand_=[command retain];
   busy_=YES; [lock_ lock]; cancel_=NO; activeJob_=identifier([[command objectForKey:@"job"] objectForKey:@"id"]); [lock_ unlock];
   [self showStatus:@"Starting…"];
   [NSThread detachNewThreadSelector:@selector(work:) toTarget:self withObject:command];
 }
 - (void)finished:(NSString *)message;
 {
+  [activeCommand_ release]; activeCommand_=nil;
   busy_=NO; [lock_ lock]; activeJob_=0; [lock_ unlock];
   [self showStatus:message];
   [self performSelector:@selector(startNext) withObject:nil afterDelay:0.1];
