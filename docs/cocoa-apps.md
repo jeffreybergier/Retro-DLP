@@ -31,6 +31,30 @@ It is suitable for the existing jailbreak IPA installation workflow. Installing
 on stock iOS requires a supported signing/provisioning workflow; this build does
 not produce an Apple distribution signature or provisioning profile.
 
+### iPhone launch images
+
+The iOS bundle uses ENIL's plain white launch images, plus a matching landscape
+image for Plus phones. `Resources/*.png` are copied to the bundle root; changing
+an image rebuilds the bundle and IPA. No asset catalog compiler is required.
+
+| Image | Pixels | iPhone layout |
+| --- | --- | --- |
+| `Default.png` | 320 × 480 | 3.5-inch, non-Retina |
+| `Default@2x.png` | 640 × 960 | 3.5-inch, Retina |
+| `Default-568h@2x.png` | 640 × 1136 | 4-inch (5/5c/5s/SE first generation) |
+| `Default-667h@2x.png` | 750 × 1334 | 4.7-inch (6/6s/7/8/SE second and third generation) |
+| `Default-736h@3x.png` | 1242 × 2208 | 5.5-inch Plus, portrait |
+| `Default-Landscape-736h@3x.png` | 2208 × 1242 | 5.5-inch Plus, landscape |
+
+iOS 5/6 discover the legacy `Default` filenames. For iOS 7+, the iPhone-specific
+`UILaunchImages` array explicitly declares every supported size in **points**,
+with portrait dimensions even for the landscape entry, following
+[Apple's launch-image rules](https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/iPhoneOSKeys.html#//apple_ref/doc/uid/TP40009251-SW28).
+The larger entries require iOS 8. These assets cover classic iPhone layouts;
+they do not establish native full-screen support on edge-to-edge iPhones.
+That needs a modern launch-screen setup and toolchain work beyond the current
+iOS 8.4 SDK build. Verify cold launches on devices separately from packaging.
+
 ## Mac workflow
 
 The window uses the textured style, including brushed metal on Tiger. A full-width

@@ -44,6 +44,61 @@
 	</array>
 	<key>UIFileSharingEnabled</key>
 	<true/>
+	<!-- iOS 5/6 use Default.png, Default@2x.png and Default-568h@2x.png.
+	     iOS 7+ use this complete iPhone list, including native 6/6 Plus sizes. -->
+	<key>UILaunchImages~iphone</key>
+	<array>
+		<dict>
+			<key>UILaunchImageName</key>
+			<string>Default</string>
+			<key>UILaunchImageMinimumOSVersion</key>
+			<string>7.0</string>
+			<key>UILaunchImageSize</key>
+			<string>{320, 480}</string>
+			<key>UILaunchImageOrientation</key>
+			<string>Portrait</string>
+		</dict>
+		<dict>
+			<key>UILaunchImageName</key>
+			<string>Default</string>
+			<key>UILaunchImageMinimumOSVersion</key>
+			<string>7.0</string>
+			<key>UILaunchImageSize</key>
+			<string>{320, 568}</string>
+			<key>UILaunchImageOrientation</key>
+			<string>Portrait</string>
+		</dict>
+		<dict>
+			<key>UILaunchImageName</key>
+			<string>Default-667h</string>
+			<key>UILaunchImageMinimumOSVersion</key>
+			<string>8.0</string>
+			<key>UILaunchImageSize</key>
+			<string>{375, 667}</string>
+			<key>UILaunchImageOrientation</key>
+			<string>Portrait</string>
+		</dict>
+		<dict>
+			<key>UILaunchImageName</key>
+			<string>Default-736h</string>
+			<key>UILaunchImageMinimumOSVersion</key>
+			<string>8.0</string>
+			<key>UILaunchImageSize</key>
+			<string>{414, 736}</string>
+			<key>UILaunchImageOrientation</key>
+			<string>Portrait</string>
+		</dict>
+		<dict>
+			<key>UILaunchImageName</key>
+			<string>Default-Landscape-736h</string>
+			<key>UILaunchImageMinimumOSVersion</key>
+			<string>8.0</string>
+			<key>UILaunchImageSize</key>
+			<string>{414, 736}</string>
+			<key>UILaunchImageOrientation</key>
+			<string>Landscape</string>
+		</dict>
+	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

@@ -4,10 +4,19 @@ import hashlib
 import plistlib
 import re
 import stat
+import struct
 import subprocess
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[3]
+IPHONE_LAUNCH_IMAGES={
+    'Default.png': (320,480),
+    'Default@2x.png': (640,960),
+    'Default-568h@2x.png': (640,1136),
+    'Default-667h@2x.png': (750,1334),
+    'Default-736h@3x.png': (1242,2208),
+    'Default-Landscape-736h@3x.png': (2208,1242),
+}
 for platform,archive_name,exe_relative,plist_relative,resources,architectures in [
     ('macOS','RetroDLP.zip','Contents/MacOS/RetroDLP','Contents/Info.plist','Contents/Resources',{'ppc','i386','x86_64','arm64'}),
     ('iOS','RetroDLP.ipa','RetroDLP','Info.plist','',{'armv7','arm64'}),
@@ -47,6 +56,14 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
         assert archive.read(prefix+plist_relative)==(bundle/plist_relative).read_bytes()
         mode=archive.getinfo(prefix+exe_relative).external_attr>>16
         assert mode & stat.S_IXUSR,'Executable mode was lost'
+        if platform=='iOS':
+            for filename,dimensions in IPHONE_LAUNCH_IMAGES.items():
+                data=(bundle/filename).read_bytes()
+                assert data[:8]==b'\x89PNG\r\n\x1a\n',filename+' is not a PNG'
+                assert struct.unpack('>II',data[16:24])==dimensions,filename+' has incorrect dimensions'
+                assert data==(ROOT/'source/apps/iOS/Resources'/filename).read_bytes(),filename+' is stale in bundle'
+                assert archive.read(prefix+filename)==data,filename+' is stale in IPA'
+                assert (archive.getinfo(prefix+filename).external_attr>>16) & stat.S_IROTH,filename+' is unreadable'
         for filename in ['cacert.pem','ejs/core.min.js','ejs/lib.min.js','ejs/NOTICE.txt']:
             relative='/'.join(p for p in [resources,filename] if p)
             data=(bundle/relative).read_bytes()
