@@ -234,11 +234,42 @@ imported cookie file is not removed.
 
 ## iOS workflow
 
-The root screen groups System (All Downloads, Download Queue, Settings), Added
-Playlists, and My Playlists. Section headers collapse and preserve their state
-during refreshes. Add a playlist with **+**, discover account playlists using
-**My Playlists**, or open a playlist and tap **Sync**. Pending syncs/discovery
+The fresh-launch root is `RDLPPlaylistsViewController`, a `UITableViewController`
+with a plain table titled **Playlists**, containing System
+(All Downloads), Added Playlists, and My Playlists. These section
+headers use UIKit's default sizing and do not collapse. Empty sections have
+zero rows and no placeholder footer. The top-left Font Awesome gear opens Settings
+modally with a Done button. Settings is a dedicated `UITableViewController`
+with no bottom status area and no explanatory section footers. Its
+**Import Cookies...** row has no subtitle and is disabled while cookies are
+imported (or the library is busy); removing cookies enables import again. Cookie
+action rows have no disclosure chevrons. The
+top-right Font Awesome **+** opens an action sheet with **Add Playlist…**,
+**Sync All Playlists…**, and **Load My Playlists…**, for playlist management.
+These commands reuse the existing input and confirmation dialogs. Download
+quality is available in Settings. Cancel does nothing.
+The home screen uses ENIL's status-toolbar layout: a content-sized center view
+between flexible spaces, with a Font Awesome Queue button on the right. UIKit
+provides the native iOS 5/6 gloss and bordered button, or iOS 7+ flat chrome and
+tinted button. “Ready” is never displayed. Once idle, the last non-ready message stays for ten
+seconds and then clears; repeated refreshes do not extend that time. A new
+message replaces it and starts a fresh ten-second period. Active work keeps its
+status visible. Idle text is bold 15pt; active text is bold 13pt over a 100pt
+progress track. Legacy text uses ENIL's white engraved shadow; iOS 7+ uses dark
+text without a shadow. Unknown progress holds at half fill. Long text truncates
+to leave room for Queue; its full text and progress counts remain accessible.
+The toolbar replaces the home screen's old status footer. Other screens retain
+their existing controls.
+
+Queue opens modally in its own navigation controller with a **Done** button.
+The toolbar button and Show in Queue actions use the same presentation. Revealing a
+job inside Queue reuses the open screen instead of stacking another modal.
+
+Open a playlist and tap **Sync**. Pending syncs/discovery
 cannot be submitted again. Sync All and account discovery confirm their scope.
+
+Both the Playlists home screen and individual playlist video lists use standard
+UIKit subtitle cells, with default typography, single-line labels, and row heights.
 
 Playlist videos summarize every downloaded quality. A playable file takes
 priority over running, queued, failed/missing, and stopped work, even when the
@@ -262,7 +293,7 @@ that exact quality. Selection follows its status changes. Other collapsed branch
 stay collapsed. Job actions show only applicable playback, download, stop, delete,
 and Show in Queue commands; full errors are available in the job dialog.
 
-A fixed status area below each table shows current activity and a native progress
+On the playlist, video, downloads, and queue screens, a fixed status area below the table shows current activity and a native progress
 bar for processed attempts in the current run. Failed and stopped counts are
 included in its accessible description. Historical jobs do not contribute, and
 progress appearing or disappearing never changes the table's frame.

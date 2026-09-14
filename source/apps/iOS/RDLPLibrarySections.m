@@ -111,8 +111,6 @@
   NSString *pid=[playlist objectForKey:@"id"];
   if(screen==RDLPScreenLibrary) {
     [rows addObject:[self row:@"All Downloads" detail:@"" action:@"downloads"]];
-    [rows addObject:[self row:@"Download Queue" detail:@"" action:@"queue"]];
-    [rows addObject:[self row:@"Settings" detail:@"" action:@"settings"]];
     [sections addObject:[self section:@"System" rows:rows]];
     for(NSString *origin in [NSArray arrayWithObjects:@"manual",@"discovered",nil]) {
       NSMutableArray *playlists=[NSMutableArray array];
@@ -133,7 +131,7 @@
     }
     [sections addObject:[self section:@"Download Quality" rows:rows]];
     NSMutableArray *cookies=[NSMutableArray array];
-    [cookies addObject:[self row:@"Import Documents/cookies.txt" detail:[library_ cookieStatus] action:@"import"]];
+    [cookies addObject:[self row:@"Import Cookies..." detail:@"" action:@"import"]];
     [cookies addObject:[self row:@"Remove Cookies…" detail:@"" action:@"clearCookies"]];
     [cookies addObject:[self row:@"Cookie Export Guide" detail:@"" action:@"guide"]];
     [sections addObject:[self section:@"Cookies" rows:cookies]];

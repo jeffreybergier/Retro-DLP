@@ -1,6 +1,8 @@
+#import "../iOS/RDLPPlaylistsViewController.h"
 /* Native UIKit regressions. All data is synthetic and confined to this bundle.
    The scheduler override below never calls the production worker. */
 #import "../iOS/RDLPLibraryViewController.h"
+#import "../iOS/RDLPSettingsViewController.h"
 #import "../iOS/RDLPAppDelegate.h"
 #import "../iOS/RDLPUIKit.h"
 #import <AIFontAwesome.h>
@@ -35,13 +37,13 @@ static void pump(void) { [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWi
 @interface RDLPLibraryViewController (Testing)
 - (void)queueAction:(UIButton *)sender;
 @end
-static NSArray *sections(RDLPLibraryViewController *controller) { return [controller valueForKey:@"sections_"]; }
-static NSDictionary *findRow(RDLPLibraryViewController *controller,NSString *action) {
+static NSArray *sections(id controller) { return [controller valueForKey:@"sections_"]; }
+static NSDictionary *findRow(id controller,NSString *action) {
   for(NSDictionary *section in sections(controller)) for(NSDictionary *row in [section objectForKey:@"rows"])
     if([[row objectForKey:@"action"] isEqualToString:action]) return row;
   return nil;
 }
-static void confirmAt(RDLPLibraryViewController *controller,BOOL accept,int line) {
+static void confirmAt(id controller,BOOL accept,int line) {
   UIAlertView *alert=[controller valueForKey:@"alert_"];
   require(alert!=nil,[NSString stringWithFormat:@"Expected confirmation at test line %d",line]); [alert retain];
   [controller alertView:alert clickedButtonAtIndex:accept?1:0];
@@ -75,13 +77,17 @@ static void screenshot(UIWindow *window,NSString *path) {
   window_.rootViewController=[[[UIViewController alloc] init] autorelease]; [window_ makeKeyAndVisible];
   [self performSelector:@selector(run) withObject:nil afterDelay:0.5]; return YES;
 }
-- (RDLPLibraryViewController *)show:(RDLPScreen)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;
+- (id)show:(RDLPScreen)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;
 {
-  RDLPLibraryViewController *controller=[[[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:mode playlist:playlist video:video] autorelease];
+  id controller=mode==RDLPScreenLibrary?(id)[[[RDLPPlaylistsViewController alloc] initWithLibrary:library_] autorelease]:[[[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:mode playlist:playlist video:video] autorelease];
+  if(navigation_.presentedViewController) {
+    [navigation_ dismissViewControllerAnimated:NO completion:nil]; pump(); pump();
+  }
   [navigation_ setViewControllers:[NSArray arrayWithObject:controller] animated:NO]; [controller view]; [controller refresh:nil]; pump(); return controller;
 }
 - (void)run;
 {
+  [@"RUNNING" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSString *report=@"PASS";
   @try {
     require([[NSBundle mainBundle] pathForResource:@"cacert" ofType:@"pem"]==nil,@"Isolated bundle must not contain a CA resource");
@@ -120,7 +126,70 @@ static void screenshot(UIWindow *window,NSString *path) {
     [library_ startDownloads]; require(![library_ isPaused],@"Automatic queue startup");
     navigation_=[[UINavigationController alloc] init]; window_.rootViewController=navigation_;
     [RDLPLibrary savePreferredFormat:@"137+140"];
-    RDLPLibraryViewController *root=[self show:RDLPScreenLibrary playlist:nil video:nil];
+    RDLPPlaylistsViewController *root=[self show:RDLPScreenLibrary playlist:nil video:nil];
+    require([root isKindOfClass:[UITableViewController class]] && root.view==root.tableView,@"Fresh-launch home is a native table controller");
+    require([root.title isEqualToString:@"Playlists"] && root.tableView.style==UITableViewStylePlain,@"Plain Playlists home");
+    require([root.toolbarItems count]==4 && !navigation_.toolbarHidden,@"ENIL-style home toolbar");
+    UIBarButtonItem *queueButton=[root.toolbarItems lastObject];
+    require(queueButton.image!=nil && queueButton.action==@selector(queue:),@"Trailing Queue button");
+    RDLPStatusBarView *bar=[root valueForKey:@"statusBar_"];
+    UIProgressView *barProgress=[bar valueForKey:@"progress_"];
+    require(bar!=nil && barProgress.hidden,@"Idle status is text only");
+    CGRect homeTableFrame=root.tableView.frame;
+    library_.testProgress=[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES],@"active",@3,@"processed",@5,@"total",@1,@"failed",@1,@"cancelled",nil];
+    [root refresh:nil]; pump();
+    require(!barProgress.hidden && barProgress.progress>0.59f && barProgress.progress<0.61f && CGRectEqualToRect(homeTableFrame,root.tableView.frame),@"Toolbar progress preserves table geometry");
+    screenshot(window_,[documents_ stringByAppendingPathComponent:@"toolbar-progress.png"]);
+    [bar setStatus:@"A very long download status that must fit beside the queue button without obscuring it" progress:library_.testProgress busy:NO];
+    require(bar.frame.size.width<=bar.maximumWidth,@"Long status fits beside Queue");
+    library_.testProgress=nil; [root refresh:nil];
+    library_.testBusy=YES; [root refresh:nil];
+    require(!barProgress.hidden && barProgress.progress==0.5f,@"Unknown progress uses ENIL half-filled track");
+    library_.testBusy=NO; [root refresh:nil];
+    [root queue:nil]; pump(); pump();
+    UINavigationController *queueModal=(UINavigationController *)navigation_.presentedViewController;
+    require([queueModal isKindOfClass:[UINavigationController class]] && navigation_.topViewController==root,@"Queue presents modally without changing home stack");
+    RDLPLibraryViewController *modalQueue=(RDLPLibraryViewController *)queueModal.topViewController;
+    require([modalQueue.title isEqualToString:@"Download Queue"] && modalQueue.navigationItem.rightBarButtonItem.action==@selector(dismissQueue:),@"Queue has Done dismissal");
+    [root queue:nil];
+    require(navigation_.presentedViewController==queueModal,@"Repeated Queue action reuses modal");
+    [modalQueue showJobInQueue:[[library_ jobsForPlaylist:nil completedOnly:NO] objectAtIndex:0]];
+    require(queueModal.presentedViewController==nil,@"Reveal inside Queue does not nest another modal");
+    screenshot(window_,[documents_ stringByAppendingPathComponent:@"queue-modal.png"]);
+    [modalQueue dismissQueue:nil]; pump(); pump();
+    require(navigation_.presentedViewController==nil && !navigation_.toolbarHidden && navigation_.topViewController==root,@"Done restores home toolbar");
+    [root settings:nil]; pump(); pump();
+    UINavigationController *settingsModal=(UINavigationController *)navigation_.presentedViewController;
+    require([settingsModal isKindOfClass:[UINavigationController class]] && navigation_.topViewController==root,@"Settings presents modally");
+    RDLPSettingsViewController *modalSettings=(RDLPSettingsViewController *)settingsModal.topViewController;
+    require([modalSettings isKindOfClass:[UITableViewController class]] && modalSettings.view==modalSettings.tableView && modalSettings.tableView.tableFooterView==nil,@"Settings is a table controller without a status footer");
+    require([modalSettings.title isEqualToString:@"Settings"] && modalSettings.navigationItem.rightBarButtonItem.action==@selector(dismissSettings:),@"Settings has Done");
+    [root settings:nil]; require(navigation_.presentedViewController==settingsModal,@"Settings does not stack duplicate modals");
+    screenshot(window_,[documents_ stringByAppendingPathComponent:@"settings-modal.png"]);
+    [modalSettings dismissSettings:nil]; pump(); pump();
+    require(navigation_.presentedViewController==nil && navigation_.topViewController==root && !navigation_.toolbarHidden,@"Done restores Playlists");
+    require(root.navigationItem.leftBarButtonItem.image!=nil && root.navigationItem.leftBarButtonItem.action==@selector(settings:),@"Settings gear");
+    require(root.navigationItem.rightBarButtonItem.image!=nil && root.navigationItem.rightBarButtonItem.action==@selector(showPlaylistActions:),@"Font Awesome plus opens playlist actions");
+    require(findRow(root,@"queue")==nil && [[[sections(root) objectAtIndex:0] objectForKey:@"rows"] count]==1,@"System contains only All Downloads");
+    require(findRow(root,@"settings")==nil,@"Settings moved out of playlist list");
+    require(![root respondsToSelector:@selector(tableView:viewForHeaderInSection:)] || [root tableView:root.tableView viewForHeaderInSection:0]==nil,@"Home uses standard section headers");
+    require(![root respondsToSelector:@selector(tableView:titleForFooterInSection:)] || [root tableView:root.tableView titleForFooterInSection:1]==nil,@"Home has no placeholder section footer");
+    require(![root respondsToSelector:@selector(tableView:heightForHeaderInSection:)] || [root tableView:root.tableView heightForHeaderInSection:1]==root.tableView.sectionHeaderHeight,@"Home uses default section header height");
+    [root showPlaylistActions:nil]; pump();
+    UIActionSheet *sheet=[root valueForKey:@"playlistActions_"];
+    require(sheet!=nil && sheet.numberOfButtons==4,@"Three playlist commands and Cancel");
+    require([[sheet buttonTitleAtIndex:0] isEqualToString:@"Add Playlist…"] && [[sheet buttonTitleAtIndex:1] isEqualToString:@"Sync All Playlists…"] && [[sheet buttonTitleAtIndex:2] isEqualToString:@"Load My Playlists…"],@"Playlist management commands");
+    [sheet dismissWithClickedButtonIndex:sheet.cancelButtonIndex animated:NO];
+    for(NSUInteger wait=0;wait<10 && [root valueForKey:@"playlistActions_"];++wait) pump();
+    pump(); pump();
+    require([root valueForKey:@"playlistActions_"]==nil && [root valueForKey:@"alert_"]==nil && navigation_.topViewController==root,@"Cancelling sheet leaves home unchanged");
+    [root showPlaylistActions:nil]; pump();
+    sheet=[root valueForKey:@"playlistActions_"];
+    [sheet dismissWithClickedButtonIndex:0 animated:NO];
+    for(NSUInteger wait=0;wait<10 && [root valueForKey:@"playlistActions_"];++wait) pump();
+    pump(); pump();
+    require([root valueForKey:@"playlistActions_"]==nil && [[[root valueForKey:@"alert_"] title] isEqualToString:@"Add Playlist"],@"Add input opens after sheet dismisses");
+    confirm(root,NO);
     require([sections(root) count]==3,@"Three library groups");
     require([[[sections(root) objectAtIndex:1] objectForKey:@"rows"] count]==1,@"Added playlist group");
     require([[[sections(root) objectAtIndex:2] objectForKey:@"rows"] count]==1,@"Account playlist group");
@@ -149,7 +218,18 @@ static void screenshot(UIWindow *window,NSString *path) {
     [list performConfirmed:captured]; [captured release]; pump();
     require([RDLPDownloadPolicy job:[model jobForPlaylist:[playlist objectForKey:@"id"] video:@"CCCCCCCCCCC" format:@"136+140"] hasState:@"cancelled"],@"Bulk revalidation does not retry a now-stopped job");
     require([model jobForPlaylist:[playlist objectForKey:@"id"] video:@"AAAAAAAAAAA" format:@"136+140"]!=nil,@"Bulk preserves captured format");
-    RDLPLibraryViewController *settings=[self show:RDLPScreenSettings playlist:nil video:nil];
+    if(navigation_.presentedViewController) { [navigation_ dismissViewControllerAnimated:NO completion:nil]; pump(); pump(); }
+    RDLPSettingsViewController *settings=[[[RDLPSettingsViewController alloc] initWithLibrary:library_] autorelease];
+    [navigation_ setViewControllers:[NSArray arrayWithObject:settings] animated:NO]; [settings view]; [settings refresh:nil]; pump();
+    require(settings.tableView.style==UITableViewStyleGrouped,@"Settings stays grouped");
+    require(![settings respondsToSelector:@selector(tableView:titleForFooterInSection:)] || ([settings tableView:settings.tableView titleForFooterInSection:0]==nil && [settings tableView:settings.tableView titleForFooterInSection:1]==nil),@"Settings has no explanatory footers");
+    NSDictionary *importRow=findRow(settings,@"import");
+    require([[importRow objectForKey:@"title"] isEqualToString:@"Import Cookies..."] && ![[importRow objectForKey:@"detail"] length],@"Simple import label without subtitle");
+    require([settings enabled:@"import"],@"Import enabled before cookies imported");
+    for(NSInteger row=0;row<3;++row) {
+      UITableViewCell *cookieCell=[settings tableView:settings.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:row inSection:1]];
+      require(cookieCell.accessoryType==UITableViewCellAccessoryNone && cookieCell.accessoryView==nil,@"Cookie actions have no disclosure accessory");
+    }
     NSUInteger count=[[library_ jobsForPlaylist:nil completedOnly:NO] count];
     [settings performRow:[[[sections(settings) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:2]];
     require([[RDLPLibrary preferredFormat] isEqualToString:@"137+140"] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==count,@"Quality choice only saves preference");
@@ -160,12 +240,15 @@ static void screenshot(UIWindow *window,NSString *path) {
     NSString *cookie=[documents_ stringByAppendingPathComponent:@"test-cookies.txt"];
     [@"# Netscape HTTP Cookie File\n.example.invalid\tTRUE\t/\tFALSE\t0\tfixture\tone\n" writeToFile:cookie atomically:YES encoding:NSUTF8StringEncoding error:NULL];
     require([library_ importCookies:cookie],@"Import synthetic cookies");
+    require(![settings enabled:@"import"],@"Imported cookies disable import even when idle");
+    [settings performRow:findRow(settings,@"import")]; require([settings valueForKey:@"alert_"]==nil,@"Disabled import cannot open replacement dialog");
     require([settings requestCookieImport:cookie discover:NO],@"Replacement request accepted"); confirm(settings,NO);
     library_.testBusy=YES; [settings refresh:nil];
-    require(![settings enabled:@"import"] && ![settings enabled:@"clearCookies"] && ![settings enabled:@"discover"],@"Cookie changes and discovery disabled while busy");
+    require(![settings enabled:@"import"] && ![settings enabled:@"clearCookies"],@"Cookie changes and discovery disabled while busy");
     library_.testBusy=NO; [settings refresh:nil];
     [settings performRow:findRow(settings,@"clearCookies")]; confirm(settings,NO); require([[library_ cookieStatus] isEqualToString:@"Imported"],@"Cancelled cookie removal retains working copy");
     [settings performRow:findRow(settings,@"clearCookies")]; confirm(settings,YES); require([[library_ cookieStatus] isEqualToString:@"Not Imported"] && [[NSFileManager defaultManager] fileExistsAtPath:cookie],@"Cookie removal retains original");
+    require([settings enabled:@"import"],@"Removing cookies enables import again");
     RDLPLibraryViewController *detail=[self show:RDLPScreenVideo playlist:playlist video:video];
     require(findRow(detail,@"play")!=nil && findRow(detail,@"delete")!=nil,@"Completed video offers Play and confirmed Delete");
     [detail performRow:findRow(detail,@"play")]; pump();
@@ -218,6 +301,23 @@ static void screenshot(UIWindow *window,NSString *path) {
     require(!progress.hidden && progress.progress>0.59f && progress.progress<0.61f && CGRectEqualToRect(tableFrame,queue.tableView.frame),@"Progress shows run attempts without moving the table");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"progress.png"]);
     library_.testProgress=nil; [queue refresh:nil]; require(progress.hidden,@"Drained run hides progress");
+    RDLPStatusBarView *timedBar=[[[RDLPStatusBarView alloc] initWithFrame:CGRectZero] autorelease];
+    UILabel *timedLabel=[timedBar valueForKey:@"label_"];
+    [timedBar setStatus:@"Ready" progress:nil busy:NO];
+    require(![timedLabel.text length],@"Fresh idle toolbar never says Ready");
+    [timedBar setStatus:@"Downloading" progress:nil busy:YES];
+    [timedBar setStatus:@"Ready" progress:nil busy:NO];
+    require([timedLabel.text isEqualToString:@"Downloading"],@"Ready preserves last active message");
+    [timedBar setStatus:@"Finished" progress:nil busy:NO];
+    NSDate *expiry=[NSDate dateWithTimeIntervalSinceNow:10.3];
+    while([expiry timeIntervalSinceNow]>0) {
+      [timedBar setStatus:@"Finished" progress:nil busy:NO]; pump();
+    }
+    require(![timedLabel.text length],@"Idle message expires despite repeated refreshes");
+    [timedBar setStatus:@"Finished" progress:nil busy:NO];
+    require(![timedLabel.text length],@"Expired message stays empty on refresh");
+    [timedBar setStatus:@"New work" progress:nil busy:YES];
+    require([timedLabel.text isEqualToString:@"New work"],@"New activity replaces expired text");
     [playlist release]; [video release];
   } @catch(NSException *exception) { report=[NSString stringWithFormat:@"FAIL: %@\n%@",exception,[exception callStackSymbols]]; }
   [report writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];

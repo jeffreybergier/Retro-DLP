@@ -28,6 +28,20 @@
 + (UIImage *)queueActionIcon:(BOOL)stop;
 { return [AIFontAwesome imageForIcon:stop?AIFAPause:AIFARotateRight style:AIFontAwesomeStyleSolid iconSize:14 canvasSize:20 color:[UIColor blackColor] scale:0]; }
 
++ (UIImage *)settingsIcon;
+{ return [AIFontAwesome imageForIcon:AIFAGear style:AIFontAwesomeStyleSolid iconSize:22 canvasSize:26 color:[UIColor blackColor] scale:0]; }
+
++ (UIImage *)plusIcon;
+{
+  /* Font Awesome "plus"; this bundled header names U+F067 AIFAStd12. */
+  return [AIFontAwesome imageForIcon:(AIFontAwesomeIcon)0xF067 style:AIFontAwesomeStyleSolid iconSize:22 canvasSize:26 color:[UIColor blackColor] scale:0]; }
+
++ (UIImage *)queueToolbarIcon;
+{
+  /* ENIL's toolbar glyph geometry; UIKit supplies tint on iOS 7+. */
+  return [AIFontAwesome imageForIcon:AIFAList style:AIFontAwesomeStyleSolid iconSize:18 canvasSize:28 color:[UIColor whiteColor] scale:0];
+}
+
 + (void)showMessage:(NSString *)message; {
   UIAlertView *alert=[[UIAlertView alloc] initWithTitle:@"RetroDLP" message:message delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
   [alert show]; [alert release];

@@ -1,5 +1,6 @@
 #import "RDLPAppDelegate.h"
 #import "RDLPLibraryViewController.h"
+#import "RDLPPlaylistsViewController.h"
 #import "RDLPUIKit.h"
 #import <AIFontAwesome.h>
 @implementation RDLPAppDelegate
@@ -12,7 +13,7 @@
   library_=[[RDLPLibrary alloc] initWithSupportDirectory:support downloadDirectory:[documents stringByAppendingPathComponent:@"RetroDLP"]];
   window_=[[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
   if(library_) {
-    RDLPLibraryViewController *root=[[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:RDLPScreenLibrary playlist:nil video:nil];
+    RDLPPlaylistsViewController *root=[[RDLPPlaylistsViewController alloc] initWithLibrary:library_];
     UINavigationController *navigation=[[UINavigationController alloc] initWithRootViewController:root];
     window_.rootViewController=navigation; [navigation release]; [root release];
   } else {
@@ -32,7 +33,7 @@
   (void)application; (void)source; (void)annotation;
   if(![url isFileURL] || !library_) return NO;
   UINavigationController *navigation=(UINavigationController *)window_.rootViewController;
-  RDLPLibraryViewController *controller=(RDLPLibraryViewController *)navigation.topViewController;
+  id controller=navigation.topViewController;
   return [controller requestCookieImport:[url path] discover:NO];
 }
 - (void)dealloc; { [library_ shutdown]; [library_ release]; [window_ release]; [super dealloc]; }

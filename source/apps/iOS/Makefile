@@ -1,5 +1,5 @@
 APP_NAME = RetroDLP
-SOURCES = main.m RDLPAppDelegate.m RDLPLibraryViewController.m RDLPLibraryActions.m RDLPLibrarySections.m RDLPUIKit.m RDLPDownloadPolicy.m
+SOURCES = main.m RDLPAppDelegate.m RDLPLibraryViewController.m RDLPLibraryActions.m RDLPLibrarySections.m RDLPUIKit.m RDLPDownloadPolicy.m RDLPStatusBarView.m RDLPSettingsViewController.m RDLPPlaylistsViewController.m
 SHARED_DIR = ../shared
 SOURCE_DIRS = $(SHARED_DIR)
 vpath %.c $(SHARED_DIR)

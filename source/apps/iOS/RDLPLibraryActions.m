@@ -1,10 +1,11 @@
 #import "RDLPLibraryViewController.h"
 #import "RDLPUIKit.h"
+#import "RDLPSettingsViewController.h"
 
 @implementation RDLPLibraryViewController (Actions)
 - (BOOL)enabled:(NSString *)action;
 {
-  if([action isEqualToString:@"import"]) return ![library_ isBusy];
+  if([action isEqualToString:@"import"]) return ![library_ isBusy] && ![[library_ cookieStatus] isEqualToString:@"Imported"];
   if([action isEqualToString:@"clearCookies"]) return ![library_ isBusy] && ![[library_ cookieStatus] isEqualToString:@"Not Imported"];
   if([action isEqualToString:@"discover"]) return ![library_ isBusy] && ![library_ isDiscoveryPending];
   if([action isEqualToString:@"sync"]) return playlist_ && ![library_ isSyncPendingForInput:[playlist_ objectForKey:@"service_id"]];
@@ -57,7 +58,7 @@
   else if([action isEqualToString:@"delete"]) [self confirmJob:job operation:@"delete"];
   else if([action isEqualToString:@"showQueue"]) [self showJobInQueue:job];
   else if([action isEqualToString:@"job"] && job) [self showAlert:[job objectForKey:@"title"] detail:[NSString stringWithFormat:@"%@ · %@\n%@",[policy_ statusForJob:job],[job objectForKey:@"format"],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")] request:[NSDictionary dictionaryWithObjectsAndKeys:@"jobActions",@"operation",[job objectForKey:@"id"],@"job",nil] buttons:[model_ actionsForJob:job] input:nil];
-  else if([action isEqualToString:@"import"]) [self requestCookieImport:[self documentsCookiePath] discover:NO];
+  else if([action isEqualToString:@"import"]) { if([self enabled:@"import"]) [self requestCookieImport:[self documentsCookiePath] discover:NO]; }
   else if([action isEqualToString:@"clearCookies"]) [self confirm:[NSDictionary dictionaryWithObject:@"clearCookies" forKey:@"operation"] title:@"Remove imported cookies?" detail:@"Only the app’s working copy is removed. Your original export is retained." button:@"Remove"];
   else if([action isEqualToString:@"guide"]) [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"https://github.com/yt-dlp/yt-dlp/wiki/Extractors"]];
 }
@@ -135,6 +136,29 @@
   else { [RDLPUIKit showMessage:@"Copy cookies.txt into RetroDLP with iTunes File Sharing, or open your exported text file in RetroDLP. Then use Load My Playlists again."]; return NO; }
   return YES;
 }
+/* UIActionSheet keeps the playlist menu available on iOS 5 and 6. Dispatch
+ * after dismissal so the next alert or pushed screen does not overlap it. */
+- (void)showPlaylistActions:(id)sender;
+{
+  (void)sender; if(playlistActions_ || alert_) return;
+  playlistActions_=[[UIActionSheet alloc] initWithTitle:nil delegate:self
+    cancelButtonTitle:@"Cancel" destructiveButtonTitle:nil
+    otherButtonTitles:@"Add Playlist…",@"Sync All Playlists…",@"Load My Playlists…",nil];
+  [playlistActions_ showFromBarButtonItem:self.navigationItem.rightBarButtonItem animated:YES];
+}
+- (void)actionSheet:(UIActionSheet *)sheet didDismissWithButtonIndex:(NSInteger)index;
+{
+  if(sheet!=playlistActions_) return;
+  BOOL cancelled=index==sheet.cancelButtonIndex || index<0;
+  playlistActions_.delegate=nil; [playlistActions_ release]; playlistActions_=nil;
+  if(cancelled) return;
+  switch(index) {
+    case 0: [self add:nil]; break;
+    case 1: [self syncAll:nil]; break;
+    case 2: [self discover:nil]; break;
+    default: break;
+  }
+}
 - (void)add:(id)sender;
 { (void)sender; [self showAlert:@"Add Playlist" detail:@"YouTube playlist URL or ID" request:[NSDictionary dictionaryWithObject:@"add" forKey:@"operation"] buttons:[NSArray arrayWithObject:@"Sync"] input:@""]; }
 - (void)discover:(id)sender;
@@ -154,5 +178,12 @@
 - (void)removePlaylist:(id)sender;
 { (void)sender; if([model_ canRemovePlaylist:playlist_]) [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:@"removePlaylist",@"operation",playlist_,@"playlist",nil] title:@"Remove playlist?" detail:@"Removes only the local library entry. Your YouTube playlist is unchanged." button:@"Remove"]; }
 - (void)queue:(id)sender; { (void)sender; [self showJobInQueue:nil]; }
-- (void)settings:(id)sender; { (void)sender; [self pushMode:RDLPScreenSettings playlist:nil video:nil]; }
+- (void)settings:(id)sender;
+{
+  (void)sender;
+  if(mode_==RDLPScreenSettings || self.navigationController.presentedViewController || alert_ || playlistActions_) return;
+  RDLPSettingsViewController *settings=[[[RDLPSettingsViewController alloc] initWithLibrary:library_] autorelease];
+  UINavigationController *modal=[[[UINavigationController alloc] initWithRootViewController:settings] autorelease];
+  [self.navigationController presentViewController:modal animated:YES completion:nil];
+}
 @end

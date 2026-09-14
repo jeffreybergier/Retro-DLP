@@ -1,7 +1,8 @@
 #import <UIKit/UIKit.h>
 #import "RDLPLibrarySections.h"
+#import "RDLPStatusBarView.h"
 
-@interface RDLPLibraryViewController : UIViewController <UITableViewDataSource, UITableViewDelegate, UIAlertViewDelegate> {
+@interface RDLPLibraryViewController : UIViewController <UITableViewDataSource, UITableViewDelegate, UIAlertViewDelegate, UIActionSheetDelegate> {
   RDLPLibrary *library_;
   RDLPDownloadPolicy *policy_;
   RDLPLibrarySections *model_;
@@ -9,10 +10,12 @@
   NSArray *sections_;
   NSMutableSet *collapsed_;
   UITableView *tableView_;
+  RDLPStatusBarView *statusBar_;
   UILabel *status_;
   UIProgressView *progress_;
   RDLPScreen mode_;
   UIAlertView *alert_;
+  UIActionSheet *playlistActions_;
   NSDictionary *request_;
   NSArray *alertActions_;
   NSString *revealJobID_, *revealGroup_;
@@ -22,6 +25,7 @@
 - (void)refresh:(id)sender;
 - (void)pushMode:(RDLPScreen)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;
 - (void)showJobInQueue:(NSDictionary *)job;
+- (void)dismissQueue:(id)sender;
 @end
 
 /* Commands own immutable alert requests and revalidate them before execution. */
@@ -29,6 +33,7 @@
 - (BOOL)requestCookieImport:(NSString *)path discover:(BOOL)discover;
 - (BOOL)enabled:(NSString *)action;
 - (void)performRow:(NSDictionary *)row;
+- (void)showPlaylistActions:(id)sender;
 - (void)add:(id)sender;
 - (void)discover:(id)sender;
 - (void)syncAll:(id)sender;
