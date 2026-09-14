@@ -12,6 +12,8 @@ extern NSString * const RetroDLPLibraryDidChange;
   BOOL busy_, paused_, cancel_, stopping_;
   long long activeJob_;
   double lastProgress_;
+  BOOL queueRun_;
+  NSUInteger queueProcessed_, queueFailed_, queueCancelled_;
 }
 + (NSArray *)qualityTitles;
 + (NSArray *)qualityFormats;
@@ -24,12 +26,15 @@ extern NSString * const RetroDLPLibraryDidChange;
 - (NSArray *)jobsForPlaylist:(NSString *)key completedOnly:(BOOL)completed;
 - (NSString *)status;
 - (BOOL)isBusy;
+/* Item counts for this run only; historical completed jobs are excluded. */
+- (NSDictionary *)queueProgress;
 - (BOOL)isSyncPendingForInput:(NSString *)input;
 - (BOOL)isDiscoveryPending;
 - (NSString *)downloadsDirectory;
 /* Local working-file availability, not account authentication. */
 - (NSString *)cookieStatus;
 - (BOOL)isPaused;
+- (void)startDownloads;
 - (void)setPaused:(BOOL)paused;
 - (void)syncPlaylistInput:(NSString *)input;
 - (void)syncAll;

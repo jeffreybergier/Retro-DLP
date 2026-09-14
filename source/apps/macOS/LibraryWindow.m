@@ -2,6 +2,27 @@
 #import "XPAppKit.h"
 #import "RDToolbarButton.h"
 #import <AIFontAwesome.h>
+#import <CoreFoundation/CoreFoundation.h>
+/* Declarations for runtime-guarded APIs absent from the Tiger SDK. */
+@interface NSWindow (RDStatusBarCompatibility)
+- (void)setAutorecalculatesContentBorderThickness:(BOOL)flag forEdge:(NSRectEdge)edge;
+- (void)setContentBorderThickness:(CGFloat)thickness forEdge:(NSRectEdge)edge;
+- (void)setCollectionBehavior:(NSUInteger)behavior;
+@end
+
+/* Preserve spoken status text even though the visible cell contains only an icon. */
+@interface RDStatusCell : NSImageCell
+@end
+@implementation RDStatusCell
+- (id)accessibilityAttributeValue:(NSString *)attribute;
+{
+  if([attribute isEqualToString:NSAccessibilityDescriptionAttribute] || [attribute isEqualToString:NSAccessibilityValueAttribute]) return [self representedObject];
+  return [super accessibilityAttributeValue:attribute];
+}
+@end
+
+static const CGFloat RDStatusBarHeight=32.0;
+
 /* AltivecCocoa may resize a pane through a zero-sized intermediate frame.
    Recompute from design rectangles so AppKit's clamped intermediate sizes do
    not permanently displace the toolbar or scroll view on Tiger. */
@@ -91,10 +112,15 @@ static NSOutlineView *sidebarOutline(NSView *view,id owner) {
   NSScrollView *scroll=[[[NSScrollView alloc] initWithFrame:[view bounds]] autorelease];
   NSOutlineView *outline=[[[RDOutlineView alloc] initWithFrame:[scroll bounds]] autorelease];
   NSTableColumn *column=[[[NSTableColumn alloc] initWithIdentifier:@"title"] autorelease];
-  [column setWidth:240]; [column setEditable:NO]; [outline addTableColumn:column];
-  [outline setOutlineTableColumn:column]; [outline setHeaderView:nil];
+  [column setMinWidth:0]; [column setResizingMask:NSTableColumnAutoresizingMask];
+  [column setEditable:NO]; [[column dataCell] setLineBreakMode:NSLineBreakByTruncatingTail];
+  [outline addTableColumn:column];
+  [outline setColumnAutoresizingStyle:NSTableViewFirstColumnOnlyAutoresizingStyle];
+  [outline setOutlineTableColumn:column]; [[column headerCell] setStringValue:@"Playlists"];
   [outline setAllowsMultipleSelection:NO]; [outline setDataSource:owner]; [outline setDelegate:owner];
-  [scroll setDocumentView:outline]; [scroll setHasVerticalScroller:YES]; [scroll setHasHorizontalScroller:YES];
+  [scroll setDocumentView:outline]; [scroll setHasVerticalScroller:YES]; [scroll setHasHorizontalScroller:NO];
+  [scroll setAutohidesScrollers:YES];
+  [outline sizeToFit];
   [scroll setAutoresizingMask:NSViewWidthSizable|NSViewHeightSizable]; [view addSubview:scroll]; return outline;
 }
 static NSButton *button(NSView *view,NSString *title,SEL action,id target,NSRect frame) {
@@ -118,24 +144,11 @@ static NSTableView *table(NSView *view,NSRect frame,id owner,NSArray *names,NSAr
   [scroll setDocumentView:t]; [scroll setHasVerticalScroller:YES]; [scroll setHasHorizontalScroller:YES];
   [scroll setAutoresizingMask:NSViewWidthSizable|NSViewHeightSizable]; [view addSubview:scroll]; return t;
 }
-/* Match ENIL's standard toolbar items: a 24pt glyph in the native 32pt
-   image slot. AIFontAwesome marks images as templates where supported. */
+/* Toolbar glyphs use a 24-point image inside the standard 32-point slot. */
 static NSImage *toolbarIcon(AIFontAwesomeIcon icon,NSWindow *window) {
-  static NSMutableDictionary *cache=nil;
-  if(!cache) cache=[[NSMutableDictionary alloc] init];
-  CGFloat scale=RDWindowBackingScale(window);
-  NSString *key=[NSString stringWithFormat:@"%u:%g",(unsigned int)icon,(double)scale];
-  NSImage *image=[cache objectForKey:key];
-  if(!image) {
-    image=[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid iconSize:24.0 canvasSize:32.0 scale:scale];
-    if(image) [cache setObject:image forKey:key];
-  }
-  return image;
+  return RDControlIcon(icon,AIFontAwesomeStyleSolid,24,32,RDWindowBackingScale(window));
 }
 static BOOL stateIs(NSDictionary *job,NSString *state) { return [[job objectForKey:@"state"] isEqualToString:state]; }
-static BOOL retryable(NSDictionary *job) {
-  return stateIs(job,@"failed") || stateIs(job,@"cancelled") || stateIs(job,@"interrupted") || stateIs(job,@"removed");
-}
 static void restoreSelection(NSTableView *view,NSArray *rows,NSString *key,NSString *value) {
   unsigned int i; [view deselectAll:nil];
   for(i=0;value && i<[rows count];++i) if([[[rows objectAtIndex:i] objectForKey:key] isEqualToString:value]) {
@@ -144,10 +157,6 @@ static void restoreSelection(NSTableView *view,NSArray *rows,NSString *key,NSStr
 }
 static void menuItem(NSMenu *menu,NSString *title,SEL action,id target) {
   [[menu addItemWithTitle:title action:action keyEquivalent:@""] setTarget:target];
-}
-static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
-  NSPopUpButton *popup=[[[NSPopUpButton alloc] initWithFrame:frame pullsDown:YES] autorelease];
-  [popup addItemWithTitle:title]; if(view) [view addSubview:popup]; return popup;
 }
 @interface LibraryWindow (Private)
 - (id)initWithLibrary:(RetroDLPLibrary *)library;
@@ -173,9 +182,15 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
 - (void)downloadSheetDidEnd:(NSWindow *)sheet returnCode:(NSInteger)code contextInfo:(void *)context;
 - (void)dealloc;
 - (NSDictionary *)selectedRow;
+- (RDQueueNode *)selectedQueueNode;
+- (void)expandQueuePath:(RDQueueNode *)node;
+- (void)restoreQueueExpansion:(NSArray *)nodes;
+- (void)queueCellAction:(id)sender;
+- (void)showQueueError:(id)sender;
 - (NSDictionary *)selectedJob;
 - (NSDictionary *)selectedPlaylist;
 - (NSDictionary *)jobForEntry:(NSDictionary *)entry;
+- (NSString *)statusForJob:(NSDictionary *)job;
 - (BOOL)playable:(NSDictionary *)job;
 - (void)refresh:(id)sender;
 - (void)tableWasUsed:(NSTableView *)view;
@@ -223,9 +238,6 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
 - (void)importCookies:(id)sender;
 - (void)replaceCookies:(id)sender;
 - (void)clearCookies:(id)sender;
-- (void)pause:(id)sender;
-- (void)pauseQueue:(id)sender;
-- (void)resumeQueue:(id)sender;
 - (void)toggleDownloads:(id)sender;
 - (void)togglePlaylists:(id)sender;
 - (void)showQueue:(id)sender;
@@ -233,7 +245,6 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
 - (void)revealDownloads;
 - (void)showJobInQueue:(NSDictionary *)job;
 - (void)showTargetInQueue:(id)sender;
-- (void)primaryAction:(id)sender;
 - (void)retryTarget:(id)sender;
 - (void)againTarget:(id)sender;
 - (void)cancelTarget:(id)sender;
@@ -266,50 +277,145 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   [left setView:sidebar]; [self setSidebarViewController:left];
   AIViewController *middle=[[[AIViewController alloc] init] autorelease];
   NSView *detail=[[[RDLayoutView alloc] initWithFrame:NSMakeRect(0,0,540,600)] autorelease];
-  title_=field(detail,NSMakeRect(10,568,320,24),NO); [title_ setAutoresizingMask:NSViewWidthSizable|NSViewMinYMargin];
-  NSPopUpButton *playlistActions=actions(detail,@"Actions",NSMakeRect(400,565,130,28));
-  [playlistActions setAutoresizingMask:NSViewMinXMargin|NSViewMinYMargin];
-  menuItem([playlistActions menu],@"Play Playlist",@selector(playPlaylist:),self);
-  menuItem([playlistActions menu],@"Delete Download…",@selector(removeDownload:),self);
-  menuItem([playlistActions menu],@"Remove Playlist…",@selector(removePlaylist:),self);
-  table_=table(detail,NSMakeRect(10,74,520,481),self,[NSArray arrayWithObjects:@"title",@"quality",@"state",nil],[NSArray arrayWithObjects:@"Video",@"Quality",@"Status",nil]);
+  table_=table(detail,[detail bounds],self,[NSArray arrayWithObjects:@"state",@"title",@"quality",nil],[NSArray arrayWithObjects:@"",@"Video",@"Quality",nil]);
+  NSTableColumn *stateColumn=[table_ tableColumnWithIdentifier:@"state"];
+  [stateColumn setMinWidth:24]; [stateColumn setMaxWidth:24]; [stateColumn setWidth:24];
+  [stateColumn setResizingMask:NSTableColumnNoResizing];
+  [stateColumn setDataCell:[[[RDStatusCell alloc] initImageCell:nil] autorelease]];
+  NSTableColumn *titleColumn=[table_ tableColumnWithIdentifier:@"title"];
+  [titleColumn setMinWidth:0]; [titleColumn setResizingMask:NSTableColumnAutoresizingMask];
+  [[titleColumn dataCell] setLineBreakMode:NSLineBreakByTruncatingTail];
+  qualityColumn_=[[table_ tableColumnWithIdentifier:@"quality"] retain];
+  [qualityColumn_ setMinWidth:100]; [qualityColumn_ setMaxWidth:100]; [qualityColumn_ setWidth:100];
+  [qualityColumn_ setResizingMask:NSTableColumnNoResizing];
+  [table_ setColumnAutoresizingStyle:NSTableViewUniformColumnAutoresizingStyle];
+  [table_ setAllowsColumnReordering:NO];
+  [[table_ enclosingScrollView] setHasHorizontalScroller:NO];
+  [[table_ enclosingScrollView] setAutohidesScrollers:YES];
+  [table_ sizeToFit];
+  [[table_ enclosingScrollView] setBorderType:NSNoBorder];
   [table_ setTarget:self]; [table_ setDoubleAction:@selector(openVideo:)];
   downloadFormat_=[[RetroDLPLibrary preferredFormat] copy];
-  primary_=button(detail,@"Show in Queue",@selector(primaryAction:),self,NSMakeRect(365,38,165,28));
-  [primary_ setAutoresizingMask:NSViewMinXMargin];
-  status_=field(detail,NSMakeRect(10,5,520,28),NO); [status_ setAutoresizingMask:NSViewWidthSizable];
   [middle setView:detail]; [self setDetailViewController:middle];
   AIViewController *inspector=[[[AIViewController alloc] init] autorelease];
   NSView *queue=[[[RDLayoutView alloc] initWithFrame:NSMakeRect(0,0,300,600)] autorelease];
-  queueTitle_=field(queue,NSMakeRect(10,568,280,24),NO); [queueTitle_ setAutoresizingMask:NSViewWidthSizable|NSViewMinYMargin];
-  queue_=table(queue,NSMakeRect(10,144,280,411),self,[NSArray arrayWithObject:@"summary"],[NSArray arrayWithObject:@"Downloads"]);
-  [queue_ setHeaderView:nil]; [queue_ setRowHeight:58];
-  [[[queue_ tableColumns] objectAtIndex:0] setWidth:280];
-  [[[[queue_ tableColumns] objectAtIndex:0] dataCell] setWraps:YES];
-  pause_=button(queue,@"Resume Queue",@selector(pause:),self,NSMakeRect(10,104,135,28));
-  jobAction_=button(queue,@"Download Video",@selector(jobAction:),self,NSMakeRect(150,104,140,28));
-  [jobAction_ setAutoresizingMask:NSViewMinXMargin];
+  queueTree_=[[RDQueueTree alloc] init]; queueCollapsed_=[[NSMutableSet alloc] init];
+  NSScrollView *queueScroll=[[[NSScrollView alloc] initWithFrame:[queue bounds]] autorelease];
+  queue_=[[[RDQueueOutlineView alloc] initWithFrame:[queueScroll bounds]] autorelease];
+  NSTableColumn *summary=[[[NSTableColumn alloc] initWithIdentifier:@"summary"] autorelease];
+  [summary setWidth:270]; [summary setMinWidth:100]; [summary setEditable:NO];
+  [[summary dataCell] setLineBreakMode:NSLineBreakByTruncatingTail];
+  [queue_ addTableColumn:summary]; [queue_ addTableColumn:[[[RDQueueActionColumn alloc] initWithTarget:self] autorelease]];
+  [queue_ setOutlineTableColumn:summary]; [[summary headerCell] setStringValue:@"Queue"];
+  [[[[queue_ tableColumns] objectAtIndex:1] headerCell] setStringValue:@""];
+  [queue_ setAllowsMultipleSelection:NO];
+  [queue_ setColumnAutoresizingStyle:NSTableViewFirstColumnOnlyAutoresizingStyle];
+  [queue_ setDataSource:(id)self]; [queue_ setDelegate:(id)self];
+  [queueScroll setDocumentView:queue_]; [queueScroll setBorderType:NSNoBorder];
+  [queueScroll setHasVerticalScroller:YES]; [queueScroll setHasHorizontalScroller:NO];
+  [queueScroll setAutohidesScrollers:YES];
+  [queueScroll setAutoresizingMask:NSViewWidthSizable|NSViewHeightSizable]; [queue addSubview:queueScroll];
   NSMenu *jobMenu=[[[NSMenu alloc] initWithTitle:@"Queue Actions"] autorelease];
   menuItem(jobMenu,@"Play",@selector(openJob:),self);
+  menuItem(jobMenu,@"Retry",@selector(retryQueueJob:),self);
+  menuItem(jobMenu,@"Stop Download…",@selector(cancelQueueJob:),self);
+  menuItem(jobMenu,@"Show Error…",@selector(showQueueError:),self);
   menuItem(jobMenu,@"Delete Download…",@selector(removeJob:),self);
   [queue_ setMenu:jobMenu]; [queue_ setTarget:self]; [queue_ setDoubleAction:@selector(openJob:)];
-  queueStatus_=field(queue,NSMakeRect(10,5,280,94),NO); [queueStatus_ setAutoresizingMask:NSViewWidthSizable];
   [inspector setView:queue]; [self setInspectorViewController:inspector];
   [self setSidebarWidthLimits:AIMinMidMaxMake(150,200,260)];
   [self setInspectorWidthLimits:AIMinMidMaxMake(300,320,400)];
   [self setSplitViewAutosaveName:@"RetroDLPThreePaneDividers"];
-  [[self window] setContentSize:NSMakeSize(1100,600)]; [[self window] setMinSize:NSMakeSize(1000,480)]; [[self window] center];
+
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RetroDLPLibraryDidChange object:library_];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:NSApplicationDidBecomeActiveNotification object:NSApp];
   [self refresh:nil]; return self;
 }
+- (void)showWindow:(id)sender;
+{
+  [super showWindow:sender];
+  /* Derive content limits from the displayed frame, including Tiger's toolbar. */
+  NSWindow *window=[self window];
+  NSSize frameSize=[window frame].size,contentSize=[[window contentView] frame].size;
+  [window setContentMinSize:NSMakeSize(640-(frameSize.width-contentSize.width),
+                                      480-(frameSize.height-contentSize.height))];
+  if(!didRestoreWindowFrame_) {
+    /* Tiger saves heights without the toolbar. Restore only after it exists,
+       then enable autosaving so setup cannot overwrite the saved dimensions. */
+    [window setFrameUsingName:@"AICCWindow-RetroDLPLibraryWindow"];
+    [self setWindowFrameAutosaveName:@"AICCWindow-RetroDLPLibraryWindow"];
+    didRestoreWindowFrame_=YES;
+  }
+}
+- (void)loadWindow;
+{
+  /* Tiger cannot change a window's style mask after creation. */
+  AIWindowStyleMask mask=AIWindowStyleMaskTitled|AIWindowStyleMaskClosable|
+    AIWindowStyleMaskMiniaturizable|AIWindowStyleMaskResizable;
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 101200
+  /* Intentional legacy appearance; newer AppKit renders its own fallback. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  mask|=NSWindowStyleMaskTexturedBackground;
+#pragma clang diagnostic pop
+#else
+  mask|=NSTexturedBackgroundWindowMask;
+#endif
+  if(AICCCurrentTier()>=AICCTierMiddle) mask|=AIWindowStyleMaskFullSizeContentView;
+  NSWindow *window=[[[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,800,600)
+    styleMask:mask backing:NSBackingStoreBuffered defer:NO] autorelease];
+  [window setTitle:@"RetroDLP"]; [window setReleasedWhenClosed:NO];
+  if(AICCCurrentTier()>=AICCTierMiddle)
+    [window setCollectionBehavior:AIWindowCollectionBehaviorFullScreenPrimary];
+  [window setMinSize:NSMakeSize(640,480)];
+  NSRect frame=[window frame]; frame.size=NSMakeSize(800,600);
+  [window setFrame:frame display:NO]; [window center];
+  [self setWindow:window]; [self setShouldCascadeWindows:NO];
+}
 - (void)windowDidLoad;
 {
   [super windowDidLoad];
+  NSWindow *window=[self window];
+  NSRect frame=[window frame];
+  NSSplitView *split=[self AI_splitView];
+  NSRect bounds=[[window contentView] bounds];
+  NSView *root=[[[RDLayoutView alloc] initWithFrame:bounds] autorelease];
+  [root setAutoresizingMask:NSViewWidthSizable|NSViewHeightSizable];
+  /* Preserve the modern split controller's containment and responder chain. */
+  if(AICCCurrentTier()>=AICCTierMiddle) {
+    id splitController=[[window performSelector:@selector(contentViewController)] retain];
+    id container=[[NSClassFromString(@"NSViewController") alloc] init];
+    [window performSelector:@selector(setContentViewController:) withObject:nil];
+    [container performSelector:@selector(setView:) withObject:root];
+    [container performSelector:@selector(addChildViewController:) withObject:splitController];
+    [window performSelector:@selector(setContentViewController:) withObject:container];
+    [splitController release]; [container release];
+  } else {
+    [window setContentView:root];
+  }
+  [split removeFromSuperview];
+  [split setFrame:NSMakeRect(0,RDStatusBarHeight,bounds.size.width,
+                            MAX(0,bounds.size.height-RDStatusBarHeight))];
+  [split setAutoresizingMask:NSViewWidthSizable|NSViewHeightSizable];
+  [root addSubview:split];
+  status_=field(root,NSMakeRect(12,7,MAX(0,bounds.size.width-190),18),NO);
+  [status_ setAutoresizingMask:NSViewWidthSizable];
+  queueProgress_=[[[NSProgressIndicator alloc] initWithFrame:NSMakeRect(bounds.size.width-160,10,140,12)] autorelease];
+  [queueProgress_ setIndeterminate:NO]; [queueProgress_ setMinValue:0]; [queueProgress_ setHidden:YES];
+  [queueProgress_ setAutoresizingMask:NSViewMinXMargin]; [root addSubview:queueProgress_];
+  [[status_ cell] setLineBreakMode:NSLineBreakByTruncatingTail];
+  if([window respondsToSelector:@selector(setContentBorderThickness:forEdge:)]) {
+    [window setAutorecalculatesContentBorderThickness:NO forEdge:NSMinYEdge];
+    [window setContentBorderThickness:RDStatusBarHeight forEdge:NSMinYEdge];
+  }
+  [window setFrame:frame display:NO];
   NSToolbar *toolbar=[[[NSToolbar alloc] initWithIdentifier:@"RetroDLPLibraryToolbar"] autorelease];
   [toolbar setDelegate:(id)self]; [toolbar setDisplayMode:NSToolbarDisplayModeIconAndLabel];
   [toolbar setSizeMode:NSToolbarSizeModeRegular];
   [[self window] setToolbar:toolbar]; RDUseExpandedToolbar([self window]);
+  /* Toolbar installation changes frame constraints on Tiger. Keep outer sizes. */
+  [window setMinSize:NSMakeSize(640,480)];
+  [window setFrame:frame display:NO];
 }
 - (NSArray *)toolbarDefaultItemIdentifiers:(NSToolbar *)toolbar;
 { (void)toolbar; return [NSArray arrayWithObjects:@"download",@"play",NSToolbarFlexibleSpaceItemIdentifier,@"cookies",@"downloads",nil]; }
@@ -320,13 +426,13 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   (void)toolbar;
   NSArray *ids=[NSArray arrayWithObjects:@"download",@"play",@"cookies",@"downloads",nil];
   NSUInteger index=[ids indexOfObject:identifier]; if(index==NSNotFound) return nil;
-  NSArray *labels=[NSArray arrayWithObjects:@"Download",@"Play",@"Cookies",@"Queue (0)",nil];
+  NSArray *labels=[NSArray arrayWithObjects:@"Download",@"Play",@"Cookies",@"Queue",nil];
   AIFontAwesomeIcon icons[]={AIFADownload,AIFAPlay,AIFACookieBite,AIFAListUl};
   NSToolbarItem *item=[[[NSToolbarItem alloc] initWithItemIdentifier:identifier] autorelease];
   RDToolbarButton *view=[[[RDToolbarButton alloc] initWithFrame:NSMakeRect(0,0,40,32)] autorelease];
   [view setTitle:[labels objectAtIndex:index]]; [view setTag:(NSInteger)index];
   [view setImage:toolbarIcon(icons[index],[self window])];
-  [view setCaretImage:[AIFontAwesome imageForIcon:AIFACaretDown style:AIFontAwesomeStyleSolid iconSize:8 canvasSize:10 scale:RDWindowBackingScale([self window])]];
+  [view setCaretImage:RDControlIcon(AIFACaretDown,AIFontAwesomeStyleSolid,8,10,RDWindowBackingScale([self window]))];
   [view setTarget:self]; [view setAction:@selector(toolbarDefault:)];
   [view setMenu:[self menuForToolbarIdentifier:identifier]];
   [item setLabel:[labels objectAtIndex:index]]; [item setPaletteLabel:[labels objectAtIndex:index]];
@@ -338,6 +444,65 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
     [toolbarItems_ setObject:item forKey:identifier];
   }
   return item;
+}
+/* Menu-bar commands keep stable positions; toolbar menus remain task-oriented. */
+- (NSMenu *)menuForMenuBarTitle:(NSString *)title;
+{
+  NSMenu *menu=[[[NSMenu alloc] initWithTitle:title] autorelease];
+  if([title isEqualToString:@"File"]) {
+    menuItem(menu,@"Add Playlist…",@selector(addPlaylist:),self);
+    menuItem(menu,@"Load My Playlists…",@selector(discover:),self);
+    [menu addItem:[NSMenuItem separatorItem]];
+    menuItem(menu,@"Sync Current Playlist",@selector(sync:),self);
+    menuItem(menu,@"Sync All Playlists…",@selector(syncAll:),self);
+    [menu addItem:[NSMenuItem separatorItem]];
+    menuItem(menu,@"Download Video",@selector(downloadFromMenu:),self);
+    menuItem(menu,@"Cancel Download…",@selector(cancelTarget:),self);
+    [menu addItem:[NSMenuItem separatorItem]];
+    menuItem(menu,@"Play Playlist in Default App",@selector(playSelection:),self);
+    menuItem(menu,@"Play Playlist in VLC",@selector(playSelectionInVLC:),self);
+    NSMenu *playlist=[[[NSMenu alloc] initWithTitle:@"Play Entire Playlist"] autorelease];
+    menuItem(playlist,@"In Default App",@selector(playTargetPlaylist:),self);
+    menuItem(playlist,@"In VLC",@selector(playPlaylistInVLC:),self);
+    [[menu addItemWithTitle:@"Play Entire Playlist" action:NULL keyEquivalent:@""] setSubmenu:playlist];
+    menuItem(menu,@"Show in Finder",@selector(revealSelection:),self);
+    [menu addItem:[NSMenuItem separatorItem]];
+    [menu addItemWithTitle:@"Close Window" action:@selector(performClose:) keyEquivalent:@"w"];
+  } else if([title isEqualToString:@"Edit"]) {
+    [menu addItemWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"];
+    [menu addItemWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
+    [menu addItemWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
+    [menu addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
+    [menu addItem:[NSMenuItem separatorItem]];
+    menuItem(menu,@"Remove Playlist…",@selector(removePlaylist:),self);
+    menuItem(menu,@"Delete Download…",@selector(removeTarget:),self);
+  } else if([title isEqualToString:@"View"]) {
+    menuItem(menu,@"Hide Playlists",@selector(togglePlaylists:),self);
+    menuItem(menu,@"Show Download Queue",@selector(toggleDownloads:),self);
+    [menu addItem:[NSMenuItem separatorItem]];
+    menuItem(menu,@"Show in Queue",@selector(showTargetInQueue:),self);
+  } else if([title isEqualToString:@"Download Quality"]) {
+    NSArray *names=[NSArray arrayWithObjects:@"Low",@"Medium",@"High",@"Custom Format…",nil];
+    unsigned int index;
+    for(index=0;index<[names count];++index) {
+      NSMenuItem *choice=[menu addItemWithTitle:[names objectAtIndex:index] action:@selector(chooseDownload:) keyEquivalent:@""];
+      [choice setTarget:self]; [choice setTag:index+1];
+    }
+  } else if([title isEqualToString:@"Cookies"]) {
+    menuItem(menu,@"Import Cookies…",@selector(importCookies:),self);
+    menuItem(menu,@"Replace Cookies…",@selector(replaceCookies:),self);
+    menuItem(menu,@"Remove Cookies…",@selector(clearCookies:),self);
+  } else if([title isEqualToString:@"Help"]) {
+    menuItem(menu,@"Cookie Export Guide",@selector(openCookieExportGuide:),self);
+  }
+  return menu;
+}
+- (void)downloadFromMenu:(NSMenuItem *)sender;
+{
+  if(![self validateMenuItem:sender]) return;
+  if(context_==2 && [self selectedJob]) { [self retryQueueJob:sender]; return; }
+  NSMenuItem *command=[[[NSMenuItem alloc] initWithTitle:@"" action:@selector(chooseDownload:) keyEquivalent:@""] autorelease];
+  [command setTag:[self hasTargetVideo]?0:5]; [self chooseDownload:command];
 }
 - (NSMenu *)menuForToolbarIdentifier:(NSString *)identifier;
 {
@@ -363,9 +528,6 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   } else {
     menuItem(menu,@"Show Queue",@selector(showQueue:),self);
     menuItem(menu,@"Hide Queue",@selector(hideQueue:),self);
-    [menu addItem:[NSMenuItem separatorItem]];
-    menuItem(menu,@"Pause Queue",@selector(pauseQueue:),self);
-    menuItem(menu,@"Resume Queue…",@selector(resumeQueue:),self);
     [menu addItem:[NSMenuItem separatorItem]];
     menuItem(menu,@"Download Selected Queue Video",@selector(retryQueueJob:),self);
     menuItem(menu,@"Cancel Selected Queue Job…",@selector(cancelQueueJob:),self);
@@ -418,7 +580,7 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   }
 }
 - (NSDictionary *)contextPlaylist;
-{ return [self hasTargetVideo]?[self targetPlaylist]:(context_==2?nil:[self selectedPlaylist]); }
+{ return [self hasTargetVideo]?[self targetPlaylist]:(context_==2?[self targetPlaylist]:[self selectedPlaylist]); }
 - (NSString *)selectionPlayFile;
 { return [self hasTargetVideo]?([self playable:[self targetJob]]?[library_ fileForJob:[self targetJob]]:nil):[self playFileForPlaylist:[self contextPlaylist]]; }
 - (void)playSelection:(id)sender;
@@ -498,33 +660,72 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
 {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   [sidebarItems_ release]; [library_ release]; [playlists_ release]; [rows_ release]; [jobs_ release]; [selectedPlaylist_ release];
-  [addSheet_ release]; [downloadSheet_ release]; [downloadRequest_ release]; [downloadFormat_ release];  [toolbarItems_ release]; [confirmation_ release]; [confirmationRequest_ release]; [super dealloc];
+  [qualityColumn_ release]; [addSheet_ release]; [downloadSheet_ release]; [downloadRequest_ release]; [downloadFormat_ release]; [queueTree_ release]; [queueCollapsed_ release]; [toolbarItems_ release]; [confirmation_ release]; [confirmationRequest_ release]; [super dealloc];
 }
 - (NSDictionary *)selectedRow;
 { NSInteger row=[table_ selectedRow]; return row>=0 && (NSUInteger)row<[rows_ count]?[rows_ objectAtIndex:(NSUInteger)row]:nil; }
+- (RDQueueNode *)selectedQueueNode;
+{ NSInteger row=[queue_ selectedRow]; return row>=0?[queue_ itemAtRow:row]:nil; }
 - (NSDictionary *)selectedJob;
-{ NSInteger row=[queue_ selectedRow]; return row>=0 && (NSUInteger)row<[jobs_ count]?[jobs_ objectAtIndex:(NSUInteger)row]:nil; }
+{ RDQueueNode *node=[self selectedQueueNode]; return node?node->job:nil; }
+- (void)expandQueuePath:(RDQueueNode *)node;
+{
+  if(!node) return;
+  RDQueueNode *parent=[queueTree_ nodeForKey:node->parentKey];
+  if(parent) { [self expandQueuePath:parent]; [queueCollapsed_ removeObject:parent->key]; [queue_ expandItem:parent]; }
+}
+- (void)restoreQueueExpansion:(NSArray *)nodes;
+{
+  NSEnumerator *e=[nodes objectEnumerator]; RDQueueNode *node;
+  while((node=[e nextObject])) if([node->children count]) {
+    if([queueCollapsed_ containsObject:node->key]) [queue_ collapseItem:node];
+    else { [queue_ expandItem:node]; [self restoreQueueExpansion:node->children]; }
+  }
+}
+- (void)outlineViewItemDidCollapse:(NSNotification *)notification;
+{ if([notification object]==queue_ && !refreshing_) { RDQueueNode *node=[[notification userInfo] objectForKey:@"NSObject"]; if(node) [queueCollapsed_ addObject:node->key]; } }
+- (void)outlineViewItemDidExpand:(NSNotification *)notification;
+{ if([notification object]==queue_ && !refreshing_) { RDQueueNode *node=[[notification userInfo] objectForKey:@"NSObject"]; if(node) [queueCollapsed_ removeObject:node->key]; } }
+
 - (NSDictionary *)selectedPlaylist;
 { unsigned int i; for(i=0;i<[playlists_ count];++i) if([[[playlists_ objectAtIndex:i] objectForKey:@"id"] isEqualToString:selectedPlaylist_]) return [playlists_ objectAtIndex:i]; return nil; }
 - (NSDictionary *)jobForEntry:(NSDictionary *)entry;
 {
-  unsigned int i;
-  for(i=0;entry && i<[jobs_ count];++i) {
-    NSDictionary *job=[jobs_ objectAtIndex:i];
-    if([[job objectForKey:@"playlist_id"] isEqualToString:selectedPlaylist_] &&
-       [[job objectForKey:@"video_id"] isEqualToString:[entry objectForKey:@"video_id"]] &&
-       [[job objectForKey:@"format"] isEqualToString:downloadFormat_]) return job;
+  NSDictionary *best=nil; int bestRank=-1;
+  NSEnumerator *e=[jobs_ objectEnumerator]; NSDictionary *job;
+  /* jobs_ is newest-first. A playable copy wins regardless of preference. */
+  while(entry && (job=[e nextObject])) {
+    if(![[job objectForKey:@"playlist_id"] isEqualToString:selectedPlaylist_] ||
+       ![[job objectForKey:@"video_id"] isEqualToString:[entry objectForKey:@"video_id"]]) continue;
+    int rank=[self playable:job]?6:(stateIs(job,@"running")?5:(stateIs(job,@"queued")?4:
+      ((stateIs(job,@"failed") || stateIs(job,@"interrupted") || stateIs(job,@"complete") ||
+        (stateIs(job,@"removed") && [[job objectForKey:@"error"] length]))?3:(stateIs(job,@"cancelled")?2:1))));
+    if(rank>bestRank) { best=job; bestRank=rank; }
   }
-  return nil;
+  return best;
 }
+- (NSString *)statusForJob:(NSDictionary *)job;
+{
+  if([self playable:job]) return @"Downloaded";
+  if(stateIs(job,@"running")) return @"Downloading";
+  if(stateIs(job,@"queued")) return @"Queued";
+  if(stateIs(job,@"failed")) return @"Failed";
+  if(stateIs(job,@"interrupted")) return @"Interrupted";
+  if(stateIs(job,@"cancelled")) return @"Cancelled";
+  if(stateIs(job,@"complete") || (stateIs(job,@"removed") && [[job objectForKey:@"error"] length])) return @"File missing";
+  return @"Not downloaded";
+}
+
 - (BOOL)playable:(NSDictionary *)job;
 { return stateIs(job,@"complete") && [[NSFileManager defaultManager] fileExistsAtPath:[library_ fileForJob:job]]; }
 - (void)refresh:(id)sender;
 {
-  (void)sender; if(refreshing_) return; refreshing_=YES;
+  (void)sender; if(refreshing_ || [queue_ isTrackingAction]) return; refreshing_=YES;
   NSString *key=mode_==0?@"position":@"id";
   NSString *selection=[[[self selectedRow] objectForKey:key] copy];
-  NSString *queueSelection=[[[self selectedJob] objectForKey:@"id"] copy];
+  RDQueueNode *oldNode=[self selectedQueueNode];
+  NSString *queueSelection=oldNode?[oldNode->key copy]:nil;
+  NSString *oldParent=oldNode?[oldNode->parentKey copy]:nil;
   NSString *oldGroup=selectedPlaylist_?playlistGroup([self selectedPlaylist]):nil;
   [playlists_ release]; playlists_=[[library_ playlists] copy];
   NSEnumerator *pe=[playlists_ objectEnumerator]; NSDictionary *p;
@@ -535,7 +736,13 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   if(mode_==0 && ![self selectedPlaylist]) { mode_=1; [selectedPlaylist_ release]; selectedPlaylist_=nil; [selection release]; selection=nil; }
   [rows_ release]; rows_=[(mode_==0?[library_ entriesForPlaylist:selectedPlaylist_]:[library_ jobsForPlaylist:nil completedOnly:YES]) copy];
   [jobs_ release]; jobs_=[[library_ jobsForPlaylist:nil completedOnly:NO] copy];
+  [queueTree_ rebuildJobs:jobs_ library:library_];
+  BOOL hasQuality=[table_ tableColumnWithIdentifier:@"quality"]!=nil;
+  if(mode_==0 && hasQuality) [table_ removeTableColumn:qualityColumn_];
+  else if(mode_==1 && !hasQuality) [table_ addTableColumn:qualityColumn_];
+  [table_ sizeToFit];
   [sidebar_ reloadData]; [table_ reloadData]; [queue_ reloadData];
+  [self restoreQueueExpansion:[queueTree_ roots]];
   if(!sidebarLoaded_) {
     [sidebar_ expandItem:@"System"]; [sidebar_ expandItem:@"Added Playlists"]; [sidebar_ expandItem:@"My Playlists"]; sidebarLoaded_=YES;
   } else if(selectedPlaylist_ && ![oldGroup isEqualToString:playlistGroup([self selectedPlaylist])]) {
@@ -546,7 +753,12 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   if(selectedSidebar>=0) [sidebar_ selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)selectedSidebar] byExtendingSelection:NO];
   else [sidebar_ deselectAll:nil];
   restoreSelection(table_,rows_,mode_==0?@"position":@"id",selection);
-  restoreSelection(queue_,jobs_,@"id",queueSelection);
+  RDQueueNode *selectedNode=[queueTree_ nodeForKey:queueSelection];
+  if(selectedNode && ![oldParent isEqualToString:selectedNode->parentKey]) [self expandQueuePath:selectedNode];
+  NSInteger queueRow=selectedNode?[queue_ rowForItem:selectedNode]:-1;
+  if(queueRow>=0) [queue_ selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)queueRow] byExtendingSelection:NO];
+  else [queue_ deselectAll:nil];
+  [oldParent release];
   [selection release]; [queueSelection release]; refreshing_=NO; [self updateCustomSummary]; [self updateControls];
 }
 - (void)tableWasUsed:(NSTableView *)view;
@@ -555,20 +767,21 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   context_=view==sidebar_?0:(view==queue_?2:1); [self updateControls];
 }
 - (BOOL)hasTargetVideo;
-{ return context_==2?[self selectedJob]!=nil:(context_==1 && [self selectedRow]!=nil); }
+{ RDQueueNode *node=[self selectedQueueNode]; return context_==2?(node && node->kind>=RDQueueVideo):(context_==1 && [self selectedRow]!=nil); }
 - (NSDictionary *)targetJob;
 { return context_==2?[self selectedJob]:(context_==1?(mode_==0?[self jobForEntry:[self selectedRow]]:[self selectedRow]):nil); }
 - (NSDictionary *)targetPlaylist;
 {
   NSDictionary *job=[self targetJob];
   NSString *key=job?[job objectForKey:@"playlist_id"]:selectedPlaylist_;
-  if(context_==2 && !job) return nil;
+  if(context_==2) { RDQueueNode *node=[self selectedQueueNode]; key=node?node->playlistID:nil; }
+  if(!key) return nil;
   NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
   while((playlist=[e nextObject])) if([[playlist objectForKey:@"id"] isEqualToString:key]) return playlist;
   return nil;
 }
 - (NSString *)targetVideoID;
-{ return context_==2?[[self selectedJob] objectForKey:@"video_id"]:(context_==1?[[self selectedRow] objectForKey:@"video_id"]:nil); }
+{ RDQueueNode *node=[self selectedQueueNode]; return context_==2?(node?node->videoID:nil):(context_==1?[[self selectedRow] objectForKey:@"video_id"]:nil); }
 - (NSString *)targetFormat;
 { NSDictionary *job=[self targetJob]; return (context_==2 || (context_==1 && mode_==1))?([job objectForKey:@"format"]?:downloadFormat_):downloadFormat_; }
 - (NSDictionary *)jobForPlaylist:(NSString *)playlist video:(NSString *)video format:(NSString *)format;
@@ -650,53 +863,45 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   if(video) {
     icon=delete?AIFATrash:([self canCancel:job]?AIFAHourglass:AIFADownload);
     if(delete) enabled=[self canRemove:job];
-    tip=[NSString stringWithFormat:@"%@ — %@ (%@)",delete?@"Delete downloaded video…":([self canCancel:job]?@"Show in Queue":@"Download video"),job?[job objectForKey:@"title"]:[[self selectedRow] objectForKey:@"title"],[self targetFormat]];
+    tip=[NSString stringWithFormat:@"%@ — %@ (%@)",delete?@"Delete downloaded video…":([self canCancel:job]?@"Show in Queue":@"Download video"),job?[job objectForKey:@"title"]:(context_==2?[self selectedQueueNode]->title:[[self selectedRow] objectForKey:@"title"]),job?[job objectForKey:@"format"]:[self targetFormat]];
   } else if(playlist) {
     icon=AIFAArrowsRotate;
     enabled=![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
     tip=[NSString stringWithFormat:@"Sync ‘%@’",[playlist objectForKey:@"title"]];
   } else { icon=(AIFontAwesomeIcon)0x2b; tip=@"Add a playlist…"; }
-  [self setToolbarItem:@"download" title:delete?@"Delete":(!video && playlist?@"Sync":@"Download") tip:tip icon:toolbarIcon(icon,[self window]) enabled:enabled];
+  [self setToolbarItem:@"download" title:video?(delete?@"Delete":@"Download"):(playlist?@"Sync":@"Add Playlist") tip:tip icon:toolbarIcon(icon,[self window]) enabled:enabled];
   NSString *path=[self selectionPlayFile], *application=RDDefaultApplication(path);
   NSString *object=video?@"video":@"playlist";
   NSString *playTip=path?(application?[NSString stringWithFormat:@"Play %@ in %@",object,[[[NSFileManager defaultManager] displayNameAtPath:application] stringByDeletingPathExtension]]:[NSString stringWithFormat:@"Reveal %@ in Finder",object]):@"Select a downloaded video or playlist to play";
   [self setToolbarItem:@"play" title:@"Play" tip:playTip icon:RDYouTubeIcon(RDWindowBackingScale([self window])) enabled:path!=nil];
   BOOL cookies=[[library_ cookieStatus] isEqualToString:@"Imported"];
   [self setToolbarItem:@"cookies" title:@"Cookies" tip:[[library_ cookieStatus] isEqualToString:@"Not Imported"]?@"Import cookies…":@"Replace cookies…" icon:toolbarIcon(cookies?AIFACookie:AIFACookieBite,[self window]) enabled:![library_ isBusy]];
-  NSUInteger pending=[self queuedCount]; NSEnumerator *e=[jobs_ objectEnumerator];
-  while((job=[e nextObject])) if(stateIs(job,@"running")) ++pending;
-  [self setToolbarItem:@"downloads" title:[NSString stringWithFormat:@"Queue (%lu)",(unsigned long)pending] tip:[self isInspectorCollapsed]?@"Show Queue. Right-click for queue actions.":@"Hide Queue. Right-click for queue actions." icon:nil enabled:YES];
+  [self setToolbarItem:@"downloads" title:@"Queue" tip:[self isInspectorCollapsed]?@"Show Queue. Right-click for queue actions.":@"Hide Queue. Right-click for queue actions." icon:nil enabled:YES];
 }
 - (void)updateControls;
 {
-  NSDictionary *row=[self selectedRow], *job=mode_==0?[self jobForEntry:row]:row;
-  BOOL showInQueue=mode_==0 && row && (stateIs(job,@"queued") || stateIs(job,@"running") || retryable(job));
-  [primary_ setEnabled:showInQueue]; [primary_ setHidden:!showInQueue];
   [self updateToolbar];
-  [title_ setStringValue:mode_==0?[[self selectedPlaylist] objectForKey:@"title"]:@"All Downloads"];
-  [status_ setStringValue:[rows_ count]?[library_ status]:(mode_==0?@"No videos yet. Use Sync This Playlist to load its videos.":@"No completed downloads. Add or select a playlist to get started.")];
-  NSDictionary *selected=[self selectedJob];
-  BOOL cancellable=stateIs(selected,@"queued") || stateIs(selected,@"running");
-  [jobAction_ setTitle:cancellable?@"Cancel Download…":@"Download Video"];
-  [jobAction_ setEnabled:cancellable || [self canRetry:selected] || [self canDownloadAgain:selected]];
-  [pause_ setTitle:[library_ isPaused]?@"Resume Queue":@"Pause Queue"];
-  NSUInteger pending=0; unsigned int i;
-  for(i=0;i<[jobs_ count];++i) if(stateIs([jobs_ objectAtIndex:i],@"queued") || stateIs([jobs_ objectAtIndex:i],@"running")) ++pending;
-  [queueTitle_ setStringValue:[NSString stringWithFormat:@"Queue — %lu pending",(unsigned long)pending]];
-  NSString *error=[selected objectForKey:@"error"];
-  [queueStatus_ setStringValue:[error length]?error:([library_ isPaused]?@"Queue paused. Pausing stops active transfers; Download Video restarts them.":([jobs_ count]?[library_ status]:@"No downloads queued."))];
-
+  [status_ setStringValue:[library_ status]];
+  [status_ setToolTip:[library_ status]];
+  NSDictionary *progress=[library_ queueProgress];
+  NSUInteger processed=[[progress objectForKey:@"processed"] unsignedLongValue];
+  NSUInteger total=[[progress objectForKey:@"total"] unsignedLongValue];
+  [queueProgress_ setHidden:![[progress objectForKey:@"active"] boolValue]];
+  [queueProgress_ setMaxValue:(double)MAX(total,1)]; [queueProgress_ setDoubleValue:(double)processed];
+  [queueProgress_ setToolTip:[NSString stringWithFormat:@"%lu of %lu processed · %@ failed · %@ stopped",(unsigned long)processed,(unsigned long)total,[progress objectForKey:@"failed"],[progress objectForKey:@"cancelled"]]];
 }
+
 - (NSInteger)outlineView:(NSOutlineView *)outline numberOfChildrenOfItem:(id)item;
 {
-  (void)outline; if(!item) return 3; if([item isEqual:@"System"]) return 1;
+  if(outline==queue_) return (NSInteger)[(item?((RDQueueNode *)item)->children:[queueTree_ roots]) count];
+  if(!item) return 3; if([item isEqual:@"System"]) return 1;
   NSInteger count=0; NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
   while((playlist=[e nextObject])) if([playlistGroup(playlist) isEqual:item]) ++count;
   return count;
 }
 - (id)outlineView:(NSOutlineView *)outline child:(NSInteger)index ofItem:(id)item;
 {
-  (void)outline;
+  if(outline==queue_) return [(item?((RDQueueNode *)item)->children:[queueTree_ roots]) objectAtIndex:(NSUInteger)index];
   if(!item) return [[NSArray arrayWithObjects:@"System",@"Added Playlists",@"My Playlists",nil] objectAtIndex:(NSUInteger)index];
   if([item isEqual:@"System"]) return @"All Downloads";
   NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
@@ -704,33 +909,83 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   return nil;
 }
 - (BOOL)outlineView:(NSOutlineView *)outline isItemExpandable:(id)item;
-{ (void)outline; return sidebarGroup(item); }
+{ return outline==queue_?[((RDQueueNode *)item)->children count]>0:sidebarGroup(item); }
 - (BOOL)outlineView:(NSOutlineView *)outline shouldSelectItem:(id)item;
-{ (void)outline; return !sidebarGroup(item); }
+{ return outline==queue_?((RDQueueNode *)item)->kind!=RDQueueGroup:!sidebarGroup(item); }
 - (id)outlineView:(NSOutlineView *)outline objectValueForTableColumn:(NSTableColumn *)column byItem:(id)item;
 {
-  (void)outline; (void)column; if(sidebarGroup(item) || [item isEqual:@"All Downloads"]) return item;
+  if(outline==queue_) {
+    RDQueueNode *node=item;
+    if([[column identifier] isEqualToString:@"action"]) return @"";
+    if(node->kind==RDQueueGroup) {
+      if([node->key isEqualToString:@"status:1"] && [[[library_ queueProgress] objectForKey:@"active"] boolValue])
+        return [NSString stringWithFormat:@"Downloading · %@ of %@ processed",[[library_ queueProgress] objectForKey:@"processed"],[[library_ queueProgress] objectForKey:@"total"]];
+      return node->title;
+    }
+    return node->title;
+  }
+  if(sidebarGroup(item) || [item isEqual:@"All Downloads"]) return item;
   NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
   while((playlist=[e nextObject])) if([[playlist objectForKey:@"id"] isEqual:item]) return [NSString stringWithFormat:@"%@ (%@)",[playlist objectForKey:@"title"],[playlist objectForKey:@"count"]];
   return @"";
 }
 - (void)outlineView:(NSOutlineView *)outline willDisplayCell:(id)cell forTableColumn:(NSTableColumn *)column item:(id)item;
-{ (void)outline; (void)column; [cell setFont:sidebarGroup(item)?[NSFont boldSystemFontOfSize:12]:[NSFont systemFontOfSize:12]]; }
+{
+  if(outline==queue_) {
+    if([[column identifier] isEqualToString:@"action"]) return;
+    [cell setFont:((RDQueueNode *)item)->kind==RDQueueGroup?[NSFont boldSystemFontOfSize:12]:[NSFont systemFontOfSize:0]];
+    return;
+  }
+  BOOL bold=sidebarGroup(item);
+  [cell setFont:bold?[NSFont boldSystemFontOfSize:12]:[NSFont systemFontOfSize:12]];
+}
+- (NSString *)outlineView:(NSOutlineView *)outline toolTipForCell:(NSCell *)cell rect:(NSRectPointer)rect tableColumn:(NSTableColumn *)column item:(id)item mouseLocation:(NSPoint)point;
+{
+  (void)cell; (void)rect; (void)point; if(outline!=queue_) return nil;
+  RDQueueNode *node=item;
+  if([[column identifier] isEqualToString:@"action"]) return node->action==RDQueueStop?@"Stop this download. Retrying starts it again.":(node->action==RDQueueRetry?@"Retry this quality":nil);
+  NSString *error=[node->job objectForKey:@"error"];
+  return [error length]?[NSString stringWithFormat:@"%@\n%@",node->title,error]:node->title;
+}
+- (void)outlineView:(NSOutlineView *)outline setObjectValue:(id)value forTableColumn:(NSTableColumn *)column byItem:(id)item;
+{ (void)outline; (void)value; (void)column; (void)item; /* Momentary action cells have no stored value. */ }
 - (void)outlineViewSelectionDidChange:(NSNotification *)notification;
 { [self tableViewSelectionDidChange:notification]; }
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)view;
-{ return (NSInteger)(view==queue_?[jobs_ count]:[rows_ count]); }
+{ (void)view; return (NSInteger)[rows_ count]; }
 - (id)tableView:(NSTableView *)view objectValueForTableColumn:(NSTableColumn *)column row:(NSInteger)row;
 {
-  if(view==queue_) {
-    NSDictionary *job=[jobs_ objectAtIndex:(NSUInteger)row];
-    return [NSString stringWithFormat:@"%@\n%@\n%@ · %@",[job objectForKey:@"title"],[job objectForKey:@"playlist_title"],[job objectForKey:@"format"],[job objectForKey:@"state"]];
-  }
+  (void)view;
   NSDictionary *entry=[rows_ objectAtIndex:(NSUInteger)row]; NSString *key=[column identifier];
   NSDictionary *job=mode_==0?[self jobForEntry:entry]:entry;
   if([key isEqualToString:@"quality"]) return mode_==0?downloadFormat_:([[job objectForKey:@"actual_format"] length]?[job objectForKey:@"actual_format"]:[job objectForKey:@"format"]);
-  if([key isEqualToString:@"state"]) return job?[job objectForKey:@"state"]:@"not downloaded";
+  if([key isEqualToString:@"state"]) {
+    NSString *status=[self statusForJob:job]; AIFontAwesomeIcon icon=0;
+    if([status isEqualToString:@"Downloaded"]) icon=AIFACircleCheck;
+    else if([status isEqualToString:@"Downloading"]) icon=AIFAArrowDown;
+    else if([status isEqualToString:@"Queued"]) icon=AIFAClock;
+    else if([status isEqualToString:@"Cancelled"]) icon=AIFACirclePause;
+    else if(![status isEqualToString:@"Not downloaded"]) icon=AIFATriangleExclamation;
+    return icon?[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid iconSize:12 canvasSize:16 scale:RDWindowBackingScale([self window])]:nil;
+  }
   return [entry objectForKey:key];
+}
+- (void)tableView:(NSTableView *)view willDisplayCell:(id)cell forTableColumn:(NSTableColumn *)column row:(NSInteger)row;
+{
+  (void)view;
+  if([[column identifier] isEqualToString:@"state"]) {
+    NSDictionary *entry=[rows_ objectAtIndex:(NSUInteger)row];
+    [cell setRepresentedObject:[self statusForJob:mode_==0?[self jobForEntry:entry]:entry]];
+  }
+}
+- (NSString *)tableView:(NSTableView *)view toolTipForCell:(NSCell *)cell rect:(NSRectPointer)rect tableColumn:(NSTableColumn *)column row:(NSInteger)row mouseLocation:(NSPoint)point;
+{
+  (void)view; (void)cell; (void)rect; (void)point;
+  NSDictionary *entry=[rows_ objectAtIndex:(NSUInteger)row];
+  if(![[column identifier] isEqualToString:@"state"]) return [entry objectForKey:@"title"];
+  NSDictionary *job=mode_==0?[self jobForEntry:entry]:entry;
+  NSString *status=[self statusForJob:job], *error=[job objectForKey:@"error"];
+  return [error length]?[NSString stringWithFormat:@"%@: %@",status,error]:status;
 }
 - (void)tableViewSelectionDidChange:(NSNotification *)notification;
 {
@@ -752,8 +1007,19 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   SEL visibilityAction=[item action];
   if(visibilityAction==@selector(togglePlaylists:)) [item setTitle:[self isSidebarCollapsed]?@"Show Playlists":@"Hide Playlists"];
   if(visibilityAction==@selector(toggleDownloads:)) [item setTitle:[self isInspectorCollapsed]?@"Show Download Queue":@"Hide Download Queue"];
+  if([[item menu] title] && [[[item menu] title] isEqualToString:@"File"]) {
+    NSString *object=[self hasTargetVideo]?@"Video":@"Playlist";
+    if(visibilityAction==@selector(playSelection:)) [item setTitle:[NSString stringWithFormat:@"Play %@ in Default App",object]];
+    if(visibilityAction==@selector(playSelectionInVLC:)) [item setTitle:[NSString stringWithFormat:@"Play %@ in VLC",object]];
+    if(visibilityAction==@selector(downloadFromMenu:)) [item setTitle:[self hasTargetVideo]?@"Download Video":@"Download Missing Videos"];
+  }
   if([[self window] attachedSheet]) return NO;
-  SEL action=[item action]; NSDictionary *job=[self targetJob], *playlist=[self selectedPlaylist], *queued=[self selectedJob];
+  if(visibilityAction==@selector(downloadFromMenu:)) {
+    if(context_==2 && [self selectedJob]) return [self canRetry:[self selectedJob]] || [self canDownloadAgain:[self selectedJob]];
+    NSMenuItem *command=[[[NSMenuItem alloc] initWithTitle:@"" action:@selector(chooseDownload:) keyEquivalent:@""] autorelease];
+    [command setTag:[self hasTargetVideo]?0:5]; return [self validateMenuItem:command];
+  }
+  SEL action=[item action]; NSDictionary *job=[self targetJob], *playlist=[self contextPlaylist], *queued=[self selectedJob];
   BOOL noCookies=[[library_ cookieStatus] isEqualToString:@"Not Imported"];
   if(action==@selector(importCookies:)) return ![library_ isBusy] && noCookies;
   if(action==@selector(replaceCookies:) || action==@selector(clearCookies:)) return ![library_ isBusy] && !noCookies;
@@ -793,15 +1059,14 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   if(action==@selector(openDownloadsFolder:)) return [[NSFileManager defaultManager] fileExistsAtPath:[library_ downloadsDirectory]];
   if(action==@selector(showQueue:)) return [self isInspectorCollapsed];
   if(action==@selector(hideQueue:)) return ![self isInspectorCollapsed];
-  if(action==@selector(pauseQueue:)) return ![library_ isPaused];
-  if(action==@selector(resumeQueue:)) return [library_ isPaused];
+  if(action==@selector(showQueueError:)) return [[queued objectForKey:@"error"] length]>0;
   if(action==@selector(retryQueueJob:)) return [self canRetry:queued] || [self canDownloadAgain:queued];
   if(action==@selector(againQueueJob:)) return [self canDownloadAgain:queued];
   if(action==@selector(cancelQueueJob:)) return [self canCancel:queued];
   if(action==@selector(removeJob:)) return [self canRemove:queued];
   if(action==@selector(openJob:)) return [self playable:queued] && RDDefaultApplication([library_ fileForJob:queued])!=nil;
   if(action==@selector(removeDownload:)) return [self canRemove:mode_==0?[self jobForEntry:[self selectedRow]]:[self selectedRow]];
-  if(action==@selector(removePlaylist:)) return [self canRemovePlaylist:[self selectedPlaylist]];
+  if(action==@selector(removePlaylist:)) return [self canRemovePlaylist:[self contextPlaylist]];
   if(action==@selector(playPlaylist:)) return RDDefaultApplication([self playFileForPlaylist:[self selectedPlaylist]])!=nil;
   return YES;
 }
@@ -867,9 +1132,7 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
     if(![library_ isBusy] && [library_ importCookies:[request objectForKey:@"path"]] && [request objectForKey:@"discover"]) [library_ discoverPlaylists];
   } else if([op isEqualToString:@"clearCookies"]) {
     if(![library_ isBusy]) [library_ clearCookies];
-  } else if([op isEqualToString:@"pause"]) [library_ setPaused:YES];
-  else if([op isEqualToString:@"resume"]) [library_ setPaused:NO];
-  else if([op isEqualToString:@"removePlaylist"]) {
+  } else if([op isEqualToString:@"removePlaylist"]) {
     NSDictionary *playlist=[request objectForKey:@"playlist"];
     if([self canRemovePlaylist:playlist]) [library_ removePlaylist:playlist];
   } else {
@@ -925,7 +1188,7 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   NSMutableDictionary *captured=[NSMutableDictionary dictionaryWithDictionary:request];
   [captured setObject:plan forKey:@"plan"]; [captured setObject:@"bulkDownload" forKey:@"operation"];
   NSString *title=[NSString stringWithFormat:@"Download %lu missing videos?",(unsigned long)[plan count]];
-  NSString *detail=[NSString stringWithFormat:@"Playlist: %@\nQuality: %@\nExisting failed or cancelled jobs will not be retried.%@",[request objectForKey:@"title"]?:playlist,format,[library_ isPaused]?@"\nThe queue will remain paused.":@""];
+  NSString *detail=[NSString stringWithFormat:@"Playlist: %@\nQuality: %@\nExisting failed or cancelled jobs will not be retried.",[request objectForKey:@"title"]?:playlist,format];
   [self confirmRequest:captured title:title detail:detail action:[NSString stringWithFormat:@"Download %lu Videos",(unsigned long)[plan count]]];
 }
 - (void)downloadDefault:(id)sender;
@@ -942,7 +1205,7 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   } else [self addPlaylist:sender];
 }
 - (void)sync:(id)sender;
-{ (void)sender; NSDictionary *playlist=[self selectedPlaylist]; if(playlist) [library_ syncPlaylistInput:[playlist objectForKey:@"service_id"]]; }
+{ (void)sender; NSDictionary *playlist=[self contextPlaylist]; if(playlist) [library_ syncPlaylistInput:[playlist objectForKey:@"service_id"]]; }
 - (void)syncAll:(id)sender;
 {
   (void)sender; NSArray *inputs=[self syncPlan]; if(![inputs count]) return;
@@ -975,24 +1238,17 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
   (void)sender; if([library_ isBusy] || [[library_ cookieStatus] isEqualToString:@"Not Imported"]) return;
   [self confirmRequest:[NSDictionary dictionaryWithObject:@"clearCookies" forKey:@"operation"] title:@"Remove imported cookies?" detail:@"Remove the app’s working cookie copy. The original exported file is retained." action:@"Remove"];
 }
-- (void)pause:(id)sender;
-{ if([library_ isPaused]) [self resumeQueue:sender]; else [self pauseQueue:sender]; }
-- (void)pauseQueue:(id)sender;
+- (void)queueCellAction:(id)sender;
 {
-  (void)sender; if([library_ isPaused]) return;
-  NSEnumerator *e=[jobs_ objectEnumerator]; NSDictionary *job;
-  while((job=[e nextObject])) if(stateIs(job,@"running")) {
-    [self confirmRequest:[NSDictionary dictionaryWithObject:@"pause" forKey:@"operation"] title:@"Pause the queue and stop the active transfer?" detail:@"The active job will need an explicit retry, which restarts the transfer rather than resuming it." action:@"Pause Queue"]; return;
-  }
-  [library_ setPaused:YES];
+  (void)sender; if([[self window] attachedSheet]) return;
+  NSString *key=[queue_ actionJobID];
+  RDQueueNode *node=key?[queueTree_ nodeForKey:[@"job:" stringByAppendingString:key]]:nil;
+  NSDictionary *job=node?node->job:nil;
+  if([self canCancel:job]) [self confirmJob:job remove:NO];
+  else if([self canRetry:job] || [self canDownloadAgain:job]) [self retryAndRevealJob:job];
 }
-- (void)resumeQueue:(id)sender;
-{
-  (void)sender; if(![library_ isPaused]) return;
-  NSUInteger count=[self queuedCount];
-  if(!count) { [library_ setPaused:NO]; return; }
-  [self confirmRequest:[NSDictionary dictionaryWithObject:@"resume" forKey:@"operation"] title:[NSString stringWithFormat:@"Resume %lu queued downloads?",(unsigned long)count] detail:@"Queued videos will become eligible to download from YouTube. Failed and cancelled jobs still need an explicit retry." action:@"Resume Queue"];
-}
+- (void)showQueueError:(id)sender;
+{ (void)sender; NSString *error=[[self selectedJob] objectForKey:@"error"]; if([error length]) RDAlert(error); }
 - (void)togglePlaylists:(id)sender;
 { if([[self window] attachedSheet]) return; [self toggleSidebar:sender]; [self updateControls]; }
 - (void)toggleDownloads:(id)sender;
@@ -1009,13 +1265,15 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
 {
   if(!job) return;
   NSString *key=[[[job objectForKey:@"id"] copy] autorelease];
-  [self revealDownloads]; refreshing_=YES; restoreSelection(queue_,jobs_,@"id",key); refreshing_=NO;
+  [self revealDownloads]; refreshing_=YES;
+  RDQueueNode *node=[queueTree_ nodeForKey:[@"job:" stringByAppendingString:key]];
+  [self expandQueuePath:node]; NSInteger row=node?[queue_ rowForItem:node]:-1;
+  if(row>=0) [queue_ selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)row] byExtendingSelection:NO];
+  refreshing_=NO;
   if([queue_ selectedRow]>=0) [queue_ scrollRowToVisible:[queue_ selectedRow]];
   [self updateControls];
 }
 - (void)showTargetInQueue:(id)sender; { (void)sender; [self showJobInQueue:[self targetJob]]; }
-- (void)primaryAction:(id)sender;
-{ (void)sender; [self showJobInQueue:mode_==0?[self jobForEntry:[self selectedRow]]:[self selectedRow]]; }
 - (void)retryTarget:(id)sender;
 { (void)sender; NSDictionary *job=[self targetJob]; if([self canRetry:job]) [self retryAndRevealJob:job]; }
 - (void)againTarget:(id)sender;
@@ -1038,7 +1296,7 @@ static NSPopUpButton *actions(NSView *view,NSString *title,NSRect frame) {
 - (void)removeJob:(id)sender; { (void)sender; [self confirmJob:[self selectedJob] remove:YES]; }
 - (void)removePlaylist:(id)sender;
 {
-  (void)sender; NSDictionary *playlist=[self selectedPlaylist]; if(![self canRemovePlaylist:playlist]) return;
+  (void)sender; NSDictionary *playlist=[self contextPlaylist]; if(![self canRemovePlaylist:playlist]) return;
   [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"removePlaylist",@"operation",playlist,@"playlist",nil] title:[NSString stringWithFormat:@"Remove ‘%@’ from the library?",[playlist objectForKey:@"title"]] detail:@"Remove local playlist metadata and remaining partial files. This does not delete the playlist from YouTube." action:@"Remove Playlist"];
 }
 - (void)playTargetVideo:(id)sender;

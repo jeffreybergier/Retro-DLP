@@ -3,6 +3,7 @@
 @interface RDToolbarButton : NSButton {
   BOOL defaultEnabled_;
   NSImage *caret_;
+  NSRect caretInkBounds_;
 }
 - (BOOL)isDefaultEnabled;
 - (void)setDefaultEnabled:(BOOL)enabled;

@@ -33,6 +33,62 @@ not produce an Apple distribution signature or provisioning profile.
 
 ## Mac workflow
 
+The window uses the textured style, including brushed metal on Tiger. A full-width
+status bar below all three panes displays shared library activity even when a pane
+is empty or hidden. Leopard and later draw its background using the native window
+content border. Long messages truncate with the full text available in a tooltip;
+selected download errors remain in the queue pane. The main video table fills its
+pane edge to edge, with no surrounding labels or buttons. Video and playlist
+actions are available through the toolbar and menu bar.
+
+The menu bar uses File, Edit, View, Window, and Help. File groups playlist
+addition/discovery, synchronization, downloading, playback, Finder reveal, and
+Close Window. Edit contains standard text commands plus separate Remove Playlist
+and Delete Download commands. View contains only pane visibility and Show in
+Queue; Window provides Minimize, Zoom, and Bring All to Front. Download Quality sits directly above Cookies
+inside the application menu, with Cookie Export Guide in Help.
+The middle table shows a narrow, untitled status icon column before Video.
+Playlist rows summarize all qualities: an existing playable file takes priority,
+then downloading, queued, failed/interrupted/missing, cancelled, and not downloaded.
+Playback and file actions use the representative job; changing preferred quality
+no longer hides an available download. New explicit downloads still use the quality
+preference. All Downloads keeps individual completed jobs and adds Quality after
+Video to distinguish versions. Status tooltips and accessibility descriptions
+provide text equivalents; long video titles truncate to fit the pane.
+
+Menu-bar commands retain their positions and disable when unavailable; download
+and playback labels follow the active video or playlist selection. File's Download
+command retries a selected queue quality using that job's exact format. Toolbar
+menus retain their task-specific grouping.
+
+The queue is an edge-to-edge, cell-based NSOutlineView, compatible with Tiger.
+Its groups are Done, Downloading, Queued, and Needs Attention; beneath each are
+playlist, video, and quality rows. Needs Attention includes failed, stopped,
+interrupted, and missing-file downloads, with the reason on the quality row and
+full errors in tooltips or Show Error. Expansion and selected quality survive
+refreshes and status changes. Playlist and video rows provide their respective
+toolbar contexts; individual download operations require a quality row.
+
+The queue uses AppKit’s default row height and indentation. Top-level titles
+use the playlist sidebar’s bold styling without parenthesized counts; child
+rows use the default font.
+Actionable quality rows have one circular textured NSButtonCell sized to fit the row: Font
+Awesome pause to stop queued/running work, rotate-right to retry stopped/failed
+or missing-file work. Stop uses the existing cancellation confirmation; retry
+restarts that exact quality. Completed qualities and parent rows have no button.
+NSTableColumn dataCellForRow: supplies these cells on Tiger; no view-based rows
+or Leopard-only outline delegate API is required. There is no queue footer or
+global Pause control.
+
+During processing, a native NSProgressIndicator in the app-wide status bar shows
+processed attempts out of the current run's total. Downloading also shows this
+count; the progress tooltip reports failed and stopped attempts separately.
+Historical downloads do not contribute; new pending jobs extend the total and
+cancelled pending jobs leave it. Draining the queue hides the indicator, and the
+next run starts fresh. Playlist metadata work does not activate queue progress.
+Detailed transfer bytes remain in the app-wide status. The outline's frame does
+not change when progress appears.
+
 The sidebar is an NSOutlineView with three collapsible, nonselectable parent
 rows: System (All Downloads), Added Playlists (manually added), and My Playlists
 (discovered through Load My Playlists). Groups start expanded and keep their
@@ -81,7 +137,7 @@ playlist, including Queue selections whose playlist is not selected in the sideb
 | Play / no playable target | Disabled | Dimmed YouTube Brands |
 
 Starting or retrying any download reveals Queue, selects the job, and scrolls
-it into view, even if Queue was manually hidden. The paused state is preserved.
+it into view, even if Queue was manually hidden. The selected quality is retained.
 
 Labels are Download and Play; Download becomes Delete for an existing downloaded video. The caret opens the same menu as right-click,
 Control-click, or Accessibility Show Menu. Open With is absent. Explicit VLC
@@ -105,17 +161,16 @@ before acting. Duplicate playlist entries do not create duplicate jobs.
 
 Destructive and bulk actions use attached confirmation sheets: removal of files,
 playlists, and cookies; cookie replacement; download cancellation; bulk video
-download; Sync All; account playlist discovery; and resuming a nonempty queue.
-Pausing a running transfer also requires confirmation because retry restarts it.
+download; Sync All; and account playlist discovery.
 Cancelling a sheet performs no operation. Single-video enqueue/retry and
 single-playlist metadata sync are immediate. Duplicate pending/running syncs are
 not added again. Playlist removal remains unavailable until queued jobs are
 cancelled and completed downloads removed; removal affects only the local library.
 
-Each launch starts paused. Enqueue and retry preserve Pause, including when a bulk
-operation is confirmed. Resume explicitly allows queued transfers to start;
-failed or cancelled jobs still require Retry. Pausing an idle queue and resuming
-an empty queue are immediate. Pause stops downloads, not metadata sync commands.
+The Mac app processes queued downloads automatically on launch and when work is
+added. Failed, stopped, and interrupted jobs require an explicit Retry. Stopping
+one quality leaves other queued downloads eligible to run. The shared bridge's
+Pause API remains for iOS foreground/background lifecycle management.
 
 Cookies status indicates only whether the local working file is available, not
 whether its Netscape format or account session is valid. Import/replacement/removal
@@ -125,7 +180,9 @@ scope and requests an import if needed. Export Guide is always available.
 Toolbar Font Awesome glyphs render at 24 points on a 32-point canvas with the
 window’s backing scale; the caret uses an 8-point glyph in a 10-point corner.
 `ATSApplicationFontsPath = Fonts` registers the bundled fonts, including on Tiger.
-AppKit draws the toolbar images and handles template tinting. Standard toolbar
+Control icons use cached, explicitly black images on every supported OS. This includes toolbar glyphs, carets, YouTube, and
+queue action buttons; table status indicators retain template rendering. AppKit
+still draws native pressed/disabled feedback. Standard toolbar
 labels remain below the custom buttons; Play is centered between flexible spaces.
 
 Media is organized under:
@@ -283,8 +340,15 @@ before each run; the test deliberately changes only that fixture.
 
 The native test exercises real toolbar controls, pane targeting, fixed menu
 structure, removal/cancellation sheets, bulk confirmation and removed-file
-requeue, custom-format cancellation/validation, cookie removal, and paused
-queue/retry behavior. Sync All, discovery, and Resume confirmations are cancelled;
+requeue, custom-format cancellation/validation, cookie removal, and exact-quality
+queue/retry behavior. It also checks the textured window style and that the shared
+status stays outside the split panes when resizing and toggling panels.
+Queue checks cover four-level grouping, real cell-button clicks, collapsed-state
+and selection preservation, blank completed action cells, automatic startup,
+app-wide progress, run counters, and reset after draining. Test downloads fail locally
+because the test bundle omits the CA certificate; metadata work is also checked
+to ensure it does not activate queue progress.
+Sync All and discovery confirmations are cancelled;
 no network work is started. The Accessibility smoke/cookie/removal scripts target
 a separate fixture review app. Custom toolbar buttons are children of toolbar
 groups on Tiger and expose `AXShowMenu` for the same menus used by right-click.

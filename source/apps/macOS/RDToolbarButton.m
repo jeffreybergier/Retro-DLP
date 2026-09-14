@@ -4,6 +4,46 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
+/* Measure once when the image changes, in logical, bottom-left coordinates. */
+static NSRect caretInkBounds(NSImage *image) {
+  NSSize size=[image size];
+  NSEnumerator *e=[[image representations] objectEnumerator]; NSImageRep *rep;
+  while((rep=[e nextObject])) if([rep isKindOfClass:[NSBitmapImageRep class]]) {
+    NSBitmapImageRep *bitmap=(NSBitmapImageRep *)rep;
+    NSInteger width=[bitmap pixelsWide],height=[bitmap pixelsHigh];
+    NSInteger minX=width,minY=height,maxX=-1,maxY=-1,x,y;
+    for(y=0;y<height;++y) for(x=0;x<width;++x) {
+      if([[bitmap colorAtX:x y:y] alphaComponent]<=0.01) continue;
+      minX=MIN(minX,x); minY=MIN(minY,y); maxX=MAX(maxX,x); maxY=MAX(maxY,y);
+    }
+    if(maxX>=minX && maxY>=minY) return NSMakeRect(minX*size.width/width,
+      (height-maxY-1)*size.height/height,(maxX-minX+1)*size.width/width,(maxY-minY+1)*size.height/height);
+  }
+  return NSMakeRect(0,0,size.width,size.height);
+}
+typedef struct {
+  NSRect icon,caret;
+  NSBezierPath *background;
+} RDToolbarLayout;
+static RDToolbarLayout toolbarLayout(NSView *view,NSImage *caret,NSRect ink) {
+  const CGFloat radius=12.0,margin=1.0;
+  NSRect bounds=[view bounds]; NSSize size=[caret size];
+  RDToolbarLayout layout;
+  layout.icon=NSMakeRect(NSMidX(bounds)-16,NSMidY(bounds)-16,32,32);
+  NSPoint corner=NSMakePoint(NSMaxX(layout.icon),[view isFlipped]?NSMaxY(layout.icon):NSMinY(layout.icon));
+  layout.background=[NSBezierPath bezierPath];
+  [layout.background moveToPoint:NSZeroPoint]; [layout.background lineToPoint:NSMakePoint(0,radius)];
+  [layout.background appendBezierPathWithArcWithCenter:NSZeroPoint radius:radius startAngle:90 endAngle:180];
+  [layout.background closePath];
+  NSAffineTransform *transform=[NSAffineTransform transform];
+  [transform translateXBy:corner.x yBy:corner.y];
+  [transform scaleXBy:1 yBy:[view isFlipped]?-1:1];
+  [layout.background transformUsingAffineTransform:transform];
+  /* Align the visible triangle, not the transparent image canvas. */
+  CGFloat y=[view isFlipped]?corner.y-margin-size.height+NSMinY(ink):corner.y+margin-NSMinY(ink);
+  layout.caret=NSMakeRect(corner.x-margin-NSMaxX(ink),y,size.width,size.height);
+  return layout;
+}
 static void trackOptions(RDToolbarButton *view,NSMenu *menu,NSEvent *event) {
   NSString *tip=[[view toolTip] copy];
   [view setToolTip:nil];
@@ -55,27 +95,30 @@ static void trackOptions(RDToolbarButton *view,NSMenu *menu,NSEvent *event) {
 - (void)dealloc; { [caret_ release]; [super dealloc]; }
 - (BOOL)isDefaultEnabled; { return defaultEnabled_; }
 - (void)setDefaultEnabled:(BOOL)enabled; { defaultEnabled_=enabled; [self setNeedsDisplay:YES]; }
-- (void)setCaretImage:(NSImage *)image; { [caret_ release]; caret_=[image retain]; [self setNeedsDisplay:YES]; }
+- (void)setCaretImage:(NSImage *)image;
+{
+  [image retain]; [caret_ release]; caret_=image;
+  caretInkBounds_=caretInkBounds(image); [self setNeedsDisplay:YES];
+}
 - (void)drawRect:(NSRect)dirty;
 {
   (void)dirty;
-  NSRect bounds=[self bounds];
-  NSRect icon=NSMakeRect((bounds.size.width-32)/2,(bounds.size.height-32)/2,32,32);
-  /* Let AppKit tint template images, including in modern dark appearances. */
+  RDToolbarLayout layout=toolbarLayout(self,caret_,caretInkBounds_);
+  /* Keep native pressed/disabled feedback for the explicitly colored images. */
   BOOL enabled=[[self cell] isEnabled];
   [[self cell] setEnabled:defaultEnabled_];
-  [(NSButtonCell *)[self cell] drawImage:[self image] withFrame:icon inView:self];
+  [(NSButtonCell *)[self cell] drawImage:[self image] withFrame:layout.icon inView:self];
   [[self cell] setEnabled:enabled];
   if([self menu]) {
-    NSRect badge=NSMakeRect(NSMaxX(icon)-10,[self isFlipped]?NSMaxY(icon)-10:NSMinY(icon),10,10);
-    [[NSColor windowBackgroundColor] set]; NSRectFill(badge);
-    [(NSButtonCell *)[self cell] drawImage:caret_ withFrame:badge inView:self];
+    [[NSColor windowBackgroundColor] set]; [layout.background fill];
+    [(NSButtonCell *)[self cell] drawImage:caret_ withFrame:layout.caret inView:self];
   }
 }
 - (void)mouseDown:(NSEvent *)event;
 {
   NSPoint point=[self convertPoint:[event locationInWindow] fromView:nil];
-  if(([event modifierFlags]&NSControlKeyMask) || ([self menu] && point.x>=[self bounds].size.width/2+6 && ([self isFlipped]?point.y>=[self bounds].size.height-12:point.y<=12))) {
+  RDToolbarLayout layout=toolbarLayout(self,caret_,caretInkBounds_);
+  if(([event modifierFlags]&NSControlKeyMask) || ([self menu] && [layout.background containsPoint:point])) {
     [self showOptions:nil]; return;
   }
   if(defaultEnabled_) [super mouseDown:event];

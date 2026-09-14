@@ -1,5 +1,5 @@
 #import "XPAppKit.h"
-#import <AIFontAwesome.h>
+#import <math.h>
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -34,12 +34,8 @@ void RDAlert(NSString *message) {
 void RDBeginAlertSheet(NSAlert *alert,NSWindow *window,id delegate,SEL didEnd) {
   [alert beginSheetModalForWindow:window modalDelegate:delegate didEndSelector:didEnd contextInfo:NULL];
 }
-NSImage *RDYouTubeIcon(CGFloat scale) {
-  static NSMutableDictionary *cache=nil;
-  if(!cache) cache=[[NSMutableDictionary alloc] init];
-  NSNumber *key=[NSNumber numberWithDouble:scale]; NSImage *image=[cache objectForKey:key];
-  if(image) return image;
-  image=[AIFontAwesome imageForCodePoint:0xf167 style:AIFontAwesomeStyleBrands iconSize:24 canvasSize:32 scale:scale];
+static NSImage *RDYouTubeMask(CGFloat scale) {
+  NSImage *image=[AIFontAwesome imageForCodePoint:0xf167 style:AIFontAwesomeStyleBrands iconSize:24 canvasSize:32 scale:scale];
   /* Tiger's ATSUI Unicode mapping misses this Brands glyph. Rendering its
      named outline avoids the missing-glyph box after the font is registered. */
   if(NSAppKitVersionNumber<825.0) {
@@ -55,8 +51,46 @@ NSImage *RDYouTubeIcon(CGFloat scale) {
       [path transformUsingAffineTransform:transform]; [[NSColor blackColor] set]; [path fill]; [image unlockFocus];
     }
   }
-  if(image) [cache setObject:image forKey:key];
   return image;
+}
+static NSColor *RDControlIconColor(void) {
+  return [NSColor blackColor];
+}
+NSImage *RDControlIcon(AIFontAwesomeIcon icon,AIFontAwesomeStyle style,
+                       CGFloat iconSize,CGFloat canvasSize,CGFloat scale) {
+  if(!isfinite(iconSize) || !isfinite(canvasSize) || !isfinite(scale) ||
+     iconSize<=0 || canvasSize<iconSize || scale<1 || canvasSize*scale>4096) return nil;
+  static NSMutableDictionary *cache=nil;
+  if(!cache) cache=[[NSMutableDictionary alloc] init];
+  NSArray *key=[NSArray arrayWithObjects:[NSNumber numberWithUnsignedInt:(unsigned int)icon],
+    [NSNumber numberWithInt:(int)style],[NSNumber numberWithDouble:iconSize],
+    [NSNumber numberWithDouble:canvasSize],[NSNumber numberWithDouble:scale],nil];
+  NSImage *image=[cache objectForKey:key]; if(image) return image;
+  NSImage *mask=(icon==(AIFontAwesomeIcon)0xf167 && style==AIFontAwesomeStyleBrands && iconSize==24 && canvasSize==32)
+    ?RDYouTubeMask(scale):[AIFontAwesome imageForIcon:icon style:style iconSize:iconSize canvasSize:canvasSize scale:scale];
+  if(!mask) return nil;
+  NSInteger pixels=(NSInteger)ceil(canvasSize*scale);
+  NSBitmapImageRep *bitmap=[[[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
+    pixelsWide:pixels pixelsHigh:pixels bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES
+    isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:0 bitsPerPixel:0] autorelease];
+  if(!bitmap) return nil;
+  NSGraphicsContext *context=[NSGraphicsContext graphicsContextWithBitmapImageRep:bitmap];
+  if(!context) return nil;
+  [NSGraphicsContext saveGraphicsState]; [NSGraphicsContext setCurrentContext:context];
+  NSAffineTransform *transform=[NSAffineTransform transform]; [transform scaleBy:(CGFloat)pixels/canvasSize]; [transform concat];
+  NSRect bounds=NSMakeRect(0,0,canvasSize,canvasSize);
+  [mask drawInRect:bounds fromRect:NSZeroRect operation:NSCompositeCopy fraction:1.0];
+  [RDControlIconColor() set]; NSRectFillUsingOperation(bounds,NSCompositeSourceIn);
+  [NSGraphicsContext restoreGraphicsState];
+  [bitmap setSize:NSMakeSize(canvasSize,canvasSize)];
+  image=[[[NSImage alloc] initWithSize:NSMakeSize(canvasSize,canvasSize)] autorelease];
+  [image addRepresentation:bitmap];
+  /* AppKit must preserve this explicit color, including on modern systems. */
+  if([image respondsToSelector:@selector(setTemplate:)]) [image setTemplate:NO];
+  [cache setObject:image forKey:key]; return image;
+}
+NSImage *RDYouTubeIcon(CGFloat scale) {
+  return RDControlIcon((AIFontAwesomeIcon)0xf167,AIFontAwesomeStyleBrands,24,32,scale);
 }
 NSString *RDChooseCookieFile(void) {
   NSOpenPanel *panel=[NSOpenPanel openPanel]; [panel setCanChooseDirectories:NO]; [panel setAllowsMultipleSelection:NO];

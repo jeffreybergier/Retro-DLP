@@ -23,24 +23,28 @@
   if([NSApp respondsToSelector:@selector(setAppleMenu:)]) [NSApp performSelector:@selector(setAppleMenu:) withObject:app];
   [[app addItemWithTitle:@"About RetroDLP" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""] setTarget:NSApp];
   [app addItem:[NSMenuItem separatorItem]];
-  NSMenu *cookies=[window_ menuForToolbarIdentifier:@"cookies"]; [cookies setTitle:@"Cookies"];
+  NSMenu *qualities=[window_ menuForMenuBarTitle:@"Download Quality"];
+  item=[app addItemWithTitle:@"Download Quality" action:NULL keyEquivalent:@""]; [app setSubmenu:qualities forItem:item];
+  NSMenu *cookies=[window_ menuForMenuBarTitle:@"Cookies"];
   item=[app addItemWithTitle:@"Cookies" action:NULL keyEquivalent:@""]; [app setSubmenu:cookies forItem:item];
   [app addItem:[NSMenuItem separatorItem]];
   [app addItemWithTitle:@"Quit RetroDLP" action:@selector(terminate:) keyEquivalent:@"q"];
-  NSArray *identifiers=[NSArray arrayWithObjects:@"download",@"play",nil];
-  NSArray *titles=[NSArray arrayWithObjects:@"Download",@"Play",nil];
+  NSArray *titles=[NSArray arrayWithObjects:@"File",@"Edit",@"View",@"Window",@"Help",nil];
   unsigned int index;
-  for(index=0;index<[identifiers count];++index) {
+  for(index=0;index<[titles count];++index) {
     NSString *title=[titles objectAtIndex:index];
-    NSMenu *menu=[window_ menuForToolbarIdentifier:[identifiers objectAtIndex:index]]; [menu setTitle:title];
+    NSMenu *menu=[window_ menuForMenuBarTitle:title];
+    if([title isEqualToString:@"Window"]) {
+      [menu addItemWithTitle:@"Minimize" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
+      [menu addItemWithTitle:@"Zoom" action:@selector(performZoom:) keyEquivalent:@""];
+      [menu addItem:[NSMenuItem separatorItem]];
+      [menu addItemWithTitle:@"Bring All to Front" action:@selector(arrangeInFront:) keyEquivalent:@""];
+      [NSApp setWindowsMenu:menu];
+    }
     item=[mainMenu addItemWithTitle:title action:NULL keyEquivalent:@""]; [mainMenu setSubmenu:menu forItem:item];
   }
-  NSMenu *edit=[[[NSMenu alloc] initWithTitle:@"Edit"] autorelease]; item=[mainMenu addItemWithTitle:@"Edit" action:NULL keyEquivalent:@""]; [mainMenu setSubmenu:edit forItem:item];
-  [edit addItemWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"]; [edit addItemWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
-  [edit addItemWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"]; [edit addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
-  NSMenu *view=[window_ menuForToolbarIdentifier:@"view"]; [view setTitle:@"View"];
-  item=[mainMenu addItemWithTitle:@"View" action:NULL keyEquivalent:@""]; [mainMenu setSubmenu:view forItem:item];
   [NSApp setMainMenu:mainMenu]; [window_ showWindow:nil]; [NSApp activateIgnoringOtherApps:YES];
+  [library_ startDownloads];
 }
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)application hasVisibleWindows:(BOOL)visible;
 { (void)application; (void)visible; [window_ showWindow:nil]; return YES; }

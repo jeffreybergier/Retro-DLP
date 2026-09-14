@@ -1,5 +1,5 @@
 APP_NAME = RetroDLP
-SOURCES = main.m LibraryWindow.m XPAppKit.m RDToolbarButton.m
+SOURCES = main.m LibraryWindow.m XPAppKit.m RDToolbarButton.m RDQueueOutline.m
 SHARED_DIR = ../shared
 SOURCE_DIRS = $(SHARED_DIR)
 vpath %.c $(SHARED_DIR)

@@ -89,6 +89,25 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 { [status_ release]; status_=[message copy]; [self changed]; }
 - (NSString *)status; { return status_; }
 - (BOOL)isBusy; { return busy_; }
+- (NSDictionary *)queueProgress;
+{
+  NSUInteger pending=0, running=0;
+  NSEnumerator *e=[[self jobsForPlaylist:nil completedOnly:NO] objectEnumerator]; NSDictionary *job;
+  while((job=[e nextObject])) {
+    NSString *state=[job objectForKey:@"state"];
+    if([state isEqualToString:@"queued"]) ++pending;
+  }
+  /* The worker can finish its store update before finished: reaches the UI. */
+  if([[activeCommand_ objectForKey:@"type"] isEqualToString:@"download"]) running=1;
+  return [NSDictionary dictionaryWithObjectsAndKeys:
+    [NSNumber numberWithBool:queueRun_],@"active",
+    [NSNumber numberWithUnsignedLong:queueProcessed_],@"processed",
+    [NSNumber numberWithUnsignedLong:queueFailed_],@"failed",
+    [NSNumber numberWithUnsignedLong:queueCancelled_],@"cancelled",
+    [NSNumber numberWithUnsignedLong:pending],@"pending",
+    [NSNumber numberWithUnsignedLong:running],@"running",
+    [NSNumber numberWithUnsignedLong:queueProcessed_+pending+running],@"total",nil];
+}
 - (NSString *)downloadsDirectory; { return root_; }
 - (BOOL)isSyncPendingForInput:(NSString *)input;
 {
@@ -111,6 +130,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   if(!S_ISREG(info.st_mode) || info.st_size<=0 || info.st_size>4*1024*1024 || access([cookies_ fileSystemRepresentation],R_OK)) return @"Unavailable";
   return @"Imported";
 }
+- (void)startDownloads;
+{ paused_=NO; [self showStatus:@"Ready"]; [self startNext]; }
 - (BOOL)isPaused; { return paused_; }
 - (NSArray *)rows:(rdapp_query)query playlist:(NSString *)key;
 {
@@ -229,7 +250,13 @@ static void download_callback(const rdlp_download_event *event,void *context) {
     if(!ok) { [self showStatus:@"Could not claim a download job."]; return; }
     if([rows count]) command=[NSDictionary dictionaryWithObjectsAndKeys:@"download",@"type",[rows objectAtIndex:0],@"job",nil];
   }
-  if(!command) { [self changed]; return; }
+  if(!command) {
+    if(!paused_) queueRun_=NO;
+    [self changed]; return;
+  }
+  if([[command objectForKey:@"type"] isEqualToString:@"download"] && !queueRun_) {
+    queueRun_=YES; queueProcessed_=0; queueFailed_=0; queueCancelled_=0;
+  }
   [activeCommand_ release]; activeCommand_=[command retain];
   busy_=YES; [lock_ lock]; cancel_=NO; activeJob_=identifier([[command objectForKey:@"job"] objectForKey:@"id"]); [lock_ unlock];
   [self showStatus:@"Starting…"];
@@ -237,6 +264,17 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 }
 - (void)finished:(NSString *)message;
 {
+  if([[activeCommand_ objectForKey:@"type"] isEqualToString:@"download"]) {
+    ++queueProcessed_;
+    NSString *key=[[activeCommand_ objectForKey:@"job"] objectForKey:@"id"];
+    NSEnumerator *e=[[self jobsForPlaylist:nil completedOnly:NO] objectEnumerator]; NSDictionary *job;
+    while((job=[e nextObject])) if([[job objectForKey:@"id"] isEqualToString:key]) {
+      if([[job objectForKey:@"state"] isEqualToString:@"failed"]) ++queueFailed_;
+      if([[job objectForKey:@"state"] isEqualToString:@"cancelled"] ||
+         [[job objectForKey:@"state"] isEqualToString:@"interrupted"]) ++queueCancelled_;
+      break;
+    }
+  }
   [activeCommand_ release]; activeCommand_=nil;
   busy_=NO; [lock_ lock]; activeJob_=0; [lock_ unlock];
   [self showStatus:message];
