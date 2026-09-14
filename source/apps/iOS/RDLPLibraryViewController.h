@@ -1,0 +1,43 @@
+#import <UIKit/UIKit.h>
+#import "RDLPLibrarySections.h"
+
+@interface RDLPLibraryViewController : UIViewController <UITableViewDataSource, UITableViewDelegate, UIAlertViewDelegate> {
+  RDLPLibrary *library_;
+  RDLPDownloadPolicy *policy_;
+  RDLPLibrarySections *model_;
+  NSDictionary *playlist_, *video_;
+  NSArray *sections_;
+  NSMutableSet *collapsed_;
+  UITableView *tableView_;
+  UILabel *status_;
+  UIProgressView *progress_;
+  RDLPScreen mode_;
+  UIAlertView *alert_;
+  NSDictionary *request_;
+  NSArray *alertActions_;
+  NSString *revealJobID_, *revealGroup_;
+}
+@property(nonatomic,readonly) UITableView *tableView;
+- (id)initWithLibrary:(RDLPLibrary *)library mode:(RDLPScreen)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;
+- (void)refresh:(id)sender;
+- (void)pushMode:(RDLPScreen)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;
+- (void)showJobInQueue:(NSDictionary *)job;
+@end
+
+/* Commands own immutable alert requests and revalidate them before execution. */
+@interface RDLPLibraryViewController (Actions)
+- (BOOL)requestCookieImport:(NSString *)path discover:(BOOL)discover;
+- (BOOL)enabled:(NSString *)action;
+- (void)performRow:(NSDictionary *)row;
+- (void)add:(id)sender;
+- (void)discover:(id)sender;
+- (void)syncAll:(id)sender;
+- (void)sync:(id)sender;
+- (void)downloadAll:(id)sender;
+- (void)removePlaylist:(id)sender;
+- (void)queue:(id)sender;
+- (void)settings:(id)sender;
+- (void)confirm:(NSDictionary *)request title:(NSString *)title detail:(NSString *)detail button:(NSString *)button;
+- (void)performConfirmed:(NSDictionary *)request;
+- (NSDictionary *)enqueue:(NSDictionary *)request allowRetry:(BOOL)retry;
+@end

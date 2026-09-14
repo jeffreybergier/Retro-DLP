@@ -210,11 +210,45 @@ imported cookie file is not removed.
 
 ## iOS workflow
 
-The root screen contains playlists, Queue, Downloads, and Settings. Add a playlist
-with **+**, or discover account playlists using **My Playlists**. Open a playlist
-and tap **Sync**. Select a video to download it or access its download jobs.
-**Download All** queues the entire playlist at the quality selected in Settings.
-Tapping a completed job offers native playback, retry, cancellation, and removal.
+The root screen groups System (All Downloads, Download Queue, Settings), Added
+Playlists, and My Playlists. Section headers collapse and preserve their state
+during refreshes. Add a playlist with **+**, discover account playlists using
+**My Playlists**, or open a playlist and tap **Sync**. Pending syncs/discovery
+cannot be submitted again. Sync All and account discovery confirm their scope.
+
+Playlist videos summarize every downloaded quality. A playable file takes
+priority over running, queued, failed/missing, and stopped work, even when the
+preferred quality differs. Status icons also have text equivalents. Opening a
+video offers native playback of its representative download, the action for the
+preferred quality, quality settings, and individual download jobs. All Downloads
+keeps individual qualities with their playlist and requested format visible.
+
+Choosing Low, Medium, High, or saving a valid Custom Format only saves the
+preference. It does not download anything. **Download Missing** confirms an exact,
+deduplicated plan at the selected quality. It includes new and removed/missing-file
+downloads, skips failed/interrupted/stopped jobs, and rechecks eligibility before
+performing the captured plan. Single-video downloads and retries are immediate.
+
+Queue has Done, Downloading, Queued, and Needs Attention sections, with
+collapsible playlist and video rows above individual qualities. Each pending or
+running quality has a Stop button; failed/stopped/missing qualities have Retry.
+These buttons carry stable job IDs, so a refresh cannot change their target.
+Starting or retrying reveals Queue, expands the target's ancestors, and selects
+that exact quality. Selection follows its status changes. Other collapsed branches
+stay collapsed. Job actions show only applicable playback, download, stop, delete,
+and Show in Queue commands; full errors are available in the job dialog.
+
+A fixed status area below each table shows current activity and a native progress
+bar for processed attempts in the current run. Failed and stopped counts are
+included in its accessible description. Historical jobs do not contribute, and
+progress appearing or disappearing never changes the table's frame.
+
+Deleting a download, stopping work, removing a playlist, replacing/removing
+cookies, and bulk operations require confirmation. Cancel performs no operation.
+Playlist removal is disabled until pending jobs and completed downloads have
+been removed. Cookie changes and discovery are disabled while busy; cookie status
+indicates local file availability, not authentication. Settings includes the
+Cookie Export Guide.
 
 Cookies can be imported by opening a text file in RetroDLP from another app, or
 by copying `cookies.txt` into RetroDLP's Documents using iTunes File Sharing and
@@ -228,10 +262,12 @@ and the legacy movie player on older iOS. H.264 profile, level, resolution, and
 frame rate still need to be supported by the device; choosing an MP4 format does
 not transcode it.
 
-Downloads are foreground operations. Backgrounding pauses the queue and cancels
-an active transfer. Resume the queue and retry that job after returning. The app
-does not claim indefinite background downloading or use a background-audio mode
-to keep downloads alive. Each launch starts the persisted queue paused.
+Downloads process automatically on launch and when returning to the foreground.
+Backgrounding pauses the queue and cancels an active transfer; queued work
+continues on return, but interrupted/stopped/failed jobs require an explicit Retry.
+Stopping one quality leaves other queued downloads eligible to run. There is no
+global Pause control or indefinite background downloading, and no background-audio
+mode is used to keep transfers alive.
 
 ## Shared architecture and invariants
 
@@ -266,6 +302,37 @@ staging files. Startup marks abandoned running jobs interrupted, reconciles
 published completed files, and marks missing downloads available for retry.
 Sync/export failures and media failures remain visible; no implicit quality
 fallback is added to an exact expression.
+
+## iOS code boundaries
+
+The recent macOS application changes map to iOS as follows. The earlier commits
+in the ten-commit review concern the shared CLI/library and are already consumed
+by both applications.
+
+| macOS change | UIKit equivalent |
+| --- | --- |
+| Sidebar outline and discovery provenance | Collapsible System, Added Playlists, My Playlists sections |
+| Queue outline and quality action cells | Grouped playlist/video/quality rows with stable-ID Stop/Retry buttons |
+| Context commands, quality preferences, confirmations | Video/job dialogs, Settings, and captured/revalidated alert requests |
+| Representative status and app-wide progress | Shared download policy, status icons, fixed status/progress area |
+| Automatic queue processing | Automatic foreground processing; background pause/cancellation |
+| Class naming and smaller collaborators | RDLP delegate, controller, sections model, actions category, UIKit compatibility wrapper |
+
+`RDLPAppDelegate` owns lifecycle and routes cookie URLs to the visible controller.
+`RDLPLibraryViewController` owns navigation, table rendering, refreshes, and stable
+selection. `RDLPLibrarySections` constructs read-only table snapshots, validates
+job actions, and plans missing downloads. `RDLPLibraryActions` is a controller
+category containing command execution and immutable confirmation requests.
+`RDLPUIKit` owns compatibility, cached status icons, alerts, and native playback.
+`RDLPDownloadPolicy` now lives in `shared/` and is compiled unchanged by both apps.
+All app-owned iOS classes/files use `RDLP`; preference and notification keys are
+unchanged. Application C APIs remain inside the Foundation bridge, with `main`
+as the UI entry-point exception.
+
+The iOS interface uses navigation and native playback in its own sandbox.
+Desktop menu bars, Finder reveal, and Mac application selection remain AppKit
+features. iOS retains iOS 5+ armv7 / iOS 7+ arm64 compatibility and manual memory
+management.
 
 ## macOS code boundaries
 
@@ -305,6 +372,39 @@ usage. The other narrow exceptions are the `main` entry point and the drawing
 math (`isfinite`/`ceil`) and AppKit ABI adaptation inside `RDLPAppKit`.
 
 ## Validation
+
+iOS parity refactor (2026-09-14): armv7 and arm64 builds completed without compiler
+warnings, both Apple static analyzers reported zero warnings/errors, and both
+platforms' artifact checks passed. All 13 portable store tests and the local HTTPS
+service integration suite passed. The isolated native suite passed on
+`koolphone5`, including playlist provenance, representative-quality status,
+quality-only preferences, captured/revalidated bulk plans, cancellation and cookie
+confirmations, exact-quality retry/stop, stable selection and scrolling, lifecycle
+pause/resume, glyph rendering, fixed progress layout, and local native MP4
+playback/dismissal. Final queue and progress screenshots were inspected. No live
+YouTube requests were made; the production app's library was not used for testing.
+The older iOS deployment targets and arm64 slice were cross-built/analyzed, not
+run on additional devices. The shared policy relocation is byte-for-byte unchanged.
+
+Build the isolated native iOS regression app after the normal app build:
+
+```sh
+python3 source/apps/tests/build_ios_ui_test.py
+scp build/apps/tests/RetroDLPIOSOfflineTest.ipa koolphone5:/tmp/
+ssh koolphone5 'appinst /tmp/RetroDLPIOSOfflineTest.ipa'
+ssh koolphone5 'su mobile -c "uiopen retrodlp-offline-test://run"'
+```
+
+The test has bundle ID `test.retrodlp.ios` and creates synthetic data only inside
+its own Documents/Fixture directory. Its `RDLPOfflineLibrary` overrides scheduling
+to never start a worker, and the bundle omits the CA resource. It can exercise
+sync/download actions without contacting YouTube. Native playback uses a bundled,
+FFmpeg-generated local MP4. Result and screenshots are in the test app's Documents
+(`result.txt`, `library.png`, `queue.png`, `progress.png`). On old iOS, allow Launch
+Services to finish registering a newly installed app before opening it. Reinstall
+the IPA for new test builds; overwriting a running signed executable in place can
+leave the kernel's cached signature stale.
+
 
 VLC preference update: all four macOS slices built without warnings, static
 analysis reported zero warnings/errors, and artifact checks passed. The full

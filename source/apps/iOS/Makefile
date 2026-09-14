@@ -1,5 +1,5 @@
 APP_NAME = RetroDLP
-SOURCES = main.m LibraryController.m XPUIKit.m
+SOURCES = main.m RDLPAppDelegate.m RDLPLibraryViewController.m RDLPLibraryActions.m RDLPLibrarySections.m RDLPUIKit.m RDLPDownloadPolicy.m
 SHARED_DIR = ../shared
 SOURCE_DIRS = $(SHARED_DIR)
 vpath %.c $(SHARED_DIR)
@@ -25,4 +25,5 @@ app: validate $(APP_BUNDLE)
 	@python3 ../package_ipa.py $(APP_BUNDLE) $(BUILD_DIR)/RetroDLP.ipa
 $(APP_BUNDLE): Info.plist Makefile $(ALTIVECCORE_DIR)/lib/cacert.pem $(wildcard $(ROOT)/build/apps/resources/ejs/*)
 $(INT_DIR)/$(APP_NAME)-bin: $(ROOT)/build/iOS/libretrodlp-download.a $(ROOT)/build/iOS/libretrodlp.a
+$(OBJS): $(wildcard *.h $(SHARED_DIR)/*.h)
 .PHONY: app
