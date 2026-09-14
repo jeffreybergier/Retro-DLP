@@ -1,11 +1,11 @@
 #import <AppKit/AppKit.h>
-#import "RetroDLPLibrary.h"
+#import "RDLPLibrary.h"
 
-enum { RDQueueGroup, RDQueuePlaylist, RDQueueVideo, RDQueueQuality };
-enum { RDQueueNoAction, RDQueueStop, RDQueueRetry };
+enum { RDLPQueueGroup, RDLPQueuePlaylist, RDLPQueueVideo, RDLPQueueQuality };
+enum { RDLPQueueNoAction, RDLPQueueStop, RDLPQueueRetry };
 
 /* Stable identities let NSOutlineView retain disclosure state across updates. */
-@interface RDQueueNode : NSObject {
+@interface RDLPQueueNode : NSObject {
 @public
   NSString *key, *title, *parentKey, *playlistID, *videoID;
   NSMutableArray *children;
@@ -14,16 +14,16 @@ enum { RDQueueNoAction, RDQueueStop, RDQueueRetry };
 }
 @end
 
-@interface RDQueueTree : NSObject {
+@interface RDLPQueueTree : NSObject {
   NSMutableDictionary *nodes_;
   NSArray *roots_;
 }
 - (NSArray *)roots;
-- (RDQueueNode *)nodeForKey:(NSString *)key;
-- (void)rebuildJobs:(NSArray *)jobs library:(RetroDLPLibrary *)library;
+- (RDLPQueueNode *)nodeForKey:(NSString *)key;
+- (void)rebuildJobs:(NSArray *)jobs library:(RDLPLibrary *)library;
 @end
 
-@interface RDQueueOutlineView : NSOutlineView {
+@interface RDLPQueueOutlineView : NSOutlineView {
   NSString *actionJobID_;
 }
 - (NSString *)actionJobID;
@@ -31,7 +31,7 @@ enum { RDQueueNoAction, RDQueueStop, RDQueueRetry };
 @end
 
 /* A cell-based action column works on Tiger without embedding NSButton views. */
-@interface RDQueueActionColumn : NSTableColumn {
+@interface RDLPQueueActionColumn : NSTableColumn {
   NSButtonCell *button_;
   NSTextFieldCell *blank_;
   id actionTarget_;

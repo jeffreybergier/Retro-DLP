@@ -1,8 +1,8 @@
 #import <Foundation/Foundation.h>
 
-extern NSString * const RetroDLPLibraryDidChange;
+extern NSString * const RDLPLibraryDidChange;
 /* Main-thread interface. Only this class imports application C headers. */
-@interface RetroDLPLibrary : NSObject {
+@interface RDLPLibrary : NSObject {
 @private
   void *store_;
   NSLock *lock_;

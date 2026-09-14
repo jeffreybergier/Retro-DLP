@@ -1,12 +1,13 @@
-#import "XPAppKit.h"
+#import "RDLPAppKit.h"
 #import <math.h>
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
+@implementation RDLPAppKit
 /* CGFloat returns need NSInvocation across the legacy and modern ABIs.
    Mirrors ENIL's XP_backingScaleFactor; Tiger has no backing scale API. */
-CGFloat RDWindowBackingScale(NSWindow *window) {
++ (CGFloat)backingScaleForWindow:(NSWindow *)window {
   SEL selector=@selector(backingScaleFactor);
   if(![window respondsToSelector:selector]) return 1.0;
   NSInvocation *inv=[NSInvocation invocationWithMethodSignature:[window methodSignatureForSelector:selector]];
@@ -16,25 +17,25 @@ CGFloat RDWindowBackingScale(NSWindow *window) {
 }
 /* Big Sur's expanded style preserves the separate, full-height toolbar.
    Earlier systems already use the classic toolbar layout. */
-void RDUseExpandedToolbar(NSWindow *window) {
++ (void)useExpandedToolbar:(NSWindow *)window {
   SEL selector=@selector(setToolbarStyle:);
   if(![window respondsToSelector:selector]) return;
   NSInvocation *inv=[NSInvocation invocationWithMethodSignature:[window methodSignatureForSelector:selector]];
   NSInteger style=1; /* NSWindowToolbarStyleExpanded */
   [inv setTarget:window]; [inv setSelector:selector]; [inv setArgument:&style atIndex:2]; [inv invoke];
 }
-void RDBeginSheet(NSWindow *sheet,NSWindow *window,id delegate,SEL didEnd) {
++ (void)beginSheet:(NSWindow *)sheet forWindow:(NSWindow *)window delegate:(id)delegate didEnd:(SEL)didEnd {
   [NSApp beginSheet:sheet modalForWindow:window modalDelegate:delegate didEndSelector:didEnd contextInfo:NULL];
 }
-void RDStyleButton(NSButton *button) { [button setBezelStyle:NSRoundedBezelStyle]; }
-void RDSetAppDelegate(NSApplication *application,id delegate) { [application setDelegate:delegate]; }
-void RDAlert(NSString *message) {
++ (void)styleButton:(NSButton *)button { [button setBezelStyle:NSRoundedBezelStyle]; }
++ (void)setApplication:(NSApplication *)application delegate:(id)delegate { [application setDelegate:delegate]; }
++ (void)showAlert:(NSString *)message {
   NSAlert *alert=[[[NSAlert alloc] init] autorelease]; [alert setMessageText:message]; [alert addButtonWithTitle:@"OK"]; [alert runModal];
 }
-void RDBeginAlertSheet(NSAlert *alert,NSWindow *window,id delegate,SEL didEnd) {
++ (void)beginAlertSheet:(NSAlert *)alert forWindow:(NSWindow *)window delegate:(id)delegate didEnd:(SEL)didEnd {
   [alert beginSheetModalForWindow:window modalDelegate:delegate didEndSelector:didEnd contextInfo:NULL];
 }
-static NSImage *RDYouTubeMask(CGFloat scale) {
++ (NSImage *)youTubeMaskForScale:(CGFloat)scale {
   NSImage *image=[AIFontAwesome imageForCodePoint:0xf167 style:AIFontAwesomeStyleBrands iconSize:24 canvasSize:32 scale:scale];
   /* Tiger's ATSUI Unicode mapping misses this Brands glyph. Rendering its
      named outline avoids the missing-glyph box after the font is registered. */
@@ -53,11 +54,10 @@ static NSImage *RDYouTubeMask(CGFloat scale) {
   }
   return image;
 }
-static NSColor *RDControlIconColor(void) {
++ (NSColor *)controlIconColor {
   return [NSColor blackColor];
 }
-NSImage *RDControlIcon(AIFontAwesomeIcon icon,AIFontAwesomeStyle style,
-                       CGFloat iconSize,CGFloat canvasSize,CGFloat scale) {
++ (NSImage *)controlIcon:(AIFontAwesomeIcon)icon style:(AIFontAwesomeStyle)style iconSize:(CGFloat)iconSize canvasSize:(CGFloat)canvasSize scale:(CGFloat)scale {
   if(!isfinite(iconSize) || !isfinite(canvasSize) || !isfinite(scale) ||
      iconSize<=0 || canvasSize<iconSize || scale<1 || canvasSize*scale>4096) return nil;
   static NSMutableDictionary *cache=nil;
@@ -67,7 +67,7 @@ NSImage *RDControlIcon(AIFontAwesomeIcon icon,AIFontAwesomeStyle style,
     [NSNumber numberWithDouble:canvasSize],[NSNumber numberWithDouble:scale],nil];
   NSImage *image=[cache objectForKey:key]; if(image) return image;
   NSImage *mask=(icon==(AIFontAwesomeIcon)0xf167 && style==AIFontAwesomeStyleBrands && iconSize==24 && canvasSize==32)
-    ?RDYouTubeMask(scale):[AIFontAwesome imageForIcon:icon style:style iconSize:iconSize canvasSize:canvasSize scale:scale];
+    ?[RDLPAppKit youTubeMaskForScale:scale]:[AIFontAwesome imageForIcon:icon style:style iconSize:iconSize canvasSize:canvasSize scale:scale];
   if(!mask) return nil;
   NSInteger pixels=(NSInteger)ceil(canvasSize*scale);
   NSBitmapImageRep *bitmap=[[[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
@@ -80,7 +80,7 @@ NSImage *RDControlIcon(AIFontAwesomeIcon icon,AIFontAwesomeStyle style,
   NSAffineTransform *transform=[NSAffineTransform transform]; [transform scaleBy:(CGFloat)pixels/canvasSize]; [transform concat];
   NSRect bounds=NSMakeRect(0,0,canvasSize,canvasSize);
   [mask drawInRect:bounds fromRect:NSZeroRect operation:NSCompositeCopy fraction:1.0];
-  [RDControlIconColor() set]; NSRectFillUsingOperation(bounds,NSCompositeSourceIn);
+  [[RDLPAppKit controlIconColor] set]; NSRectFillUsingOperation(bounds,NSCompositeSourceIn);
   [NSGraphicsContext restoreGraphicsState];
   [bitmap setSize:NSMakeSize(canvasSize,canvasSize)];
   image=[[[NSImage alloc] initWithSize:NSMakeSize(canvasSize,canvasSize)] autorelease];
@@ -89,19 +89,19 @@ NSImage *RDControlIcon(AIFontAwesomeIcon icon,AIFontAwesomeStyle style,
   if([image respondsToSelector:@selector(setTemplate:)]) [image setTemplate:NO];
   [cache setObject:image forKey:key]; return image;
 }
-NSImage *RDYouTubeIcon(CGFloat scale) {
-  return RDControlIcon((AIFontAwesomeIcon)0xf167,AIFontAwesomeStyleBrands,24,32,scale);
++ (NSImage *)youTubeIconForScale:(CGFloat)scale {
+  return [RDLPAppKit controlIcon:(AIFontAwesomeIcon)0xf167 style:AIFontAwesomeStyleBrands iconSize:24 canvasSize:32 scale:scale];
 }
-NSString *RDChooseCookieFile(void) {
++ (NSString *)chooseCookieFile {
   NSOpenPanel *panel=[NSOpenPanel openPanel]; [panel setCanChooseDirectories:NO]; [panel setAllowsMultipleSelection:NO];
   if([panel runModalForDirectory:nil file:nil types:nil]==NSOKButton) return [panel filename];
   return nil;
 }
-void RDRevealInFinder(NSString *path) {
++ (void)revealInFinder:(NSString *)path {
   if(!path || ![[NSWorkspace sharedWorkspace] selectFile:path inFileViewerRootedAtPath:@""])
-    RDAlert(@"Could not reveal this file in Finder. Check that the download exists.");
+    [RDLPAppKit showAlert:@"Could not reveal this file in Finder. Check that the download exists."];
 }
-NSString *RDDefaultApplication(NSString *path) {
++ (NSString *)defaultApplication:(NSString *)path {
   if(![path length] || ![[NSFileManager defaultManager] fileExistsAtPath:path]) return nil;
   NSWorkspace *workspace=[NSWorkspace sharedWorkspace];
   SEL selector=@selector(URLForApplicationToOpenURL:);
@@ -114,14 +114,28 @@ NSString *RDDefaultApplication(NSString *path) {
   if(![workspace getInfoForFile:path application:&application type:NULL] || ![application length]) return nil;
   return [application isAbsolutePath]?application:[workspace fullPathForApplication:application];
 }
-void RDOpenInVLC(NSString *path) {
-  NSString *application=[[NSWorkspace sharedWorkspace] fullPathForApplication:@"VLC"];
-  if(path && application && ![[NSWorkspace sharedWorkspace] openFile:path withApplication:application]) RDAlert(@"Could not open this file in VLC.");
++ (NSString *)VLCApplication {
+  return [[NSWorkspace sharedWorkspace] fullPathForApplication:@"VLC"];
 }
-void RDOpenDefaultApplication(NSString *path) {
++ (NSString *)preferredPlaybackApplication:(NSString *)path {
+  if(![path length] || ![[NSFileManager defaultManager] fileExistsAtPath:path]) return nil;
+  NSString *vlc=[self VLCApplication];
+  return vlc?vlc:[self defaultApplication:path];
+}
++ (void)openPreferredPlayback:(NSString *)path {
+  if(![path length] || ![[NSFileManager defaultManager] fileExistsAtPath:path]) return;
+  if([self VLCApplication]) [self openInVLC:path];
+  else [self openDefaultApplication:path];
+}
++ (void)openInVLC:(NSString *)path {
+  NSString *application=[self VLCApplication];
+  if(path && application && ![[NSWorkspace sharedWorkspace] openFile:path withApplication:application]) [RDLPAppKit showAlert:@"Could not open this file in VLC."];
+}
++ (void)openDefaultApplication:(NSString *)path {
   if(!path || ![[NSWorkspace sharedWorkspace] openFile:path])
-    RDAlert(@"Could not open this file in its default app. Check that the download exists and choose an app in Finder’s Open With settings.");
+    [RDLPAppKit showAlert:@"Could not open this file in its default app. Check that the download exists and choose an app in Finder’s Open With settings."];
 }
+@end
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif

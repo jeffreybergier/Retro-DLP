@@ -1,4 +1,4 @@
-#import "RetroDLPLibrary.h"
+#import "RDLPLibrary.h"
 #include "rdapp_store.h"
 #include "rdapp_service.h"
 #include <retrodlp/retrodlp.h>
@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <errno.h>
 
-NSString * const RetroDLPLibraryDidChange = @"RetroDLPLibraryDidChange";
+NSString * const RDLPLibraryDidChange = @"RetroDLPLibraryDidChange";
 static NSString *string(const char *s) { NSString *v=s?[NSString stringWithUTF8String:s]:nil; return v?v:@""; }
 static long long identifier(NSString *value) { return value?strtoll([value UTF8String],NULL,10):0; }
 static int collect(void *context,int count,const char *const *names,const char *const *values) {
@@ -17,7 +17,7 @@ static int collect(void *context,int count,const char *const *names,const char *
   for(i=0;i<count;++i) [row setObject:string(values[i]) forKey:string(names[i])];
   [(NSMutableArray *)context addObject:row]; return 1;
 }
-@interface RetroDLPLibrary (Private)
+@interface RDLPLibrary (Private)
 - (void)startNext;
 - (void)work:(NSDictionary *)command;
 - (void)finished:(NSString *)message;
@@ -28,19 +28,19 @@ static int collect(void *context,int count,const char *const *names,const char *
 @end
 static void store_lock(void *context) { [(NSLock *)context lock]; }
 static void store_unlock(void *context) { [(NSLock *)context unlock]; }
-static int cancel_callback(void *context) { return [(RetroDLPLibrary *)context cancelled]?1:0; }
+static int cancel_callback(void *context) { return [(RDLPLibrary *)context cancelled]?1:0; }
 static void event_callback(const rdlp_event *event,void *context) {
   (void)event;
-  [(RetroDLPLibrary *)context progress:@"Loading YouTube metadata" completed:0 expected:0];
+  [(RDLPLibrary *)context progress:@"Loading YouTube metadata" completed:0 expected:0];
 }
 static void download_callback(const rdlp_download_event *event,void *context) {
   const char *phases[]={"Downloading audio","Downloading video","Downloading video","Muxing MP4","Cleaning up"};
   unsigned int index=(unsigned int)event->type;
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
-  [(RetroDLPLibrary *)context progress:string(index<5?phases[index]:"Downloading") completed:event->completed_bytes expected:event->expected_bytes];
+  [(RDLPLibrary *)context progress:string(index<5?phases[index]:"Downloading") completed:event->completed_bytes expected:event->expected_bytes];
   [pool drain];
 }
-@implementation RetroDLPLibrary
+@implementation RDLPLibrary
 + (NSArray *)qualityTitles;
 { return [NSArray arrayWithObjects:@"Low · 360p",@"Medium · 720p",@"High · 1080p",@"Exact format…",nil]; }
 + (NSArray *)qualityFormats;
@@ -84,7 +84,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   rdapp_store_close(store_); [lock_ release]; [commands_ release]; [activeCommand_ release]; [support_ release]; [root_ release];
   [ca_ release]; [assets_ release]; [cookies_ release]; [status_ release]; [super dealloc];
 }
-- (void)changed; { [[NSNotificationCenter defaultCenter] postNotificationName:RetroDLPLibraryDidChange object:self]; }
+- (void)changed; { [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryDidChange object:self]; }
 - (void)showStatus:(NSString *)message;
 { [status_ release]; status_=[message copy]; [self changed]; }
 - (NSString *)status; { return status_; }

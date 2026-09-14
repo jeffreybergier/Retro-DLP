@@ -1,52 +1,54 @@
-#import "RDQueueOutline.h"
-#import "XPAppKit.h"
+#import "RDLPQueueOutlineView.h"
+#import "RDLPAppKit.h"
+#import "RDLPDownloadPolicy.h"
 #import <AIFontAwesome.h>
 
-@implementation RDQueueNode
+@implementation RDLPQueueNode
 - (id)init;
 { self=[super init]; if(self) children=[[NSMutableArray alloc] init]; return self; }
 - (void)dealloc;
 { [key release]; [title release]; [parentKey release]; [playlistID release]; [videoID release]; [children release]; [job release]; [super dealloc]; }
 @end
 
-@implementation RDQueueTree
+@implementation RDLPQueueTree
 - (id)init;
 { self=[super init]; if(self) nodes_=[[NSMutableDictionary alloc] init]; return self; }
 - (void)dealloc; { [nodes_ release]; [roots_ release]; [super dealloc]; }
 - (NSArray *)roots; { return roots_; }
-- (RDQueueNode *)nodeForKey:(NSString *)key; { return key?[nodes_ objectForKey:key]:nil; }
-- (RDQueueNode *)node:(NSString *)key title:(NSString *)title kind:(NSInteger)kind;
+- (RDLPQueueNode *)nodeForKey:(NSString *)key; { return key?[nodes_ objectForKey:key]:nil; }
+- (RDLPQueueNode *)node:(NSString *)key title:(NSString *)title kind:(NSInteger)kind;
 {
-  RDQueueNode *node=[nodes_ objectForKey:key];
-  if(!node) { node=[[[RDQueueNode alloc] init] autorelease]; node->key=[key copy]; [nodes_ setObject:node forKey:key]; }
+  RDLPQueueNode *node=[nodes_ objectForKey:key];
+  if(!node) { node=[[[RDLPQueueNode alloc] init] autorelease]; node->key=[key copy]; [nodes_ setObject:node forKey:key]; }
   [node->title release]; node->title=[title copy]; node->kind=kind; return node;
 }
-- (void)attach:(RDQueueNode *)node to:(RDQueueNode *)parent;
+- (void)attach:(RDLPQueueNode *)node to:(RDLPQueueNode *)parent;
 {
   if(![parent->children containsObject:node]) [parent->children addObject:node];
   [node->parentKey release]; node->parentKey=[parent->key copy];
 }
-- (void)rebuildJobs:(NSArray *)jobs library:(RetroDLPLibrary *)library;
+- (void)rebuildJobs:(NSArray *)jobs library:(RDLPLibrary *)library;
 {
-  NSEnumerator *e=[nodes_ objectEnumerator]; RDQueueNode *node;
+  RDLPDownloadPolicy *policy=[[[RDLPDownloadPolicy alloc] initWithLibrary:library] autorelease];
+  NSEnumerator *e=[nodes_ objectEnumerator]; RDLPQueueNode *node;
   while((node=[e nextObject])) [node->children removeAllObjects];
   NSArray *names=[NSArray arrayWithObjects:@"Done",@"Downloading",@"Queued",@"Needs Attention",nil];
   NSMutableArray *roots=[NSMutableArray array]; NSMutableSet *used=[NSMutableSet set]; NSUInteger i;
   for(i=0;i<[names count];++i) {
-    node=[self node:[NSString stringWithFormat:@"status:%lu",(unsigned long)i] title:[names objectAtIndex:i] kind:RDQueueGroup];
+    node=[self node:[NSString stringWithFormat:@"status:%lu",(unsigned long)i] title:[names objectAtIndex:i] kind:RDLPQueueGroup];
     [roots addObject:node]; [used addObject:node->key];
   }
   e=[jobs objectEnumerator]; NSDictionary *job;
   while((job=[e nextObject])) {
-    NSString *state=[job objectForKey:@"state"], *path=[library fileForJob:job];
-    BOOL complete=[state isEqualToString:@"complete"] && path && [[NSFileManager defaultManager] fileExistsAtPath:path];
+    NSString *state=[job objectForKey:@"state"];
+    BOOL complete=[policy playable:job];
     NSUInteger group=complete?0:([state isEqualToString:@"running"]?1:([state isEqualToString:@"queued"]?2:3));
-    RDQueueNode *root=[roots objectAtIndex:group];
+    RDLPQueueNode *root=[roots objectAtIndex:group];
     NSString *pid=[job objectForKey:@"playlist_id"], *vid=[job objectForKey:@"video_id"];
     NSString *playlistKey=[NSString stringWithFormat:@"%@/playlist:%@",root->key,pid];
-    RDQueueNode *playlist=[self node:playlistKey title:[job objectForKey:@"playlist_title"] kind:RDQueuePlaylist];
+    RDLPQueueNode *playlist=[self node:playlistKey title:[job objectForKey:@"playlist_title"] kind:RDLPQueuePlaylist];
     [playlist->playlistID release]; playlist->playlistID=[pid copy]; [self attach:playlist to:root];
-    RDQueueNode *video=[self node:[NSString stringWithFormat:@"%@/video:%@",playlistKey,vid] title:[job objectForKey:@"title"] kind:RDQueueVideo];
+    RDLPQueueNode *video=[self node:[NSString stringWithFormat:@"%@/video:%@",playlistKey,vid] title:[job objectForKey:@"title"] kind:RDLPQueueVideo];
     [video->playlistID release]; video->playlistID=[pid copy]; [video->videoID release]; video->videoID=[vid copy]; [self attach:video to:playlist];
     NSString *format=[job objectForKey:@"format"];
     NSString *quality=[format isEqualToString:@"18"]?@"Low · 360p":([format isEqualToString:@"136+140"]?@"Medium · 720p":([format isEqualToString:@"137+140"]?@"High · 1080p":@"Exact format"));
@@ -54,9 +56,9 @@
     NSString *actual=[job objectForKey:@"actual_format"];
     if([actual length] && ![actual isEqualToString:format]) label=[label stringByAppendingFormat:@" → %@",actual];
     if(group==3) label=[label stringByAppendingFormat:@" — %@",([state isEqualToString:@"removed"] || [state isEqualToString:@"complete"])?@"Missing file":([state isEqualToString:@"cancelled"]?@"Stopped":([state isEqualToString:@"interrupted"]?@"Interrupted":@"Failed"))];
-    node=[self node:[@"job:" stringByAppendingString:[job objectForKey:@"id"]] title:label kind:RDQueueQuality];
+    node=[self node:[@"job:" stringByAppendingString:[job objectForKey:@"id"]] title:label kind:RDLPQueueQuality];
     [node->playlistID release]; node->playlistID=[pid copy]; [node->videoID release]; node->videoID=[vid copy];
-    [node->job release]; node->job=[job retain]; node->action=complete?RDQueueNoAction:(group==3?RDQueueRetry:RDQueueStop);
+    [node->job release]; node->job=[job retain]; node->action=complete?RDLPQueueNoAction:(group==3?RDLPQueueRetry:RDLPQueueStop);
     [self attach:node to:video];
     [used addObject:playlist->key]; [used addObject:video->key]; [used addObject:node->key];
   }
@@ -67,7 +69,7 @@
 }
 @end
 
-@implementation RDQueueOutlineView
+@implementation RDLPQueueOutlineView
 - (void)dealloc; { [actionJobID_ release]; [super dealloc]; }
 - (NSString *)actionJobID; { return actionJobID_; }
 - (BOOL)isTrackingAction; { return actionJobID_!=nil; }
@@ -75,8 +77,8 @@
 {
   NSPoint point=[self convertPoint:[event locationInWindow] fromView:nil];
   NSInteger row=[self rowAtPoint:point], column=[self columnAtPoint:point];
-  RDQueueNode *node=row>=0?[self itemAtRow:row]:nil;
-  if(node && node->kind==RDQueueQuality && node->action!=RDQueueNoAction && column==1)
+  RDLPQueueNode *node=row>=0?[self itemAtRow:row]:nil;
+  if(node && node->kind==RDLPQueueQuality && node->action!=RDLPQueueNoAction && column==1)
     actionJobID_=[[node->job objectForKey:@"id"] copy];
   [[self delegate] performSelector:@selector(tableWasUsed:) withObject:self];
   [super mouseDown:event];
@@ -94,9 +96,9 @@
 }
 @end
 
-@interface RDQueueButtonCell : NSButtonCell
+@interface RDLPQueueButtonCell : NSButtonCell
 @end
-@implementation RDQueueButtonCell
+@implementation RDLPQueueButtonCell
 - (void)drawInteriorWithFrame:(NSRect)frame inView:(NSView *)view;
 {
   /* Keep the glyph legible inside the compact bezel without enlarging rows. */
@@ -116,11 +118,11 @@
   [[NSBezierPath bezierPathWithOvalInRect:NSInsetRect(circle,0.5,0.5)] stroke];
 }
 @end
-@implementation RDQueueActionColumn
+@implementation RDLPQueueActionColumn
 - (id)initWithTarget:(id)target;
 {
   self=[super initWithIdentifier:@"action"]; if(!self) return nil;
-  actionTarget_=target; button_=[[RDQueueButtonCell alloc] initTextCell:@""]; blank_=[[NSTextFieldCell alloc] initTextCell:@""];
+  actionTarget_=target; button_=[[RDLPQueueButtonCell alloc] initTextCell:@""]; blank_=[[NSTextFieldCell alloc] initTextCell:@""];
   [blank_ setEditable:NO]; [blank_ setDrawsBackground:NO];
 #if MAC_OS_X_VERSION_MAX_ALLOWED >= 101200
   [button_ setBezelStyle:NSBezelStyleTexturedRounded]; [button_ setButtonType:NSButtonTypeMomentaryPushIn];
@@ -128,16 +130,16 @@
   [button_ setBezelStyle:NSTexturedRoundedBezelStyle]; [button_ setButtonType:NSMomentaryPushInButton];
 #endif
   [button_ setImagePosition:NSImageOnly]; [button_ setTarget:target]; [button_ setAction:@selector(queueCellAction:)];
-  [self setDataCell:button_]; [self setEditable:YES]; [self setWidth:26]; [self setMinWidth:26]; [self setMaxWidth:26];
+  [self setDataCell:button_]; [self setEditable:YES]; [self setResizingMask:NSTableColumnNoResizing]; [self setWidth:26]; [self setMinWidth:26]; [self setMaxWidth:26];
   return self;
 }
 - (void)dealloc; { [button_ release]; [blank_ release]; [super dealloc]; }
 - (id)dataCellForRow:(NSInteger)row;
 {
   NSOutlineView *outline=(NSOutlineView *)[self tableView];
-  RDQueueNode *node=row>=0?[outline itemAtRow:row]:nil;
-  if(!node || node->kind!=RDQueueQuality || node->action==RDQueueNoAction) return blank_;
-  [button_ setImage:RDControlIcon(node->action==RDQueueStop?AIFAPause:AIFARotateRight,AIFontAwesomeStyleSolid,10,10,RDWindowBackingScale([outline window]))];
+  RDLPQueueNode *node=row>=0?[outline itemAtRow:row]:nil;
+  if(!node || node->kind!=RDLPQueueQuality || node->action==RDLPQueueNoAction) return blank_;
+  [button_ setImage:[RDLPAppKit controlIcon:node->action==RDLPQueueStop?AIFAPause:AIFARotateRight style:AIFontAwesomeStyleSolid iconSize:10 canvasSize:10 scale:[RDLPAppKit backingScaleForWindow:[outline window]]]];
   [button_ setEnabled:YES]; [button_ setTarget:actionTarget_]; return button_;
 }
 @end

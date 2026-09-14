@@ -31,7 +31,7 @@ cmd = ['/osxcross/legacy/target/bin/oppc32-gcc', '-arch', 'ppc',
        '-I' + str(root / 'source/apps/shared'),
        str(root / 'source/apps/tests/mac_toolbar_test.m')]
 cmd += [str(objects / (name + '.o')) for name in
-        ['LibraryWindow', 'XPAppKit', 'RDToolbarButton', 'RDQueueOutline', 'RetroDLPLibrary',
+        ['RDLPLibraryWindowController', 'RDLPAppKit', 'RDLPToolbarButton', 'RDLPQueueOutlineView', 'RDLPLibraryViews', 'RDLPDownloadPolicy', 'RDLPLibraryMenus', 'RDLPLibrary',
          'rdapp_store', 'rdapp_service']]
 cmd += [str(root / 'build/macOS/libretrodlp-download.a'),
         str(root / 'build/macOS/libretrodlp.a'),

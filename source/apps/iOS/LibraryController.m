@@ -5,14 +5,14 @@ static UIBarButtonItem *item(NSString *title,id target,SEL action) {
   return [[[UIBarButtonItem alloc] initWithTitle:title style:UIBarButtonItemStyleBordered target:target action:action] autorelease];
 }
 @implementation LibraryController
-- (id)initWithLibrary:(RetroDLPLibrary *)library mode:(int)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;
+- (id)initWithLibrary:(RDLPLibrary *)library mode:(int)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;
 {
   self=[super initWithStyle:UITableViewStyleGrouped]; if(!self) return nil;
   library_=[library retain]; mode_=mode; playlist_=[playlist copy]; video_=[video copy];
-  NSString *saved=[RetroDLPLibrary preferredFormat];
+  NSString *saved=[RDLPLibrary preferredFormat];
   format_=[(saved?saved:@"18") copy];
   self.title=mode==0?@"RetroDLP":(mode==1?[playlist objectForKey:@"title"]:(mode==2?@"Download Queue":(mode==3?@"Downloads":(mode==4?@"Settings":@"Video"))));
-  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RetroDLPLibraryDidChange object:library_]; return self;
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library_]; return self;
 }
 - (void)dealloc;
 { [[NSNotificationCenter defaultCenter] removeObserver:self]; [library_ release]; [playlist_ release]; [video_ release]; [rows_ release]; [status_ release]; [format_ release]; [pendingRemoval_ release]; [super dealloc]; }
@@ -37,7 +37,7 @@ static UIBarButtonItem *item(NSString *title,id target,SEL action) {
 {
   [super viewWillAppear:animated];
   [self.navigationController setToolbarHidden:![self.toolbarItems count] animated:animated];
-  NSString *saved=[RetroDLPLibrary preferredFormat];
+  NSString *saved=[RDLPLibrary preferredFormat];
   if(saved) { [format_ release]; format_=[saved copy]; }
   [self refresh:nil];
 }
@@ -93,8 +93,8 @@ static UIBarButtonItem *item(NSString *title,id target,SEL action) {
     cell.textLabel.font=[UIFont boldSystemFontOfSize:17];
   } else if(mode_==4) {
     if(index.section==0) {
-      NSArray *titles=[RetroDLPLibrary qualityTitles];
-      NSArray *formats=[RetroDLPLibrary qualityFormats];
+      NSArray *titles=[RDLPLibrary qualityTitles];
+      NSArray *formats=[RDLPLibrary qualityFormats];
       cell.textLabel.text=[titles objectAtIndex:(NSUInteger)index.row];
       BOOL selected=index.row<3?[format_ isEqualToString:[formats objectAtIndex:(NSUInteger)index.row]]:![formats containsObject:format_];
       cell.accessoryType=selected?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone;
@@ -128,7 +128,7 @@ static UIBarButtonItem *item(NSString *title,id target,SEL action) {
       if(index.row==3) {
         UIAlertView *alert=[[UIAlertView alloc] initWithTitle:@"Exact format" message:@"Example: 136+140 or 137+140/136+140" delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Save",nil];
         alert.tag=2; alert.alertViewStyle=UIAlertViewStylePlainTextInput; [alert textFieldAtIndex:0].text=format_; [alert show]; [alert release];
-      } else [self saveFormat:[[RetroDLPLibrary qualityFormats] objectAtIndex:(NSUInteger)index.row]];
+      } else [self saveFormat:[[RDLPLibrary qualityFormats] objectAtIndex:(NSUInteger)index.row]];
     } else if(index.row==0) {
       NSString *documents=[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES) objectAtIndex:0];
       [library_ importCookies:[documents stringByAppendingPathComponent:@"cookies.txt"]]; RDShowMessage([library_ status]);
@@ -144,7 +144,7 @@ static UIBarButtonItem *item(NSString *title,id target,SEL action) {
 }
 - (void)saveFormat:(NSString *)format;
 {
-  if(![RetroDLPLibrary savePreferredFormat:format]) { RDShowMessage(@"Enter an exact format such as 18 or 136+140."); return; }
+  if(![RDLPLibrary savePreferredFormat:format]) { RDShowMessage(@"Enter an exact format such as 18 or 136+140."); return; }
   [format_ release]; format_=[format copy]; [self refresh:nil];
 }
 - (void)add:(id)sender;

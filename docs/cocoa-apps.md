@@ -133,7 +133,7 @@ playlist, including Queue selections whose playlist is not selected in the sideb
 | Download / failed, cancelled, interrupted, removed, or missing-file job | Restart download and reveal/select it in Queue | Solid download |
 | Download / selected playlist | Sync metadata, disabled if already syncing | Solid arrows-rotate |
 | Download / no target | Add Playlist sheet | Solid plus |
-| Play / playable video or exported playlist | Open in default app; Reveal in Finder if no handler | YouTube Brands |
+| Play / playable video or exported playlist | Open in VLC when installed, otherwise the system default app; Reveal in Finder if neither is available | YouTube Brands |
 | Play / no playable target | Disabled | Dimmed YouTube Brands |
 
 Starting or retrying any download reveals Queue, selects the job, and scrolls
@@ -141,7 +141,10 @@ it into view, even if Queue was manually hidden. The selected quality is retaine
 
 Labels are Download and Play; Download becomes Delete for an existing downloaded video. The caret opens the same menu as right-click,
 Control-click, or Accessibility Show Menu. Open With is absent. Explicit VLC
-commands require VLC. Tiger uses a named Brands glyph outline to avoid ATSUI’s
+commands require VLC. The main Play button and video/queue double-clicks prefer
+VLC when installed, falling back to the system default only when VLC is absent.
+The Play tooltip names the selected player. Explicit “Default App” menu commands
+continue to use the system association. Tiger uses a named Brands glyph outline to avoid ATSUI’s
 missing Unicode mapping. Destructive actions retain their confirmation sheets, including the default Delete
 action for a downloaded video. Cookies and Queue toolbar behavior is unchanged.
 
@@ -238,7 +241,7 @@ to keep downloads alive. Each launch starts the persisted queue paused.
 - `rdapp_service.{h,c}`: sync, account discovery, resolve/download/mux orchestration,
   staging and publication, and durable operation outcomes. It accepts the public
   resolver transport/callback options, including fixture transports on Linux.
-- `RetroDLPLibrary.{h,m}`: shared Foundation/MRC bridge. Owns the store, main-thread
+- `RDLPLibrary.{h,m}`: shared Foundation/MRC bridge. Owns the store, main-thread
   commands, worker scheduling, cancellation locking, credential import, shared
   quality choices, and notifications. Network/media work runs off the main thread.
 - `macOS/`: native AppKit window/tables and default-app launching using AltivecCocoa's
@@ -264,7 +267,75 @@ published completed files, and marks missing downloads available for retry.
 Sync/export failures and media failures remain visible; no implicit quality
 fallback is added to an exact expression.
 
+## macOS code boundaries
+
+App-owned macOS classes and their source files use the `RDLP` prefix.
+`RDLPLibraryWindowController` owns the window, `RDLPAppDelegate` owns application
+lifecycle, and the shared `RDLPLibrary` bridge serves both macOS and iOS. Saved
+window identifiers, preferences, and the notification string retain their existing
+values so renaming classes does not reset application state.
+
+`RDLPLibraryWindowController` coordinates selection, refreshes, command validation, and
+confirmation sheets. Its collaborators have narrower responsibilities:
+
+- `RDLPDownloadPolicy` interprets job states and file availability, including retry,
+  cancellation, deletion eligibility, and representative-quality priority. The
+  table and queue share its playable-file rule. Equal priorities retain the
+  library's newest-first order.
+- `RDLPLibraryMenus` builds menu structure against the read-only
+  `RDLPLibraryMenuContext` protocol. Menu items still target the controller, which
+  validates and executes commands. Queue action groups are built explicitly;
+  they do not depend on deleting items at hard-coded positions.
+- `RDLPLibraryViews` constructs AppKit controls and owns the small selection,
+  accessibility, and Tiger pane-layout helpers.
+- `RDLPQueueTree` builds stable queue nodes; `RDLPQueueOutlineView` and
+  `RDLPQueueActionColumn` handle queue interaction and rendering.
+- `RDLPToolbarButton` handles toolbar interactions; its private
+  `RDLPToolbarGeometry` object keeps drawing and hit testing consistent.
+- `RDLPAppKit` exposes Objective-C class methods for OS compatibility, icon
+  rendering, file panels, alerts, and application launching.
+
+Keep application C APIs, C callbacks, raw buffers, and POSIX operations inside
+`shared/RDLPLibrary.m`, the designated C bridge. The portable store and
+service remain `.c` files. macOS UI code uses Objective-C methods and objects,
+with no application-defined free C helpers, C arrays, or custom C structs.
+Standard Cocoa scalar types, geometry helpers (`NSRect`, `NSMakeRect`, etc.),
+selectors, constants, and required AppKit callback signatures are normal Cocoa
+usage. The other narrow exceptions are the `main` entry point and the drawing
+math (`isfinite`/`ceil`) and AppKit ABI adaptation inside `RDLPAppKit`.
+
 ## Validation
+
+VLC preference update: all four macOS slices built without warnings, static
+analysis reported zero warnings/errors, and artifact checks passed. The full
+x4-vm native suite passed, including simulated VLC-present/absent behavior for
+videos and playlists, missing files, explicit Default App commands, and toolbar
+tooltips. `RDPlaybackHandoffTest=1` additionally clicked the real toolbar Play
+action for a synthetic local video; `lsof` confirmed VLC opened that fixture MP4.
+No YouTube requests were made, and system file associations were not changed.
+
+
+The subsequent `RDLP` class/file rename passed all four macOS and both iOS
+builds, both static analyzers with zero warnings/errors, portable app tests,
+artifact validation, and the offline native regression suite on x4-vm.
+
+macOS abstraction refactor (2026-09-14): all four macOS slices built without
+compiler warnings; Clang static analysis reported zero warnings/errors. The 13
+portable store tests, local service integration suite, and bundle artifact checks
+passed. The native regression app passed on x4-vm (Tiger 10.4.11), including
+new policy checks and actual queue-cell mouse tracking. The separate icon test
+passed color, transparency, cache, 1x/2x resolution, and Tiger glyph fallback
+checks. Investigation reproduced
+two failures in the original code: a test that assumed an unflipped scroll view,
+and queue action cells outside the visible pane. The test now compares window
+coordinates, and queue refresh fits columns with a fixed-width action column.
+The native test also asserts that each clicked action cell is visible.
+
+Use `open /tmp/.../RetroDLPToolbarTest.app` on Tiger to launch the native UI test
+through Launch Services. Test only a fresh synthetic fixture and the test bundle
+without its CA resource; service operations fail locally before networking.
+No live YouTube requests or external media playback were used for this refactor.
+
 
 `make app-test` runs without contacting YouTube. Store tests cover transactional
 rollback, duplicate ordering, queue idempotence, quality-specific jobs, interrupted
@@ -308,8 +379,7 @@ For an additional network safeguard, remove `Contents/Resources/cacert.pem` from
 that **test copy only**: the bridge refuses to run service operations when its
 bundled CA resource is missing. Never remove the resource from the release app.
 The default player must be installed and its first-launch prompts dismissed for
-playback checks. To test VLC, associate the fixture’s media files with VLC in
-Finder. The original Tiger playback test used [VideoLAN’s legacy VLC 0.9.10 build](https://images.videolan.org/vlc/download-macosx.html).
+playback checks. Automatic Play prefers installed VLC without changing Finder associations. The original Tiger playback test used [VideoLAN’s legacy VLC 0.9.10 build](https://images.videolan.org/vlc/download-macosx.html).
 
 Initial app implementation validation: all six Apple architecture slices
 built without compiler warnings; both Apple analyzers reported zero warnings or

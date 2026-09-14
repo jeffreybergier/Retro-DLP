@@ -1,13 +1,16 @@
 #import <AICookieCutterWindowController.h>
-#import "RetroDLPLibrary.h"
-#import "RDQueueOutline.h"
-@interface LibraryWindow : AICookieCutterWindowController {
-  RetroDLPLibrary *library_;
+#import "RDLPLibrary.h"
+#import "RDLPQueueOutlineView.h"
+#import "RDLPDownloadPolicy.h"
+#import "RDLPLibraryMenus.h"
+@interface RDLPLibraryWindowController : AICookieCutterWindowController <RDLPLibraryMenuContext> {
+  RDLPLibrary *library_;
+  RDLPDownloadPolicy *downloadPolicy_;
   NSOutlineView *sidebar_;
   NSTableView *table_;
   NSTableColumn *qualityColumn_;
-  RDQueueOutlineView *queue_;
-  RDQueueTree *queueTree_;
+  RDLPQueueOutlineView *queue_;
+  RDLPQueueTree *queueTree_;
   NSMutableSet *queueCollapsed_;
   NSMutableDictionary *sidebarItems_;
   BOOL sidebarLoaded_;
@@ -24,7 +27,7 @@
   BOOL refreshing_;
   BOOL didRestoreWindowFrame_;
 }
-- (id)initWithLibrary:(RetroDLPLibrary *)library;
+- (id)initWithLibrary:(RDLPLibrary *)library;
 - (NSMenu *)menuForToolbarIdentifier:(NSString *)identifier;
 - (NSMenu *)menuForMenuBarTitle:(NSString *)title;
 - (void)importCookies:(id)sender;

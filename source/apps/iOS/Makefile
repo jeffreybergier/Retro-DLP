@@ -4,7 +4,7 @@ SHARED_DIR = ../shared
 SOURCE_DIRS = $(SHARED_DIR)
 vpath %.c $(SHARED_DIR)
 vpath %.m $(SHARED_DIR)
-EXTRA_SOURCES = rdapp_store.c rdapp_service.c RetroDLPLibrary.m
+EXTRA_SOURCES = rdapp_store.c rdapp_service.c RDLPLibrary.m
 INFO_PLIST = Info.plist
 ALTIVECCORE_REQUIRED = 1
 ALTIVECCOCOA_REQUIRED = 1

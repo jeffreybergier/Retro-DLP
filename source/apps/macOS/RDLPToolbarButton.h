@@ -1,6 +1,6 @@
 #import <AppKit/AppKit.h>
 /* The primary action and the menu have independent availability. */
-@interface RDToolbarButton : NSButton {
+@interface RDLPToolbarButton : NSButton {
   BOOL defaultEnabled_;
   NSImage *caret_;
   NSRect caretInkBounds_;
@@ -12,7 +12,7 @@
 @end
 
 /* Tiger's toolbar host consumes secondary clicks before the custom view. */
-@interface RDApplication : NSApplication {
-  RDToolbarButton *pendingMenuButton_;
+@interface RDLPApplication : NSApplication {
+  RDLPToolbarButton *pendingMenuButton_;
 }
 @end

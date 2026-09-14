@@ -3,7 +3,7 @@
 #import "LibraryController.h"
 #import "XPUIKit.h"
 @interface AppDelegate : UIResponder <UIApplicationDelegate> {
-  UIWindow *window_; RetroDLPLibrary *library_;
+  UIWindow *window_; RDLPLibrary *library_;
 }
 @property(nonatomic,retain) UIWindow *window;
 @end
@@ -14,7 +14,7 @@
   (void)application; (void)options; [AIFontAwesome registerBundledFonts];
   NSString *documents=[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES) objectAtIndex:0];
   NSString *support=[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/RetroDLP"];
-  library_=[[RetroDLPLibrary alloc] initWithSupportDirectory:support downloadDirectory:[documents stringByAppendingPathComponent:@"RetroDLP"]];
+  library_=[[RDLPLibrary alloc] initWithSupportDirectory:support downloadDirectory:[documents stringByAppendingPathComponent:@"RetroDLP"]];
   window_=[[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
   if(library_) {
     LibraryController *root=[[LibraryController alloc] initWithLibrary:library_ mode:0 playlist:nil video:nil];

@@ -1,11 +1,77 @@
-#import "RDToolbarButton.h"
-#import "XPAppKit.h"
+#import "RDLPToolbarButton.h"
+#import "RDLPAppKit.h"
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
-/* Measure once when the image changes, in logical, bottom-left coordinates. */
-static NSRect caretInkBounds(NSImage *image) {
+@interface RDLPToolbarGeometry : NSObject {
+@public
+  NSRect icon, caret;
+  NSBezierPath *background;
+}
+- (id)initWithView:(NSView *)view caret:(NSImage *)caretImage ink:(NSRect)ink;
+@end
+@implementation RDLPToolbarGeometry
+- (id)initWithView:(NSView *)view caret:(NSImage *)caretImage ink:(NSRect)ink {
+  self=[super init]; if(!self) return nil;
+  const CGFloat radius=12.0,margin=1.0;
+  NSRect bounds=[view bounds]; NSSize size=[caretImage size];
+  icon=NSMakeRect(NSMidX(bounds)-16,NSMidY(bounds)-16,32,32);
+  NSPoint corner=NSMakePoint(NSMaxX(icon),[view isFlipped]?NSMaxY(icon):NSMinY(icon));
+  background=[[NSBezierPath alloc] init];
+  [background moveToPoint:NSZeroPoint]; [background lineToPoint:NSMakePoint(0,radius)];
+  [background appendBezierPathWithArcWithCenter:NSZeroPoint radius:radius startAngle:90 endAngle:180];
+  [background closePath];
+  NSAffineTransform *transform=[NSAffineTransform transform];
+  [transform translateXBy:corner.x yBy:corner.y];
+  [transform scaleXBy:1 yBy:[view isFlipped]?-1:1];
+  [background transformUsingAffineTransform:transform];
+  /* Align the visible triangle, not the transparent image canvas. */
+  CGFloat y=[view isFlipped]?corner.y-margin-size.height+NSMinY(ink):corner.y+margin-NSMinY(ink);
+  caret=NSMakeRect(corner.x-margin-NSMaxX(ink),y,size.width,size.height);
+  return self;
+}
+
+- (void)dealloc; { [background release]; [super dealloc]; }
+@end
+
+@implementation RDLPApplication
+- (void)dealloc; { [pendingMenuButton_ release]; [super dealloc]; }
+- (void)sendEvent:(NSEvent *)event;
+{
+  /* Control-click uses a left-button release. Open after that release so
+     AppKit does not treat it as an outside click and dismiss the menu. */
+  if([event type]==NSLeftMouseUp && pendingMenuButton_) {
+    RDLPToolbarButton *button=[[pendingMenuButton_ retain] autorelease];
+    [pendingMenuButton_ release]; pendingMenuButton_=nil;
+    if([button window]) [button showOptions:nil];
+    return;
+  }
+  if([event type]==NSLeftMouseDown) { [pendingMenuButton_ release]; pendingMenuButton_=nil; }
+  BOOL secondary=[event type]==NSRightMouseDown || ([event type]==NSLeftMouseDown && ([event modifierFlags]&NSControlKeyMask));
+  NSWindow *window=[event window];
+  if(secondary && ![window attachedSheet]) {
+    NSEnumerator *e=[[[window toolbar] items] objectEnumerator]; NSToolbarItem *item;
+    while((item=[e nextObject])) {
+      NSView *view=[item view];
+      if(![view isKindOfClass:[RDLPToolbarButton class]] || ![view menu]) continue;
+      NSPoint point=[view convertPoint:[event locationInWindow] fromView:nil];
+      NSRect hit=[view bounds];
+      /* Include the native label immediately below this icon. */
+      if(![view isFlipped]) hit.origin.y-=20;
+      hit.size.height+=20;
+      if(NSPointInRect(point,hit)) {
+        if([event type]==NSLeftMouseDown) pendingMenuButton_=[(RDLPToolbarButton *)view retain];
+        else [view rightMouseDown:event];
+        return;
+      }
+    }
+  }
+  [super sendEvent:event];
+}
+@end
+@implementation RDLPToolbarButton
+- (NSRect)inkBoundsForImage:(NSImage *)image {
   NSSize size=[image size];
   NSEnumerator *e=[[image representations] objectEnumerator]; NSImageRep *rep;
   while((rep=[e nextObject])) if([rep isKindOfClass:[NSBitmapImageRep class]]) {
@@ -21,71 +87,13 @@ static NSRect caretInkBounds(NSImage *image) {
   }
   return NSMakeRect(0,0,size.width,size.height);
 }
-typedef struct {
-  NSRect icon,caret;
-  NSBezierPath *background;
-} RDToolbarLayout;
-static RDToolbarLayout toolbarLayout(NSView *view,NSImage *caret,NSRect ink) {
-  const CGFloat radius=12.0,margin=1.0;
-  NSRect bounds=[view bounds]; NSSize size=[caret size];
-  RDToolbarLayout layout;
-  layout.icon=NSMakeRect(NSMidX(bounds)-16,NSMidY(bounds)-16,32,32);
-  NSPoint corner=NSMakePoint(NSMaxX(layout.icon),[view isFlipped]?NSMaxY(layout.icon):NSMinY(layout.icon));
-  layout.background=[NSBezierPath bezierPath];
-  [layout.background moveToPoint:NSZeroPoint]; [layout.background lineToPoint:NSMakePoint(0,radius)];
-  [layout.background appendBezierPathWithArcWithCenter:NSZeroPoint radius:radius startAngle:90 endAngle:180];
-  [layout.background closePath];
-  NSAffineTransform *transform=[NSAffineTransform transform];
-  [transform translateXBy:corner.x yBy:corner.y];
-  [transform scaleXBy:1 yBy:[view isFlipped]?-1:1];
-  [layout.background transformUsingAffineTransform:transform];
-  /* Align the visible triangle, not the transparent image canvas. */
-  CGFloat y=[view isFlipped]?corner.y-margin-size.height+NSMinY(ink):corner.y+margin-NSMinY(ink);
-  layout.caret=NSMakeRect(corner.x-margin-NSMaxX(ink),y,size.width,size.height);
-  return layout;
+- (void)trackOptions:(NSMenu *)menu event:(NSEvent *)event {
+  NSString *tip=[[self toolTip] copy];
+  [self setToolTip:nil];
+  [NSMenu popUpContextMenu:menu withEvent:event forView:self];
+  [self setToolTip:tip]; [tip release];
 }
-static void trackOptions(RDToolbarButton *view,NSMenu *menu,NSEvent *event) {
-  NSString *tip=[[view toolTip] copy];
-  [view setToolTip:nil];
-  [NSMenu popUpContextMenu:menu withEvent:event forView:view];
-  [view setToolTip:tip]; [tip release];
-}
-@implementation RDApplication
-- (void)dealloc; { [pendingMenuButton_ release]; [super dealloc]; }
-- (void)sendEvent:(NSEvent *)event;
-{
-  /* Control-click uses a left-button release. Open after that release so
-     AppKit does not treat it as an outside click and dismiss the menu. */
-  if([event type]==NSLeftMouseUp && pendingMenuButton_) {
-    RDToolbarButton *button=[[pendingMenuButton_ retain] autorelease];
-    [pendingMenuButton_ release]; pendingMenuButton_=nil;
-    if([button window]) [button showOptions:nil];
-    return;
-  }
-  if([event type]==NSLeftMouseDown) { [pendingMenuButton_ release]; pendingMenuButton_=nil; }
-  BOOL secondary=[event type]==NSRightMouseDown || ([event type]==NSLeftMouseDown && ([event modifierFlags]&NSControlKeyMask));
-  NSWindow *window=[event window];
-  if(secondary && ![window attachedSheet]) {
-    NSEnumerator *e=[[[window toolbar] items] objectEnumerator]; NSToolbarItem *item;
-    while((item=[e nextObject])) {
-      NSView *view=[item view];
-      if(![view isKindOfClass:[RDToolbarButton class]] || ![view menu]) continue;
-      NSPoint point=[view convertPoint:[event locationInWindow] fromView:nil];
-      NSRect hit=[view bounds];
-      /* Include the native label immediately below this icon. */
-      if(![view isFlipped]) hit.origin.y-=20;
-      hit.size.height+=20;
-      if(NSPointInRect(point,hit)) {
-        if([event type]==NSLeftMouseDown) pendingMenuButton_=[(RDToolbarButton *)view retain];
-        else [view rightMouseDown:event];
-        return;
-      }
-    }
-  }
-  [super sendEvent:event];
-}
-@end
-@implementation RDToolbarButton
+
 - (id)initWithFrame:(NSRect)frame;
 {
   self=[super initWithFrame:frame];
@@ -98,27 +106,27 @@ static void trackOptions(RDToolbarButton *view,NSMenu *menu,NSEvent *event) {
 - (void)setCaretImage:(NSImage *)image;
 {
   [image retain]; [caret_ release]; caret_=image;
-  caretInkBounds_=caretInkBounds(image); [self setNeedsDisplay:YES];
+  caretInkBounds_=[self inkBoundsForImage:image]; [self setNeedsDisplay:YES];
 }
 - (void)drawRect:(NSRect)dirty;
 {
   (void)dirty;
-  RDToolbarLayout layout=toolbarLayout(self,caret_,caretInkBounds_);
+  RDLPToolbarGeometry *layout=[[[RDLPToolbarGeometry alloc] initWithView:self caret:caret_ ink:caretInkBounds_] autorelease];
   /* Keep native pressed/disabled feedback for the explicitly colored images. */
   BOOL enabled=[[self cell] isEnabled];
   [[self cell] setEnabled:defaultEnabled_];
-  [(NSButtonCell *)[self cell] drawImage:[self image] withFrame:layout.icon inView:self];
+  [(NSButtonCell *)[self cell] drawImage:[self image] withFrame:layout->icon inView:self];
   [[self cell] setEnabled:enabled];
   if([self menu]) {
-    [[NSColor windowBackgroundColor] set]; [layout.background fill];
-    [(NSButtonCell *)[self cell] drawImage:caret_ withFrame:layout.caret inView:self];
+    [[NSColor windowBackgroundColor] set]; [layout->background fill];
+    [(NSButtonCell *)[self cell] drawImage:caret_ withFrame:layout->caret inView:self];
   }
 }
 - (void)mouseDown:(NSEvent *)event;
 {
   NSPoint point=[self convertPoint:[event locationInWindow] fromView:nil];
-  RDToolbarLayout layout=toolbarLayout(self,caret_,caretInkBounds_);
-  if(([event modifierFlags]&NSControlKeyMask) || ([self menu] && [layout.background containsPoint:point])) {
+  RDLPToolbarGeometry *layout=[[[RDLPToolbarGeometry alloc] initWithView:self caret:caret_ ink:caretInkBounds_] autorelease];
+  if(([event modifierFlags]&NSControlKeyMask) || ([self menu] && [layout->background containsPoint:point])) {
     [self showOptions:nil]; return;
   }
   if(defaultEnabled_) [super mouseDown:event];
@@ -127,7 +135,7 @@ static void trackOptions(RDToolbarButton *view,NSMenu *menu,NSEvent *event) {
 {
   /* Track real mouse events directly so the matching mouse-up does not
      dismiss a menu created later from a synthetic event. */
-  if([self menu] && ![[self window] attachedSheet]) trackOptions(self,[self menu],event);
+  if([self menu] && ![[self window] attachedSheet]) [self trackOptions:[self menu] event:event];
 }
 - (void)performClick:(id)sender; { if(defaultEnabled_) [super performClick:sender]; }
 - (void)showOptions:(id)sender;
@@ -141,7 +149,7 @@ static void trackOptions(RDToolbarButton *view,NSMenu *menu,NSEvent *event) {
   NSPoint point=[self convertPoint:[self isFlipped]?NSMakePoint(0,[self bounds].size.height):NSZeroPoint toView:nil];
   NSEvent *event=[NSEvent mouseEventWithType:NSRightMouseDown location:point modifierFlags:0
     timestamp:0 windowNumber:[[self window] windowNumber] context:nil eventNumber:0 clickCount:1 pressure:1];
-  if(![[self window] attachedSheet]) trackOptions(self,menu,event);
+  if(![[self window] attachedSheet]) [self trackOptions:menu event:event];
 }
 - (NSArray *)accessibilityActionNames;
 {
