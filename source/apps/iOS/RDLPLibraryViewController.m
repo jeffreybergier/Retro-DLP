@@ -1,5 +1,6 @@
 #import "RDLPLibraryViewController.h"
 #import "RDLPUIKit.h"
+#import "RDLPPlaylistViewController.h"
 
 @implementation RDLPLibraryViewController
 @synthesize tableView=tableView_;
@@ -46,9 +47,6 @@
     self.navigationItem.leftBarButtonItem=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit settingsIcon] style:UIBarButtonItemStylePlain target:self action:@selector(settings:)] autorelease];
     self.navigationItem.leftBarButtonItem.accessibilityLabel=@"Settings";
     self.navigationItem.rightBarButtonItem.accessibilityLabel=@"Playlist Actions";
-  } else if(mode_==RDLPScreenPlaylist) {
-    self.toolbarItems=[NSArray arrayWithObjects:[RDLPUIKit item:@"Sync" target:self action:@selector(sync:)],[RDLPUIKit item:@"Download Missing" target:self action:@selector(downloadAll:)],[RDLPUIKit item:@"Remove" target:self action:@selector(removePlaylist:)],nil];
-    self.navigationItem.rightBarButtonItem=[RDLPUIKit item:@"Quality" target:self action:@selector(settings:)];
   }
   [self refresh:nil];
 }
@@ -202,7 +200,9 @@
 }
 - (void)pushMode:(RDLPScreen)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;
 {
-  RDLPLibraryViewController *controller=[[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:mode playlist:playlist video:video];
+  UIViewController *controller=mode==RDLPScreenPlaylist?
+    (UIViewController *)[[RDLPPlaylistViewController alloc] initWithLibrary:library_ playlist:playlist]:
+    [[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:mode playlist:playlist video:video];
   [self.navigationController pushViewController:controller animated:YES]; [controller release];
 }
 - (void)showJobInQueue:(NSDictionary *)job;

@@ -1,4 +1,5 @@
 #import "RDLPUIKit.h"
+#import "RDLPStatusBarView.h"
 #import <AIFontAwesome.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <AVFoundation/AVFoundation.h>
@@ -16,12 +17,10 @@
   static NSMutableDictionary *images=nil;
   if(!images) images=[[NSMutableDictionary alloc] init];
   UIImage *cached=[images objectForKey:status]; if(cached) return cached;
-  AIFontAwesomeIcon icon=AIFACircle;
+  AIFontAwesomeIcon icon=AIFATriangleExclamation;
   if([status isEqualToString:@"Downloaded"]) icon=AIFACircleCheck;
-  else if([status isEqualToString:@"Downloading"]) icon=AIFADownload;
-  else if([status isEqualToString:@"Queued"]) icon=AIFAHourglass;
-  else if([status isEqualToString:@"Cancelled"]) icon=AIFACirclePause;
-  else if(![status isEqualToString:@"Not downloaded"]) icon=AIFATriangleExclamation;
+  else if([status isEqualToString:@"Downloading"] || [status isEqualToString:@"Queued"]) icon=AIFAHourglass;
+  else if([status isEqualToString:@"Not downloaded"]) icon=AIFADownload;
   UIImage *image=[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid iconSize:14 canvasSize:18 color:[UIColor darkGrayColor] scale:0];
   if(image) [images setObject:image forKey:status]; return image;
 }
@@ -40,6 +39,19 @@
 {
   /* ENIL's toolbar glyph geometry; UIKit supplies tint on iOS 7+. */
   return [AIFontAwesome imageForIcon:AIFAList style:AIFontAwesomeStyleSolid iconSize:18 canvasSize:28 color:[UIColor whiteColor] scale:0];
+}
+
++ (UIImage *)syncIcon;
+{ return [AIFontAwesome imageForIcon:AIFAArrowsRotate style:AIFontAwesomeStyleSolid iconSize:22 canvasSize:26 color:[UIColor blackColor] scale:0]; }
+
++ (NSArray *)statusToolbarItems:(RDLPStatusBarView *)status target:(id)target queueAction:(SEL)action;
+{
+  UIBarButtonItem *left=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
+  UIBarButtonItem *right=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
+  UIBarButtonItem *message=[[[UIBarButtonItem alloc] initWithCustomView:status] autorelease];
+  UIBarButtonItem *queue=[[[UIBarButtonItem alloc] initWithImage:[self queueToolbarIcon] style:UIBarButtonItemStyleBordered target:target action:action] autorelease];
+  queue.accessibilityLabel=@"Download Queue";
+  return [NSArray arrayWithObjects:left,message,right,queue,nil];
 }
 
 + (void)showMessage:(NSString *)message; {

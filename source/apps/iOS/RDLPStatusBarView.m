@@ -1,5 +1,7 @@
 #import "RDLPStatusBarView.h"
 
+NSString * const RDLPStatusBarDidClearStatus=@"RDLPStatusBarDidClearStatus";
+
 /* ENIL's content sizing and optical alignment: 15pt steady text, 13pt active
  * text, a 100pt progress track, and a 2pt gap in a 30pt custom view. */
 @implementation RDLPStatusBarView
@@ -53,7 +55,9 @@
   hideStatusAt_=0;
   label_.text=@"";
   [self resizeToContent];
+  [[NSNotificationCenter defaultCenter] postNotificationName:RDLPStatusBarDidClearStatus object:self];
 }
+- (BOOL)hasStatus; { return [label_.text length]>0; }
 - (void)updateStatus:(NSString *)status active:(BOOL)active;
 {
   NSString *message=status?status:@"";

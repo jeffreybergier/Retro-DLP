@@ -44,7 +44,7 @@ cmd = ['/usr/bin/clang', '-target', 'armv7-apple-ios5.0', '-arch', 'armv7',
        str(root / 'source/apps/tests/ios_ui_test.m')]
 cmd += [str(objects / (name + '.o')) for name in
         ['RDLPAppDelegate', 'RDLPLibraryViewController', 'RDLPLibraryActions',
-         'RDLPLibrarySections', 'RDLPUIKit', 'RDLPDownloadPolicy', 'RDLPStatusBarView', 'RDLPSettingsViewController', 'RDLPPlaylistsViewController',
+         'RDLPLibrarySections', 'RDLPUIKit', 'RDLPDownloadPolicy', 'RDLPStatusBarView', 'RDLPSettingsViewController', 'RDLPPlaylistsViewController', 'RDLPPlaylistViewController',
          'RDLPLibrary', 'rdapp_store', 'rdapp_service']]
 cmd += [str(root / 'build/iOS/libretrodlp-download.a'),
         str(root / 'build/iOS/libretrodlp.a'),

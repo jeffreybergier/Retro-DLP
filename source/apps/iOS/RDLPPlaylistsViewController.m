@@ -1,5 +1,6 @@
 #import "RDLPPlaylistsViewController.h"
 #import "RDLPLibraryViewController.h"
+#import "RDLPPlaylistViewController.h"
 #import "RDLPSettingsViewController.h"
 #import "RDLPUIKit.h"
 
@@ -29,12 +30,7 @@
   self.navigationItem.rightBarButtonItem.accessibilityLabel=@"Playlist Actions";
   statusBar_=[[RDLPStatusBarView alloc] initWithFrame:CGRectZero];
   statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-80);
-  UIBarButtonItem *left=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
-  UIBarButtonItem *right=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
-  UIBarButtonItem *status=[[[UIBarButtonItem alloc] initWithCustomView:statusBar_] autorelease];
-  UIBarButtonItem *queue=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit queueToolbarIcon] style:UIBarButtonItemStyleBordered target:self action:@selector(queue:)] autorelease];
-  queue.accessibilityLabel=@"Download Queue";
-  self.toolbarItems=[NSArray arrayWithObjects:left,status,right,queue,nil];
+  self.toolbarItems=[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:@selector(queue:)];
   [self refresh:nil];
 }
 - (void)viewWillAppear:(BOOL)animated;
@@ -74,7 +70,9 @@
 {
   NSString *action=[row objectForKey:@"action"];
   if(![action isEqualToString:@"playlist"] && ![action isEqualToString:@"downloads"]) return;
-  RDLPLibraryViewController *controller=[[[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:[action isEqualToString:@"playlist"]?RDLPScreenPlaylist:RDLPScreenDownloads playlist:[row objectForKey:@"playlist"] video:nil] autorelease];
+  UIViewController *controller=[action isEqualToString:@"playlist"]?
+    (UIViewController *)[[[RDLPPlaylistViewController alloc] initWithLibrary:library_ playlist:[row objectForKey:@"playlist"]] autorelease]:
+    [[[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:RDLPScreenDownloads playlist:nil video:nil] autorelease];
   [self.navigationController pushViewController:controller animated:YES];
 }
 - (BOOL)enabled:(NSString *)action;

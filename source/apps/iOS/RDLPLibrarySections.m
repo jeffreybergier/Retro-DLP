@@ -140,9 +140,19 @@
     if(screen==RDLPScreenQueue) return [self queueSections:jobs collapsed:collapsed];
     if(screen==RDLPScreenPlaylist) {
       for(NSDictionary *entry in [library_ entriesForPlaylist:pid]) {
-        NSDictionary *job=[policy_ representativeJobForEntry:entry playlist:pid jobs:jobs];
-        NSMutableDictionary *row=[self row:[entry objectForKey:@"title"] detail:[policy_ statusForJob:job] action:@"video"];
-        [row setObject:entry forKey:@"video"]; [row setObject:[policy_ statusForJob:job] forKey:@"status"]; [rows addObject:row];
+        BOOL hasJobs=NO;
+        /* Keep qualities in creation order, even as their statuses change.
+           Repeated playlist entries expand to the same quality/status rows. */
+        for(NSDictionary *job in [jobs reverseObjectEnumerator]) {
+          if(![[job objectForKey:@"video_id"] isEqualToString:[entry objectForKey:@"video_id"]]) continue;
+          NSMutableDictionary *row=[self row:[entry objectForKey:@"title"] detail:[self qualityLabel:[job objectForKey:@"format"]] action:@"video"];
+          [row setObject:entry forKey:@"video"]; [row setObject:job forKey:@"job"];
+          [row setObject:[policy_ statusForJob:job] forKey:@"status"]; [rows addObject:row]; hasJobs=YES;
+        }
+        if(!hasJobs) {
+          NSMutableDictionary *row=[self row:[entry objectForKey:@"title"] detail:[self qualityLabel:[RDLPLibrary preferredFormat]] action:@"video"];
+          [row setObject:entry forKey:@"video"]; [row setObject:@"Not downloaded" forKey:@"status"]; [rows addObject:row];
+        }
       }
     } else {
       if(screen==RDLPScreenVideo) {

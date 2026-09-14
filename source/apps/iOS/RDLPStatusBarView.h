@@ -1,5 +1,7 @@
 #import <UIKit/UIKit.h>
 
+extern NSString * const RDLPStatusBarDidClearStatus;
+
 /* Adapted from ENIL's SyncMiniBarView. Hosted in a real UIToolbar so UIKit
  * supplies the appropriate iOS 5/6 or iOS 7+ chrome. */
 @interface RDLPStatusBarView : UIView {
@@ -11,5 +13,6 @@
   NSTimeInterval hideStatusAt_;
 }
 @property(nonatomic,assign) CGFloat maximumWidth;
+@property(nonatomic,readonly) BOOL hasStatus;
 - (void)setStatus:(NSString *)status progress:(NSDictionary *)progress busy:(BOOL)busy;
 @end
