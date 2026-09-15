@@ -17,6 +17,8 @@ extern NSString * const RDLPLibraryDidChange;
 }
 + (NSArray *)qualityTitles;
 + (NSArray *)qualityFormats;
+/* Preset name and exact expression, without implying measured resolution. */
++ (NSString *)qualityLabelForFormat:(NSString *)format;
 + (NSString *)preferredFormat;
 + (BOOL)validFormat:(NSString *)format;
 + (BOOL)savePreferredFormat:(NSString *)format;

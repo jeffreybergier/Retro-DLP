@@ -1,4 +1,5 @@
 #import "RDLPLibraryMenus.h"
+#import "RDLPLibrary.h"
 
 @implementation RDLPLibraryMenus
 + (void)addItemToMenu:(NSMenu *)menu title:(NSString *)title action:(SEL)action target:(id)target;
@@ -46,7 +47,7 @@
     [menu addItem:[NSMenuItem separatorItem]];
     [self addItemToMenu:menu title:@"Show in Queue" action:@selector(showTargetInQueue:) target:target];
   } else if([title isEqualToString:@"Download Quality"]) {
-    NSArray *names=[NSArray arrayWithObjects:@"Low",@"Medium",@"High",@"Custom Format…",nil];
+    NSArray *names=[NSArray arrayWithObjects:[RDLPLibrary qualityLabelForFormat:@"18"],[RDLPLibrary qualityLabelForFormat:@"136+140"],[RDLPLibrary qualityLabelForFormat:@"137+140"],@"Custom Format…",nil];
     unsigned int index;
     for(index=0;index<[names count];++index) {
       NSMenuItem *choice=[menu addItemWithTitle:[names objectAtIndex:index] action:@selector(chooseDownload:) keyEquivalent:@""];
@@ -102,7 +103,7 @@
     [command setTarget:target]; [command setTag:video?0:5];
     NSMenuItem *parent=[menu addItemWithTitle:@"Download Quality" action:NULL keyEquivalent:@""];
     NSMenu *qualities=[[[NSMenu alloc] initWithTitle:@"Download Quality"] autorelease];
-    NSArray *titles=[NSArray arrayWithObjects:@"Last Used Quality",@"Low",@"Medium",@"High",@"Custom Format…",nil];
+    NSArray *titles=[NSArray arrayWithObjects:@"Last Used Quality",[RDLPLibrary qualityLabelForFormat:@"18"],[RDLPLibrary qualityLabelForFormat:@"136+140"],[RDLPLibrary qualityLabelForFormat:@"137+140"],@"Custom Format…",nil];
     unsigned int index;
     for(index=1;index<5;++index) {
       NSMenuItem *choice=[qualities addItemWithTitle:[titles objectAtIndex:index] action:@selector(chooseDownload:) keyEquivalent:@""];

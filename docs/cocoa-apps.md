@@ -92,6 +92,12 @@ job ID), numbered consecutively. Deliberately deleted jobs are hidden; missing
 files remain visible for retry. Text columns can be resized, with horizontal
 scrolling available in narrow panes. Number and status columns stay compact.
 
+Mac quality labels use `Low (18)`, `Med (136+140)`, `High (137+140)`, or
+`Custom (expression)`. Queue, All Downloads, preset menus, download-button
+tooltips, and download confirmations share this formatter. The labels identify
+format presets rather than measured resolution. Queue retains requested-to-actual
+format differences; All Downloads labels the saved format when available.
+
 The queue uses AppKit’s default row height and the same status image cells and
 Font Awesome icons as the video table. Status tooltips and Show Error expose full
 failure details. Play, Retry, Stop Download, and Delete Download remain available
@@ -170,7 +176,7 @@ action for a downloaded video. Cookies and Queue toolbar behavior is unchanged.
 
 Download Video (or Download Missing Videos for a playlist) is a direct command
 using the last selected quality. The separate Download Quality submenu contains
-Low (18), Medium (136+140), High (137+140), and Custom Format…. Choosing a quality
+Low (18), Med (136+140), High (137+140), and Custom Format…. Choosing a quality
 only saves the preference; it never queues work or opens a bulk confirmation.
 Custom Format validates input and has Save/Cancel buttons. Saving changes only
 the quality, and cancelling leaves it unchanged. Quality choices remain available
@@ -280,6 +286,9 @@ the video title and accessible trailing status icon. Playlist shows the playable
 job's requested quality as its subtitle only when a local download is available;
 other rows leave the subtitle blank instead of displaying the preferred quality
 or a pending/failed job's quality. All Downloads keeps its quality subtitles.
+Quality labels across iOS lists, Settings presets, job dialogs, and confirmations
+share the Mac formatter: `Low (18)`, `Med (136+140)`, `High (137+140)`, and
+`Custom (expression)`, without resolution claims.
 Tapping plays that row's local file, ignores pending work, or offers an exact-quality
 retry for failed/missing downloads. An undownloaded playlist entry queues the
 preferred quality. All Downloads retains each job's playlist identity internally.

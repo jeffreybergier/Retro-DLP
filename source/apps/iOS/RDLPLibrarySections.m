@@ -47,21 +47,16 @@
   [actions addObject:@"Show in Queue"];
   return actions;
 }
-- (NSString *)qualityLabel:(NSString *)format;
-{
-  NSUInteger index=[[RDLPLibrary qualityFormats] indexOfObject:format];
-  return index==NSNotFound?format:[NSString stringWithFormat:@"%@ (%@)",[[RDLPLibrary qualityTitles] objectAtIndex:index],format];
-}
 - (NSDictionary *)jobRow:(NSDictionary *)job;
 {
-  NSString *detail=[NSString stringWithFormat:@"%@ · %@\n%@",[policy_ statusForJob:job],[self qualityLabel:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")];
+  NSString *detail=[NSString stringWithFormat:@"%@ · %@\n%@",[policy_ statusForJob:job],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")];
   NSMutableDictionary *row=[self row:[job objectForKey:@"title"] detail:detail action:@"job"];
   [row setObject:job forKey:@"job"]; [row setObject:[policy_ statusForJob:job] forKey:@"status"]; return row;
 }
 /* Both video lists share cells; Playlist shows quality only for a playable copy. */
 - (NSDictionary *)videoRow:(NSDictionary *)entry job:(NSDictionary *)job playlist:(NSString *)playlist showQuality:(BOOL)showQuality;
 {
-  NSString *detail=showQuality?[self qualityLabel:[job objectForKey:@"format"]]:@"";
+  NSString *detail=showQuality?[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]:@"";
   NSMutableDictionary *row=[self row:[entry objectForKey:@"title"] detail:detail action:@"video"];
   [row setObject:entry forKey:@"video"]; [row setObject:playlist forKey:@"playlist_id"];
   if(job) [row setObject:job forKey:@"job"];
@@ -76,7 +71,7 @@
   for(NSDictionary *job in [jobs reverseObjectEnumerator]) {
     if([RDLPDownloadPolicy job:job hasState:@"removed"] && ![[job objectForKey:@"error"] length]) continue;
     NSString *title=[NSString stringWithFormat:@"%lu) %@",(unsigned long)[rows count]+1,[job objectForKey:@"title"]];
-    NSString *detail=[NSString stringWithFormat:@"%@ · %@",[self qualityLabel:[job objectForKey:@"format"]],[job objectForKey:@"playlist_title"]];
+    NSString *detail=[NSString stringWithFormat:@"%@ · %@",[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],[job objectForKey:@"playlist_title"]];
     NSMutableDictionary *row=[self row:title detail:detail action:@"job"];
     NSString *status=[policy_ statusForJob:job];
     [row setObject:[status isEqualToString:@"Cancelled"]?@"Stopped":status forKey:@"status"];
@@ -132,12 +127,12 @@
         NSMutableArray *commands=[NSMutableArray array];
         NSDictionary *representative=[policy_ representativeJobForEntry:video playlist:pid jobs:jobs];
         if([policy_ playable:representative]) {
-          NSMutableDictionary *play=[self row:@"Play" detail:[self qualityLabel:[representative objectForKey:@"format"]] action:@"play"];
+          NSMutableDictionary *play=[self row:@"Play" detail:[RDLPLibrary qualityLabelForFormat:[representative objectForKey:@"format"]] action:@"play"];
           [play setObject:representative forKey:@"job"]; [commands addObject:play];
         }
         NSDictionary *exact=[self jobForPlaylist:pid video:[video objectForKey:@"video_id"] format:[RDLPLibrary preferredFormat]];
         NSString *action=[policy_ playable:exact]?@"delete":([policy_ canCancel:exact]?@"showQueue":@"download");
-        NSMutableDictionary *command=[self row:[action isEqualToString:@"delete"]?@"Delete Download…":([action isEqualToString:@"showQueue"]?@"Show in Queue":@"Download Video") detail:[self qualityLabel:[RDLPLibrary preferredFormat]] action:action];
+        NSMutableDictionary *command=[self row:[action isEqualToString:@"delete"]?@"Delete Download…":([action isEqualToString:@"showQueue"]?@"Show in Queue":@"Download Video") detail:[RDLPLibrary qualityLabelForFormat:[RDLPLibrary preferredFormat]] action:action];
         if(exact) [command setObject:exact forKey:@"job"]; [commands addObject:command];
         [commands addObject:[self row:@"Download Quality" detail:@"" action:@"settings"]];
         [sections addObject:[self section:([video objectForKey:@"title"]?[video objectForKey:@"title"]:@"Video") rows:commands]];

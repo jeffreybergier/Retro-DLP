@@ -42,9 +42,17 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 }
 @implementation RDLPLibrary
 + (NSArray *)qualityTitles;
-{ return [NSArray arrayWithObjects:@"Low · 360p",@"Medium · 720p",@"High · 1080p",@"Exact format…",nil]; }
+{ return [NSArray arrayWithObjects:[self qualityLabelForFormat:@"18"],[self qualityLabelForFormat:@"136+140"],[self qualityLabelForFormat:@"137+140"],@"Custom Format…",nil]; }
 + (NSArray *)qualityFormats;
 { return [NSArray arrayWithObjects:@"18",@"136+140",@"137+140",nil]; }
++ (NSString *)qualityLabelForFormat:(NSString *)format;
+{
+  if(![format length]) return @"";
+  NSUInteger index=[[self qualityFormats] indexOfObject:format];
+  NSArray *names=[NSArray arrayWithObjects:@"Low",@"Med",@"High",nil];
+  NSString *name=index==NSNotFound?@"Custom":[names objectAtIndex:index];
+  return [NSString stringWithFormat:@"%@ (%@)",name,format];
+}
 + (NSString *)preferredFormat;
 {
   NSString *format=[[NSUserDefaults standardUserDefaults] stringForKey:@"downloadFormat"];

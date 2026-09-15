@@ -36,7 +36,7 @@
 {
   if([operation isEqualToString:@"delete"]?![policy_ canRemove:job]:![policy_ canCancel:job]) return;
   [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:operation,@"operation",[job objectForKey:@"id"],@"job",nil]
-    title:[NSString stringWithFormat:@"%@ %@ (%@)?",[operation isEqualToString:@"delete"]?@"Delete":@"Stop",[job objectForKey:@"title"],[job objectForKey:@"format"]]
+    title:[NSString stringWithFormat:@"%@ %@ — %@?",[operation isEqualToString:@"delete"]?@"Delete":@"Stop",[job objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]]
     detail:[operation isEqualToString:@"delete"]?@"Deletes this quality and its partial files. Other qualities and playlist membership are retained.":@"Retry restarts this quality from the beginning. Other queued downloads continue."
     button:[operation isEqualToString:@"delete"]?@"Delete":@"Stop"];
 }
@@ -55,7 +55,7 @@
   } else if([action isEqualToString:@"play"]) { if([policy_ playable:job]) [RDLPUIKit presentPlayer:self path:[library_ fileForJob:job]]; }
   else if([action isEqualToString:@"delete"]) [self confirmJob:job operation:@"delete"];
   else if([action isEqualToString:@"showQueue"]) [self showJobInQueue:job];
-  else if([action isEqualToString:@"job"] && job) [self showAlert:[job objectForKey:@"title"] detail:[NSString stringWithFormat:@"%@ · %@\n%@",[policy_ statusForJob:job],[job objectForKey:@"format"],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")] request:[NSDictionary dictionaryWithObjectsAndKeys:@"jobActions",@"operation",[job objectForKey:@"id"],@"job",nil] buttons:[model_ actionsForJob:job] input:nil];
+  else if([action isEqualToString:@"job"] && job) [self showAlert:[job objectForKey:@"title"] detail:[NSString stringWithFormat:@"%@ · %@\n%@",[policy_ statusForJob:job],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")] request:[NSDictionary dictionaryWithObjectsAndKeys:@"jobActions",@"operation",[job objectForKey:@"id"],@"job",nil] buttons:[model_ actionsForJob:job] input:nil];
   else if([action isEqualToString:@"import"]) { if([self enabled:@"import"]) [self requestCookieImport:[self documentsCookiePath] discover:NO]; }
   else if([action isEqualToString:@"clearCookies"]) [self confirm:[NSDictionary dictionaryWithObject:@"clearCookies" forKey:@"operation"] title:@"Remove imported cookies?" detail:@"Only the app’s working copy is removed. Your original export is retained." button:@"Remove"];
   else if([action isEqualToString:@"guide"]) [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"https://github.com/yt-dlp/yt-dlp/wiki/Extractors"]];
@@ -171,7 +171,7 @@
 - (void)downloadAll:(id)sender;
 {
   (void)sender; NSString *format=[RDLPLibrary preferredFormat]; NSArray *plan=[model_ missingPlanForPlaylist:[playlist_ objectForKey:@"id"] format:format];
-  if([plan count]) [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:@"bulk",@"operation",plan,@"plan",nil] title:[NSString stringWithFormat:@"Download %lu missing videos?",(unsigned long)[plan count]] detail:[NSString stringWithFormat:@"Quality: %@. Existing failed, interrupted and stopped downloads are not retried.",format] button:@"Download"];
+  if([plan count]) [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:@"bulk",@"operation",plan,@"plan",nil] title:[NSString stringWithFormat:@"Download %lu missing videos?",(unsigned long)[plan count]] detail:[NSString stringWithFormat:@"Quality: %@. Existing failed, interrupted and stopped downloads are not retried.",[RDLPLibrary qualityLabelForFormat:format]] button:@"Download"];
 }
 - (void)removePlaylist:(id)sender;
 { (void)sender; if([model_ canRemovePlaylist:playlist_]) [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:@"removePlaylist",@"operation",playlist_,@"playlist",nil] title:@"Remove playlist?" detail:@"Removes only the local library entry. Your YouTube playlist is unchanged." button:@"Remove"]; }

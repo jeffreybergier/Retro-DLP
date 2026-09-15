@@ -139,8 +139,9 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [titleColumn setMinWidth:0]; [titleColumn setResizingMask:NSTableColumnAutoresizingMask];
   [[titleColumn dataCell] setLineBreakMode:NSLineBreakByTruncatingTail];
   qualityColumn_=[[table_ tableColumnWithIdentifier:@"quality"] retain];
-  [qualityColumn_ setMinWidth:100]; [qualityColumn_ setMaxWidth:100]; [qualityColumn_ setWidth:100];
+  [qualityColumn_ setMinWidth:135]; [qualityColumn_ setMaxWidth:135]; [qualityColumn_ setWidth:135];
   [qualityColumn_ setResizingMask:NSTableColumnNoResizing];
+  [[qualityColumn_ dataCell] setLineBreakMode:NSLineBreakByTruncatingTail];
   [table_ setColumnAutoresizingStyle:NSTableViewUniformColumnAutoresizingStyle];
   [table_ setAllowsColumnReordering:NO];
   [[table_ enclosingScrollView] setHasHorizontalScroller:NO];
@@ -567,7 +568,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(video) {
     icon=delete?AIFATrash:([self canCancel:job]?AIFAHourglass:AIFADownload);
     if(delete) enabled=[self canRemove:job];
-    tip=[NSString stringWithFormat:@"%@ — %@ (%@)",delete?@"Delete downloaded video…":([self canCancel:job]?@"Show in Queue":@"Download video"),job?[job objectForKey:@"title"]:[[self selectedRow] objectForKey:@"title"],job?[job objectForKey:@"format"]:[self targetFormat]];
+    tip=[NSString stringWithFormat:@"%@ — %@ · %@",delete?@"Delete downloaded video…":([self canCancel:job]?@"Show in Queue":@"Download video"),job?[job objectForKey:@"title"]:[[self selectedRow] objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:job?[job objectForKey:@"format"]:[self targetFormat]]];
   } else if(playlist) {
     icon=AIFAArrowsRotate;
     enabled=![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
@@ -642,11 +643,10 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(queue && [key isEqualToString:@"number"]) return [NSNumber numberWithLong:(long)row+1];
   if(queue && [key isEqualToString:@"quality"]) {
     NSString *format=[job objectForKey:@"format"], *actual=[job objectForKey:@"actual_format"];
-    NSUInteger index=[[RDLPLibrary qualityFormats] indexOfObject:format];
-    NSString *label=index==NSNotFound?format:[NSString stringWithFormat:@"%@ (%@)",[[RDLPLibrary qualityTitles] objectAtIndex:index],format];
-    return [actual length] && ![actual isEqualToString:format]?[label stringByAppendingFormat:@" → %@",actual]:label;
+    NSString *label=[RDLPLibrary qualityLabelForFormat:format];
+    return [actual length] && ![actual isEqualToString:format]?[label stringByAppendingFormat:@" → %@",[RDLPLibrary qualityLabelForFormat:actual]]:label;
   }
-  if([key isEqualToString:@"quality"]) return mode_==0?downloadFormat_:([[job objectForKey:@"actual_format"] length]?[job objectForKey:@"actual_format"]:[job objectForKey:@"format"]);
+  if([key isEqualToString:@"quality"]) return [RDLPLibrary qualityLabelForFormat:mode_==0?downloadFormat_:([[job objectForKey:@"actual_format"] length]?[job objectForKey:@"actual_format"]:[job objectForKey:@"format"])];
   if([key isEqualToString:@"state"]) {
     NSString *status=[self statusForJob:job]; AIFontAwesomeIcon icon=0;
     if([status isEqualToString:@"Downloaded"]) icon=AIFACircleCheck;
@@ -836,7 +836,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)confirmJob:(NSDictionary *)job remove:(BOOL)remove;
 {
   if(remove?![self canRemove:job]:![self canCancel:job]) return;
-  NSString *title=[NSString stringWithFormat:@"%@ ‘%@’ (%@)?",remove?@"Delete download for":@"Cancel download for",[job objectForKey:@"title"],[job objectForKey:@"format"]];
+  NSString *title=[NSString stringWithFormat:@"%@ ‘%@’ — %@?",remove?@"Delete download for":@"Cancel download for",[job objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
   [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:remove?@"remove":@"cancel",@"operation",[job objectForKey:@"id"],@"job",nil] title:title detail:remove?@"This deletes this download and its partial files. Playlist membership and other downloaded qualities are retained.":@"Retrying this job restarts the transfer; it does not resume from where it stopped." action:remove?@"Delete Download":@"Cancel Download"];
 }
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
@@ -879,7 +879,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSMutableDictionary *captured=[NSMutableDictionary dictionaryWithDictionary:request];
   [captured setObject:plan forKey:@"plan"]; [captured setObject:@"bulkDownload" forKey:@"operation"];
   NSString *title=[NSString stringWithFormat:@"Download %lu missing videos?",(unsigned long)[plan count]];
-  NSString *detail=[NSString stringWithFormat:@"Playlist: %@\nQuality: %@\nExisting failed or cancelled jobs will not be retried.",[request objectForKey:@"title"]?:playlist,format];
+  NSString *detail=[NSString stringWithFormat:@"Playlist: %@\nQuality: %@\nExisting failed or cancelled jobs will not be retried.",[request objectForKey:@"title"]?:playlist,[RDLPLibrary qualityLabelForFormat:format]];
   [self confirmRequest:captured title:title detail:detail action:[NSString stringWithFormat:@"Download %lu Videos",(unsigned long)[plan count]]];
 }
 - (void)downloadDefault:(id)sender;

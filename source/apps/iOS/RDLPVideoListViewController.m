@@ -166,7 +166,7 @@
   if([policy_ canRetry:job] || [status isEqualToString:@"File missing"]) {
     NSString *reason=[status isEqualToString:@"Failed"]?@"The previous download failed.":([status isEqualToString:@"Interrupted"]?@"The previous download was interrupted.":([status isEqualToString:@"Cancelled"]?@"The previous download was stopped.":@"The downloaded file is missing."));
     NSString *error=[job objectForKey:@"error"];
-    NSString *message=[NSString stringWithFormat:@"%@%@\n\nRetry downloads this video from the beginning at the same quality (%@).",reason,[error length]?[@"\n\n" stringByAppendingString:error]:@"",[job objectForKey:@"format"]];
+    NSString *message=[NSString stringWithFormat:@"%@%@\n\nRetry downloads this video from the beginning at the same quality: %@.",reason,[error length]?[@"\n\n" stringByAppendingString:error]:@"",[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
     retryRequest_=[[NSDictionary alloc] initWithObjectsAndKeys:[job objectForKey:@"id"],@"job",entry,@"entry",nil];
     alert_=[[UIAlertView alloc] initWithTitle:@"Retry Download?" message:message delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Retry",nil];
     [alert_ show]; return;

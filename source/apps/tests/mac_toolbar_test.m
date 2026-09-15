@@ -284,7 +284,7 @@ static NSArray *titles(NSMenu *menu) {
     requireCondition([[[[videosTable tableColumns] objectAtIndex:0] identifier] isEqualToString:@"state"] && [[[[[videosTable tableColumns] objectAtIndex:0] headerCell] stringValue] length]==0,@"Status must be the untitled first column");
     requireCondition(![[videosTable enclosingScrollView] hasHorizontalScroller],@"Video table must fit its pane");
     NSMenu *bulk=[choice(download,@"Download Quality") submenu];
-    invoke(window_,choice(bulk,@"High"));
+    invoke(window_,choice(bulk,@"High (137+140)"));
     requireCondition(![[window_ window] attachedSheet] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Choosing High must only save the preference");
     selectRow(window_,@"table_",0);
     NSDictionary *available=[window_ performSelector:@selector(targetJob)];
@@ -308,7 +308,7 @@ static NSArray *titles(NSMenu *menu) {
     requireCondition([[videosTable tableColumns] count]==3 && [videosTable tableColumnWithIdentifier:@"quality"]!=nil,@"All Downloads must retain Quality");
     selectRow(window_,@"sidebar_",1);
     invoke(window_,choice(download,@"Download Missing Videos")); confirm(window_,NO);
-    invoke(window_,choice(bulk,@"Low"));
+    invoke(window_,choice(bulk,@"Low (18)"));
     requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==3 && [library_ isPaused],@"Cancelled playlist download mutated jobs or Pause");
     selectRow(window_,@"table_",0);
     download=[window_ menuForToolbarIdentifier:@"download"]; play=[window_ menuForToolbarIdentifier:@"play"];
@@ -329,7 +329,7 @@ static NSArray *titles(NSMenu *menu) {
     selectRow(window_,@"queue_",1);
     download=[window_ menuForToolbarIdentifier:@"download"];
     requireCondition(![download itemWithTitle:@"Retry Download"] && ![download itemWithTitle:@"Download Again"],@"Redundant retry entries must be removed");
-    invoke(window_,choice([choice(download,@"Download Quality") submenu],@"Medium"));
+    invoke(window_,choice([choice(download,@"Download Quality") submenu],@"Med (136+140)"));
     requireCondition([window_ validateMenuItem:choice(download,@"Download Video")],@"Download Video must allow failed jobs at the selected quality");
     invoke(window_,choice([queueTable menu],@"Retry"));
     requireCondition([[[window_ selectedJob] objectForKey:@"id"] isEqual:failedKey] && [queueTable selectedRow]==failedRow && [[[window_ selectedJob] objectForKey:@"state"] isEqual:@"queued"],@"Retry preserves exact job identity and row position");
@@ -359,7 +359,7 @@ static NSArray *titles(NSMenu *menu) {
     requireCondition([titles(toolbarMenu) isEqual:titles(download)],@"Toolbar caret and context menu must share the context menu definition");
     selectRow(window_,@"table_",1);
     download=[window_ menuForToolbarIdentifier:@"download"];
-    invoke(window_,choice([choice(download,@"Download Quality") submenu],@"High"));
+    invoke(window_,choice([choice(download,@"Download Quality") submenu],@"High (137+140)"));
     requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Quality selection started a download");
     NSMenu *quality=[choice(download,@"Download Quality") submenu];
     invoke(window_,choice(quality,@"Custom Format…"));
@@ -372,7 +372,7 @@ static NSArray *titles(NSMenu *menu) {
     invoke(window_,choice(quality,@"Custom Format…"));
     [[window_ valueForKey:@"customFormat_"] setStringValue:@"18"]; [save setTag:0]; [window_ dismissDownload:save]; pump();
     requireCondition([[RDLPLibrary preferredFormat] isEqualToString:@"22"],@"Cancelling custom quality changed preference");
-    invoke(window_,choice(quality,@"High"));
+    invoke(window_,choice(quality,@"High (137+140)"));
     selectRow(window_,@"table_",0);
     download=[window_ menuForToolbarIdentifier:@"download"];
     invoke(window_,choice(download,@"Download Video"));

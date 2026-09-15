@@ -61,9 +61,9 @@
     [actions addObject:stop?@"Stop":@"Delete"];
   }
   NSString *status=[policy_ statusForJob:job]; if([status isEqualToString:@"Cancelled"]) status=@"Stopped";
-  NSString *detail=menu?[NSString stringWithFormat:@"%@ · %@\n%@",status,[job objectForKey:@"format"],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")]:
+  NSString *detail=menu?[NSString stringWithFormat:@"%@ · %@\n%@",status,[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")]:
     (stop?@"Retry restarts this quality from the beginning. Other queued downloads continue.":@"Deletes this quality and its partial files. Other qualities and playlist membership are retained.");
-  NSString *title=menu?[job objectForKey:@"title"]:[NSString stringWithFormat:@"%@ %@ (%@)?",stop?@"Stop":@"Delete",[job objectForKey:@"title"],[job objectForKey:@"format"]];
+  NSString *title=menu?[job objectForKey:@"title"]:[NSString stringWithFormat:@"%@ %@ — %@?",stop?@"Stop":@"Delete",[job objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
   retryRequest_=[[NSDictionary alloc] initWithObjectsAndKeys:[job objectForKey:@"id"],@"job",operation,@"operation",nil];
   jobActions_=[actions copy];
   alert_=[[UIAlertView alloc] initWithTitle:title message:detail delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:nil];
