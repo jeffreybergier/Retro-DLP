@@ -58,11 +58,11 @@
   NSMutableDictionary *row=[self row:[job objectForKey:@"title"] detail:detail action:@"job"];
   [row setObject:job forKey:@"job"]; [row setObject:[policy_ statusForJob:job] forKey:@"status"]; return row;
 }
-/* Both video lists use the same title, quality subtitle, and status accessory. */
-- (NSDictionary *)videoRow:(NSDictionary *)entry job:(NSDictionary *)job playlist:(NSString *)playlist;
+/* Both video lists share cells; Playlist shows quality only for a playable copy. */
+- (NSDictionary *)videoRow:(NSDictionary *)entry job:(NSDictionary *)job playlist:(NSString *)playlist showQuality:(BOOL)showQuality;
 {
-  NSString *format=job?[job objectForKey:@"format"]:[RDLPLibrary preferredFormat];
-  NSMutableDictionary *row=[self row:[entry objectForKey:@"title"] detail:[self qualityLabel:format] action:@"video"];
+  NSString *detail=showQuality?[self qualityLabel:[job objectForKey:@"format"]]:@"";
+  NSMutableDictionary *row=[self row:[entry objectForKey:@"title"] detail:detail action:@"video"];
   [row setObject:entry forKey:@"video"]; [row setObject:playlist forKey:@"playlist_id"];
   if(job) [row setObject:job forKey:@"job"];
   [row setObject:[policy_ statusForJob:job] forKey:@"status"];
@@ -121,12 +121,12 @@
     if(screen==RDLPScreenPlaylist) {
       for(NSDictionary *entry in [library_ entriesForPlaylist:pid]) {
         NSDictionary *job=[policy_ representativeJobForEntry:entry playlist:pid jobs:jobs];
-        [rows addObject:[self videoRow:entry job:job playlist:pid]];
+        [rows addObject:[self videoRow:entry job:job playlist:pid showQuality:[policy_ playable:job]]];
       }
     } else if(screen==RDLPScreenDownloads) {
       /* Completed jobs retain their individual quality and playlist identity. */
       for(NSDictionary *job in jobs)
-        [rows addObject:[self videoRow:job job:job playlist:[job objectForKey:@"playlist_id"]]];
+        [rows addObject:[self videoRow:job job:job playlist:[job objectForKey:@"playlist_id"] showQuality:YES]];
     } else {
       if(screen==RDLPScreenVideo) {
         NSMutableArray *commands=[NSMutableArray array];

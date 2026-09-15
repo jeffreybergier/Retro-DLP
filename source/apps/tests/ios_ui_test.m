@@ -320,6 +320,9 @@ static void screenshot(UIWindow *window,NSString *path) {
     require([videos count]==4,@"Playlist retains one row per entry regardless of quality count");
     require([[[videos objectAtIndex:0] objectForKey:@"status"] isEqualToString:@"Downloaded"] &&
       [[[[videos objectAtIndex:0] objectForKey:@"job"] objectForKey:@"format"] isEqualToString:@"18"],@"Playable quality represents video despite missing preferred quality");
+    require([videoCell.detailTextLabel.text rangeOfString:@"(18)"].location!=NSNotFound,@"Downloaded playlist subtitle shows its playable job quality");
+    for(NSDictionary *row in videos)
+      require([[row objectForKey:@"status"] isEqualToString:@"Downloaded"] || ![[row objectForKey:@"detail"] length],@"Playlist omits quality when no playable download is available");
     NSIndexPath *pendingIndex=videoIndex(list,@"BBBBBBBBBBB",@"18");
     UITableViewCell *pendingCell=[list tableView:list.tableView cellForRowAtIndexPath:pendingIndex];
     require([(UIImageView *)pendingCell.accessoryView image]==[RDLPUIKit statusIcon:@"Queued"],@"Queued quality represents video ahead of failed quality");

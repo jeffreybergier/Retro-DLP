@@ -280,7 +280,10 @@ Playlist keeps one row per playlist entry and summarizes every downloaded qualit
 A playable file takes priority over running, queued, failed/missing, and stopped
 work, even when the preferred quality differs. All Downloads keeps one row per
 completed job, including multiple qualities of the same video. Both screens show
-the video title, requested quality subtitle, and accessible trailing status icon.
+the video title and accessible trailing status icon. Playlist shows the playable
+job's requested quality as its subtitle only when a local download is available;
+other rows leave the subtitle blank instead of displaying the preferred quality
+or a pending/failed job's quality. All Downloads keeps its quality subtitles.
 Tapping plays that row's local file, ignores pending work, or offers an exact-quality
 retry for failed/missing downloads. An undownloaded playlist entry queues the
 preferred quality. All Downloads retains each job's playlist identity internally.
