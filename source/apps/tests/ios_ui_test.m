@@ -282,8 +282,8 @@ static void screenshot(UIWindow *window,NSString *path) {
     require(![root respondsToSelector:@selector(tableView:heightForHeaderInSection:)] || [root tableView:root.tableView heightForHeaderInSection:1]==root.tableView.sectionHeaderHeight,@"Home uses default section header height");
     [root showPlaylistActions:nil]; pump();
     UIActionSheet *sheet=[root valueForKey:@"playlistActions_"];
-    require(sheet!=nil && sheet.numberOfButtons==4,@"Three playlist commands and Cancel");
-    require([[sheet buttonTitleAtIndex:0] isEqualToString:@"Add Playlist…"] && [[sheet buttonTitleAtIndex:1] isEqualToString:@"Sync All Playlists…"] && [[sheet buttonTitleAtIndex:2] isEqualToString:@"Load My Playlists…"],@"Playlist management commands");
+    require(sheet!=nil && sheet.numberOfButtons==5,@"Add commands, playlist commands and Cancel");
+    require([[sheet buttonTitleAtIndex:0] isEqualToString:@"Add Video…"] && [[sheet buttonTitleAtIndex:1] isEqualToString:@"Add Playlist…"] && [[sheet buttonTitleAtIndex:2] isEqualToString:@"Sync All Playlists…"] && [[sheet buttonTitleAtIndex:3] isEqualToString:@"Load My Playlists…"],@"Library management commands put Add Video first");
     [sheet dismissWithClickedButtonIndex:sheet.cancelButtonIndex animated:NO];
     for(NSUInteger wait=0;wait<10 && [root valueForKey:@"playlistActions_"];++wait) pump();
     pump(); pump();
@@ -293,7 +293,13 @@ static void screenshot(UIWindow *window,NSString *path) {
     [sheet dismissWithClickedButtonIndex:0 animated:NO];
     for(NSUInteger wait=0;wait<10 && [root valueForKey:@"playlistActions_"];++wait) pump();
     pump(); pump();
-    require([root valueForKey:@"playlistActions_"]==nil && [[[root valueForKey:@"alert_"] title] isEqualToString:@"Add Playlist"],@"Add input opens after sheet dismisses");
+    require([root valueForKey:@"playlistActions_"]==nil && [[[root valueForKey:@"alert_"] title] isEqualToString:@"Add Video"],@"First action opens Add Video after sheet dismisses");
+    confirm(root,NO);
+    [root showPlaylistActions:nil]; pump(); sheet=[root valueForKey:@"playlistActions_"];
+    [sheet dismissWithClickedButtonIndex:1 animated:NO];
+    for(NSUInteger wait=0;wait<10 && [root valueForKey:@"playlistActions_"];++wait) pump();
+    pump(); pump();
+    require([[[root valueForKey:@"alert_"] title] isEqualToString:@"Add Playlist"],@"Second action opens Add Playlist after sheet dismisses");
     confirm(root,NO);
     require([sections(root) count]==3,@"Three library groups");
     require([[[sections(root) objectAtIndex:1] objectForKey:@"rows"] count]==1,@"Added playlist group");
@@ -699,6 +705,29 @@ static void screenshot(UIWindow *window,NSString *path) {
     [list sync:nil];
     require([library_ isSyncPendingForInput:@"PLfixture"] && !list.navigationItem.rightBarButtonItem.enabled,@"Sync queues playlist refresh and disables while pending");
     [playlist release]; [video release];
+    require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open Ad-Hoc fixture");
+    require(rdapp_store_add_adhoc(store,"ABCDEFGHIJK","Individual video",NULL),@"Add Ad-Hoc fixture");
+    rdapp_store_close(store);
+    root=[self show:RDLPScreenLibrary playlist:nil video:nil];
+    NSArray *systemRows=[[sections(root) objectAtIndex:0] objectForKey:@"rows"];
+    require([systemRows count]==2 && [[[systemRows objectAtIndex:1] objectForKey:@"title"] isEqualToString:@"Ad-Hoc"],@"Ad-Hoc appears under System");
+    NSDictionary *adhoc=[library_ adhocPlaylist];
+    RDLPPlaylistViewController *adhocView=[self show:RDLPScreenPlaylist playlist:adhoc video:nil];
+    require(!adhocView.navigationItem.rightBarButtonItem.enabled,@"Ad-Hoc Sync is disabled");
+    NSUInteger commands=[[library_ valueForKey:@"commands_"] count];
+    [adhocView sync:nil];
+    require([[library_ valueForKey:@"commands_"] count]==commands,@"Ad-Hoc cannot enqueue sync");
+    [root syncAll:nil];
+    NSArray *inputs=[[root valueForKey:@"request_"] objectForKey:@"inputs"];
+    require(![inputs containsObject:@RDAPP_ADHOC_PLAYLIST_ID],@"Sync All excludes Ad-Hoc");
+    if([root valueForKey:@"alert_"]) confirm(root,NO);
+    require([RDLPLibrary savePreferredFormat:@"137+140"],@"Select Add Video quality");
+    [library_ addVideoInput:@"  YE7VzlLtp-4  "];
+    NSDictionary *addCommand=[[library_ valueForKey:@"commands_"] lastObject];
+    require([RDLPLibrary savePreferredFormat:@"18"],@"Change quality after adding");
+    require([[addCommand objectForKey:@"type"] isEqualToString:@"addVideo"] &&
+      [[addCommand objectForKey:@"input"] isEqualToString:@"YE7VzlLtp-4"] &&
+      [[addCommand objectForKey:@"format"] isEqualToString:@"137+140"],@"Add Video captures the selected download quality at submission");
   } @catch(NSException *exception) { report=[NSString stringWithFormat:@"FAIL: %@\n%@",exception,[exception callStackSymbols]]; }
   [report writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSLog(@"%@",report);

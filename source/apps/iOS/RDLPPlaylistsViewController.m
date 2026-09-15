@@ -30,7 +30,7 @@
   self.navigationItem.leftBarButtonItem=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit settingsIcon] style:UIBarButtonItemStylePlain target:self action:@selector(settings:)] autorelease];
   self.navigationItem.leftBarButtonItem.accessibilityLabel=@"Settings";
   self.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit plusIcon] style:UIBarButtonItemStylePlain target:self action:@selector(showPlaylistActions:)] autorelease];
-  self.navigationItem.rightBarButtonItem.accessibilityLabel=@"Playlist Actions";
+  self.navigationItem.rightBarButtonItem.accessibilityLabel=@"Library Actions";
   statusBar_=[[RDLPStatusBarView alloc] initWithFrame:CGRectZero];
   statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-80);
   self.toolbarItems=[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:@selector(queue:)];
@@ -123,6 +123,7 @@
   alert_.delegate=nil; [alert_ release]; alert_=nil; [request_ release]; request_=nil; [alertActions_ release]; alertActions_=nil;
   if(index==0) return;
   if([[request objectForKey:@"operation"] isEqualToString:@"add"]) [library_ addPlaylistInput:text];
+  else if([[request objectForKey:@"operation"] isEqualToString:@"addVideo"]) [library_ addVideoInput:text];
   else [self performConfirmed:request];
   [self refresh:nil];
 }
@@ -159,7 +160,7 @@
   (void)sender; if(playlistActions_ || alert_) return;
   playlistActions_=[[UIActionSheet alloc] initWithTitle:nil delegate:self
     cancelButtonTitle:@"Cancel" destructiveButtonTitle:nil
-    otherButtonTitles:@"Add Playlist…",@"Sync All Playlists…",@"Load My Playlists…",nil];
+    otherButtonTitles:@"Add Video…",@"Add Playlist…",@"Sync All Playlists…",@"Load My Playlists…",nil];
   [playlistActions_ showFromBarButtonItem:self.navigationItem.rightBarButtonItem animated:YES];
 }
 - (void)actionSheet:(UIActionSheet *)sheet didDismissWithButtonIndex:(NSInteger)index;
@@ -169,20 +170,23 @@
   playlistActions_.delegate=nil; [playlistActions_ release]; playlistActions_=nil;
   if(cancelled) return;
   switch(index) {
-    case 0: [self add:nil]; break;
-    case 1: [self syncAll:nil]; break;
-    case 2: [self discover:nil]; break;
+    case 0: [self addVideo:nil]; break;
+    case 1: [self add:nil]; break;
+    case 2: [self syncAll:nil]; break;
+    case 3: [self discover:nil]; break;
     default: break;
   }
 }
 - (void)add:(id)sender;
 { (void)sender; [self showAlert:@"Add Playlist" detail:@"YouTube playlist URL or ID" request:[NSDictionary dictionaryWithObject:@"add" forKey:@"operation"] buttons:[NSArray arrayWithObject:@"Sync"] input:@""]; }
+- (void)addVideo:(id)sender;
+{ (void)sender; [self showAlert:@"Add Video" detail:@"YouTube video URL or ID" request:[NSDictionary dictionaryWithObject:@"addVideo" forKey:@"operation"] buttons:[NSArray arrayWithObject:@"Add"] input:@""]; }
 - (void)discover:(id)sender;
 { (void)sender; if([self enabled:@"discover"]) [self confirm:[NSDictionary dictionaryWithObject:@"discover" forKey:@"operation"] title:@"Load My Playlists?" detail:@"Discover your YouTube account playlists and save their metadata. Cookies are required. No videos will be downloaded." button:@"Load Playlists"]; }
 - (void)syncAll:(id)sender;
 {
   (void)sender; NSMutableArray *inputs=[NSMutableArray array];
-  for(NSDictionary *playlist in [library_ playlists]) if(![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) [inputs addObject:[playlist objectForKey:@"service_id"]];
+  for(NSDictionary *playlist in [library_ playlists]) if(![[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) [inputs addObject:[playlist objectForKey:@"service_id"]];
   if([inputs count]) [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:@"syncAll",@"operation",inputs,@"inputs",nil] title:@"Sync all playlists?" detail:@"Refresh playlist metadata from YouTube. Local downloads are retained." button:@"Sync All"];
 }
 @end

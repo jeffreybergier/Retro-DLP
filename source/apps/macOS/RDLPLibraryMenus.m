@@ -15,6 +15,7 @@
 {
   NSMenu *menu=[[[NSMenu alloc] initWithTitle:title] autorelease];
   if([title isEqualToString:@"File"]) {
+    [self addItemToMenu:menu title:@"Add Video…" action:@selector(addVideo:) target:target];
     [self addItemToMenu:menu title:@"Add Playlist…" action:@selector(addPlaylist:) target:target];
     [self addItemToMenu:menu title:@"Load My Playlists…" action:@selector(discover:) target:target];
     [menu addItem:[NSMenuItem separatorItem]];
@@ -120,6 +121,7 @@
       [self addItemToMenu:menu title:@"Show Download Queue" action:@selector(showQueue:) target:target];
     }
     [menu addItem:[NSMenuItem separatorItem]];
+    [self addItemToMenu:menu title:@"Add Video…" action:@selector(addVideo:) target:target];
     [self addItemToMenu:menu title:@"Add Playlist…" action:@selector(addPlaylist:) target:target];
     [self addItemToMenu:menu title:@"Sync All Playlists…" action:@selector(syncAll:) target:target];
     [self addItemToMenu:menu title:@"Load My Playlists…" action:@selector(discover:) target:target];

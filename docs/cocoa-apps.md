@@ -138,11 +138,18 @@ leave a short final status. Successful downloads with database/export warnings
 produce an alert instead of hiding those warnings inside progress text.
 
 The sidebar is an NSOutlineView with three collapsible, nonselectable parent
-rows: System (All Downloads), Added Playlists (manually added), and My Playlists
+rows: System (All Downloads and the local **Ad-Hoc** collection), Added Playlists (manually added), and My Playlists
 (discovered through Load My Playlists). Groups start expanded and keep their
 collapse state during library refreshes. Selecting a child keeps the existing
 Download/Play targeting behavior. Discovery promotes an existing manual playlist
 without duplicating it and preserves its selection, membership, and downloads.
+Adding an individual video resolves its title, appends it to Ad-Hoc, and queues
+its download at the quality selected when Add Video was submitted. Downloads
+start automatically while the queue is active; a paused queue stays paused.
+Re-adding a video preserves queued, running, and completed downloads of that
+quality, and retries failed, cancelled, interrupted, or deleted downloads.
+This local collection is never synced to YouTube. Title resolution uses automatic
+format selection independently of the saved download quality.
 
 Database version 2 records discovery origin. Existing version-1 playlists migrate
 to Added Playlists because their original source was not recorded. Running Load
@@ -167,8 +174,9 @@ its playlist.
 Download and Play menus rebuild when opened to show the current scope. Playlist
 Download options include missing-video qualities, sync, removal, and Queue;
 video options include quality selection, Download Video, cancellation, deletion,
-and Show in Queue. Add Playlist, Sync All, and Load My Playlists remain available
-under Download in every context. Play contains default-app playback, explicit
+and Show in Queue. Add Video, Add Playlist, Sync All, and Load My Playlists remain
+available under Download in every context. Add Video precedes Add Playlist in
+both the File and Download menus. Play contains default-app playback, explicit
 VLC playback, and Reveal in Finder for the current video or playlist. A selected
 video also retains default-app and VLC playback options for its containing
 playlist, including Queue selections whose playlist is not selected in the sidebar.
@@ -180,14 +188,16 @@ playlist, including Queue selections whose playlist is not selected in the sideb
 | Download / queued or running job | Show the job in Queue | Solid hourglass |
 | Download / failed, cancelled, interrupted, removed, or missing-file job | Restart download and reveal/select it in Queue | Solid download |
 | Download / selected playlist | Sync metadata, disabled if already syncing | Solid arrows-rotate |
-| Download / no target | Add Playlist sheet | Solid plus |
+| Download / no target | Add Video sheet; toolbar label becomes Add Video | Solid plus |
 | Play / playable video or exported playlist | Open in VLC when installed, otherwise the system default app; Reveal in Finder if neither is available | YouTube Brands |
 | Play / no playable target | Disabled | Dimmed YouTube Brands |
 
 Starting or retrying any download reveals Queue, selects the job, and scrolls
 it into view, even if Queue was manually hidden. The selected quality is retained.
 
-Labels are Download and Play; Download becomes Delete for an existing downloaded video. The caret opens the same menu as right-click,
+Labels are Download and Play; Download becomes Delete for an existing downloaded
+video, Sync for a playlist, and Add Video when there is no target.
+The caret opens the same menu as right-click,
 Control-click, or Accessibility Show Menu. Open With is absent. Explicit VLC
 commands require VLC. The main Play button and video/queue double-clicks prefer
 VLC when installed, falling back to the system default only when VLC is absent.
@@ -260,7 +270,7 @@ imported cookie file is not removed.
 
 The fresh-launch root is `RDLPPlaylistsViewController`, a `UITableViewController`
 with a plain table titled **Playlists**, containing System
-(All Downloads), Added Playlists, and My Playlists. These section
+(All Downloads and Ad-Hoc after adding a video), Added Playlists, and My Playlists. These section
 headers use UIKit's default sizing and do not collapse. Empty sections have
 zero rows and no placeholder footer. The top-left Font Awesome gear opens Settings
 modally with a Done button. Settings is a dedicated `UITableViewController`
@@ -268,8 +278,8 @@ with no bottom status area and no explanatory section footers. Its
 **Import Cookies...** row has no subtitle and is disabled while cookies are
 imported (or the library is busy); removing cookies enables import again. Cookie
 action rows have no disclosure chevrons. The
-top-right Font Awesome **+** opens an action sheet with **Add Playlist…**,
-**Sync All Playlists…**, and **Load My Playlists…**, for playlist management.
+top-right Font Awesome **+** opens an action sheet with **Add Video…**,
+**Add Playlist…**, **Sync All Playlists…**, and **Load My Playlists…**.
 These commands reuse the existing input and confirmation dialogs. Download
 quality is available in Settings. Cancel does nothing.
 The home screen uses ENIL's status-toolbar layout: a content-sized center view
@@ -765,3 +775,38 @@ Tests used isolated synthetic libraries and test bundles without the CA resource
 no live YouTube downloads were performed. The Tiger run caught the Foundation
 common-mode constant's 10.5 dependency; shared expiry uses the Tiger-compatible
 Core Foundation constant instead.
+
+
+### Ad-Hoc collection validation (2026-09-15)
+
+All four macOS and both iOS architecture slices built without warnings. Bundle
+validation passed, and both Apple static analyzers reported zero warnings/errors.
+The 28 portable store tests and local-HTTPS service integration passed, including
+adding a video when the saved download quality is unavailable, duplicate updates,
+retained queued jobs, invalid input, and system collection grouping.
+
+The native offline suites passed on x4-vm (Tiger 10.4.11, PowerPC) and koolphone5,
+including Add Video dialogs, Ad-Hoc placement, disabled sync, and existing
+queue/download/playback regressions. These tests use isolated fixture libraries;
+live YouTube access was not tested. The release IPA was installed on koolphone5,
+and the Mac release was extracted to `~/Desktop/RetroDLP-AdHoc/RetroDLP.app`.
+Review logs and native results are in `build/apps/tests/adhoc-review/`.
+
+### Ad-Hoc automatic download validation (2026-09-15)
+
+The updated UI suites passed over SSH/SCP on x4-vm (Tiger 10.4.11, PowerPC)
+and koolphone5 (iOS 8.4.1, armv7). The iOS suite additionally checks that Add
+Video captures the selected quality before the preference changes.
+
+The portable service integration test also ran natively on both devices, using
+synthetic resolver responses and a local HTTPS media server through SSH reverse
+forwarding. It verified that Add Video queues the selected quality without a
+separate enqueue call, the queued video downloads successfully, re-adding a
+completed quality creates no pending download, unavailable quality fails through
+the normal download path, and invalid input creates no job. Existing export,
+retry, cancellation, and removal checks passed as well.
+
+All 30 Linux store tests and the Linux service integration passed. Both app builds
+and bundle validation passed. Tests used isolated libraries and test apps; no
+live YouTube requests were made. Device reports are in
+`build/apps/tests/autodownload-device-review/`.

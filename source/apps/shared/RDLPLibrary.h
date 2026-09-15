@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import "rdapp_store.h"
 
 /* Immutable, count-first database list. Row payloads are loaded on demand and
    cached in a bounded working set. Each list holds its own WAL read snapshot. */
@@ -56,6 +57,7 @@ extern NSString * const RDLPLibraryErrorDidOccur;
 + (BOOL)savePreferredFormat:(NSString *)format;
 - (id)initWithSupportDirectory:(NSString *)support downloadDirectory:(NSString *)root;
 - (NSArray *)playlists;
+- (NSDictionary *)adhocPlaylist;
 - (NSArray *)playlistsFromAccount:(BOOL)account;
 - (NSArray *)playlistIDsFromAccount:(BOOL)account;
 - (NSDictionary *)playlistForID:(NSString *)key;
@@ -92,6 +94,7 @@ extern NSString * const RDLPLibraryErrorDidOccur;
 - (void)setPaused:(BOOL)paused;
 - (void)syncPlaylistInput:(NSString *)input;
 - (void)addPlaylistInput:(NSString *)input;
+- (void)addVideoInput:(NSString *)input;
 - (void)syncAll;
 - (void)discoverPlaylists;
 - (void)enqueuePlaylist:(NSString *)key video:(NSString *)video format:(NSString *)format;

@@ -35,6 +35,8 @@ for name, args in {
     'after':[P,C.c_int,I,S,S,I,CB,P],
     'index':[P,C.c_int,I,I,C.POINTER(I)],
     'snapshot':[P,S,S,C.POINTER(Entry),C.c_size_t,C.POINTER(I)],
+    'add_adhoc':[P,S,S,C.POINTER(I)],
+    'add_adhoc_download':[P,S,S,S,C.POINTER(I)],
     'discovered_playlist':[P,S,S], 'playlist':[P,S,S,C.POINTER(I)], 'enqueue':[P,I,S,S],
     'claim':[P,CB,P], 'finish':[P,I,S,S,S], 'retry':[P,I],
     'cancel':[P,I], 'forget_file':[P,I], 'reconcile_job':[P,I,S], 'remove_playlist':[P,I,S],
@@ -115,6 +117,53 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.index(1,15),2)
         self.assertEqual(self.index(1,9),-1)
         self.assertEqual(self.page(1)[0].keys(),ENTRY_FIELDS)
+
+    def test_adhoc_appends_and_updates_without_replacing_existing_videos(self):
+        adhoc=I()
+        self.check(lib.rdapp_store_add_adhoc(self.db,b'ABCDEFGHIJK',b'First ad-hoc',C.byref(adhoc)))
+        self.check(lib.rdapp_store_enqueue(self.db,adhoc,b'ABCDEFGHIJK',b'18'))
+        self.check(lib.rdapp_store_add_adhoc(self.db,b'LMNOPQRSTUV',b'Second ad-hoc',C.byref(adhoc)))
+        self.check(lib.rdapp_store_add_adhoc(self.db,b'ABCDEFGHIJK',b'Renamed ad-hoc',C.byref(adhoc)))
+        rows=self.page(1,limit=10,key=adhoc.value)
+        self.assertEqual([(row['video_id'],row['title'],row['position']) for row in rows],
+                         [('ABCDEFGHIJK','Renamed ad-hoc','0'),('LMNOPQRSTUV','Second ad-hoc','1')])
+        self.assertEqual(self.count(14,video=b'adhoc',key=0),1)
+        self.assertEqual(self.page(14,video=b'adhoc',key=0)[0]['source'],'system')
+        self.assertEqual(self.count(4,key=0),1)  # Only the ordinary fixture playlist.
+        self.assertEqual(self.count(5,key=0),0)
+        self.assertEqual(self.count(2,key=adhoc.value),1)
+        self.assertEqual(self.page(2,key=adhoc.value)[0]['state'],'queued')
+        self.assertEqual(lib.rdapp_store_add_adhoc(self.db,b'bad/id',b'Invalid',None),0)
+        self.assertEqual(self.count(1,key=adhoc.value),2)
+
+    def test_adhoc_download_queues_selected_quality_and_preserves_active_jobs(self):
+        adhoc=I()
+        def add(format=b'137+140'):
+            self.check(lib.rdapp_store_add_adhoc_download(self.db,b'ABCDEFGHIJK',b'Video',format,C.byref(adhoc)))
+        add()
+        job=self.page(2,key=adhoc.value)[0]
+        self.assertEqual((job['format'],job['state']),( '137+140','queued'))
+        for state in (b'queued',b'running',b'complete'):
+            self.check(lib.rdapp_store_finish(self.db,int(job['id']),state,b'137+140',b''))
+            add()
+            self.assertEqual(self.count(2,key=adhoc.value),1)
+            current=self.page(2,key=adhoc.value)[0]
+            self.assertEqual((current['id'],current['state']),(job['id'],state.decode()))
+        for state in (b'failed',b'cancelled',b'interrupted',b'removed'):
+            self.check(lib.rdapp_store_finish(self.db,int(job['id']),state,b'',b'Previous failure'))
+            add()
+            current=self.page(2,key=adhoc.value)[0]
+            self.assertEqual((current['id'],current['state'],current['error']),(job['id'],'queued',''))
+        add(b'18')
+        self.assertEqual(self.count(2,key=adhoc.value),2)
+        self.assertEqual(self.count(1,key=adhoc.value),1)
+
+    def test_adhoc_download_rolls_back_entry_if_queueing_fails(self):
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.execute("CREATE TRIGGER reject_download BEFORE INSERT ON jobs BEGIN SELECT RAISE(ABORT,'Queue unavailable'); END")
+        self.assertEqual(lib.rdapp_store_add_adhoc_download(self.db,b'ABCDEFGHIJK',b'Video',b'18',None),0)
+        self.assertEqual(self.count(14,video=b'adhoc',key=0),0)
+        self.assertEqual(self.count(2,key=0),0)
 
     def test_filtered_lists_and_exact_job_lookups(self):
         self.check(lib.rdapp_store_discovered_playlist(self.db,b'PLaccount',b'Account'))

@@ -78,6 +78,17 @@ static rdlp_error_code discover(rdapp_store *s,const rdapp_service_config *c,
   else { snprintf(error->message,sizeof(error->message),"%s",rdapp_store_error(s)); code=RDLP_ERROR_STORAGE_IO; }
   unlock_store(c); rdlp_playlist_collection_destroy(p); return code;
 }
+static rdlp_error_code add_video(rdapp_store *s,const rdapp_service_config *c,
+    rdlp_context *context,const char *input,const rdapp_job *job,char *message,size_t cap,rdlp_error *error) {
+  rdlp_selection *selection=NULL; rdlp_resolve_options options; rdlp_error_code code; int ok;
+  if(!job || !rdlp_format_expression_valid(job->format)) return RDLP_ERROR_INVALID_ARGUMENT;
+  memset(&options,0,sizeof(options)); options.struct_size=sizeof(options); options.cookie_file=c->cookie_file;
+  code=rdlp_resolve_video(context,input,&options,&selection,error); if(code!=RDLP_OK) return code;
+  lock_store(c); ok=rdapp_store_add_adhoc_download(s,rdlp_selection_video_id(selection),rdlp_selection_title(selection),job->format,NULL); unlock_store(c);
+  if(ok) snprintf(message,cap,"Added %s to Ad-Hoc",rdlp_selection_title(selection));
+  else { snprintf(error->message,sizeof(error->message),"%s",rdapp_store_error(s)); code=RDLP_ERROR_STORAGE_IO; }
+  rdlp_selection_destroy(selection); return code;
+}
 static rdlp_error_code provision(const rdapp_service_config *c,rdlp_error *error) {
   rdlp_ejs_asset_info info; rdlp_ejs_asset_options options;
   if(!c->resolver.ejs_asset_directory) return RDLP_OK;
@@ -159,6 +170,7 @@ rdlp_error_code rdapp_service_run(rdapp_store *s,const rdapp_service_config *c,
       case RDAPP_SYNC: code=sync_playlist(s,c,context,input,message,cap,&error); break;
       case RDAPP_DISCOVER: code=discover(s,c,context,message,cap,&error); break;
       case RDAPP_DOWNLOAD: code=download_job(s,c,context,job,message,cap,&error); break;
+      case RDAPP_ADD_VIDEO: code=add_video(s,c,context,input,job,message,cap,&error); break;
       default: code=RDLP_ERROR_INVALID_ARGUMENT;
     }
   }

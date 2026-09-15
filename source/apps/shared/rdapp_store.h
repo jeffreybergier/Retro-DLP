@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 typedef struct rdapp_store rdapp_store;
+#define RDAPP_ADHOC_PLAYLIST_ID "adhoc"
 typedef struct {
   const char *video_id; const char *title; int position;
   /* Borrowed, ordered URLs only; snapshot copies them without fetching images. */
@@ -41,6 +42,13 @@ int rdapp_store_playlist(rdapp_store *, const char *id, const char *title, int64
 int rdapp_store_discovered_playlist(rdapp_store *, const char *id, const char *title);
 int rdapp_store_snapshot(rdapp_store *, const char *id, const char *title,
                          const rdapp_entry *, size_t count, int64_t *key);
+/* Adds or refreshes one locally-added video without replacing other Ad-Hoc rows. */
+int rdapp_store_add_adhoc(rdapp_store *, const char *video_id, const char *title,
+                          int64_t *key);
+/* Atomically adds the entry and queues its quality, retrying stopped/removed
+   jobs while preserving queued, running and completed downloads. */
+int rdapp_store_add_adhoc_download(rdapp_store *, const char *video_id,
+                                  const char *title, const char *format, int64_t *key);
 int rdapp_store_enqueue(rdapp_store *, int64_t playlist, const char *video_id,
                         const char *format); /* NULL video means whole playlist */
 int rdapp_store_claim(rdapp_store *, rdapp_row_callback, void *);

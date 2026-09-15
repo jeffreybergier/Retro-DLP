@@ -56,7 +56,7 @@
 }
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
 {
-  if(!playlist || [library_ isBusy]) return NO;
+  if(!playlist || [[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] || [library_ isBusy]) return NO;
   return ![library_ hasBlockingJobsForPlaylist:[playlist objectForKey:@"id"]];
 }
 - (NSArray *)actionsForJob:(NSDictionary *)job;
@@ -100,6 +100,11 @@
   NSString *pid=[playlist objectForKey:@"id"];
   if(screen==RDLPScreenLibrary) {
     [rows addObject:[self row:@"All Downloads" detail:@"" action:@"downloads"]];
+    NSDictionary *adhoc=[library_ adhocPlaylist];
+    if(adhoc) {
+      NSMutableDictionary *row=[self row:@"Ad-Hoc" detail:[NSString stringWithFormat:@"%@ videos",[adhoc objectForKey:@"count"]] action:@"playlist"];
+      [row setObject:adhoc forKey:@"playlist"]; [rows addObject:row];
+    }
     [sections addObject:[self section:@"System" rows:rows]];
     [sections addObject:[self section:@"Added Playlists" rows:[self displayRows:[library_ playlistsFromAccount:NO] screen:screen playlist:nil]]];
     [sections addObject:[self section:@"My Playlists" rows:[self displayRows:[library_ playlistsFromAccount:YES] screen:screen playlist:nil]]];

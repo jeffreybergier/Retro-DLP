@@ -354,6 +354,48 @@ int rdapp_store_snapshot(rdapp_store *s,const char *id,const char *title,const r
 rollback:
   sqlite3_exec(s->db,"ROLLBACK",NULL,NULL,NULL); return 0;
 }
+static int add_adhoc(rdapp_store *s,const char *video_id,const char *title,const char *format,int64_t *key) {
+  sqlite3_stmt *p; int64_t k,position=0; int exists;
+  if(!video_id || strlen(video_id)!=11 || strspn(video_id,"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")!=11 || !title || !*title)
+    return failure(s,"Invalid video");
+  if(!sql(s,"BEGIN IMMEDIATE")) return 0;
+  if(!rdapp_store_playlist(s,RDAPP_ADHOC_PLAYLIST_ID,"Ad-Hoc",&k)) goto rollback;
+  p=prepare(s,"UPDATE playlists SET source='system', synced_at=strftime('%s','now') WHERE id=?"); if(!p) goto rollback;
+  sqlite3_bind_int64(p,1,k); if(!done(s,p)) goto rollback;
+  p=prepare(s,"INSERT OR REPLACE INTO videos(id,title) VALUES(?,?)"); if(!p) goto rollback;
+  bind_text(p,1,video_id); bind_text(p,2,title); if(!done(s,p)) goto rollback;
+  p=prepare(s,"SELECT position FROM entries WHERE playlist_id=? AND video_id=? ORDER BY position LIMIT 1"); if(!p) goto rollback;
+  sqlite3_bind_int64(p,1,k); bind_text(p,2,video_id); exists=sqlite3_step(p)==SQLITE_ROW;
+  if(exists) position=sqlite3_column_int64(p,0);
+  sqlite3_finalize(p);
+  if(exists) {
+    p=prepare(s,"UPDATE entries SET title=? WHERE playlist_id=? AND position=?"); if(!p) goto rollback;
+    bind_text(p,1,title); sqlite3_bind_int64(p,2,k); sqlite3_bind_int64(p,3,position); if(!done(s,p)) goto rollback;
+  } else {
+    p=prepare(s,"SELECT coalesce(max(position)+1,0) FROM entries WHERE playlist_id=?"); if(!p) goto rollback;
+    sqlite3_bind_int64(p,1,k); if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); goto rollback; }
+    position=sqlite3_column_int64(p,0); sqlite3_finalize(p);
+    p=prepare(s,"INSERT INTO entries(playlist_id,position,video_id,title) VALUES(?,?,?,?)"); if(!p) goto rollback;
+    sqlite3_bind_int64(p,1,k); sqlite3_bind_int64(p,2,position); bind_text(p,3,video_id); bind_text(p,4,title); if(!done(s,p)) goto rollback;
+  }
+  if(format) {
+    if(!rdapp_store_enqueue(s,k,video_id,format)) goto rollback;
+    p=prepare(s,"UPDATE jobs SET state='queued',error='' WHERE playlist_id=? AND video_id=? AND format=? AND state IN ('failed','cancelled','interrupted','removed')"); if(!p) goto rollback;
+    sqlite3_bind_int64(p,1,k); bind_text(p,2,video_id); bind_text(p,3,format); if(!done(s,p)) goto rollback;
+  }
+  if(!refresh_job_metadata(s,k) || !sql(s,"COMMIT")) goto rollback;
+  if(key) *key=k;
+  return 1;
+rollback:
+  sqlite3_exec(s->db,"ROLLBACK",NULL,NULL,NULL); return 0;
+}
+int rdapp_store_add_adhoc(rdapp_store *s,const char *video_id,const char *title,int64_t *key) {
+  return add_adhoc(s,video_id,title,NULL,key);
+}
+int rdapp_store_add_adhoc_download(rdapp_store *s,const char *video_id,const char *title,const char *format,int64_t *key) {
+  if(!format || !*format) return failure(s,"Missing download format");
+  return add_adhoc(s,video_id,title,format,key);
+}
 int rdapp_store_enqueue(rdapp_store *s,int64_t key,const char *video,const char *format) {
   sqlite3_stmt *p=prepare(s,"INSERT OR IGNORE INTO jobs(playlist_id,video_id,title,format," RDAPP_METADATA_COLUMNS ") SELECT playlist_id,video_id,title,?," RDAPP_METADATA_COLUMNS " FROM entries WHERE playlist_id=? AND (?='' OR video_id=?) ORDER BY position");
   if(!p) return 0;

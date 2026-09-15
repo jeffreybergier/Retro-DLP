@@ -1,4 +1,6 @@
+#if !defined(__APPLE__)
 #define _POSIX_C_SOURCE 200809L
+#endif
 #include "rdapp_service.h"
 #include <assert.h>
 #include <stdio.h>
@@ -103,6 +105,27 @@ int main(int argc,char **argv) {
   require(rdapp_service_run(s,&config,RDAPP_SYNC,"PLfixture",NULL,message,sizeof(message)),message);
   assert(f.requests==2); /* Existing playlist page + browse; no image/video requests. */
   memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_PLAYLISTS,0,collect,&c)); assert(c.count==1); key=c.job.id;
+  {
+    rdapp_job added; int before=f.requests;
+    memset(&added,0,sizeof(added)); added.format="137+140"; /* Unavailable download preference must not block adding metadata. */
+    require(rdapp_service_run(s,&config,RDAPP_ADD_VIDEO,"https://youtu.be/YE7VzlLtp-4",&added,message,sizeof(message)),message);
+    assert(f.requests==before+2 && strstr(message,"Ad-Hoc")); /* Local fixture watch/player only. */
+    claim(s,&c); assert(!strcmp(c.format,"137+140") && !strcmp(c.video,"YE7VzlLtp-4") && c.job.playlist_id!=key);
+    assert(rdapp_service_run(s,&config,RDAPP_DOWNLOAD,NULL,&c.job,message,sizeof(message))==RDLP_ERROR_FORMAT_UNAVAILABLE);
+    /* A supported quality must download through the normal queue after Add,
+       without an explicit enqueue call. */
+    added.format="18";
+    require(rdapp_service_run(s,&config,RDAPP_ADD_VIDEO,"YE7VzlLtp-4",&added,message,sizeof(message)),message);
+    claim(s,&c); assert(!strcmp(c.format,"18") && c.job.playlist_id!=key);
+    require(rdapp_service_run(s,&config,RDAPP_DOWNLOAD,NULL,&c.job,message,sizeof(message)),message);
+    snprintf(file,sizeof(file),"%s/%s",argv[1],c.path); assert(stat(file,&st)==0 && st.st_size>0);
+    require(rdapp_service_run(s,&config,RDAPP_ADD_VIDEO,"YE7VzlLtp-4",&added,message,sizeof(message)),message);
+    memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_PENDING,0,collect,&c)); assert(c.count==0);
+    assert(rdapp_service_run(s,&config,RDAPP_ADD_VIDEO,"bad/id",&added,message,sizeof(message))!=RDLP_OK);
+    memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_JOBS,0,collect,&c)); assert(c.count==2);
+    f.format_seen=0; f.target_seen=0;
+  }
+  memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_PLAYLISTS,0,collect,&c)); assert(c.count==2);
   check_thumbnails(db,key); /* Playlist object and its borrowed strings are already destroyed. */
   memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_ENTRIES,key,collect,&c)); assert(c.count==1);
   f.fail=1;
@@ -113,7 +136,7 @@ int main(int argc,char **argv) {
   snprintf(cookies,sizeof(cookies),"%s/cookies.txt",argv[1]); output=fopen(cookies,"w"); assert(output);
   fputs("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t4102444800\tLOGIN_INFO\tfixture\n.youtube.com\tTRUE\t/\tTRUE\t4102444800\tSAPISID\tfixture\n",output); fclose(output); config.cookie_file=cookies;
   require(rdapp_service_run(s,&config,RDAPP_DISCOVER,NULL,NULL,message,sizeof(message)),message);
-  memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_PLAYLISTS,0,collect,&c)); assert(c.count==2 && c.account_count==1); config.cookie_file=NULL;
+  memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_PLAYLISTS,0,collect,&c)); assert(c.count==3 && c.account_count==1); config.cookie_file=NULL;
   assert(rdapp_store_enqueue(s,key,NULL,"18")); claim(s,&c);
   require(rdapp_service_run(s,&config,RDAPP_DOWNLOAD,NULL,&c.job,message,sizeof(message)),message);
   snprintf(file,sizeof(file),"%s/%s",argv[1],c.path); assert(stat(file,&st)==0 && st.st_size>0);

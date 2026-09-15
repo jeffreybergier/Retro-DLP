@@ -102,6 +102,7 @@ static int collect(void *context,int count,const char *const *names,const char *
 - (void)displayProgress:(NSDictionary *)progress;
 - (void)resolverEvent:(rdlp_event_type)type;
 - (void)queuePlaylistInput:(NSString *)input adding:(BOOL)adding;
+- (void)queueVideoInput:(NSString *)input;
 - (void)progress:(NSString *)phase completed:(uint64_t)completed expected:(uint64_t)expected;
 @end
 static void store_lock(void *context) { [(NSLock *)context lock]; }
@@ -317,6 +318,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 { return [self rows:account?RDAPP_ACCOUNT_PLAYLISTS:RDAPP_ADDED_PLAYLISTS playlist:nil]; }
 - (NSDictionary *)playlistForID:(NSString *)key;
 { NSArray *rows=key?[self rows:RDAPP_PLAYLIST playlist:key]:nil; return [rows count]?[rows objectAtIndex:0]:nil; }
+- (NSDictionary *)adhocPlaylist;
+{ NSArray *rows=[self rows:RDAPP_PLAYLIST_INPUT playlist:nil video:@RDAPP_ADHOC_PLAYLIST_ID format:nil]; return [rows count]?[rows objectAtIndex:0]:nil; }
 - (NSArray *)playlistIDsFromAccount:(BOOL)account;
 { return [self rows:account?RDAPP_ACCOUNT_IDS:RDAPP_ADDED_IDS playlist:nil]; }
 - (NSDictionary *)jobForID:(NSString *)key;
@@ -340,7 +343,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 { return [[self rows:RDAPP_BLOCKING_JOBS playlist:key] count]>0; }
 - (BOOL)hasPlaylistsToSync;
 {
-  NSUInteger total=[[self playlists] count];
+  NSUInteger total=[[self playlistIDsFromAccount:NO] count]+[[self playlistIDsFromAccount:YES] count];
   if(!total) return NO;
   NSMutableSet *pending=[NSMutableSet set];
   if([[activeCommand_ objectForKey:@"type"] isEqualToString:@"sync"])
@@ -438,6 +441,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 }
 - (void)addPlaylistInput:(NSString *)input;
 { [self queuePlaylistInput:input adding:YES]; }
+- (void)addVideoInput:(NSString *)input;
+{ [self queueVideoInput:input]; }
 - (void)syncPlaylistInput:(NSString *)input;
 { [self queuePlaylistInput:input adding:NO]; }
 - (void)queuePlaylistInput:(NSString *)input adding:(BOOL)adding;
@@ -448,10 +453,17 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",input,@"input",
     [NSNumber numberWithBool:adding],@"adding",nil]]; [self startNext];
 }
+- (void)queueVideoInput:(NSString *)input;
+{
+  input=[input stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if(![input length]) { [self reportError:@"Enter a video" detail:@"Enter a YouTube video URL or ID."]; return; }
+  [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"addVideo",@"type",input,@"input",
+    [RDLPLibrary preferredFormat],@"format",nil]]; [self startNext];
+}
 - (void)syncAll;
 {
   NSArray *rows=[self playlists]; unsigned int i;
-  for(i=0;i<[rows count];++i) if(![self isSyncPendingForInput:[[rows objectAtIndex:i] objectForKey:@"service_id"]]) [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",[[rows objectAtIndex:i] objectForKey:@"service_id"],@"input",nil]];
+  for(i=0;i<[rows count];++i) if(![[[rows objectAtIndex:i] objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![self isSyncPendingForInput:[[rows objectAtIndex:i] objectForKey:@"service_id"]]) [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",[[rows objectAtIndex:i] objectForKey:@"service_id"],@"input",nil]];
   [self startNext];
 }
 - (void)discoverPlaylists;
@@ -554,7 +566,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   [lastPhase_ release]; lastPhase_=nil;
   NSString *type=[command objectForKey:@"type"];
   if(![type isEqualToString:@"reconcile"]) [self showStatus:[type isEqualToString:@"download"]?@"Resolving video…":
-    ([type isEqualToString:@"discover"]?@"Loading playlists…":([[command objectForKey:@"adding"] boolValue]?@"Adding playlist…":@"Syncing playlist…"))];
+    ([type isEqualToString:@"discover"]?@"Loading playlists…":([type isEqualToString:@"addVideo"]?@"Adding video…":([[command objectForKey:@"adding"] boolValue]?@"Adding playlist…":@"Syncing playlist…")))];
   [self changed];
   [NSThread detachNewThreadSelector:@selector(work:) toTarget:self withObject:command];
 }
@@ -576,13 +588,13 @@ static void download_callback(const rdlp_download_event *event,void *context) {
        [[job objectForKey:@"state"] isEqualToString:@"interrupted"]) ++queueCancelled_;
   }
   NSString *type=[activeCommand_ objectForKey:@"type"];
-  BOOL download=[type isEqualToString:@"download"], discover=[type isEqualToString:@"discover"];
+  BOOL download=[type isEqualToString:@"download"], discover=[type isEqualToString:@"discover"], addVideo=[type isEqualToString:@"addVideo"];
   BOOL adding=[[activeCommand_ objectForKey:@"adding"] boolValue];
   rdlp_error_code code=(rdlp_error_code)[[result objectForKey:@"code"] intValue];
-  NSString *status=download?@"Download complete":(discover?@"Playlists loaded":(adding?@"Playlist added":@"Playlist synced"));
+  NSString *status=download?@"Download complete":(discover?@"Playlists loaded":(addVideo?@"Video added":(adding?@"Playlist added":@"Playlist synced")));
   if(download && code==RDLP_OK) status=[NSString stringWithFormat:@"Downloaded · %.1f MiB",[[result objectForKey:@"bytes"] doubleValue]/1048576.0];
   if(code==RDLP_ERROR_CANCELLED) status=download?@"Download stopped":@"Playlist operation stopped";
-  else if(code!=RDLP_OK) status=download?@"Download failed":(discover?@"Error loading playlists":(adding?@"Error adding playlist":@"Error syncing playlist"));
+  else if(code!=RDLP_OK) status=download?@"Download failed":(discover?@"Error loading playlists":(addVideo?@"Error adding video":(adding?@"Error adding playlist":@"Error syncing playlist")));
   BOOL warning=[[result objectForKey:@"warning"] boolValue];
   if(warning) status=@"Download needs attention";
   if((code!=RDLP_OK && code!=RDLP_ERROR_CANCELLED) || warning) {
@@ -632,7 +644,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   job.video_id=[[row objectForKey:@"video_id"] UTF8String]; job.format=[[row objectForKey:@"format"] UTF8String];
   job.relative_path=[[row objectForKey:@"path"] UTF8String];
   NSString *type=[command objectForKey:@"type"];
-  rdapp_operation operation=[type isEqualToString:@"sync"]?RDAPP_SYNC:([type isEqualToString:@"discover"]?RDAPP_DISCOVER:RDAPP_DOWNLOAD);
+  rdapp_operation operation=[type isEqualToString:@"sync"]?RDAPP_SYNC:([type isEqualToString:@"discover"]?RDAPP_DISCOVER:([type isEqualToString:@"addVideo"]?RDAPP_ADD_VIDEO:RDAPP_DOWNLOAD));
+  if(operation==RDAPP_ADD_VIDEO) job.format=[[command objectForKey:@"format"] UTF8String];
   if(!ca_) {
     code=RDLP_ERROR_CERTIFICATE_BUNDLE;
     snprintf(message,sizeof(message),"The application is missing its CA certificate bundle.");

@@ -75,6 +75,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (BOOL)validateToolbarItem:(NSToolbarItem *)item;
 - (BOOL)validateMenuItem:(NSMenuItem *)item;
 - (void)addPlaylist:(id)sender;
+- (void)addVideo:(id)sender;
 - (void)dismissAdd:(id)sender;
 - (void)addSheetDidEnd:(NSWindow *)sheet returnCode:(NSInteger)code contextInfo:(void *)context;
 - (void)confirmRequest:(NSDictionary *)request title:(NSString *)title detail:(NSString *)detail action:(NSString *)action;
@@ -429,7 +430,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)dealloc;
 {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
-  [sidebarItems_ release]; [downloadPolicy_ release]; [library_ release]; [playlists_ release]; [rows_ release]; [videoRows_ release]; [addedPlaylists_ release]; [accountPlaylists_ release]; [selectedPlaylist_ release];
+  [sidebarItems_ release]; [downloadPolicy_ release]; [library_ release]; [playlists_ release]; [rows_ release]; [videoRows_ release]; [addedPlaylists_ release]; [accountPlaylists_ release]; [adhocPlaylist_ release]; [selectedPlaylist_ release];
   [addSheet_ release]; [downloadSheet_ release]; [downloadRequest_ release]; [downloadFormat_ release]; [queueRows_ release]; [toolbarItems_ release]; [confirmation_ release]; [confirmationRequest_ release]; [super dealloc];
 }
 - (NSDictionary *)selectedRow;
@@ -456,6 +457,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [playlists_ release]; playlists_=[[library_ playlists] copy];
   [addedPlaylists_ release]; addedPlaylists_=[[library_ playlistIDsFromAccount:NO] copy];
   [accountPlaylists_ release]; accountPlaylists_=[[library_ playlistIDsFromAccount:YES] copy];
+  [adhocPlaylist_ release]; adhocPlaylist_=[[library_ adhocPlaylist] retain];
   if(mode_==0 && ![self selectedPlaylist]) { mode_=1; [selectedPlaylist_ release]; selectedPlaylist_=nil; [selection release]; selection=nil; }
   [rows_ release]; rows_=[(mode_==0?[library_ entriesForPlaylist:selectedPlaylist_]:[library_ jobsForPlaylist:nil completedOnly:YES]) copy];
   [queueRows_ release]; queueRows_=[[library_ queueRows] copy];
@@ -532,7 +534,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (NSArray *)syncPlan;
 {
   NSMutableArray *inputs=[NSMutableArray array]; NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
-  while((playlist=[e nextObject])) if(![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) [inputs addObject:[playlist objectForKey:@"service_id"]];
+  while((playlist=[e nextObject])) if(![[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) [inputs addObject:[playlist objectForKey:@"service_id"]];
   return inputs;
 }
 - (NSUInteger)queuedCount;
@@ -569,10 +571,10 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     tip=[NSString stringWithFormat:@"%@ — %@ · %@",delete?@"Delete downloaded video…":([self canCancel:job]?@"Show in Queue":@"Download video"),job?[job objectForKey:@"title"]:[[self selectedRow] objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:job?[job objectForKey:@"format"]:[self targetFormat]]];
   } else if(playlist) {
     icon=AIFAArrowsRotate;
-    enabled=![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
+    enabled=![[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
     tip=[NSString stringWithFormat:@"Sync ‘%@’",[playlist objectForKey:@"title"]];
-  } else { icon=(AIFontAwesomeIcon)0x2b; tip=@"Add a playlist…"; }
-  [self setToolbarItem:@"download" title:video?(delete?@"Delete":@"Download"):(playlist?@"Sync":@"Add Playlist") tip:tip icon:[RDLPLibraryViews toolbarIcon:icon window:[self window]] enabled:enabled];
+  } else { icon=(AIFontAwesomeIcon)0x2b; tip=@"Add a video…"; }
+  [self setToolbarItem:@"download" title:video?(delete?@"Delete":@"Download"):(playlist?@"Sync":@"Add Video") tip:tip icon:[RDLPLibraryViews toolbarIcon:icon window:[self window]] enabled:enabled];
   NSString *path=[self selectionPlayFile], *application=[RDLPAppKit preferredPlaybackApplication:path];
   NSString *object=video?@"video":@"playlist";
   NSString *playTip=path?(application?[NSString stringWithFormat:@"Play %@ in %@",object,[[[NSFileManager defaultManager] displayNameAtPath:application] stringByDeletingPathExtension]]:[NSString stringWithFormat:@"Reveal %@ in Finder",object]):@"Select a downloaded video or playlist to play";
@@ -602,14 +604,17 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (NSInteger)outlineView:(NSOutlineView *)outline numberOfChildrenOfItem:(id)item;
 {
   (void)outline;
-  if(!item) return 3; if([item isEqual:@"System"]) return 1;
+  if(!item) return 3; if([item isEqual:@"System"]) return adhocPlaylist_?2:1;
   return (NSInteger)[([item isEqual:@"My Playlists"]?accountPlaylists_:addedPlaylists_) count];
 }
 - (id)outlineView:(NSOutlineView *)outline child:(NSInteger)index ofItem:(id)item;
 {
   (void)outline;
   if(!item) return [[NSArray arrayWithObjects:@"System",@"Added Playlists",@"My Playlists",nil] objectAtIndex:(NSUInteger)index];
-  if([item isEqual:@"System"]) return @"All Downloads";
+  if([item isEqual:@"System"]) {
+    if(index==0) return @"All Downloads";
+    NSString *key=[adhocPlaylist_ objectForKey:@"id"]; if(![sidebarItems_ objectForKey:key]) [sidebarItems_ setObject:key forKey:key]; return [sidebarItems_ objectForKey:key];
+  }
   NSDictionary *playlist=[([item isEqual:@"My Playlists"]?accountPlaylists_:addedPlaylists_) objectAtIndex:(NSUInteger)index];
   NSString *key=[playlist objectForKey:@"id"];
   if(![sidebarItems_ objectForKey:key]) [sidebarItems_ setObject:key forKey:key];
@@ -716,7 +721,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(action==@selector(importCookies:)) return ![library_ isBusy] && noCookies;
   if(action==@selector(replaceCookies:) || action==@selector(clearCookies:)) return ![library_ isBusy] && !noCookies;
   if(action==@selector(discover:)) return ![library_ isBusy] && ![library_ isDiscoveryPending];
-  if(action==@selector(sync:)) return playlist && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
+  if(action==@selector(sync:)) return playlist && ![[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
   if(action==@selector(syncAll:)) return [library_ hasPlaylistsToSync];
   if(action==@selector(chooseDownload:)) {
     BOOL all=[item tag]>=5; NSUInteger index=(NSUInteger)[item tag]%5;
@@ -766,6 +771,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)addPlaylist:(id)sender;
 {
   (void)sender; if(addSheet_ || [[self window] attachedSheet]) return;
+  addingVideo_=NO;
   addSheet_=[[NSPanel alloc] initWithContentRect:NSMakeRect(0,0,460,135) styleMask:AIWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
   [addSheet_ setTitle:@"Add Playlist"];
   NSView *view=[addSheet_ contentView]; [[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,95,420,24) editable:NO] setStringValue:@"Playlist URL or ID"];
@@ -775,13 +781,25 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [RDLPAppKit beginSheet:addSheet_ forWindow:[self window] delegate:self didEnd:@selector(addSheetDidEnd:returnCode:contextInfo:)];
   [addSheet_ makeFirstResponder:input_];
 }
+- (void)addVideo:(id)sender;
+{
+  (void)sender;
+  if([[self window] attachedSheet] || addSheet_) return;
+  addSheet_=[[NSPanel alloc] initWithContentRect:NSMakeRect(0,0,460,135) styleMask:AIWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
+  [addSheet_ setTitle:@"Add Video"];
+  NSView *view=[addSheet_ contentView]; [[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,95,420,24) editable:NO] setStringValue:@"YouTube video URL or ID"];
+  addingVideo_=YES; input_=[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,62,420,24) editable:YES];
+  NSButton *cancel=[RDLPLibraryViews buttonInView:view title:@"Cancel" action:@selector(dismissAdd:) target:self frame:NSMakeRect(230,15,100,28)]; [cancel setTag:0]; [cancel setKeyEquivalent:@"\033"];
+  NSButton *add=[RDLPLibraryViews buttonInView:view title:@"Add Video" action:@selector(dismissAdd:) target:self frame:NSMakeRect(335,15,110,28)]; [add setTag:1]; [add setKeyEquivalent:@"\r"];
+  [RDLPAppKit beginSheet:addSheet_ forWindow:[self window] delegate:self didEnd:@selector(addSheetDidEnd:returnCode:contextInfo:)]; [addSheet_ makeFirstResponder:input_];
+}
 - (void)dismissAdd:(id)sender;
 { [NSApp endSheet:addSheet_ returnCode:[sender tag]]; }
 - (void)addSheetDidEnd:(NSWindow *)sheet returnCode:(NSInteger)code contextInfo:(void *)context;
 {
-  (void)context; NSString *input=[[input_ stringValue] copy]; [sheet orderOut:nil];
+  (void)context; NSString *input=[[input_ stringValue] copy]; BOOL addingVideo=addingVideo_; [sheet orderOut:nil];
   [addSheet_ release]; addSheet_=nil; input_=nil;
-  if(code==1) [library_ addPlaylistInput:input]; [input release];
+  if(code==1) { if(addingVideo) [library_ addVideoInput:input]; else [library_ addPlaylistInput:input]; } [input release];
 }
 - (void)confirmRequest:(NSDictionary *)request title:(NSString *)title detail:(NSString *)detail action:(NSString *)action;
 {
@@ -843,7 +861,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
 {
-  if(!playlist || [library_ isBusy]) return NO;
+  if(!playlist || [[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] || [library_ isBusy]) return NO;
   return ![library_ hasBlockingJobsForPlaylist:[playlist objectForKey:@"id"]];
 }
 - (void)retryAndRevealJob:(NSDictionary *)job;
@@ -892,10 +910,10 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     if(playlist) [self enqueueRequest:[NSDictionary dictionaryWithObjectsAndKeys:[playlist objectForKey:@"id"],@"playlist",[self targetVideoID],@"video",[self targetFormat],@"format",nil]];
   } else if(playlist) {
     [self sync:sender];
-  } else [self addPlaylist:sender];
+  } else [self addVideo:sender];
 }
 - (void)sync:(id)sender;
-{ (void)sender; NSDictionary *playlist=[self contextPlaylist]; if(playlist) [library_ syncPlaylistInput:[playlist objectForKey:@"service_id"]]; }
+{ (void)sender; NSDictionary *playlist=[self contextPlaylist]; if(playlist && ![[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID]) [library_ syncPlaylistInput:[playlist objectForKey:@"service_id"]]; }
 - (void)syncAll:(id)sender;
 {
   (void)sender; NSArray *inputs=[self syncPlan]; if(![inputs count]) return;

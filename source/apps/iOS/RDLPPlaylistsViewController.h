@@ -18,6 +18,7 @@
 - (void)performRow:(NSDictionary *)row;
 - (void)showPlaylistActions:(id)sender;
 - (void)add:(id)sender;
+- (void)addVideo:(id)sender;
 - (void)discover:(id)sender;
 - (void)syncAll:(id)sender;
 - (void)settings:(id)sender;

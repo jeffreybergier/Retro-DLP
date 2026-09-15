@@ -19,6 +19,8 @@
 - (NSString *)tableView:(NSTableView *)view toolTipForCell:(NSCell *)cell rect:(NSRectPointer)rect tableColumn:(NSTableColumn *)column row:(NSInteger)row mouseLocation:(NSPoint)point;
 - (void)dismissDownload:(id)sender;
 - (void)clearCookies:(id)sender;
+- (void)addVideo:(id)sender;
+- (NSInteger)outlineView:(NSOutlineView *)outline numberOfChildrenOfItem:(id)item;
 @end
 #import "shared_status_test.h"
 #import "shared_metadata_test.h"
@@ -326,7 +328,12 @@ static NSArray *titles(NSMenu *menu) {
     NSDictionary *items=[window_ valueForKey:@"toolbarItems_"];
     requireCondition([items count]==4 && [items objectForKey:@"download"] && [items objectForKey:@"play"],@"Expected Download and Play toolbar items");
     requireCondition(![toolbarButton(window_,@"play") isDefaultEnabled],@"No selection must disable Play");
+    requireCondition([[[items objectForKey:@"download"] label] isEqualToString:@"Add Video"],@"No target toolbar label is Add Video");
+    [toolbarButton(window_,@"download") performClick:nil]; pump();
+    requireCondition([[[window_ valueForKey:@"addSheet_"] title] isEqualToString:@"Add Video"],@"No target toolbar opens Add Video");
+    [NSApp endSheet:[window_ valueForKey:@"addSheet_"] returnCode:0]; pump();
     NSMenu *fileMenu=[window_ menuForMenuBarTitle:@"File"];
+    requireCondition([[fileMenu itemAtIndex:0] action]==@selector(addVideo:) && [[fileMenu itemAtIndex:1] action]==@selector(addPlaylist:),@"File menu puts Add Video before Add Playlist");
     NSMenu *editMenu=[window_ menuForMenuBarTitle:@"Edit"];
     NSMenu *viewMenu=[window_ menuForMenuBarTitle:@"View"];
     requireCondition([fileMenu itemWithTitle:@"Delete Download…"]==nil && [editMenu itemWithTitle:@"Delete Download…"]!=nil,@"Deletion belongs in Edit");
@@ -339,7 +346,8 @@ static NSArray *titles(NSMenu *menu) {
     requireCondition([RDLPAppKit youTubeIconForScale:1]!=nil,@"YouTube Brands icon missing");
     NSMenu *download=[window_ menuForToolbarIdentifier:@"download"];
     NSMenu *play=[window_ menuForToolbarIdentifier:@"play"];
-    requireCondition([download itemWithTitle:@"Add Playlist…"]!=nil,@"Global Add must remain available");
+    requireCondition([download itemWithTitle:@"Add Playlist…"]!=nil && [download itemWithTitle:@"Add Video…"]!=nil,@"Global Add commands must remain available");
+    requireCondition([download indexOfItemWithTitle:@"Add Video…"]<[download indexOfItemWithTitle:@"Add Playlist…"],@"Download menu puts Add Video before Add Playlist");
     requireCondition([play itemWithTitle:@"Open With…"]==nil,@"Open With must remain absent");
     selectRow(window_,@"sidebar_",1);
     download=[window_ menuForToolbarIdentifier:@"download"]; play=[window_ menuForToolbarIdentifier:@"play"];
@@ -494,8 +502,22 @@ static NSArray *titles(NSMenu *menu) {
     deadline=[NSDate dateWithTimeIntervalSinceNow:20];
     while(([[[library_ queueProgress] objectForKey:@"active"] boolValue] || [library_ isBusy]) && [deadline timeIntervalSinceNow]>0) pump();
     requireCondition(![[[library_ queueProgress] objectForKey:@"active"] boolValue],@"Retried run did not drain");
+    requireCondition(rdapp_store_open("/tmp/retrodlp-toolbar-fixture/Support/retrodlp.sqlite",&discoveryStore),@"Open Ad-Hoc fixture");
+    requireCondition(rdapp_store_add_adhoc(discoveryStore,"ABCDEFGHIJK","Individual video",NULL),@"Add Ad-Hoc fixture");
+    rdapp_store_close(discoveryStore); [window_ refresh:nil];
+    NSDictionary *adhoc=[library_ adhocPlaylist];
+    requireCondition(adhoc!=nil && [[library_ playlistsFromAccount:NO] count]==0 && [[library_ playlistsFromAccount:YES] count]==1,@"Ad-Hoc stays outside playlist groups");
+    requireCondition([window_ outlineView:outline numberOfChildrenOfItem:@"System"]==2,@"System contains Ad-Hoc");
+    id adhocItem=[[window_ valueForKey:@"sidebarItems_"] objectForKey:[adhoc objectForKey:@"id"]];
+    [outline selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)[outline rowForItem:adhocItem]] byExtendingSelection:NO];
+    [window_ tableWasUsed:outline];
+    requireCondition(![toolbarButton(window_,@"download") isDefaultEnabled],@"Ad-Hoc toolbar sync is disabled");
+    requireCondition(![window_ validateMenuItem:[[[NSMenuItem alloc] initWithTitle:@"Sync" action:@selector(sync:) keyEquivalent:@""] autorelease]],@"Ad-Hoc menu sync is disabled");
+    [window_ addVideo:nil]; pump();
+    requireCondition([[[window_ valueForKey:@"addSheet_"] title] isEqualToString:@"Add Video"],@"Mac Add Video sheet opens");
+    [NSApp endSheet:[window_ valueForKey:@"addSheet_"] returnCode:0]; pump();
     testMacErrorAlert(window_);
-    report=@"PASS: shared status expiry, native error alerts, VLC preference and system fallback, download policy, textured window, flat five-column queue, exact-quality menu actions, selection stability, transfer progress, queue accounting and local failures, sidebar outline groups, discovery promotion, Download/Play targeting, adaptive menus, cancellation and retry; no network requests.";
+    report=@"PASS: Ad-Hoc grouping and disabled sync, Add Video sheet, shared status expiry, native error alerts, VLC preference and system fallback, download policy, textured window, flat five-column queue, exact-quality menu actions, selection stability, transfer progress, queue accounting and local failures, sidebar outline groups, discovery promotion, Download/Play targeting, adaptive menus, cancellation and retry; no network requests.";
 
   } @catch(NSException *exception) { report=[NSString stringWithFormat:@"FAIL: %@",exception]; }
   [report writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
