@@ -7,6 +7,7 @@
 #import "../macOS/RDLPAppDelegate.h"
 #import "../shared/rdapp_store.h"
 #import <math.h>
+#include <sys/resource.h>
 @interface RDLPLibraryWindowController (RDLPToolbarTest)
 - (void)tableWasUsed:(NSTableView *)view;
 - (BOOL)validateMenuItem:(NSMenuItem *)item;
@@ -20,10 +21,23 @@
 - (void)clearCookies:(id)sender;
 @end
 #import "shared_status_test.h"
+#import "shared_metadata_test.h"
+#import "shared_video_rows_test.h"
 
 static void requireCondition(BOOL condition,NSString *message) {
-  if(!condition) [NSException raise:@"RDLPToolbarTest" format:@"%@",message];
+  if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDLPTestTrace"]) NSLog(@"%@: %@",condition?@"PASS":@"FAIL",message);
+  if(!condition) {
+    [[@"FAIL: " stringByAppendingString:message] writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+    [NSException raise:@"RDLPToolbarTest" format:@"%@",message];
+  }
 }
+/* Exercise the modern CGFloat-returning selector even on the Tiger runner. */
+@interface RDLPBackingScaleProbe : NSObject
+- (CGFloat)backingScaleFactor;
+@end
+@implementation RDLPBackingScaleProbe
+- (CGFloat)backingScaleFactor; { return 2.0; }
+@end
 @interface RDLPErrorAlertProbe : NSObject {
 @public
   BOOL appeared;
@@ -88,7 +102,7 @@ static RDLPToolbarButton *toolbarButton(RDLPLibraryWindowController *window,NSSt
 static void selectRow(RDLPLibraryWindowController *window,NSString *key,NSUInteger row) {
   NSTableView *table=[window valueForKey:key];
   if([key isEqualToString:@"queue_"]) {
-    [window showJobInQueue:[[window valueForKey:@"jobs_"] objectAtIndex:row]];
+    [window showJobInQueue:[[window valueForKey:@"queueRows_"] objectAtIndex:row]];
     [window tableWasUsed:table]; return;
   }
   if([table isKindOfClass:[NSOutlineView class]]) {
@@ -132,6 +146,9 @@ static NSArray *titles(NSMenu *menu) {
   @try {
     requireCondition([[NSBundle mainBundle] pathForResource:@"cacert" ofType:@"pem"]==nil,@"Test bundle must have no network CA resource");
     if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDIconTestOnly"]) {
+      RDLPBackingScaleProbe *scaleProbe=[[[RDLPBackingScaleProbe alloc] init] autorelease];
+      requireCondition([RDLPAppKit backingScaleForWindow:(NSWindow *)scaleProbe]==2.0,
+        @"Backing scale must preserve CGFloat through the runtime compatibility bridge");
       AIFontAwesomeIcon icons[]={AIFADownload,AIFACaretDown,AIFAPause,(AIFontAwesomeIcon)0xf167};
       CGFloat sizes[]={24,8,10,24}, canvases[]={32,10,10,32};
       unsigned int i,scale;
@@ -151,7 +168,24 @@ static NSArray *titles(NSMenu *menu) {
         }
         requireCondition(opaque && transparent,@"Control icon must retain both its glyph and transparent canvas");
       }
-      [@"PASS: control icon colors, transparency, cache reuse, 1x/2x resolution, and YouTube fallback" writeToFile:@"/tmp/retrodlp-icon-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      library_=[[RDLPLibrary alloc] initWithSupportDirectory:@"/tmp/retrodlp-icon-scale-test/Support"
+        downloadDirectory:@"/tmp/retrodlp-icon-scale-test/Downloads"];
+      requireCondition(library_!=nil,@"Icon test library failed to open");
+      window_=[[RDLPLibraryWindowController alloc] initWithLibrary:library_]; [window_ showWindow:nil]; pump();
+      CGFloat backingScale=[RDLPAppKit backingScaleForWindow:[window_ window]];
+      RDLPToolbarButton *queue=toolbarButton(window_,@"downloads");
+      NSImage *wrongScale=[RDLPAppKit controlIcon:AIFACaretDown style:AIFontAwesomeStyleSolid
+        iconSize:8 canvasSize:10 scale:backingScale==1?2:1];
+      [queue setImage:wrongScale]; [queue setCaretImage:wrongScale];
+      [[NSNotificationCenter defaultCenter] postNotificationName:@"NSWindowDidChangeBackingPropertiesNotification" object:nil];
+      requireCondition([queue image]==wrongScale,@"Other windows must not refresh these icons");
+      [[NSNotificationCenter defaultCenter] postNotificationName:@"NSWindowDidChangeBackingPropertiesNotification" object:[window_ window]];
+      NSBitmapImageRep *queueBitmap=[[[queue image] representations] objectAtIndex:0];
+      NSBitmapImageRep *caretBitmap=[[[queue valueForKey:@"caret_"] representations] objectAtIndex:0];
+      requireCondition([queueBitmap pixelsWide]==32*backingScale && [caretBitmap pixelsWide]==10*backingScale,
+        @"Window backing notification must replace both the static Queue glyph and caret at the current scale");
+      requireCondition([RDLPAppKit backingScaleForWindow:nil]==1,@"Unattached or legacy windows use 1x");
+      [@"PASS: control icon colors, transparency, cache reuse, 1x/2x resolution, YouTube fallback, and window backing refresh" writeToFile:@"/tmp/retrodlp-icon-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
       [NSApp terminate:nil]; return;
     }
     if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDWindowTestOnly"]) {
@@ -179,6 +213,8 @@ static NSArray *titles(NSMenu *menu) {
     testSharedStatus(@"/tmp/retrodlp-toolbar-fixture/Status");
     requireCondition([[library_ playlists] count]==1 && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Use a fresh fixture");
     testSharedLists(library_);
+    testSharedMetadata();
+    testSharedVideoRows(@"/tmp/retrodlp-toolbar-fixture/Rows");
     RDLPDownloadPolicy *policy=[[[RDLPDownloadPolicy alloc] initWithLibrary:library_] autorelease];
     requireCondition(![policy playable:nil] && ![policy canRetry:nil] && ![policy canCancel:nil] &&
       ![policy canDownloadAgain:nil] && ![policy canRemove:nil],@"No selection must enable no job actions");
@@ -312,9 +348,13 @@ static NSArray *titles(NSMenu *menu) {
     requireCondition([window_ validateMenuItem:choice(play,@"Reveal Playlist in Finder")],@"Playlist folder must reveal");
     requireCondition([window_ validateMenuItem:choice(play,@"Play Playlist in Default App")]==([RDLPAppKit defaultApplication:[library_ playlistFile:[[library_ playlists] objectAtIndex:0]]]!=nil),@"Playlist playback must use its exported file");
     NSTableView *videosTable=[window_ valueForKey:@"table_"];
-    requireCondition([[videosTable tableColumns] count]==2 && [videosTable tableColumnWithIdentifier:@"quality"]==nil,@"Playlist table must omit Quality");
+    NSArray *videoColumnIDs=[NSArray arrayWithObjects:@"state",@"size",@"quality",@"title",@"channel",nil];
+    requireCondition([[[videosTable tableColumns] valueForKey:@"identifier"] isEqual:videoColumnIDs],@"Playlist columns follow Status, Size, Quality, Video, Channel order");
+    requireCondition([[window_ tableView:videosTable objectValueForTableColumn:[videosTable tableColumnWithIdentifier:@"channel"] row:0] isEqualToString:@"Example Channel"],@"Playlist Channel column");
+    NSString *metadataTip=[window_ tableView:videosTable toolTipForCell:nil rect:NULL tableColumn:[videosTable tableColumnWithIdentifier:@"title"] row:0 mouseLocation:NSZeroPoint];
+    requireCondition([metadataTip rangeOfString:@"At last sync: 1.2K views · Published 2 days ago"].location!=NSNotFound && [metadataTip rangeOfString:@"Available snippet"].location!=NSNotFound,@"Video tooltip includes original labels and snippet");
     requireCondition([[[[videosTable tableColumns] objectAtIndex:0] identifier] isEqualToString:@"state"] && [[[[[videosTable tableColumns] objectAtIndex:0] headerCell] stringValue] length]==0,@"Status must be the untitled first column");
-    requireCondition(![[videosTable enclosingScrollView] hasHorizontalScroller],@"Video table must fit its pane");
+    requireCondition([[videosTable enclosingScrollView] hasHorizontalScroller],@"Narrow panes allow scrolling to all metadata columns");
     NSMenu *bulk=[choice(download,@"Download Quality") submenu];
     invoke(window_,choice(bulk,@"High (137+140)"));
     requireCondition(![[window_ window] attachedSheet] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Choosing High must only save the preference");
@@ -337,7 +377,10 @@ static NSArray *titles(NSMenu *menu) {
       [library_ shutdown]; [NSApp terminate:nil]; return;
     }
     selectRow(window_,@"sidebar_",0);
-    requireCondition([[videosTable tableColumns] count]==3 && [videosTable tableColumnWithIdentifier:@"quality"]!=nil,@"All Downloads must retain Quality");
+    requireCondition([[videosTable tableColumns] count]==5 && [videosTable tableColumnWithIdentifier:@"quality"]!=nil,@"All Downloads must retain Quality");
+    requireCondition([[[videosTable tableColumns] valueForKey:@"identifier"] isEqual:videoColumnIDs],@"All Downloads shares the same column order");
+    requireCondition([[window_ tableView:videosTable objectValueForTableColumn:[videosTable tableColumnWithIdentifier:@"channel"] row:0] isEqualToString:@"Example Channel"],@"All Downloads uses persisted job metadata");
+    requireCondition([[window_ tableView:videosTable objectValueForTableColumn:[videosTable tableColumnWithIdentifier:@"size"] row:0] length]>0,@"All Downloads exposes completed file size");
     selectRow(window_,@"sidebar_",1);
     invoke(window_,choice(download,@"Download Missing Videos")); confirm(window_,NO);
     invoke(window_,choice(bulk,@"Low (18)"));
@@ -461,6 +504,14 @@ static NSArray *titles(NSMenu *menu) {
 }
 @end
 int main(void) {
+  /* This synchronous test keeps autoreleased read snapshots across many UI
+     actions. Real AppKit events drain their pools between actions. Tiger's
+     default 256 descriptors cannot hold the entire test callback's snapshots. */
+  struct rlimit files;
+  if(getrlimit(RLIMIT_NOFILE,&files)==0 && files.rlim_cur<4096) {
+    files.rlim_cur=files.rlim_max<4096?files.rlim_max:4096;
+    setrlimit(RLIMIT_NOFILE,&files); /* Test process only; leave the hard limit intact. */
+  }
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
   NSApplication *app=[RDLPApplication sharedApplication]; RDLPToolbarTest *delegate=[[RDLPToolbarTest alloc] init];
   [RDLPAppKit setApplication:app delegate:delegate]; [app run]; [delegate release]; [pool drain]; return 0;

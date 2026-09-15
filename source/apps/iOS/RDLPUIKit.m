@@ -3,8 +3,16 @@
 #import <AIFontAwesome.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <AVFoundation/AVFoundation.h>
+#import <math.h>
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+/* Keep raster pixels and UIImage.scale tied to the same display scale.
+   AIFontAwesome also accepts zero for this, but the cache needs the resolved
+   value so images created at another screen scale cannot be reused. */
+static CGFloat RDLPMainScreenScale(void) {
+  CGFloat scale=[[UIScreen mainScreen] scale];
+  return isfinite(scale) && scale>=1.0?scale:1.0;
+}
 @implementation RDLPUIKit
 + (void)configureContentEdges:(UIViewController *)controller;
 {
@@ -16,33 +24,35 @@
 {
   static NSMutableDictionary *images=nil;
   if(!images) images=[[NSMutableDictionary alloc] init];
-  UIImage *cached=[images objectForKey:status]; if(cached) return cached;
+  CGFloat scale=RDLPMainScreenScale();
+  NSArray *key=[NSArray arrayWithObjects:status,[NSNumber numberWithDouble:scale],nil];
+  UIImage *cached=[images objectForKey:key]; if(cached) return cached;
   AIFontAwesomeIcon icon=AIFATriangleExclamation;
   if([status isEqualToString:@"Downloaded"]) icon=AIFACircleCheck;
   else if([status isEqualToString:@"Downloading"] || [status isEqualToString:@"Queued"]) icon=AIFAHourglass;
   else if([status isEqualToString:@"Not downloaded"]) icon=AIFADownload;
-  UIImage *image=[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid iconSize:14 canvasSize:18 color:[UIColor darkGrayColor] scale:0];
-  if(image) [images setObject:image forKey:status]; return image;
+  UIImage *image=[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid iconSize:14 canvasSize:18 color:[UIColor darkGrayColor] scale:scale];
+  if(image) [images setObject:image forKey:key]; return image;
 }
 + (UIImage *)queueActionIcon:(BOOL)stop;
-{ return [AIFontAwesome imageForIcon:stop?AIFAPause:AIFARotateRight style:AIFontAwesomeStyleSolid iconSize:14 canvasSize:20 color:[UIColor blackColor] scale:0]; }
+{ return [AIFontAwesome imageForIcon:stop?AIFAPause:AIFARotateRight style:AIFontAwesomeStyleSolid iconSize:14 canvasSize:20 color:[UIColor blackColor] scale:RDLPMainScreenScale()]; }
 
 + (UIImage *)settingsIcon;
-{ return [AIFontAwesome imageForIcon:AIFAGear style:AIFontAwesomeStyleSolid iconSize:22 canvasSize:26 color:[UIColor blackColor] scale:0]; }
+{ return [AIFontAwesome imageForIcon:AIFAGear style:AIFontAwesomeStyleSolid iconSize:22 canvasSize:26 color:[UIColor blackColor] scale:RDLPMainScreenScale()]; }
 
 + (UIImage *)plusIcon;
 {
   /* Font Awesome "plus"; this bundled header names U+F067 AIFAStd12. */
-  return [AIFontAwesome imageForIcon:(AIFontAwesomeIcon)0xF067 style:AIFontAwesomeStyleSolid iconSize:22 canvasSize:26 color:[UIColor blackColor] scale:0]; }
+  return [AIFontAwesome imageForIcon:(AIFontAwesomeIcon)0xF067 style:AIFontAwesomeStyleSolid iconSize:22 canvasSize:26 color:[UIColor blackColor] scale:RDLPMainScreenScale()]; }
 
 + (UIImage *)queueToolbarIcon;
 {
   /* ENIL's toolbar glyph geometry; UIKit supplies tint on iOS 7+. */
-  return [AIFontAwesome imageForIcon:AIFAList style:AIFontAwesomeStyleSolid iconSize:18 canvasSize:28 color:[UIColor whiteColor] scale:0];
+  return [AIFontAwesome imageForIcon:AIFAListCheck style:AIFontAwesomeStyleSolid iconSize:18 canvasSize:28 color:[UIColor whiteColor] scale:RDLPMainScreenScale()];
 }
 
 + (UIImage *)syncIcon;
-{ return [AIFontAwesome imageForIcon:AIFAArrowsRotate style:AIFontAwesomeStyleSolid iconSize:22 canvasSize:26 color:[UIColor blackColor] scale:0]; }
+{ return [AIFontAwesome imageForIcon:AIFAArrowsRotate style:AIFontAwesomeStyleSolid iconSize:22 canvasSize:26 color:[UIColor blackColor] scale:RDLPMainScreenScale()]; }
 
 + (NSArray *)statusToolbarItems:(RDLPStatusBarView *)status target:(id)target queueAction:(SEL)action;
 {

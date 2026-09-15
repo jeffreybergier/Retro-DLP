@@ -45,6 +45,12 @@ extern NSString * const RDLPLibraryErrorDidOccur;
 + (NSArray *)qualityFormats;
 /* Preset name and exact expression, without implying measured resolution. */
 + (NSString *)qualityLabelForFormat:(NSString *)format;
+/* Optional numbers arrive from SQLite as strings; empty means absent, not zero. */
++ (NSString *)durationLabelForEntry:(NSDictionary *)entry;
++ (NSString *)spokenDurationForEntry:(NSDictionary *)entry;
++ (NSString *)metadataSummaryForEntry:(NSDictionary *)entry;
++ (NSString *)metadataTooltipForEntry:(NSDictionary *)entry;
++ (NSString *)fileSizeLabelForBytes:(unsigned long long)bytes;
 + (NSString *)preferredFormat;
 + (BOOL)validFormat:(NSString *)format;
 + (BOOL)savePreferredFormat:(NSString *)format;

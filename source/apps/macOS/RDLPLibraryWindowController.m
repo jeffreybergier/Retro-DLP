@@ -4,6 +4,7 @@
 #import <AIFontAwesome.h>
 #import "RDLPLibraryViews.h"
 #import "RDLPDownloadPolicy.h"
+#import "RDLPVideoRows.h"
 #import "RDLPLibraryMenus.h"
 /* Declarations for runtime-guarded APIs absent from the Tiger SDK. */
 @interface NSWindow (RDLPStatusBarCompatibility)
@@ -65,6 +66,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (NSUInteger)queuedCount;
 - (void)setToolbarItem:(NSString *)key title:(NSString *)title tip:(NSString *)tip icon:(NSImage *)icon enabled:(BOOL)enabled;
 - (void)updateToolbar;
+- (void)refreshIconScale:(NSNotification *)notification;
 - (void)refreshStatus:(id)sender;
 - (void)updateControls;
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)view;
@@ -131,23 +133,35 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [left setView:sidebar]; [self setSidebarViewController:left];
   AIViewController *middle=[[[AIViewController alloc] init] autorelease];
   NSView *detail=[[[RDLPLayoutView alloc] initWithFrame:NSMakeRect(0,0,540,600)] autorelease];
-  table_=[RDLPLibraryViews tableInView:detail frame:[detail bounds] owner:self names:[NSArray arrayWithObjects:@"state",@"title",@"quality",nil] labels:[NSArray arrayWithObjects:@"",@"Video",@"Quality",nil]];
+  table_=[RDLPLibraryViews tableInView:detail frame:[detail bounds] owner:self
+    names:[NSArray arrayWithObjects:@"state",@"size",@"quality",@"title",@"channel",nil]
+    labels:[NSArray arrayWithObjects:@"",@"Size",@"Quality",@"Video",@"Channel",nil]];
   NSTableColumn *stateColumn=[table_ tableColumnWithIdentifier:@"state"];
   [stateColumn setMinWidth:24]; [stateColumn setMaxWidth:24]; [stateColumn setWidth:24];
   [stateColumn setResizingMask:NSTableColumnNoResizing];
   [stateColumn setDataCell:[[[RDLPStatusCell alloc] initImageCell:nil] autorelease]];
-  NSTableColumn *titleColumn=[table_ tableColumnWithIdentifier:@"title"];
-  [titleColumn setMinWidth:0]; [titleColumn setResizingMask:NSTableColumnAutoresizingMask];
-  [[titleColumn dataCell] setLineBreakMode:NSLineBreakByTruncatingTail];
-  qualityColumn_=[[table_ tableColumnWithIdentifier:@"quality"] retain];
-  [qualityColumn_ setMinWidth:135]; [qualityColumn_ setMaxWidth:135]; [qualityColumn_ setWidth:135];
-  [qualityColumn_ setResizingMask:NSTableColumnNoResizing];
-  [[qualityColumn_ dataCell] setLineBreakMode:NSLineBreakByTruncatingTail];
-  [table_ setColumnAutoresizingStyle:NSTableViewUniformColumnAutoresizingStyle];
+  NSTableColumn *sizeColumn=[table_ tableColumnWithIdentifier:@"size"];
+  [sizeColumn setMinWidth:48]; [sizeColumn setWidth:48];
+  [sizeColumn setResizingMask:NSTableColumnUserResizingMask];
+  [[sizeColumn dataCell] setLineBreakMode:NSLineBreakByTruncatingTail];
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 101200
+  [[sizeColumn dataCell] setAlignment:NSTextAlignmentRight];
+#else
+  [[sizeColumn dataCell] setAlignment:NSRightTextAlignment];
+#endif
+  NSArray *videoTextColumns=[NSArray arrayWithObjects:@"quality",@"title",@"channel",nil];
+  CGFloat widths[]={48,240,140}, minimums[]={48,120,80};
+  NSUInteger videoColumnIndex;
+  for(videoColumnIndex=0;videoColumnIndex<[videoTextColumns count];++videoColumnIndex) {
+    NSTableColumn *column=[table_ tableColumnWithIdentifier:[videoTextColumns objectAtIndex:videoColumnIndex]];
+    [column setWidth:widths[videoColumnIndex]]; [column setMinWidth:minimums[videoColumnIndex]];
+    [column setResizingMask:NSTableColumnUserResizingMask];
+    [[column dataCell] setLineBreakMode:NSLineBreakByTruncatingTail];
+  }
+  [table_ setColumnAutoresizingStyle:NSTableViewNoColumnAutoresizing];
   [table_ setAllowsColumnReordering:NO];
-  [[table_ enclosingScrollView] setHasHorizontalScroller:NO];
+  [[table_ enclosingScrollView] setHasHorizontalScroller:YES];
   [[table_ enclosingScrollView] setAutohidesScrollers:YES];
-  [table_ sizeToFit];
   [[table_ enclosingScrollView] setBorderType:NSNoBorder];
   [table_ setTarget:self]; [table_ setDoubleAction:@selector(openVideo:)];
   downloadFormat_=[[RDLPLibrary preferredFormat] copy];
@@ -243,6 +257,11 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   [super windowDidLoad];
   NSWindow *window=[self window];
+  /* String name keeps the 10.4 SDK path free of the 10.7+ constant. */
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshIconScale:)
+    name:@"NSWindowDidChangeBackingPropertiesNotification" object:window];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshIconScale:)
+    name:NSWindowDidChangeScreenNotification object:window];
   NSRect frame=[window frame];
   NSSplitView *split=[self AI_splitView];
   NSRect bounds=[[window contentView] bounds];
@@ -296,7 +315,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSArray *labels=[NSArray arrayWithObjects:@"Download",@"Play",@"Cookies",@"Queue",nil];
   NSArray *icons=[NSArray arrayWithObjects:[NSNumber numberWithInt:AIFADownload],
     [NSNumber numberWithInt:AIFAPlay],[NSNumber numberWithInt:AIFACookieBite],
-    [NSNumber numberWithInt:AIFAListUl],nil];
+    [NSNumber numberWithInt:AIFAListCheck],nil];
   NSToolbarItem *item=[[[NSToolbarItem alloc] initWithItemIdentifier:identifier] autorelease];
   RDLPToolbarButton *view=[[[RDLPToolbarButton alloc] initWithFrame:NSMakeRect(0,0,40,32)] autorelease];
   [view setTitle:[labels objectAtIndex:index]]; [view setTag:(NSInteger)index];
@@ -410,8 +429,8 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)dealloc;
 {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
-  [sidebarItems_ release]; [downloadPolicy_ release]; [library_ release]; [playlists_ release]; [rows_ release]; [addedPlaylists_ release]; [accountPlaylists_ release]; [selectedPlaylist_ release];
-  [qualityColumn_ release]; [addSheet_ release]; [downloadSheet_ release]; [downloadRequest_ release]; [downloadFormat_ release]; [queueRows_ release]; [toolbarItems_ release]; [confirmation_ release]; [confirmationRequest_ release]; [super dealloc];
+  [sidebarItems_ release]; [downloadPolicy_ release]; [library_ release]; [playlists_ release]; [rows_ release]; [videoRows_ release]; [addedPlaylists_ release]; [accountPlaylists_ release]; [selectedPlaylist_ release];
+  [addSheet_ release]; [downloadSheet_ release]; [downloadRequest_ release]; [downloadFormat_ release]; [queueRows_ release]; [toolbarItems_ release]; [confirmation_ release]; [confirmationRequest_ release]; [super dealloc];
 }
 - (NSDictionary *)selectedRow;
 { NSInteger row=[table_ selectedRow]; return row>=0 && (NSUInteger)row<[rows_ count]?[rows_ objectAtIndex:(NSUInteger)row]:nil; }
@@ -440,10 +459,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(mode_==0 && ![self selectedPlaylist]) { mode_=1; [selectedPlaylist_ release]; selectedPlaylist_=nil; [selection release]; selection=nil; }
   [rows_ release]; rows_=[(mode_==0?[library_ entriesForPlaylist:selectedPlaylist_]:[library_ jobsForPlaylist:nil completedOnly:YES]) copy];
   [queueRows_ release]; queueRows_=[[library_ queueRows] copy];
-  BOOL hasQuality=[table_ tableColumnWithIdentifier:@"quality"]!=nil;
-  if(mode_==0 && hasQuality) [table_ removeTableColumn:qualityColumn_];
-  else if(mode_==1 && !hasQuality) [table_ addTableColumn:qualityColumn_];
-  [table_ sizeToFit];
+  [videoRows_ release]; videoRows_=[[RDLPVideoRows alloc] initWithRows:rows_ library:library_ playlist:mode_==0?selectedPlaylist_:nil];
   [sidebar_ reloadData]; [table_ reloadData]; [queue_ reloadData];
   if(!sidebarLoaded_) {
     [sidebar_ expandItem:@"System"]; [sidebar_ expandItem:@"Added Playlists"]; [sidebar_ expandItem:@"My Playlists"]; sidebarLoaded_=YES;
@@ -530,6 +546,17 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(icon) [view setImage:icon];
   [view setDefaultEnabled:enabled && ![[self window] attachedSheet]];
 }
+- (void)refreshIconScale:(NSNotification *)notification;
+{
+  (void)notification;
+  [self updateToolbar];
+  NSImage *caret=[RDLPAppKit controlIcon:AIFACaretDown style:AIFontAwesomeStyleSolid
+    iconSize:8 canvasSize:10 scale:[RDLPAppKit backingScaleForWindow:[self window]]];
+  NSEnumerator *e=[toolbarItems_ objectEnumerator]; NSToolbarItem *item;
+  while((item=[e nextObject])) [(RDLPToolbarButton *)[item view] setCaretImage:caret];
+  /* Cell images are requested lazily again at the owning window's new scale. */
+  [table_ reloadData]; [queue_ reloadData];
+}
 - (void)updateToolbar;
 {
   NSDictionary *playlist=[self contextPlaylist], *job=[self targetJob];
@@ -552,7 +579,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [self setToolbarItem:@"play" title:@"Play" tip:playTip icon:[RDLPAppKit youTubeIconForScale:[RDLPAppKit backingScaleForWindow:[self window]]] enabled:path!=nil];
   BOOL cookies=[[library_ cookieStatus] isEqualToString:@"Imported"];
   [self setToolbarItem:@"cookies" title:@"Cookies" tip:[[library_ cookieStatus] isEqualToString:@"Not Imported"]?@"Import cookies…":@"Replace cookies…" icon:[RDLPLibraryViews toolbarIcon:cookies?AIFACookie:AIFACookieBite window:[self window]] enabled:![library_ isBusy]];
-  [self setToolbarItem:@"downloads" title:@"Queue" tip:[self isInspectorCollapsed]?@"Show Queue. Right-click for queue actions.":@"Hide Queue. Right-click for queue actions." icon:nil enabled:YES];
+  [self setToolbarItem:@"downloads" title:@"Queue" tip:[self isInspectorCollapsed]?@"Show Queue. Right-click for queue actions.":@"Hide Queue. Right-click for queue actions." icon:[RDLPLibraryViews toolbarIcon:AIFAListCheck window:[self window]] enabled:YES];
 }
 - (void)updateControls;
 { [self updateToolbar]; [self refreshStatus:nil]; }
@@ -612,17 +639,17 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (id)tableView:(NSTableView *)view objectValueForTableColumn:(NSTableColumn *)column row:(NSInteger)row;
 {
   BOOL queue=view==queue_;
-  NSDictionary *entry=[(queue?queueRows_:rows_) objectAtIndex:(NSUInteger)row]; NSString *key=[column identifier];
-  NSDictionary *job=!queue && mode_==0 && [key isEqualToString:@"state"]?[self jobForEntry:entry]:entry;
+  NSDictionary *entry=[(queue?queueRows_:videoRows_) objectAtIndex:(NSUInteger)row]; NSString *key=[column identifier];
+  NSDictionary *job=entry;
+  if(!queue && ![key isEqualToString:@"state"]) return [entry objectForKey:key];
   if(queue && [key isEqualToString:@"number"]) return [NSNumber numberWithLong:(long)row+1];
   if(queue && [key isEqualToString:@"quality"]) {
     NSString *format=[job objectForKey:@"format"], *actual=[job objectForKey:@"actual_format"];
     NSString *label=[RDLPLibrary qualityLabelForFormat:format];
     return [actual length] && ![actual isEqualToString:format]?[label stringByAppendingFormat:@" → %@",[RDLPLibrary qualityLabelForFormat:actual]]:label;
   }
-  if([key isEqualToString:@"quality"]) return [RDLPLibrary qualityLabelForFormat:mode_==0?downloadFormat_:([[job objectForKey:@"actual_format"] length]?[job objectForKey:@"actual_format"]:[job objectForKey:@"format"])];
   if([key isEqualToString:@"state"]) {
-    NSString *status=[self statusForJob:job]; AIFontAwesomeIcon icon=0;
+    NSString *status=queue?[self statusForJob:job]:[entry objectForKey:@"status"]; AIFontAwesomeIcon icon=0;
     if([status isEqualToString:@"Downloaded"]) icon=AIFACircleCheck;
     else if([status isEqualToString:@"Downloading"]) icon=AIFAArrowDown;
     else if([status isEqualToString:@"Queued"]) icon=AIFAClock;
@@ -635,19 +662,20 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)tableView:(NSTableView *)view willDisplayCell:(id)cell forTableColumn:(NSTableColumn *)column row:(NSInteger)row;
 {
   if([[column identifier] isEqualToString:@"state"]) {
-    NSDictionary *entry=[(view==queue_?queueRows_:rows_) objectAtIndex:(NSUInteger)row];
-    [cell setRepresentedObject:[self statusForJob:view!=queue_ && mode_==0?[self jobForEntry:entry]:entry]];
+    NSDictionary *entry=[(view==queue_?queueRows_:videoRows_) objectAtIndex:(NSUInteger)row];
+    [cell setRepresentedObject:view==queue_?[self statusForJob:entry]:[entry objectForKey:@"status"]];
   }
 }
 - (NSString *)tableView:(NSTableView *)view toolTipForCell:(NSCell *)cell rect:(NSRectPointer)rect tableColumn:(NSTableColumn *)column row:(NSInteger)row mouseLocation:(NSPoint)point;
 {
   (void)cell; (void)rect; (void)point;
-  NSDictionary *entry=[(view==queue_?queueRows_:rows_) objectAtIndex:(NSUInteger)row];
+  NSDictionary *entry=[(view==queue_?queueRows_:videoRows_) objectAtIndex:(NSUInteger)row];
+  if(view==table_) return [entry objectForKey:[[column identifier] isEqualToString:@"title"]?@"tooltip":([[column identifier] isEqualToString:@"state"]?@"status_tooltip":[column identifier])];
   if(![[column identifier] isEqualToString:@"state"]) {
     id value=[self tableView:view objectValueForTableColumn:column row:row];
     return [value isKindOfClass:[NSString class]]?value:[value description];
   }
-  NSDictionary *job=view!=queue_ && mode_==0?[self jobForEntry:entry]:entry;
+  NSDictionary *job=entry;
   NSString *status=[self statusForJob:job], *error=[job objectForKey:@"error"];
   return [error length]?[NSString stringWithFormat:@"%@: %@",status,error]:status;
 }

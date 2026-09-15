@@ -4,7 +4,15 @@
 #include <stdint.h>
 
 typedef struct rdapp_store rdapp_store;
-typedef struct { const char *video_id; const char *title; int position; } rdapp_entry;
+typedef struct {
+  const char *video_id; const char *title; int position;
+  /* Borrowed, ordered URLs only; snapshot copies them without fetching images. */
+  const char *const *thumbnail_urls; size_t thumbnail_count;
+  /* Optional metadata belongs to this occurrence, not the global video ID. */
+  const char *channel, *channel_id, *view_count_text, *published_text, *description_snippet;
+  uint64_t duration, view_count;
+  int has_duration, has_view_count;
+} rdapp_entry;
 typedef int (*rdapp_row_callback)(void *, int, const char *const *, const char *const *);
 typedef enum { RDAPP_PLAYLISTS, RDAPP_ENTRIES, RDAPP_JOBS, RDAPP_DOWNLOADS,
   RDAPP_ADDED_PLAYLISTS, RDAPP_ACCOUNT_PLAYLISTS, RDAPP_QUEUE, RDAPP_PENDING,

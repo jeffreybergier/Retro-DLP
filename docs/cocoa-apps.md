@@ -80,6 +80,11 @@ preference. All Downloads keeps individual completed jobs and adds Quality after
 Video to distinguish versions. Status tooltips and accessibility descriptions
 provide text equivalents; long video titles truncate to fit the pane.
 
+Playlist mode also includes Channel and Duration columns. The Video tooltip
+shows available channel/duration, views, publication text, and description snippet;
+views and publication labels are identified as captured at the last sync.
+All Downloads retains its existing three columns.
+
 Menu-bar commands retain their positions and disable when unavailable; download
 and playback labels follow the active video or playlist selection. File's Download
 command retries a selected queue quality using that job's exact format. Toolbar
@@ -284,6 +289,19 @@ the shared message expires after ten seconds. Offscreen refreshes do not change 
 visible screen's toolbar. Playlist alone adds the Sync button. Both video lists
 remain blank when empty, with no placeholder section footer.
 
+Playlist and All Downloads subtitles show duration, completed file size, quality,
+and channel, in that order, for example
+`12:34 · 24.3 MB · Low (18) · Example Channel`. The trailing channel text
+truncates first. Missing fields are omitted; a present zero duration displays as `0:00`. VoiceOver speaks
+duration in hours, minutes, and seconds. Views, publication text, and description
+snippets are stored for future iOS information views.
+
+Both apps automatically upgrade existing databases to schema version 5 and save
+all optional playlist metadata on the next sync. Thumbnail URLs are stored in a
+separate table; images are neither fetched nor displayed. See
+[Playlist detail metadata](playlist-detail-review.md) for field semantics,
+migration behavior, and validation.
+
 Queue opens modally in its own navigation controller with a **Done** button.
 The toolbar button and Show in Queue actions use the same presentation. Revealing a
 job inside Queue reuses the open screen instead of stacking another modal.
@@ -297,11 +315,26 @@ UIKit subtitle cells, with default typography, single-line labels, and row heigh
 Playlist keeps one row per playlist entry and summarizes every downloaded quality.
 A playable file takes priority over running, queued, failed/missing, and stopped
 work, even when the preferred quality differs. All Downloads keeps one row per
-completed job, including multiple qualities of the same video. Both screens show
-the video title and accessible trailing status icon. Playlist shows the playable
-job's requested quality as its subtitle only when a local download is available;
-other rows leave the subtitle blank instead of displaying the preferred quality
-or a pending/failed job's quality. All Downloads keeps its quality subtitles.
+completed job, including multiple qualities of the same video. Both screens share
+`RDLPVideoRows`, which builds the title, subtitle, status, accessibility text, and
+tooltip lazily. Actual downloaded quality takes precedence over requested quality.
+Quality and size appear only when the completed job has an existing regular file.
+A single filesystem check supplies status and byte size, cached with the display
+row; playback and deletion revalidate the current file. Size uses decimal KB
+(rounded up) below one million bytes and MB (one decimal) above that threshold.
+No size is stored in the database.
+
+macOS uses the same Status, Size, Quality, Video, and Channel columns
+for Playlist and All Downloads. Text columns are resizable, and narrow panes can
+scroll horizontally. Video tooltips include metadata and local file details.
+
+Version 5 stores text metadata on jobs, backfills existing jobs from the first
+matching playlist occurrence, and refreshes it atomically during sync. Jobs keep
+that metadata if their playlist occurrence disappears. Playlist rows retain each
+occurrence’s own metadata. The iOS base controller uses small source/action hooks;
+its named Playlist, All Downloads, and Queue subclasses retain their navigation
+and action differences without branching on a rendering mode.
+
 Quality labels across iOS lists, Settings presets, job dialogs, and confirmations
 share the Mac formatter: `Low (18)`, `Med (136+140)`, `High (137+140)`, and
 `Custom (expression)`, without resolution claims.

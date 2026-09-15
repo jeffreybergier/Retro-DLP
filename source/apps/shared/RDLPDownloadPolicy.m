@@ -1,4 +1,5 @@
 #import "RDLPDownloadPolicy.h"
+#include <sys/stat.h>
 
 @implementation RDLPDownloadPolicy
 - (id)initWithLibrary:(RDLPLibrary *)library;
@@ -12,8 +13,10 @@
 + (BOOL)job:(NSDictionary *)job hasState:(NSString *)state;
 { return [[job objectForKey:@"state"] isEqualToString:state]; }
 - (NSString *)statusForJob:(NSDictionary *)job;
+{ return [self statusForJob:job localFile:[self localFileForJob:job]]; }
+- (NSString *)statusForJob:(NSDictionary *)job localFile:(NSDictionary *)file;
 {
-  if([self playable:job]) return @"Downloaded";
+  if(file) return @"Downloaded";
   if([RDLPDownloadPolicy job:job hasState:@"running"]) return @"Downloading";
   if([RDLPDownloadPolicy job:job hasState:@"queued"]) return @"Queued";
   if([RDLPDownloadPolicy job:job hasState:@"failed"]) return @"Failed";
@@ -24,10 +27,14 @@
 }
 
 - (BOOL)playable:(NSDictionary *)job;
+{ return [self localFileForJob:job]!=nil; }
+- (NSDictionary *)localFileForJob:(NSDictionary *)job;
 {
-  if(![RDLPDownloadPolicy job:job hasState:@"complete"]) return NO;
+  if(![RDLPDownloadPolicy job:job hasState:@"complete"]) return nil;
   NSString *path=[library_ fileForJob:job];
-  return path && [[NSFileManager defaultManager] fileExistsAtPath:path];
+  struct stat info;
+  if(!path || stat([path fileSystemRepresentation],&info) || !S_ISREG(info.st_mode) || info.st_size<0) return nil;
+  return [NSDictionary dictionaryWithObjectsAndKeys:path,@"path",[NSNumber numberWithUnsignedLongLong:(unsigned long long)info.st_size],@"bytes",nil];
 }
 
 - (BOOL)canRetry:(NSDictionary *)job;
@@ -43,9 +50,9 @@
 { return [RDLPDownloadPolicy job:job hasState:@"queued"] || [RDLPDownloadPolicy job:job hasState:@"running"]; }
 
 /* Preserve newest-first ordering when two jobs have the same priority. */
-- (NSInteger)priorityForJob:(NSDictionary *)job;
+- (NSInteger)priorityForJob:(NSDictionary *)job localFile:(NSDictionary *)file;
 {
-  if([self playable:job]) return 6;
+  if(file) return 6;
   NSString *state=[job objectForKey:@"state"];
   if([state isEqualToString:@"running"]) return 5;
   if([state isEqualToString:@"queued"]) return 4;
@@ -57,16 +64,21 @@
 }
 
 - (NSDictionary *)representativeJobForEntry:(NSDictionary *)entry playlist:(NSString *)playlist jobs:(NSArray *)jobs;
+{ return [self representativeJobForEntry:entry playlist:playlist jobs:jobs localFile:NULL]; }
+- (NSDictionary *)representativeJobForEntry:(NSDictionary *)entry playlist:(NSString *)playlist jobs:(NSArray *)jobs localFile:(NSDictionary **)file;
 {
-  NSDictionary *best=nil; NSInteger bestRank=-1;
+  NSDictionary *best=nil, *bestFile=nil; NSInteger bestRank=-1;
   NSEnumerator *e=[jobs objectEnumerator]; NSDictionary *job;
   /* jobs is newest-first. A playable copy wins regardless of preference. */
   while(entry && (job=[e nextObject])) {
     if(![[job objectForKey:@"playlist_id"] isEqualToString:playlist] ||
        ![[job objectForKey:@"video_id"] isEqualToString:[entry objectForKey:@"video_id"]]) continue;
-    NSInteger rank=[self priorityForJob:job];
-    if(rank>bestRank) { best=job; bestRank=rank; }
+    NSDictionary *candidateFile=[self localFileForJob:job];
+    NSInteger rank=[self priorityForJob:job localFile:candidateFile];
+    if(rank>bestRank) { best=job; bestRank=rank; bestFile=candidateFile; }
+    if(bestRank==6) break;
   }
+  if(file) *file=bestFile;
   return best;
 }
 @end

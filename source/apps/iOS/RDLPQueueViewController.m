@@ -4,7 +4,7 @@
 @implementation RDLPQueueViewController
 - (id)initWithLibrary:(RDLPLibrary *)library;
 {
-  self=[super initWithLibrary:library mode:RDLPScreenQueue playlist:nil];
+  self=[super initWithLibrary:library title:@"Download Queue"];
   if(self) {
     self.title=@"Download Queue";
     self.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(dismissQueue:)] autorelease];
@@ -14,6 +14,8 @@
 - (void)dealloc;
 { [selectedJobID_ release]; [jobActions_ release]; [super dealloc]; }
 - (BOOL)showsQueueButton; { return NO; }
+- (NSArray *)listSections;
+{ return [model_ sectionsForScreen:RDLPScreenQueue playlist:nil video:nil collapsed:nil]; }
 - (NSIndexPath *)selectedJobIndex;
 {
   NSArray *rows=[[sections_ lastObject] objectForKey:@"rows"];

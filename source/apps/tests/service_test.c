@@ -6,17 +6,23 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sqlite3.h>
 
 typedef struct {
   const char *base; const char *media; int fail, cancel, cancel_on_progress, depth;
-  char player[4096]; int format_seen, target_seen;
+  char player[4096]; int format_seen, target_seen, requests;
 } fixture;
 static const char playlist_json[] =
   "{\"metadata\":{\"playlistMetadataRenderer\":{\"title\":\"Offline playlist\"}},"
-  "\"contents\":[{\"playlistVideoRenderer\":{\"videoId\":\"YE7VzlLtp-4\",\"title\":{\"simpleText\":\"One video\"}}}]}";
+  "\"contents\":[{\"playlistVideoRenderer\":{\"videoId\":\"YE7VzlLtp-4\",\"title\":{\"simpleText\":\"One video\"},"
+  "\"lengthSeconds\":\"3723\",\"shortBylineText\":{\"runs\":[{\"text\":\"Example Channel\",\"navigationEndpoint\":{\"browseEndpoint\":{\"browseId\":\"UC_fixture\"}}}]},"
+  "\"viewCountText\":{\"simpleText\":\"1,234 views\"},\"publishedTimeText\":{\"simpleText\":\"2 days ago\"},\"descriptionSnippet\":{\"simpleText\":\"Available snippet\"},"
+  "\"thumbnail\":{\"thumbnails\":[{\"url\":\"https://img.example/first.jpg\"},{\"url\":\"https://img.example/second.jpg\"}]}}}]}";
 static rdlp_error_code send_fixture(void *ctx,const rdlp_transport_request *request,rdlp_transport_response *response,rdlp_error *error) {
   fixture *f=ctx; static char page[8192]; const char *data=NULL; (void)error;
   assert(f->depth==0);
+  ++f->requests;
+  assert(!strstr(request->url,"img.example"));
   if(f->fail) return RDLP_ERROR_TRANSPORT_REQUEST_FAILED;
   if(strstr(request->url,"/feed/playlists")) {
     data="<script>ytcfg.set({\"LOGGED_IN\":true,\"INNERTUBE_API_KEY\":\"test\",\"INNERTUBE_CONTEXT_CLIENT_VERSION\":\"1.20260828\"});var ytInitialData={\"contents\":[{\"playlistRenderer\":{\"playlistId\":\"PLcollection\",\"title\":{\"simpleText\":\"Account playlist\"}}}]};</script>";
@@ -59,6 +65,27 @@ static int collect(void *ctx,int count,const char *const *names,const char *cons
 }
 static void claim(rdapp_store *s,claimed *c) { memset(c,0,sizeof(*c)); assert(rdapp_store_claim(s,collect,c)); assert(c->count==1); }
 static void require(rdlp_error_code code,const char *message) { if(code!=RDLP_OK) { fprintf(stderr,"service failed: %d %s\n",code,message); abort(); } }
+static void check_thumbnails(const char *path,int64_t playlist) {
+  sqlite3 *db=NULL; sqlite3_stmt *query=NULL; int i;
+  const char *urls[]={"https://img.example/first.jpg","https://img.example/second.jpg"};
+  assert(sqlite3_open(path,&db)==SQLITE_OK);
+  assert(sqlite3_prepare_v2(db,"SELECT position,thumbnail_index,url FROM entry_thumbnails WHERE playlist_id=? ORDER BY position,thumbnail_index",-1,&query,NULL)==SQLITE_OK);
+  assert(sqlite3_bind_int64(query,1,playlist)==SQLITE_OK);
+  for(i=0;i<2;++i) {
+    assert(sqlite3_step(query)==SQLITE_ROW);
+    assert(sqlite3_column_int(query,0)==0 && sqlite3_column_int(query,1)==i);
+    assert(!strcmp((const char *)sqlite3_column_text(query,2),urls[i]));
+  }
+  assert(sqlite3_step(query)==SQLITE_DONE);
+  sqlite3_finalize(query);
+  assert(sqlite3_prepare_v2(db,"SELECT channel,channel_id,view_count_text,published_text,description_snippet,duration,view_count FROM entries WHERE playlist_id=? AND position=0",-1,&query,NULL)==SQLITE_OK);
+  assert(sqlite3_bind_int64(query,1,playlist)==SQLITE_OK && sqlite3_step(query)==SQLITE_ROW);
+  {
+    const char *expected[]={"Example Channel","UC_fixture","1,234 views","2 days ago","Available snippet","3723","1234"};
+    for(i=0;i<7;++i) assert(!strcmp((const char *)sqlite3_column_text(query,i),expected[i]));
+  }
+  sqlite3_finalize(query); sqlite3_close(db);
+}
 int main(int argc,char **argv) {
   rdapp_store *s=NULL; rdapp_service_config config; rdapp_service_result outcome; rdlp_transport transport; fixture f;
   char db[2048],cookies[2048],message[1024],file[2048],export[2048]; FILE *output;
@@ -74,11 +101,14 @@ int main(int argc,char **argv) {
   config.lock=lock; config.unlock=unlock; config.lock_context=&f;
   snprintf(db,sizeof(db),"%s/library.sqlite",argv[1]); assert(rdapp_store_open(db,&s));
   require(rdapp_service_run(s,&config,RDAPP_SYNC,"PLfixture",NULL,message,sizeof(message)),message);
+  assert(f.requests==2); /* Existing playlist page + browse; no image/video requests. */
   memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_PLAYLISTS,0,collect,&c)); assert(c.count==1); key=c.job.id;
+  check_thumbnails(db,key); /* Playlist object and its borrowed strings are already destroyed. */
   memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_ENTRIES,key,collect,&c)); assert(c.count==1);
   f.fail=1;
   assert(rdapp_service_run(s,&config,RDAPP_SYNC,"PLfixture",NULL,message,sizeof(message))!=RDLP_OK);
   memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_ENTRIES,key,collect,&c)); assert(c.count==1); f.fail=0;
+  check_thumbnails(db,key);
   /* Account collection import uses synthetic cookie data, never real credentials. */
   snprintf(cookies,sizeof(cookies),"%s/cookies.txt",argv[1]); output=fopen(cookies,"w"); assert(output);
   fputs("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t4102444800\tLOGIN_INFO\tfixture\n.youtube.com\tTRUE\t/\tTRUE\t4102444800\tSAPISID\tfixture\n",output); fclose(output); config.cookie_file=cookies;

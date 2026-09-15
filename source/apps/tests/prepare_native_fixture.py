@@ -11,6 +11,10 @@ downloads=root/'Downloads'; downloads.mkdir(parents=True,exist_ok=True)
 store=P(); key=I()
 assert lib.rdapp_store_open(str(support/'retrodlp.sqlite').encode(),C.byref(store))
 entries=(Entry*2)(Entry(b'YE7VzlLtp-4',b'Portable video playback fixture',0),Entry(b'AAAAAAAAAAA',b'Undownloaded video',1))
+entries[0].channel=b'Example Channel'; entries[0].duration=3723; entries[0].has_duration=1
+entries[0].channel_id=b'UC_fixture'; entries[0].view_count=1234; entries[0].has_view_count=1
+entries[0].view_count_text=b'1.2K views'; entries[0].published_text=b'2 days ago'; entries[0].description_snippet=b'Available snippet'
+entries[1].duration=0; entries[1].has_duration=1
 assert lib.rdapp_store_snapshot(store,b'PLfixture',b'Offline test playlist',entries,2,C.byref(key))
 assert lib.rdapp_store_enqueue(store,key,b'YE7VzlLtp-4',b'18')
 rows=[]

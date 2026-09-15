@@ -21,7 +21,8 @@ static int cancelled(const rdapp_service_config *c) {
 static rdlp_error_code sync_playlist(rdapp_store *s,const rdapp_service_config *c,
     rdlp_context *context,const char *input,char *message,size_t cap,rdlp_error *error) {
   rdlp_playlist_options options; rdlp_playlist *p=NULL;
-  rdlp_error_code code; rdapp_entry *entries; size_t i,n; int64_t key=0; int ok;
+  rdlp_error_code code; rdapp_entry *entries; const char **thumbnails=NULL;
+  size_t i,j,n,total=0,offset=0; int64_t key=0; int ok;
   memset(&options,0,sizeof(options)); options.struct_size=sizeof(options); options.cookie_file=c->cookie_file;
   code=rdlp_list_playlist(context,input,&options,&p,error);
   if(code!=RDLP_OK) return code;
@@ -32,14 +33,36 @@ static rdlp_error_code sync_playlist(rdapp_store *s,const rdapp_service_config *
   for(i=0;i<n;++i) {
     entries[i].video_id=rdlp_playlist_entry_video_id(p,i);
     entries[i].title=rdlp_playlist_entry_title(p,i); entries[i].position=(int)i;
+    entries[i].channel=rdlp_playlist_entry_channel(p,i);
+    entries[i].channel_id=rdlp_playlist_entry_channel_id(p,i);
+    entries[i].view_count_text=rdlp_playlist_entry_view_count_text(p,i);
+    entries[i].published_text=rdlp_playlist_entry_published_text(p,i);
+    entries[i].description_snippet=rdlp_playlist_entry_description_snippet(p,i);
+    entries[i].has_duration=rdlp_playlist_entry_duration(p,i,&entries[i].duration);
+    entries[i].has_view_count=rdlp_playlist_entry_view_count(p,i,&entries[i].view_count);
+    entries[i].thumbnail_count=rdlp_playlist_entry_thumbnail_count(p,i);
+    if(entries[i].thumbnail_count>INT_MAX || entries[i].thumbnail_count>SIZE_MAX/sizeof(*thumbnails)-total) {
+      code=RDLP_ERROR_RESPONSE_TOO_LARGE; goto end;
+    }
+    total+=entries[i].thumbnail_count;
   }
-  if(cancelled(c)) { free(entries); rdlp_playlist_destroy(p); return RDLP_ERROR_CANCELLED; }
+  if(total) {
+    thumbnails=calloc(total,sizeof(*thumbnails));
+    if(!thumbnails) { code=RDLP_ERROR_OUT_OF_MEMORY; goto end; }
+    for(i=0;i<n;++i) {
+      if(entries[i].thumbnail_count) entries[i].thumbnail_urls=thumbnails+offset;
+      for(j=0;j<entries[i].thumbnail_count;++j) thumbnails[offset++]=rdlp_playlist_entry_thumbnail_url(p,i,j);
+    }
+  }
+  if(cancelled(c)) { code=RDLP_ERROR_CANCELLED; goto end; }
   lock_store(c);
   ok=rdapp_store_snapshot(s,rdlp_playlist_id(p),rdlp_playlist_title(p),entries,n,&key);
   if(ok) ok=rdapp_store_export(s,key,c->download_root);
   if(ok) snprintf(message,cap,"Synced %s (%lu entries)",rdlp_playlist_title(p),(unsigned long)n);
   else { snprintf(error->message,sizeof(error->message),"%s",rdapp_store_error(s)); code=RDLP_ERROR_STORAGE_IO; }
-  unlock_store(c); free(entries); rdlp_playlist_destroy(p); return code;
+  unlock_store(c);
+end:
+  free(thumbnails); free(entries); rdlp_playlist_destroy(p); return code;
 }
 static rdlp_error_code discover(rdapp_store *s,const rdapp_service_config *c,
     rdlp_context *context,char *message,size_t cap,rdlp_error *error) {

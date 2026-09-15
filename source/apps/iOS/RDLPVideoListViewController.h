@@ -6,8 +6,6 @@
   RDLPLibrary *library_;
   RDLPDownloadPolicy *policy_;
   RDLPLibrarySections *model_;
-  NSDictionary *playlist_;
-  RDLPScreen mode_;
   NSArray *sections_;
   UIAlertView *alert_;
   NSDictionary *retryRequest_;
@@ -15,7 +13,9 @@
   RDLPStatusBarView *statusBar_;
   BOOL visible_;
 }
-- (id)initWithLibrary:(RDLPLibrary *)library mode:(RDLPScreen)mode playlist:(NSDictionary *)playlist;
+- (id)initWithLibrary:(RDLPLibrary *)library title:(NSString *)title;
+- (NSArray *)listSections;
+- (BOOL)containsEntryForRetry:(NSDictionary *)entry;
 - (void)refresh:(id)sender;
 - (void)queue:(id)sender;
 /* Shared native list presentation hooks. */

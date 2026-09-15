@@ -9,12 +9,22 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <errno.h>
+#include <stdlib.h>
 
 NSString * const RDLPLibraryDidChange = @"RetroDLPLibraryDidChange";
 NSString * const RDLPLibraryStatusDidChange = @"RetroDLPLibraryStatusDidChange";
 NSString * const RDLPLibraryErrorDidOccur = @"RetroDLPLibraryErrorDidOccur";
 static NSString *string(const char *s) { NSString *v=s?[NSString stringWithUTF8String:s]:nil; return v?v:@""; }
 static long long identifier(NSString *value) { return value?strtoll([value UTF8String],NULL,10):0; }
+static BOOL entry_number(NSDictionary *entry,NSString *key,unsigned long long *value) {
+  NSString *text=[entry objectForKey:key];
+  if(![text length]) return NO;
+  const char *start=[text UTF8String]; char *end=NULL;
+  if(!start || start[0]<'0' || start[0]>'9') return NO;
+  unsigned long long number=strtoull(start,&end,10);
+  if(*end || number>9007199254740991ULL) return NO;
+  *value=number; return YES;
+}
 static int collect(void *context,int count,const char *const *names,const char *const *values) {
   NSMutableDictionary *row=[NSMutableDictionary dictionary]; int i;
   for(i=0;i<count;++i) [row setObject:string(values[i]) forKey:string(names[i])];
@@ -132,6 +142,52 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   NSArray *names=[NSArray arrayWithObjects:@"Low",@"Med",@"High",nil];
   NSString *name=index==NSNotFound?@"Custom":[names objectAtIndex:index];
   return [NSString stringWithFormat:@"%@ (%@)",name,format];
+}
++ (NSString *)durationLabelForEntry:(NSDictionary *)entry;
+{
+  unsigned long long seconds;
+  if(!entry_number(entry,@"duration",&seconds)) return @"";
+  return seconds>=3600?[NSString stringWithFormat:@"%llu:%02llu:%02llu",seconds/3600,(seconds/60)%60,seconds%60]:
+    [NSString stringWithFormat:@"%llu:%02llu",seconds/60,seconds%60];
+}
++ (NSString *)spokenDurationForEntry:(NSDictionary *)entry;
+{
+  unsigned long long seconds;
+  if(!entry_number(entry,@"duration",&seconds)) return @"";
+  NSMutableArray *parts=[NSMutableArray array];
+  unsigned long long hours=seconds/3600, minutes=(seconds/60)%60, remainder=seconds%60;
+  if(hours) [parts addObject:[NSString stringWithFormat:@"%llu %@",hours,hours==1?@"hour":@"hours"]];
+  if(minutes) [parts addObject:[NSString stringWithFormat:@"%llu %@",minutes,minutes==1?@"minute":@"minutes"]];
+  if(remainder || !seconds) [parts addObject:[NSString stringWithFormat:@"%llu %@",remainder,remainder==1?@"second":@"seconds"]];
+  return [parts componentsJoinedByString:@", "];
+}
++ (NSString *)metadataSummaryForEntry:(NSDictionary *)entry;
+{
+  NSMutableArray *parts=[NSMutableArray array];
+  NSString *duration=[self durationLabelForEntry:entry], *channel=[entry objectForKey:@"channel"];
+  if([duration length]) [parts addObject:duration];
+  if([channel length]) [parts addObject:channel];
+  return [parts componentsJoinedByString:@" · "];
+}
++ (NSString *)metadataTooltipForEntry:(NSDictionary *)entry;
+{
+  NSMutableArray *lines=[NSMutableArray array], *snapshot=[NSMutableArray array];
+  NSString *title=[entry objectForKey:@"title"], *summary=[self metadataSummaryForEntry:entry];
+  NSString *views=[entry objectForKey:@"view_count_text"], *published=[entry objectForKey:@"published_text"];
+  NSString *snippet=[entry objectForKey:@"description_snippet"]; unsigned long long count;
+  if([title length]) [lines addObject:title];
+  if([summary length]) [lines addObject:summary];
+  if(![views length] && entry_number(entry,@"view_count",&count)) views=[NSString stringWithFormat:@"%llu views",count];
+  if([views length]) [snapshot addObject:views];
+  if([published length]) [snapshot addObject:[@"Published " stringByAppendingString:published]];
+  if([snapshot count]) [lines addObject:[@"At last sync: " stringByAppendingString:[snapshot componentsJoinedByString:@" · "]]];
+  if([snippet length]) [lines addObject:snippet];
+  return [lines componentsJoinedByString:@"\n"];
+}
++ (NSString *)fileSizeLabelForBytes:(unsigned long long)bytes;
+{
+  if(bytes<1000000) return [NSString stringWithFormat:@"%llu KB",(bytes+999)/1000];
+  return [NSString stringWithFormat:@"%.1f MB",(double)bytes/1000000.0];
 }
 + (NSString *)preferredFormat;
 {

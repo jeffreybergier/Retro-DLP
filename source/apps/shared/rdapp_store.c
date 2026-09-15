@@ -34,6 +34,21 @@ static int done(rdapp_store *s, sqlite3_stmt *p) {
 static void bind_text(sqlite3_stmt *p, int n, const char *v) {
   sqlite3_bind_text(p, n, v ? v : "", -1, SQLITE_TRANSIENT);
 }
+/* Jobs retain the first matching occurrence's text metadata after membership
+   disappears. Matching rows are refreshed atomically with a playlist sync. */
+#define RDAPP_METADATA_COLUMNS "channel,channel_id,view_count_text,published_text,description_snippet,duration,view_count"
+#define RDAPP_COPY_FIELD(field) #field "=(SELECT e." #field " FROM entries e WHERE e.playlist_id=jobs.playlist_id AND e.video_id=jobs.video_id ORDER BY e.position LIMIT 1)"
+static int refresh_job_metadata(rdapp_store *s,int64_t key) {
+  char query[2048]; sqlite3_stmt *p;
+  snprintf(query,sizeof(query),"UPDATE jobs SET "
+    RDAPP_COPY_FIELD(channel) "," RDAPP_COPY_FIELD(channel_id) ","
+    RDAPP_COPY_FIELD(view_count_text) "," RDAPP_COPY_FIELD(published_text) ","
+    RDAPP_COPY_FIELD(description_snippet) "," RDAPP_COPY_FIELD(duration) "," RDAPP_COPY_FIELD(view_count)
+    " WHERE %sEXISTS(SELECT 1 FROM entries e WHERE e.playlist_id=jobs.playlist_id AND e.video_id=jobs.video_id)",key?"playlist_id=?1 AND ":"");
+  p=prepare(s,query); if(!p) return 0;
+  if(key) sqlite3_bind_int64(p,1,key);
+  return done(s,p);
+}
 const char *rdapp_store_error(rdapp_store *s) { return s ? s->error : "Cannot open library database"; }
 void rdapp_store_close(rdapp_store *s) { if (s) { sqlite3_close(s->db); free(s); } }
 int rdapp_store_open(const char *path, rdapp_store **out) {
@@ -44,7 +59,7 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
   if (sqlite3_open(path, &s->db) != SQLITE_OK) { rdapp_store_close(s); return 0; }
   sqlite3_busy_timeout(s->db, 5000);
   p = prepare(s, "PRAGMA user_version");
-  if (!p || sqlite3_step(p) != SQLITE_ROW || sqlite3_column_int(p,0) > 2) {
+  if (!p || sqlite3_step(p) != SQLITE_ROW || sqlite3_column_int(p,0) > 5) {
     sqlite3_finalize(p); rdapp_store_close(s); return 0;
   }
   version=sqlite3_column_int(p,0);
@@ -66,14 +81,34 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
     rdapp_store_close(s); return 0;
   }
   if ((version<2 && !sql(s,"ALTER TABLE playlists ADD COLUMN source TEXT NOT NULL DEFAULT 'added';")) ||
-      !sql(s,"CREATE INDEX IF NOT EXISTS playlists_title ON playlists(title COLLATE NOCASE,id);"
+      (version<4 && !sql(s,"ALTER TABLE entries ADD COLUMN channel TEXT;"
+        "ALTER TABLE entries ADD COLUMN channel_id TEXT;"
+        "ALTER TABLE entries ADD COLUMN view_count_text TEXT;"
+        "ALTER TABLE entries ADD COLUMN published_text TEXT;"
+        "ALTER TABLE entries ADD COLUMN description_snippet TEXT;"
+        "ALTER TABLE entries ADD COLUMN duration INTEGER;"
+        "ALTER TABLE entries ADD COLUMN view_count INTEGER;")) ||
+      (version<5 && !sql(s,"ALTER TABLE jobs ADD COLUMN channel TEXT;"
+        "ALTER TABLE jobs ADD COLUMN channel_id TEXT;"
+        "ALTER TABLE jobs ADD COLUMN view_count_text TEXT;"
+        "ALTER TABLE jobs ADD COLUMN published_text TEXT;"
+        "ALTER TABLE jobs ADD COLUMN description_snippet TEXT;"
+        "ALTER TABLE jobs ADD COLUMN duration INTEGER;"
+        "ALTER TABLE jobs ADD COLUMN view_count INTEGER;")) ||
+      !sql(s,"CREATE TABLE IF NOT EXISTS entry_thumbnails (playlist_id INTEGER NOT NULL,"
+        " position INTEGER NOT NULL, thumbnail_index INTEGER NOT NULL, url TEXT NOT NULL,"
+        " PRIMARY KEY(playlist_id,position,thumbnail_index),"
+        " FOREIGN KEY(playlist_id,position) REFERENCES entries(playlist_id,position) ON DELETE CASCADE);"
+        "CREATE INDEX IF NOT EXISTS playlists_title ON playlists(title COLLATE NOCASE,id);"
         "CREATE INDEX IF NOT EXISTS playlists_source_title ON playlists(source,title COLLATE NOCASE,id);"
         "CREATE INDEX IF NOT EXISTS jobs_playlist_id ON jobs(playlist_id,id);"
         "CREATE INDEX IF NOT EXISTS jobs_queue_visible ON jobs(id) WHERE state<>'removed' OR error<>'';"
         "CREATE INDEX IF NOT EXISTS jobs_video_id ON jobs(playlist_id,video_id,id);"
         "CREATE INDEX IF NOT EXISTS jobs_playlist_state ON jobs(playlist_id,state,id);"
-        "CREATE INDEX IF NOT EXISTS entries_video_position ON entries(playlist_id,video_id,position);"
-        "PRAGMA user_version=2; COMMIT;")) { rdapp_store_close(s); return 0; }
+        "CREATE INDEX IF NOT EXISTS entries_video_position ON entries(playlist_id,video_id,position);")) { rdapp_store_close(s); return 0; }
+  if((version<5 && !refresh_job_metadata(s,0)) || !sql(s,"PRAGMA user_version=5; COMMIT;")) {
+    rdapp_store_close(s); return 0;
+  }
   *out = s; return 1;
 }
 void rdapp_filename(const char *text, char *out, size_t cap) {
@@ -109,10 +144,10 @@ int rdapp_make_directory(const char *path) {
   return 1;
 }
 static int each(rdapp_store *s, sqlite3_stmt *p, rdapp_row_callback cb, void *ctx) {
-  int rc, n, i; const char *values[16], *names[16];
+  int rc, n, i; const char *values[32], *names[32];
   if (!p) return 0;
   n=sqlite3_column_count(p);
-  if (n>16) { sqlite3_finalize(p); return failure(s,"Too many result columns"); }
+  if (n>32) { sqlite3_finalize(p); return failure(s,"Too many result columns"); }
   while ((rc=sqlite3_step(p)) == SQLITE_ROW) {
     for(i=0;i<n;++i) { names[i]=sqlite3_column_name(p,i); values[i]=(const char *)sqlite3_column_text(p,i); }
     if (cb && !cb(ctx,n,names,values)) { sqlite3_finalize(p); return failure(s,"Result processing failed"); }
@@ -273,7 +308,7 @@ rollback:
   sql(s,"ROLLBACK"); return 0;
 }
 int rdapp_store_snapshot(rdapp_store *s,const char *id,const char *title,const rdapp_entry *entries,size_t count,int64_t *key) {
-  int64_t k; size_t i; sqlite3_stmt *p;
+  int64_t k; size_t i,j; sqlite3_stmt *p;
   if(!sql(s,"BEGIN IMMEDIATE")) return 0;
   if(!rdapp_store_playlist(s,id,title,&k)) goto rollback;
   p=prepare(s,"DELETE FROM entries WHERE playlist_id=?"); if(!p) goto rollback;
@@ -282,10 +317,35 @@ int rdapp_store_snapshot(rdapp_store *s,const char *id,const char *title,const r
     if(!entries[i].video_id || strlen(entries[i].video_id)!=11 || strspn(entries[i].video_id,"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")!=11) { failure(s,"Invalid video ID in playlist"); goto rollback; }
     p=prepare(s,"INSERT OR REPLACE INTO videos(id,title) VALUES(?,?)"); if(!p) goto rollback;
     bind_text(p,1,entries[i].video_id); bind_text(p,2,entries[i].title); if(!done(s,p)) goto rollback;
-    p=prepare(s,"INSERT INTO entries(playlist_id,position,video_id,title) VALUES(?,?,?,?)"); if(!p) goto rollback;
+    if((entries[i].has_duration && entries[i].duration>UINT64_C(9007199254740991)) ||
+       (entries[i].has_view_count && entries[i].view_count>UINT64_C(9007199254740991))) {
+      failure(s,"Invalid numeric metadata in playlist"); goto rollback;
+    }
+    p=prepare(s,"INSERT INTO entries(playlist_id,position,video_id,title,channel,channel_id,view_count_text,published_text,description_snippet,duration,view_count) VALUES(?,?,?,?,?,?,?,?,?,?,?)"); if(!p) goto rollback;
     sqlite3_bind_int64(p,1,k); sqlite3_bind_int(p,2,entries[i].position);
-    bind_text(p,3,entries[i].video_id); bind_text(p,4,entries[i].title); if(!done(s,p)) goto rollback;
+    bind_text(p,3,entries[i].video_id); bind_text(p,4,entries[i].title);
+    /* NULL text and unbound numeric parameters remain SQL NULL, distinct from zero. */
+    sqlite3_bind_text(p,5,entries[i].channel,-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(p,6,entries[i].channel_id,-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(p,7,entries[i].view_count_text,-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(p,8,entries[i].published_text,-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(p,9,entries[i].description_snippet,-1,SQLITE_TRANSIENT);
+    if(entries[i].has_duration) sqlite3_bind_int64(p,10,(sqlite3_int64)entries[i].duration);
+    if(entries[i].has_view_count) sqlite3_bind_int64(p,11,(sqlite3_int64)entries[i].view_count);
+    if(!done(s,p)) goto rollback;
+    if(entries[i].thumbnail_count>INT_MAX || (entries[i].thumbnail_count && !entries[i].thumbnail_urls)) {
+      failure(s,"Invalid thumbnail list in playlist"); goto rollback;
+    }
+    for(j=0;j<entries[i].thumbnail_count;++j) {
+      if(!entries[i].thumbnail_urls[j] || !entries[i].thumbnail_urls[j][0]) {
+        failure(s,"Invalid thumbnail URL in playlist"); goto rollback;
+      }
+      p=prepare(s,"INSERT INTO entry_thumbnails(playlist_id,position,thumbnail_index,url) VALUES(?,?,?,?)"); if(!p) goto rollback;
+      sqlite3_bind_int64(p,1,k); sqlite3_bind_int(p,2,entries[i].position); sqlite3_bind_int(p,3,(int)j);
+      bind_text(p,4,entries[i].thumbnail_urls[j]); if(!done(s,p)) goto rollback;
+    }
   }
+  if(!refresh_job_metadata(s,k)) goto rollback;
   p=prepare(s,"UPDATE playlists SET synced_at=strftime('%s','now') WHERE id=?"); if(!p) goto rollback;
   sqlite3_bind_int64(p,1,k); if(!done(s,p)) goto rollback;
   if(!sql(s,"COMMIT")) goto rollback;
@@ -295,7 +355,7 @@ rollback:
   sqlite3_exec(s->db,"ROLLBACK",NULL,NULL,NULL); return 0;
 }
 int rdapp_store_enqueue(rdapp_store *s,int64_t key,const char *video,const char *format) {
-  sqlite3_stmt *p=prepare(s,"INSERT OR IGNORE INTO jobs(playlist_id,video_id,title,format) SELECT playlist_id,video_id,title,? FROM entries WHERE playlist_id=? AND (?='' OR video_id=?) ORDER BY position");
+  sqlite3_stmt *p=prepare(s,"INSERT OR IGNORE INTO jobs(playlist_id,video_id,title,format," RDAPP_METADATA_COLUMNS ") SELECT playlist_id,video_id,title,?," RDAPP_METADATA_COLUMNS " FROM entries WHERE playlist_id=? AND (?='' OR video_id=?) ORDER BY position");
   if(!p) return 0;
   bind_text(p,1,format); sqlite3_bind_int64(p,2,key); bind_text(p,3,video); bind_text(p,4,video); return done(s,p);
 }

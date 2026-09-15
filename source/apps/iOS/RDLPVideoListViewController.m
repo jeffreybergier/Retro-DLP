@@ -4,13 +4,13 @@
 #import <MediaPlayer/MediaPlayer.h>
 
 @implementation RDLPVideoListViewController
-- (id)initWithLibrary:(RDLPLibrary *)library mode:(RDLPScreen)mode playlist:(NSDictionary *)playlist;
+- (id)initWithLibrary:(RDLPLibrary *)library title:(NSString *)title;
 {
   self=[super initWithStyle:UITableViewStylePlain]; if(!self) return nil;
-  library_=[library retain]; playlist_=[playlist copy]; mode_=mode;
+  library_=[library retain];
   policy_=[[RDLPDownloadPolicy alloc] initWithLibrary:library];
   model_=[[RDLPLibrarySections alloc] initWithLibrary:library];
-  self.title=mode==RDLPScreenDownloads?@"All Downloads":[playlist objectForKey:@"title"];
+  self.title=title;
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library_];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPLibraryStatusDidChange object:library_];
   return self;
@@ -21,7 +21,7 @@
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   alert_.delegate=nil; [alert_ dismissWithClickedButtonIndex:alert_.cancelButtonIndex animated:NO];
   [alert_ release]; [retryRequest_ release]; [swipeJobID_ release]; [sections_ release]; [statusBar_ release];
-  [playlist_ release]; [model_ release]; [policy_ release]; [library_ release]; [super dealloc];
+  [model_ release]; [policy_ release]; [library_ release]; [super dealloc];
 }
 - (void)viewDidLoad;
 {
@@ -50,6 +50,8 @@
   if(self.navigationController.toolbarHidden!=hidden) [self.navigationController setToolbarHidden:hidden animated:animated];
 }
 - (BOOL)showsQueueButton; { return YES; }
+- (NSArray *)listSections; { return [NSArray array]; }
+- (BOOL)containsEntryForRetry:(NSDictionary *)entry; { (void)entry; return YES; }
 - (BOOL)shouldHideToolbar;
 {
   NSString *status=[library_ status];
@@ -68,7 +70,7 @@
   /* Keep the swiped row stable while its Delete button is visible. Status and
    * progress still update; ending the gesture applies the latest snapshot. */
   if(!swipeJobID_) {
-    NSArray *sections=[model_ sectionsForScreen:mode_ playlist:playlist_ video:nil collapsed:nil];
+    NSArray *sections=[self listSections];
     [sections_ release]; sections_=[sections copy];
   }
   [self refreshStatus:nil];
@@ -146,7 +148,14 @@
   cell.accessoryType=UITableViewCellAccessoryNone;
   UIImageView *accessory=[[[UIImageView alloc] initWithImage:[self statusIcon:status]] autorelease];
   accessory.isAccessibilityElement=NO; cell.accessoryView=accessory;
-  cell.accessibilityLabel=[NSString stringWithFormat:@"%@, %@, %@",cell.textLabel.text,cell.detailTextLabel.text,status];
+  NSMutableArray *spoken=[NSMutableArray array];
+  NSString *detail=[row objectForKey:@"spoken_detail"];
+  if(!detail) detail=cell.detailTextLabel.text;
+  if([cell.textLabel.text length]) [spoken addObject:cell.textLabel.text];
+  if([detail length]) [spoken addObject:detail];
+  if([status length]) [spoken addObject:status];
+  NSString *accessibility=[row objectForKey:@"accessibility_label"];
+  cell.accessibilityLabel=accessibility?accessibility:[spoken componentsJoinedByString:@", "];
   cell.accessibilityHint=[status isEqualToString:@"Downloaded"]?@"Play video":(([status isEqualToString:@"Queued"] || [status isEqualToString:@"Downloading"])?@"Download in progress":@"Download video");
   return cell;
 }
@@ -188,8 +197,7 @@
   alert_.delegate=nil; [alert_ release]; alert_=nil; [retryRequest_ release]; retryRequest_=nil;
   if(!retry) return;
   /* A sync or another download can finish while the confirmation is open. */
-  BOOL eligible=mode_==RDLPScreenDownloads;
-  if(!eligible) eligible=[library_ playlist:[playlist_ objectForKey:@"id"] containsVideo:[[request objectForKey:@"entry"] objectForKey:@"video_id"]];
+  BOOL eligible=[self containsEntryForRetry:[request objectForKey:@"entry"]];
   NSDictionary *job=[model_ currentJob:[request objectForKey:@"job"]];
   if(eligible && ([policy_ canRetry:job] || [policy_ canDownloadAgain:job]))
     [library_ retryJob:[job objectForKey:@"id"]];

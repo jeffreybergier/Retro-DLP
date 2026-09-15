@@ -3,7 +3,12 @@
 
 @implementation RDLPPlaylistViewController
 - (id)initWithLibrary:(RDLPLibrary *)library playlist:(NSDictionary *)playlist;
-{ return [super initWithLibrary:library mode:RDLPScreenPlaylist playlist:playlist]; }
+{ self=[super initWithLibrary:library title:[playlist objectForKey:@"title"]]; if(self) playlist_=[playlist copy]; return self; }
+- (void)dealloc; { [playlist_ release]; [super dealloc]; }
+- (NSArray *)listSections;
+{ return [model_ sectionsForScreen:RDLPScreenPlaylist playlist:playlist_ video:nil collapsed:nil]; }
+- (BOOL)containsEntryForRetry:(NSDictionary *)entry;
+{ return [library_ playlist:[playlist_ objectForKey:@"id"] containsVideo:[entry objectForKey:@"video_id"]]; }
 - (void)viewDidLoad;
 {
   [super viewDidLoad];

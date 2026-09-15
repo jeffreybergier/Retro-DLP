@@ -1,4 +1,5 @@
 #import "RDLPLibrarySections.h"
+#import "RDLPVideoRows.h"
 
 /* Formatting belongs to row access, never to section/count construction. */
 @interface RDLPLibrarySections (Rows)
@@ -74,16 +75,6 @@
   NSMutableDictionary *row=[self row:[job objectForKey:@"title"] detail:detail action:@"job"];
   [row setObject:job forKey:@"job"]; [row setObject:[policy_ statusForJob:job] forKey:@"status"]; return row;
 }
-/* Both video lists share cells; Playlist shows quality only for a playable copy. */
-- (NSDictionary *)videoRow:(NSDictionary *)entry job:(NSDictionary *)job playlist:(NSString *)playlist showQuality:(BOOL)showQuality;
-{
-  NSString *detail=showQuality?[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]:@"";
-  NSMutableDictionary *row=[self row:[entry objectForKey:@"title"] detail:detail action:@"video"];
-  [row setObject:entry forKey:@"video"]; [row setObject:playlist forKey:@"playlist_id"];
-  if(job) [row setObject:job forKey:@"job"];
-  [row setObject:[policy_ statusForJob:job] forKey:@"status"];
-  return row;
-}
 - (NSArray *)displayRows:(NSArray *)rows screen:(RDLPScreen)screen playlist:(NSString *)playlist;
 { return [[[RDLPSectionRows alloc] initWithRows:rows model:self screen:screen playlist:playlist] autorelease]; }
 - (NSDictionary *)displayRow:(NSDictionary *)item screen:(RDLPScreen)screen index:(NSUInteger)index playlist:(NSString *)playlist;
@@ -100,13 +91,6 @@
     [row setObject:[status isEqualToString:@"Cancelled"]?@"Stopped":status forKey:@"status"];
     [row setObject:item forKey:@"job"]; return row;
   }
-  if(screen==RDLPScreenPlaylist) {
-    NSArray *jobs=[library_ jobsForPlaylist:playlist video:[item objectForKey:@"video_id"]];
-    NSDictionary *job=[policy_ representativeJobForEntry:item playlist:playlist jobs:jobs];
-    return [self videoRow:item job:job playlist:playlist showQuality:[policy_ playable:job]];
-  }
-  if(screen==RDLPScreenDownloads)
-    return [self videoRow:item job:item playlist:[item objectForKey:@"playlist_id"] showQuality:YES];
   return [self jobRow:item];
 }
 - (NSArray *)sectionsForScreen:(RDLPScreen)screen playlist:(NSDictionary *)playlist video:(NSDictionary *)video collapsed:(NSSet *)collapsed;
@@ -137,7 +121,7 @@
       return [NSArray arrayWithObject:[self section:@"" rows:[self displayRows:[library_ queueRows] screen:screen playlist:nil]]];
     if(screen==RDLPScreenPlaylist || screen==RDLPScreenDownloads) {
       NSArray *source=screen==RDLPScreenPlaylist?[library_ entriesForPlaylist:pid]:[library_ jobsForPlaylist:nil completedOnly:YES];
-      return [NSArray arrayWithObject:[self section:screen==RDLPScreenPlaylist?@"Videos":@"Downloads" rows:[self displayRows:source screen:screen playlist:pid]]];
+      return [NSArray arrayWithObject:[self section:screen==RDLPScreenPlaylist?@"Videos":@"Downloads" rows:[[[RDLPVideoRows alloc] initWithRows:source library:library_ playlist:screen==RDLPScreenPlaylist?pid:nil] autorelease]]];
     } else {
       NSArray *jobs=[library_ jobsForPlaylist:pid video:[video objectForKey:@"video_id"]];
       if(screen==RDLPScreenVideo) {

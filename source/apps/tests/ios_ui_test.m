@@ -9,10 +9,13 @@
 #import "../iOS/RDLPAppDelegate.h"
 #import "../iOS/RDLPUIKit.h"
 #import <AIFontAwesome.h>
+#import "ios_icon_test.h"
 #import "../shared/rdapp_store.h"
 #import <AVFoundation/AVFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import "shared_status_test.h"
+#import "shared_metadata_test.h"
+#import "shared_video_rows_test.h"
 
 static void require(BOOL condition,NSString *message) {
   if(!condition) [NSException raise:@"RDLPIOSOfflineTest" format:@"%@",message];
@@ -154,6 +157,9 @@ static void screenshot(UIWindow *window,NSString *path) {
   [@"RUNNING" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSString *report=@"PASS";
   @try {
+    testSharedMetadata();
+    testSharedVideoRows([documents_ stringByAppendingPathComponent:@"RowFixture"]);
+    testIOSIconScale();
     testSharedStatus([documents_ stringByAppendingPathComponent:@"StatusFixture"]);
     {
       RDLPStatusTestLibrary *errors=[[[RDLPStatusTestLibrary alloc] initWithSupportDirectory:[documents_ stringByAppendingPathComponent:@"Alerts/Support"] downloadDirectory:[documents_ stringByAppendingPathComponent:@"Alerts/Downloads"]] autorelease];
@@ -182,7 +188,10 @@ static void screenshot(UIWindow *window,NSString *path) {
     rdapp_make_directory([support fileSystemRepresentation]); rdapp_make_directory([downloads fileSystemRepresentation]);
     rdapp_store *store=NULL; long long pid=0, other=0;
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open fixture");
-    rdapp_entry entries[]={{"AAAAAAAAAAA","A playable video",0},{"BBBBBBBBBBB","Failed and queued video",1},{"CCCCCCCCCCC","Missing video",2},{"CCCCCCCCCCC","Repeated video",3}};
+    rdapp_entry entries[]={{.video_id="AAAAAAAAAAA",.title="A playable video",.position=0},{.video_id="BBBBBBBBBBB",.title="Failed and queued video",.position=1},{.video_id="CCCCCCCCCCC",.title="Missing video",.position=2},{.video_id="CCCCCCCCCCC",.title="Repeated video",.position=3}};
+    entries[0].channel="Example Channel"; entries[0].duration=754; entries[0].has_duration=1;
+    entries[1].duration=0; entries[1].has_duration=1;
+    entries[2].channel="Original Channel";
     require(rdapp_store_snapshot(store,"PLfixture","Offline Test Playlist",entries,4,&pid),@"Create fixture playlist");
     require(rdapp_store_snapshot(store,"PLaccount","Account Playlist",NULL,0,&other),@"Create account playlist");
     require(rdapp_store_discovered_playlist(store,"PLaccount","Account Playlist"),@"Promote account fixture");
@@ -218,6 +227,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     require([emptyQueue.tableView numberOfRowsInSection:0]==0 && navigation_.toolbarHidden && emptyQueue.tableView.tableFooterView==nil && ![emptyQueue respondsToSelector:@selector(tableView:titleForFooterInSection:)],@"Empty Queue has no placeholder section, footer, or idle toolbar");
     [RDLPLibrary savePreferredFormat:@"137+140"];
     RDLPPlaylistsViewController *root=[self show:RDLPScreenLibrary playlist:nil video:nil];
+    testIOSIconImage(root.navigationItem.rightBarButtonItem.image,26,[[UIScreen mainScreen] scale]);
     require([root isKindOfClass:[UITableViewController class]] && root.view==root.tableView,@"Fresh-launch home is a native table controller");
     require([root.title isEqualToString:@"Playlists"] && root.tableView.style==UITableViewStylePlain,@"Plain Playlists home");
     require([root.toolbarItems count]==4 && !navigation_.toolbarHidden,@"ENIL-style home toolbar");
@@ -346,6 +356,8 @@ static void screenshot(UIWindow *window,NSString *path) {
     UITableViewCell *videoCell=[list tableView:list.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
     require([videoCell.accessoryView isKindOfClass:[UIImageView class]] && [(UIImageView *)videoCell.accessoryView image]!=nil && videoCell.imageView.image==nil && videoCell.accessoryType==UITableViewCellAccessoryNone,@"Video status occupies the accessory with no disclosure chevron or leading image");
     require([videoCell.accessibilityLabel rangeOfString:@"Downloaded"].location!=NSNotFound,@"Accessory status is accessible");
+    require([videoCell.detailTextLabel.text hasPrefix:@"12:34 · "] && [videoCell.detailTextLabel.text hasSuffix:@" · Low (18) · Example Channel"],@"Playlist subtitle orders duration, file size, quality, and channel");
+    require([videoCell.accessibilityLabel rangeOfString:@"12 minutes, 34 seconds"].location!=NSNotFound,@"Playlist duration is spoken as time");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"playlist.png"]);
     NSArray *videos=[[[[sections(list) objectAtIndex:0] objectForKey:@"rows"] copy] autorelease];
     require([videos count]==4,@"Playlist retains one row per entry regardless of quality count");
@@ -353,12 +365,14 @@ static void screenshot(UIWindow *window,NSString *path) {
       [[[[videos objectAtIndex:0] objectForKey:@"job"] objectForKey:@"format"] isEqualToString:@"18"],@"Playable quality represents video despite missing preferred quality");
     require([videoCell.detailTextLabel.text rangeOfString:@"(18)"].location!=NSNotFound,@"Downloaded playlist subtitle shows its playable job quality");
     for(NSDictionary *row in videos)
-      require([[row objectForKey:@"status"] isEqualToString:@"Downloaded"] || ![[row objectForKey:@"detail"] length],@"Playlist omits quality when no playable download is available");
+      require([[row objectForKey:@"status"] isEqualToString:@"Downloaded"] || [[row objectForKey:@"detail"] rangeOfString:@"("].location==NSNotFound,@"Playlist omits quality when no playable download is available");
     NSIndexPath *pendingIndex=videoIndex(list,@"BBBBBBBBBBB",@"18");
     UITableViewCell *pendingCell=[list tableView:list.tableView cellForRowAtIndexPath:pendingIndex];
+    require([pendingCell.detailTextLabel.text isEqualToString:@"0:00"],@"Zero duration is visible without claiming a playable quality");
     require([(UIImageView *)pendingCell.accessoryView image]==[RDLPUIKit statusIcon:@"Queued"],@"Queued quality represents video ahead of failed quality");
     UITableViewCell *originalCell=[list tableView:list.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:2 inSection:0]], *repeatedCell=[list tableView:list.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:3 inSection:0]];
     require([(UIImageView *)originalCell.accessoryView image]==[(UIImageView *)repeatedCell.accessoryView image],@"Repeated playlist entries share representative status");
+    require([originalCell.detailTextLabel.text isEqualToString:@"Original Channel"] && ![repeatedCell.detailTextLabel.text length],@"Duplicate entries retain independent optional metadata");
     library_.testStatus=nil;
     NSDictionary *video=[[[videos objectAtIndex:0] objectForKey:@"video"] retain];
     require(![model canRemovePlaylist:playlist],@"Pending and completed jobs block playlist removal");
@@ -505,7 +519,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     require(![timedLabel.text length],@"New view cannot resurrect expired shared status");
     /* Exercise playlist taps after the shared queue fixtures have been tested. */
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open playlist interaction fixture");
-    rdapp_entry tapEntries[]={{"AAAAAAAAAAA","A playable video",0},{"BBBBBBBBBBB","Failed and queued video",1},{"CCCCCCCCCCC","Missing video",2},{"CCCCCCCCCCC","Repeated video",3},{"DDDDDDDDDDD","New video",4}};
+    rdapp_entry tapEntries[]={{.video_id="AAAAAAAAAAA",.title="A playable video",.position=0},{.video_id="BBBBBBBBBBB",.title="Failed and queued video",.position=1},{.video_id="CCCCCCCCCCC",.title="Missing video",.position=2},{.video_id="CCCCCCCCCCC",.title="Repeated video",.position=3},{.video_id="DDDDDDDDDDD",.title="New video",.position=4}};
     require(rdapp_store_snapshot(store,"PLfixture","Updated Playlist",tapEntries,5,&pid),@"Add undownloaded video fixture");
     require(rdapp_store_finish(store,2,"failed","","Synthetic playlist failure"),@"Restore failed quality after queue stop tests"); rdapp_store_close(store);
     library_.testStatus=@"";
