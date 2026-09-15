@@ -1,6 +1,7 @@
 #import "../iOS/RDLPPlaylistsViewController.h"
 #import "../iOS/RDLPPlaylistViewController.h"
 #import "../iOS/RDLPDownloadsViewController.h"
+#import "../iOS/RDLPQueueViewController.h"
 /* Native UIKit regressions. All data is synthetic and confined to this bundle.
    The scheduler override below never calls the production worker. */
 #import "../iOS/RDLPLibraryViewController.h"
@@ -56,9 +57,6 @@ static void pump(void) { [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWi
   [super setToolbarHidden:hidden animated:animated];
 }
 @end
-@interface RDLPLibraryViewController (Testing)
-- (void)queueAction:(UIButton *)sender;
-@end
 static NSArray *sections(id controller) { return [controller valueForKey:@"sections_"]; }
 static NSDictionary *findRow(id controller,NSString *action) {
   for(NSDictionary *section in sections(controller)) for(NSDictionary *row in [section objectForKey:@"rows"])
@@ -102,16 +100,16 @@ static void nativeDelete(RDLPVideoListViewController *controller,NSIndexPath *in
 }
 static void confirmAt(id controller,BOOL accept,int line) {
   UIAlertView *alert=[controller valueForKey:@"alert_"];
-  require(alert!=nil,[NSString stringWithFormat:@"Expected confirmation at test line %d",line]); [alert retain];
+  require(alert!=nil,[NSString stringWithFormat:@"Expected confirmation at test line %d",line]); [alert retain]; pump();
   [controller alertView:alert clickedButtonAtIndex:accept?1:0];
-  [alert dismissWithClickedButtonIndex:accept?1:0 animated:NO]; [alert release]; pump();
+  [alert dismissWithClickedButtonIndex:accept?1:0 animated:NO]; [alert release]; pump(); pump();
 }
 #define confirm(controller,accept) confirmAt(controller,accept,__LINE__)
-static void choose(RDLPLibraryViewController *controller,NSString *title) {
-  UIAlertView *alert=[controller valueForKey:@"alert_"]; require(alert!=nil,@"Expected job actions"); [alert retain];
+static void choose(id controller,NSString *title) {
+  UIAlertView *alert=[controller valueForKey:@"alert_"]; require(alert!=nil,@"Expected job actions"); [alert retain]; pump();
   NSInteger index=0; for(NSInteger i=1;i<alert.numberOfButtons;++i) if([[alert buttonTitleAtIndex:i] isEqualToString:title]) index=i;
   require(index>0,[NSString stringWithFormat:@"Missing action %@",title]);
-  [controller alertView:alert clickedButtonAtIndex:index]; [alert dismissWithClickedButtonIndex:index animated:NO]; [alert release]; pump();
+  [controller alertView:alert clickedButtonAtIndex:index]; [alert dismissWithClickedButtonIndex:index animated:NO]; [alert release]; pump(); pump();
 }
 static void screenshot(UIWindow *window,NSString *path) {
   UIGraphicsBeginImageContextWithOptions(window.bounds.size,NO,0);
@@ -139,7 +137,8 @@ static void screenshot(UIWindow *window,NSString *path) {
   id controller=mode==RDLPScreenLibrary?(id)[[[RDLPPlaylistsViewController alloc] initWithLibrary:library_] autorelease]:
     (mode==RDLPScreenPlaylist?(id)[[[RDLPPlaylistViewController alloc] initWithLibrary:library_ playlist:playlist] autorelease]:
     (mode==RDLPScreenDownloads?(id)[[[RDLPDownloadsViewController alloc] initWithLibrary:library_] autorelease]:
-    [[[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:mode playlist:playlist video:video] autorelease]));
+    (mode==RDLPScreenQueue?(id)[[[RDLPQueueViewController alloc] initWithLibrary:library_] autorelease]:
+    [[[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:mode playlist:playlist video:video] autorelease])));
   if(navigation_.presentedViewController) {
     [navigation_ dismissViewControllerAnimated:NO completion:nil]; pump(); pump();
   }
@@ -185,6 +184,11 @@ static void screenshot(UIWindow *window,NSString *path) {
     require(rdapp_store_finish(store,1,"complete","18",""),@"Publish completed fixture"); rdapp_store_close(store);
     [library_ startDownloads]; require(![library_ isPaused],@"Automatic queue startup");
     navigation_=[[RDLPOfflineNavigationController alloc] init]; window_.rootViewController=navigation_;
+    RDLPOfflineLibrary *emptyLibrary=[[[RDLPOfflineLibrary alloc] initWithSupportDirectory:[base stringByAppendingPathComponent:@"EmptySupport"] downloadDirectory:[base stringByAppendingPathComponent:@"EmptyDownloads"]] autorelease];
+    require(emptyLibrary!=nil,@"Open empty queue fixture"); emptyLibrary.testStatus=@"Ready";
+    RDLPQueueViewController *emptyQueue=[[[RDLPQueueViewController alloc] initWithLibrary:emptyLibrary] autorelease];
+    [navigation_ setViewControllers:[NSArray arrayWithObject:emptyQueue] animated:NO]; [emptyQueue view]; [emptyQueue refresh:nil]; pump();
+    require([emptyQueue.tableView numberOfRowsInSection:0]==0 && navigation_.toolbarHidden && emptyQueue.tableView.tableFooterView==nil && ![emptyQueue respondsToSelector:@selector(tableView:titleForFooterInSection:)],@"Empty Queue has no placeholder section, footer, or Ready toolbar");
     [RDLPLibrary savePreferredFormat:@"137+140"];
     RDLPPlaylistsViewController *root=[self show:RDLPScreenLibrary playlist:nil video:nil];
     require([root isKindOfClass:[UITableViewController class]] && root.view==root.tableView,@"Fresh-launch home is a native table controller");
@@ -209,7 +213,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     [root queue:nil]; pump(); pump();
     UINavigationController *queueModal=(UINavigationController *)navigation_.presentedViewController;
     require([queueModal isKindOfClass:[UINavigationController class]] && navigation_.topViewController==root,@"Queue presents modally without changing home stack");
-    RDLPLibraryViewController *modalQueue=(RDLPLibraryViewController *)queueModal.topViewController;
+    RDLPQueueViewController *modalQueue=(RDLPQueueViewController *)queueModal.topViewController;
     require([modalQueue.title isEqualToString:@"Download Queue"] && modalQueue.navigationItem.rightBarButtonItem.action==@selector(dismissQueue:),@"Queue has Done dismissal");
     [root queue:nil];
     require(navigation_.presentedViewController==queueModal,@"Repeated Queue action reuses modal");
@@ -296,7 +300,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     [list queue:nil]; pump(); pump();
     UINavigationController *playlistQueue=(UINavigationController *)navigation_.presentedViewController;
     require([playlistQueue isKindOfClass:[UINavigationController class]] && [playlistQueue.topViewController.title isEqualToString:@"Download Queue"] && navigation_.topViewController==list,@"Playlist Queue button presents the same queue modal as parent");
-    [(RDLPLibraryViewController *)playlistQueue.topViewController dismissQueue:nil]; pump(); pump();
+    [(RDLPQueueViewController *)playlistQueue.topViewController dismissQueue:nil]; pump(); pump();
     require(navigation_.presentedViewController==nil && !navigation_.toolbarHidden,@"Queue dismissal restores active playlist toolbar");
     library_.testBusy=NO; library_.testProgress=nil; library_.testStatus=@"Finished playlist work";
     NSDate *toolbarExpiry=[NSDate dateWithTimeIntervalSinceNow:10.3];
@@ -390,21 +394,49 @@ static void screenshot(UIWindow *window,NSString *path) {
     for(NSUInteger wait=0;wait<10 && (detail.presentedViewController || navigation_.presentedViewController);++wait) pump();
     require(!detail.presentedViewController && !navigation_.presentedViewController,@"Native player dismissal returns to library");
     [detail performRow:findRow(detail,@"delete")]; confirm(detail,NO); require([[NSFileManager defaultManager] fileExistsAtPath:file],@"Cancelled delete retains file");
-    RDLPLibraryViewController *queue=[self show:RDLPScreenQueue playlist:nil video:nil];
-    require([sections(queue) count]==4,@"Four queue groups");
-    NSDictionary *parent=[[[sections(queue) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:0];
-    [queue performRow:parent]; [queue refresh:nil]; require([[[sections(queue) objectAtIndex:0] objectForKey:@"rows"] count]==1,@"Collapse survives refresh");
-    [queue showJobInQueue:[model currentJob:@"1"]]; require([[[sections(queue) objectAtIndex:0] objectForKey:@"rows"] count]>1,@"Reveal expands target ancestors");
-    NSDictionary *failed=[model currentJob:@"2"];
-    require(![[model actionsForJob:failed] containsObject:@"Play"] && ![[model actionsForJob:failed] containsObject:@"Stop Download…"],@"Failed quality actions are state-specific");
-    [queue performRow:[NSDictionary dictionaryWithObjectsAndKeys:@"job",@"action",failed,@"job",nil]]; choose(queue,@"Download Video");
+    RDLPQueueViewController *queue=[self show:RDLPScreenQueue playlist:nil video:nil];
+    require([queue isKindOfClass:[UITableViewController class]] && queue.view==queue.tableView && queue.tableView.style==UITableViewStylePlain,@"Queue is a native plain table controller");
+    require([sections(queue) count]==1 && queue.tableView.tableFooterView==nil,@"Flat Queue has no groups or empty footer");
+    require([queue.toolbarItems count]==3 && [[queue.toolbarItems objectAtIndex:1] customView]==[queue valueForKey:@"statusBar_"],@"Queue has centered status without a Queue button");
+    NSArray *queueRows=[[sections(queue) objectAtIndex:0] objectForKey:@"rows"];
+    long long previousID=0; NSUInteger position=0;
+    for(NSDictionary *row in queueRows) {
+      NSDictionary *job=[row objectForKey:@"job"]; ++position;
+      require([[job objectForKey:@"id"] longLongValue]>previousID,@"Queue follows database processing order");
+      previousID=[[job objectForKey:@"id"] longLongValue];
+      require([[row objectForKey:@"title"] isEqualToString:[NSString stringWithFormat:@"%lu) %@",(unsigned long)position,[job objectForKey:@"title"]]],@"Queue uses consecutive display numbers and video titles");
+      require([[row objectForKey:@"detail"] rangeOfString:[job objectForKey:@"playlist_title"]].location!=NSNotFound && [[row objectForKey:@"detail"] rangeOfString:[job objectForKey:@"format"]].location!=NSNotFound,@"Subtitle identifies playlist and exact quality");
+      require([row objectForKey:@"depth"]==nil && [[row objectForKey:@"action"] isEqualToString:@"job"],@"Every queue row is a download, with no outline nodes");
+    }
+    [queue showJobInQueue:[model currentJob:@"2"]]; NSIndexPath *selected=queue.tableView.indexPathForSelectedRow;
+    require(selected.row==1 && selected.section==0,@"Reveal selects the exact quality in processing order");
+    UITableViewCell *cell=[queue.tableView cellForRowAtIndexPath:selected];
+    UITableViewCell *defaultCell=[[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil] autorelease];
+    require([cell.accessoryView isKindOfClass:[UIImageView class]] && cell.imageView.image==nil && cell.indentationLevel==0 && cell.textLabel.font.pointSize==defaultCell.textLabel.font.pointSize && cell.detailTextLabel.font.pointSize==defaultCell.detailTextLabel.font.pointSize,@"Queue shares native subtitle cell styling and trailing status icon");
+    NSArray *statuses=[NSArray arrayWithObjects:@"Queued",@"Downloading",@"Downloaded",@"Failed",@"Stopped",@"Interrupted",@"File missing",nil];
+    for(NSString *status in statuses) {
+      NSString *playlistStatus=[status isEqualToString:@"Stopped"]?@"Cancelled":status;
+      require([UIImagePNGRepresentation([queue statusIcon:status]) isEqualToData:UIImagePNGRepresentation([RDLPUIKit statusIcon:playlistStatus])],@"Queue status icons match Playlist");
+    }
+    [queue tableView:queue.tableView didSelectRowAtIndexPath:selected];
+    UIAlertView *jobMenu=[queue valueForKey:@"alert_"];
+    require([jobMenu.message rangeOfString:@"Synthetic failure"].location!=NSNotFound,@"Queue job dialog includes full error");
+    for(NSInteger i=0;i<jobMenu.numberOfButtons;++i) require(![[jobMenu buttonTitleAtIndex:i] isEqualToString:@"Show in Queue"],@"Queue actions omit redundant navigation");
+    choose(queue,@"Retry Download");
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"queued"] && [[[model currentJob:@"2"] objectForKey:@"format"] isEqualToString:@"136+140"],@"Retry uses selected quality, ignoring preference");
-    [queue showJobInQueue:[model currentJob:@"2"]]; NSIndexPath *selected=queue.tableView.indexPathForSelectedRow; require(selected!=nil,@"Retried quality selected in Queue");
-    UITableViewCell *cell=[queue.tableView cellForRowAtIndexPath:selected]; require([cell.accessoryView isKindOfClass:[UIButton class]],@"Queued quality has row action");
-    [(UIButton *)cell.accessoryView sendActionsForControlEvents:UIControlEventTouchUpInside]; confirm(queue,NO); require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"queued"],@"Cancelled row stop does nothing");
-    [queue performRow:[NSDictionary dictionaryWithObjectsAndKeys:@"job",@"action",[model currentJob:@"2"],@"job",nil]]; choose(queue,@"Stop Download…"); confirm(queue,YES);
+    [queue tableView:queue.tableView didSelectRowAtIndexPath:selected]; choose(queue,@"Stop Download…"); confirm(queue,NO);
+    require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"queued"],@"Cancelled row stop does nothing");
+    [queue tableView:queue.tableView didSelectRowAtIndexPath:selected]; choose(queue,@"Stop Download…"); confirm(queue,YES);
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"cancelled"] && [RDLPDownloadPolicy job:[model currentJob:@"3"] hasState:@"queued"] && ![library_ isPaused],@"Stopping one quality preserves other pending work");
-    selected=queue.tableView.indexPathForSelectedRow; require(selected.section==3,@"Selection follows quality to Needs Attention");
+    require([queue.tableView.indexPathForSelectedRow isEqual:selected] && [[[[[sections(queue) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:1] objectForKey:@"status"] isEqualToString:@"Stopped"],@"Status changes preserve row position and stable selection");
+    /* A deleted job leaves a permanent ID gap but no gap in display numbers. */
+    nativeDelete(queue,selected); [queue refresh:nil];
+    queueRows=[[sections(queue) objectAtIndex:0] objectForKey:@"rows"];
+    require([[[[queueRows objectAtIndex:1] objectForKey:@"job"] objectForKey:@"id"] isEqualToString:@"3"] && [[[queueRows objectAtIndex:1] objectForKey:@"title"] hasPrefix:@"2) "],@"Deleted jobs are hidden and display numbers close the gap");
+    BOOL hasMissing=NO; for(NSDictionary *row in queueRows) if([[row objectForKey:@"status"] isEqualToString:@"File missing"]) hasMissing=YES;
+    require(hasMissing,@"Missing files remain visible for retry");
+    require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Restore queue fixture");
+    require(rdapp_store_finish(store,2,"cancelled","",""),@"Restore stopped quality"); rdapp_store_close(store); [queue refresh:nil];
     require([policy canDownloadAgain:[model currentJob:@"4"]],@"Missing completed file is retryable");
     RDLPAppDelegate *lifecycle=[[[RDLPAppDelegate alloc] init] autorelease]; [lifecycle setValue:library_ forKey:@"library_"];
     [lifecycle applicationDidEnterBackground:[UIApplication sharedApplication]]; require([library_ isPaused],@"Background pauses transfers");
@@ -414,13 +446,22 @@ static void screenshot(UIWindow *window,NSString *path) {
     [queue.tableView setContentOffset:CGPointZero animated:NO];
     CGPoint browsingOffset=queue.tableView.contentOffset; [queue refresh:nil];
     require(CGPointEqualToPoint(browsingOffset,queue.tableView.contentOffset),@"Progress refresh must not scroll back to the selected quality");
-    CGRect tableFrame=queue.tableView.frame;
-    require([[queue valueForKey:@"progress_"] isHidden],@"Historical jobs do not activate progress");
+    RDLPStatusBarView *queueBar=[queue valueForKey:@"statusBar_"];
+    UIProgressView *progress=[queueBar valueForKey:@"progress_"];
+    require(progress.hidden,@"Historical jobs do not activate progress");
+    library_.testStatus=@"Ready"; require(navigation_.toolbarHidden,@"Ready queue has no toolbar");
     library_.testProgress=[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES],@"active",[NSNumber numberWithInt:3],@"processed",[NSNumber numberWithInt:5],@"total",[NSNumber numberWithInt:1],@"failed",[NSNumber numberWithInt:1],@"cancelled",nil];
-    [queue refresh:nil]; UIProgressView *progress=[queue valueForKey:@"progress_"];
-    require(!progress.hidden && progress.progress>0.59f && progress.progress<0.61f && CGRectEqualToRect(tableFrame,queue.tableView.frame),@"Progress shows run attempts without moving the table");
+    [queue refresh:nil]; pump();
+    require(!navigation_.toolbarHidden && !progress.hidden && progress.progress>0.59f && progress.progress<0.61f,@"Active run shows toolbar progress even before a status message");
+    library_.testStatus=@"Downloading fixture"; pump();
+    CGRect tableFrame=queue.tableView.frame; [queue refresh:nil];
+    require(CGRectEqualToRect(tableFrame,queue.tableView.frame),@"Progress refresh keeps the native table frame stable");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"progress.png"]);
-    library_.testProgress=nil; [queue refresh:nil]; require(progress.hidden,@"Drained run hides progress");
+    library_.testProgress=nil; library_.testStatus=@"Queue finished"; [queue refresh:nil];
+    require(progress.hidden && !navigation_.toolbarHidden,@"Drained run leaves timed completion message");
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:10.2]];
+    require(navigation_.toolbarHidden && navigation_.lastToolbarChangeAnimated,@"Queue completion toolbar disappears with animation after ten seconds");
+    library_.testStatus=nil;
     RDLPStatusBarView *timedBar=[[[RDLPStatusBarView alloc] initWithFrame:CGRectZero] autorelease];
     UILabel *timedLabel=[timedBar valueForKey:@"label_"];
     [timedBar setStatus:@"Ready" progress:nil busy:NO];
@@ -547,7 +588,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     [all queue:nil]; pump(); pump();
     UINavigationController *downloadsQueue=(UINavigationController *)navigation_.presentedViewController;
     require([downloadsQueue.topViewController.title isEqualToString:@"Download Queue"],@"All Downloads opens shared queue modal");
-    [(RDLPLibraryViewController *)downloadsQueue.topViewController dismissQueue:nil]; pump(); pump();
+    [(RDLPQueueViewController *)downloadsQueue.topViewController dismissQueue:nil]; pump(); pump();
     require(!navigation_.presentedViewController && !navigation_.toolbarHidden,@"Queue dismissal restores All Downloads status toolbar");
     library_.testStatus=@"Ready"; pump(); pump();
     require(navigation_.toolbarHidden,@"All Downloads hides Ready even during active work");

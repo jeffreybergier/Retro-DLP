@@ -1,5 +1,6 @@
 #import "RDLPPlaylistsViewController.h"
 #import "RDLPLibraryViewController.h"
+#import "RDLPQueueViewController.h"
 #import "RDLPPlaylistViewController.h"
 #import "RDLPDownloadsViewController.h"
 #import "RDLPSettingsViewController.h"
@@ -95,8 +96,7 @@
 - (void)queue:(id)sender;
 {
   (void)sender; if(self.navigationController.presentedViewController || alert_ || playlistActions_) return;
-  RDLPLibraryViewController *queue=[[[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:RDLPScreenQueue playlist:nil video:nil] autorelease];
-  queue.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:queue action:@selector(dismissQueue:)] autorelease];
+  RDLPQueueViewController *queue=[[[RDLPQueueViewController alloc] initWithLibrary:library_] autorelease];
   UINavigationController *modal=[[[UINavigationController alloc] initWithRootViewController:queue] autorelease];
   [self.navigationController presentViewController:modal animated:YES completion:nil];
 }

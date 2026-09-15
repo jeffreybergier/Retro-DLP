@@ -68,55 +68,25 @@
   [row setObject:[policy_ statusForJob:job] forKey:@"status"];
   return row;
 }
-- (NSString *)queueGroupForJob:(NSDictionary *)job;
+- (NSArray *)queueSections:(NSArray *)jobs;
 {
-  NSString *state=[job objectForKey:@"state"];
-  return [policy_ playable:job]?@"Done":([state isEqualToString:@"running"]?@"Downloading":([state isEqualToString:@"queued"]?@"Queued":@"Needs Attention"));
-}
-- (NSArray *)queueSections:(NSArray *)jobs collapsed:(NSSet *)collapsed;
-{
-  NSArray *names=[NSArray arrayWithObjects:@"Done",@"Downloading",@"Queued",@"Needs Attention",nil];
-  NSMutableArray *sections=[NSMutableArray array];
-  for(NSString *name in names) {
-    NSMutableArray *group=[NSMutableArray array];
-    for(NSDictionary *job in jobs) {
-      NSString *target=[self queueGroupForJob:job];
-      if([name isEqualToString:target]) [group addObject:job];
-    }
-    NSMutableArray *rows=[NSMutableArray array]; NSMutableSet *playlists=[NSMutableSet set];
-    for(NSDictionary *job in group) {
-      NSString *pid=[job objectForKey:@"playlist_id"];
-      if([playlists containsObject:pid]) continue; [playlists addObject:pid];
-      NSString *pk=[NSString stringWithFormat:@"%@/playlist:%@",name,pid];
-      NSMutableDictionary *parent=[self row:[job objectForKey:@"playlist_title"] detail:@"" action:@"collapse"];
-      [parent setObject:pk forKey:@"key"]; [rows addObject:parent];
-      if([collapsed containsObject:pk]) continue;
-      NSMutableSet *videos=[NSMutableSet set];
-      for(NSDictionary *videoJob in group) {
-        NSString *vid=[videoJob objectForKey:@"video_id"];
-        if(![[videoJob objectForKey:@"playlist_id"] isEqualToString:pid] || [videos containsObject:vid]) continue;
-        [videos addObject:vid]; NSString *vk=[pk stringByAppendingFormat:@"/video:%@",vid];
-        NSMutableDictionary *video=[self row:[videoJob objectForKey:@"title"] detail:@"" action:@"collapse"];
-        [video setObject:vk forKey:@"key"]; [video setObject:[NSNumber numberWithInt:1] forKey:@"depth"]; [rows addObject:video];
-        if([collapsed containsObject:vk]) continue;
-        for(NSDictionary *quality in group) {
-          if(![[quality objectForKey:@"playlist_id"] isEqualToString:pid] || ![[quality objectForKey:@"video_id"] isEqualToString:vid]) continue;
-          NSMutableDictionary *row=[NSMutableDictionary dictionaryWithDictionary:[self jobRow:quality]];
-          [row setObject:[self qualityLabel:[quality objectForKey:@"format"]] forKey:@"title"];
-          NSString *detail=[policy_ statusForJob:quality], *actual=[quality objectForKey:@"actual_format"];
-          if([actual length] && ![actual isEqualToString:[quality objectForKey:@"format"]]) detail=[detail stringByAppendingFormat:@" · Saved as %@",actual];
-          if([[quality objectForKey:@"error"] length]) detail=[detail stringByAppendingFormat:@"\n%@",[quality objectForKey:@"error"]];
-          [row setObject:detail forKey:@"detail"];
-          [row setObject:[NSNumber numberWithInt:2] forKey:@"depth"]; [rows addObject:row];
-        }
-      }
-    }
-    [sections addObject:[self section:name rows:rows]];
+  NSMutableArray *rows=[NSMutableArray array];
+  /* Store queries return newest first; the worker claims the lowest job ID.
+   * Number visible rows consecutively, independently of permanent database IDs. */
+  for(NSDictionary *job in [jobs reverseObjectEnumerator]) {
+    if([RDLPDownloadPolicy job:job hasState:@"removed"] && ![[job objectForKey:@"error"] length]) continue;
+    NSString *title=[NSString stringWithFormat:@"%lu) %@",(unsigned long)[rows count]+1,[job objectForKey:@"title"]];
+    NSString *detail=[NSString stringWithFormat:@"%@ · %@",[self qualityLabel:[job objectForKey:@"format"]],[job objectForKey:@"playlist_title"]];
+    NSMutableDictionary *row=[self row:title detail:detail action:@"job"];
+    NSString *status=[policy_ statusForJob:job];
+    [row setObject:[status isEqualToString:@"Cancelled"]?@"Stopped":status forKey:@"status"];
+    [row setObject:job forKey:@"job"]; [rows addObject:row];
   }
-  return sections;
+  return [NSArray arrayWithObject:[self section:@"" rows:rows]];
 }
 - (NSArray *)sectionsForScreen:(RDLPScreen)screen playlist:(NSDictionary *)playlist video:(NSDictionary *)video collapsed:(NSSet *)collapsed;
 {
+  (void)collapsed;
   NSMutableArray *sections=[NSMutableArray array], *rows=[NSMutableArray array];
   NSString *pid=[playlist objectForKey:@"id"];
   if(screen==RDLPScreenLibrary) {
@@ -147,7 +117,7 @@
     [sections addObject:[self section:@"Cookies" rows:cookies]];
   } else {
     NSArray *jobs=[library_ jobsForPlaylist:screen==RDLPScreenVideo || screen==RDLPScreenPlaylist?pid:nil completedOnly:screen==RDLPScreenDownloads];
-    if(screen==RDLPScreenQueue) return [self queueSections:jobs collapsed:collapsed];
+    if(screen==RDLPScreenQueue) return [self queueSections:jobs];
     if(screen==RDLPScreenPlaylist) {
       for(NSDictionary *entry in [library_ entriesForPlaylist:pid]) {
         NSDictionary *job=[policy_ representativeJobForEntry:entry playlist:pid jobs:jobs];

@@ -49,6 +49,7 @@
   UIBarButtonItem *left=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
   UIBarButtonItem *right=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
   UIBarButtonItem *message=[[[UIBarButtonItem alloc] initWithCustomView:status] autorelease];
+  if(!action) return [NSArray arrayWithObjects:left,message,right,nil];
   UIBarButtonItem *queue=[[[UIBarButtonItem alloc] initWithImage:[self queueToolbarIcon] style:UIBarButtonItemStyleBordered target:target action:action] autorelease];
   queue.accessibilityLabel=@"Download Queue";
   return [NSArray arrayWithObjects:left,message,right,queue,nil];

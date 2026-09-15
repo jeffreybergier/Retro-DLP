@@ -5,7 +5,7 @@ typedef enum {
   RDLPScreenDownloads, RDLPScreenSettings, RDLPScreenVideo
 } RDLPScreen;
 
-/* Read-only table snapshots. Stable keys preserve collapsed queue branches. */
+/* Read-only table snapshots; each download row retains its stable job ID. */
 @interface RDLPLibrarySections : NSObject {
   RDLPLibrary *library_;
   RDLPDownloadPolicy *policy_;
@@ -16,6 +16,5 @@ typedef enum {
 - (NSDictionary *)jobForPlaylist:(NSString *)playlist video:(NSString *)video format:(NSString *)format;
 - (NSArray *)missingPlanForPlaylist:(NSString *)playlist format:(NSString *)format;
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
-- (NSString *)queueGroupForJob:(NSDictionary *)job;
 - (NSArray *)actionsForJob:(NSDictionary *)job;
 @end

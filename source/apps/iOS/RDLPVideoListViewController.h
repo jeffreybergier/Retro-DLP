@@ -18,4 +18,9 @@
 - (id)initWithLibrary:(RDLPLibrary *)library mode:(RDLPScreen)mode playlist:(NSDictionary *)playlist;
 - (void)refresh:(id)sender;
 - (void)queue:(id)sender;
+/* Shared native list presentation hooks. */
+- (BOOL)showsQueueButton;
+- (BOOL)shouldHideToolbar;
+- (NSDictionary *)rowAtIndex:(NSIndexPath *)index;
+- (UIImage *)statusIcon:(NSString *)status;
 @end

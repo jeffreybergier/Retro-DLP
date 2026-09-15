@@ -302,20 +302,26 @@ downloads, skips failed/interrupted/stopped jobs, and rechecks eligibility befor
 performing the captured plan. Single-video downloads are immediate; failed or
 missing rows in Playlist and All Downloads confirm an exact-quality retry.
 
-Queue has Done, Downloading, Queued, and Needs Attention sections, with
-collapsible playlist and video rows above individual qualities. Each pending or
-running quality has a Stop button; failed/stopped/missing qualities have Retry.
-These buttons carry stable job IDs, so a refresh cannot change their target.
-Starting or retrying reveals Queue, expands the target's ancestors, and selects
-that exact quality. Selection follows its status changes. Other collapsed branches
-stay collapsed. Job actions show only applicable playback, download, stop, delete,
-and Show in Queue commands; full errors are available in the job dialog.
+Queue shares the native `UITableViewController` base and standard subtitle cells
+with Playlist and All Downloads. It is a flat list in processing order (ascending
+permanent job ID). Titles use consecutive display numbers, such as `1) My Video`;
+these numbers close gaps when jobs are deleted. Each quality gets its own row,
+with quality followed by playlist in the subtitle and the same trailing Font Awesome status
+icons as Playlist and All Downloads.
+States are Queued, Downloading, Downloaded, Failed, Stopped, Interrupted, and File
+missing. Deliberately deleted jobs are hidden; missing files remain retryable.
 
-On the video detail and queue screens, a fixed status area below the table shows
-current activity and a native progress
-bar for processed attempts in the current run. Failed and stopped counts are
-included in its accessible description. Historical jobs do not contribute, and
-progress appearing or disappearing never changes the table's frame.
+Tapping a row shows its status, full error, and applicable Play, Retry Download,
+Stop Download, and Delete Download actions. Actions recheck the stable job ID and
+current state after confirmation. Revealing a job selects and scrolls to its exact
+quality. Ordinary refreshes retain selection without scrolling or regrouping rows.
+
+Queue uses the shared bottom status toolbar without a Queue button. Active work
+keeps progress visible; idle messages expire after ten seconds and the toolbar
+hides with animation. Ready and empty idle statuses hide it immediately. The video
+detail screen retains its fixed status area. Progress counts describe attempts in
+the current run, including failed and stopped counts in the accessible description;
+historical jobs do not contribute.
 
 Deleting a download, stopping work, removing a playlist, replacing/removing
 cookies, and bulk operations require confirmation. For swipe deletion, tapping
@@ -388,7 +394,7 @@ by both applications.
 | macOS change | UIKit equivalent |
 | --- | --- |
 | Sidebar outline and discovery provenance | Collapsible System, Added Playlists, My Playlists sections |
-| Queue outline and quality action cells | Grouped playlist/video/quality rows with stable-ID Stop/Retry buttons |
+| Queue outline and quality action cells | Native flat subtitle cells, consecutive numbers, status accessories, and stable-ID job actions |
 | Context commands, quality preferences, confirmations | Video/job dialogs, Settings, and captured/revalidated alert requests |
 | Representative status and app-wide progress | Shared download policy, status icons, fixed status/progress area |
 | Automatic queue processing | Automatic foreground processing; background pause/cancellation |
@@ -448,6 +454,21 @@ usage. The other narrow exceptions are the `main` entry point and the drawing
 math (`isfinite`/`ceil`) and AppKit ABI adaptation inside `RDLPAppKit`.
 
 ## Validation
+
+Native iOS Queue (2026-09-15): armv7/arm64 builds, package validation, and the
+static analyzer passed with zero warnings/errors. All 13 portable store tests and
+the local HTTPS service integration passed. The isolated native suite passed on
+`koolphone5` with the merged playlist-metadata library, covering plain subtitle
+cells, processing order and consecutive numbering, status glyph rendering, empty
+queues, exact-quality retry/stop, stable selection, and animated toolbar expiry.
+UIKit's real row-edit/Delete controls verified that deleting a queue job closes
+the display-number gap while missing files remain retryable. The full existing
+Playlist/All Downloads, playback, and swipe regressions also passed. Queue and
+active-progress screenshots were inspected. Network work remained disabled in the
+native fixture; older iOS versions and the arm64 slice were cross-built/analyzed.
+The follow-up icon correction removes Queue’s icon override so it inherits the
+Playlist/All Downloads renderer. Build and package checks passed; native UI tests
+were not rerun for that correction.
 
 Shared iOS video lists (2026-09-15): armv7/arm64 app builds and artifact checks
 passed, the iOS static analyzer reported zero warnings/errors, and the portable

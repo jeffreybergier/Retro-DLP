@@ -1,6 +1,6 @@
 #import "RDLPVideoListViewController.h"
 #import "RDLPUIKit.h"
-#import "RDLPLibraryViewController.h"
+#import "RDLPQueueViewController.h"
 #import <MediaPlayer/MediaPlayer.h>
 
 @implementation RDLPVideoListViewController
@@ -26,8 +26,8 @@
 {
   [super viewDidLoad]; [RDLPUIKit configureContentEdges:self];
   statusBar_=[[RDLPStatusBarView alloc] initWithFrame:CGRectZero];
-  statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-80);
-  self.toolbarItems=[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:@selector(queue:)];
+  statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-([self showsQueueButton]?80:24));
+  self.toolbarItems=[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:[self showsQueueButton]?@selector(queue:):NULL];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(statusCleared:) name:RDLPStatusBarDidClearStatus object:statusBar_];
   [self refresh:nil];
 }
@@ -42,14 +42,20 @@
   [swipeJobID_ release]; swipeJobID_=nil; [super viewWillDisappear:animated];
 }
 - (void)viewDidLayoutSubviews;
-{ [super viewDidLayoutSubviews]; statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-80); }
+{ [super viewDidLayoutSubviews]; statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-([self showsQueueButton]?80:24)); }
 - (void)updateToolbarAnimated:(BOOL)animated;
 {
   if(!visible_ || self.navigationController.topViewController!=self) return;
-  NSString *status=[library_ status];
-  BOOL hidden=![status length] || [status isEqualToString:@"Ready"] || !statusBar_.hasStatus;
+  BOOL hidden=[self shouldHideToolbar];
   if(self.navigationController.toolbarHidden!=hidden) [self.navigationController setToolbarHidden:hidden animated:animated];
 }
+- (BOOL)showsQueueButton; { return YES; }
+- (BOOL)shouldHideToolbar;
+{
+  NSString *status=[library_ status];
+  return ![status length] || [status isEqualToString:@"Ready"] || !statusBar_.hasStatus;
+}
+- (UIImage *)statusIcon:(NSString *)status; { return [RDLPUIKit statusIcon:status]; }
 - (void)statusCleared:(NSNotification *)notification;
 { (void)notification; [self updateToolbarAnimated:YES]; }
 - (void)refresh:(id)sender;
@@ -68,8 +74,7 @@
 - (void)queue:(id)sender;
 {
   (void)sender; if(self.presentedViewController || self.navigationController.presentedViewController || alert_) return;
-  RDLPLibraryViewController *queue=[[[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:RDLPScreenQueue playlist:nil video:nil] autorelease];
-  queue.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:queue action:@selector(dismissQueue:)] autorelease];
+  RDLPQueueViewController *queue=[[[RDLPQueueViewController alloc] initWithLibrary:library_] autorelease];
   UINavigationController *modal=[[[UINavigationController alloc] initWithRootViewController:queue] autorelease];
   [self.navigationController presentViewController:modal animated:YES completion:nil];
 }
@@ -133,7 +138,7 @@
   cell.textLabel.text=[row objectForKey:@"title"];
   cell.detailTextLabel.text=[row objectForKey:@"detail"];
   cell.accessoryType=UITableViewCellAccessoryNone;
-  UIImageView *accessory=[[[UIImageView alloc] initWithImage:[RDLPUIKit statusIcon:status]] autorelease];
+  UIImageView *accessory=[[[UIImageView alloc] initWithImage:[self statusIcon:status]] autorelease];
   accessory.isAccessibilityElement=NO; cell.accessoryView=accessory;
   cell.accessibilityLabel=[NSString stringWithFormat:@"%@, %@, %@",cell.textLabel.text,cell.detailTextLabel.text,status];
   cell.accessibilityHint=[status isEqualToString:@"Downloaded"]?@"Play video":(([status isEqualToString:@"Queued"] || [status isEqualToString:@"Downloading"])?@"Download in progress":@"Download video");

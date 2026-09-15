@@ -43,9 +43,7 @@
 - (void)performRow:(NSDictionary *)row;
 {
   NSString *action=[row objectForKey:@"action"]; NSDictionary *job=[model_ currentJob:[[row objectForKey:@"job"] objectForKey:@"id"]];
-  if([action isEqualToString:@"collapse"]) {
-    NSString *key=[row objectForKey:@"key"]; if([collapsed_ containsObject:key]) [collapsed_ removeObject:key]; else [collapsed_ addObject:key]; [self refresh:nil];
-  } else if([action isEqualToString:@"playlist"]) [self pushMode:RDLPScreenPlaylist playlist:[row objectForKey:@"playlist"] video:nil];
+  if([action isEqualToString:@"playlist"]) [self pushMode:RDLPScreenPlaylist playlist:[row objectForKey:@"playlist"] video:nil];
   else if([action isEqualToString:@"video"]) [self pushMode:RDLPScreenVideo playlist:playlist_ video:[row objectForKey:@"video"]];
   else if([action isEqualToString:@"queue"]) [self queue:nil];
   else if([action isEqualToString:@"downloads"]) [self pushMode:RDLPScreenDownloads playlist:nil video:nil];
