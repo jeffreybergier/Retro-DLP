@@ -12,7 +12,8 @@
   library_=[library retain]; mode_=mode; playlist_=[playlist copy]; video_=[video copy];
   policy_=[[RDLPDownloadPolicy alloc] initWithLibrary:library]; model_=[[RDLPLibrarySections alloc] initWithLibrary:library];
   self.title=mode==RDLPScreenLibrary?@"Playlists":(mode==RDLPScreenPlaylist?[playlist objectForKey:@"title"]:(mode==RDLPScreenQueue?@"Download Queue":(mode==RDLPScreenDownloads?@"All Downloads":(mode==RDLPScreenSettings?@"Settings":@"Video"))));
-  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library_]; return self;
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library_];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPLibraryStatusDidChange object:library_]; return self;
 }
 - (void)dealloc;
 {
@@ -67,12 +68,7 @@
     [playlist retain]; [playlist_ release]; playlist_=playlist; if(mode_==RDLPScreenPlaylist) self.title=[playlist objectForKey:@"title"]; break;
   }
   NSArray *sections=[model_ sectionsForScreen:mode_ playlist:playlist_ video:video_ collapsed:nil]; [sections_ release]; sections_=[sections copy];
-  NSDictionary *progress=[library_ queueProgress]; NSUInteger total=[[progress objectForKey:@"total"] unsignedIntegerValue], processed=[[progress objectForKey:@"processed"] unsignedIntegerValue];
-  [statusBar_ setStatus:[library_ status] progress:progress busy:[library_ isBusy]];
-  progress_.hidden=![[progress objectForKey:@"active"] boolValue] || !total;
-  progress_.progress=total?(float)processed/(float)total:0;
-  progress_.accessibilityLabel=[NSString stringWithFormat:@"%@ processed of %@; %@ failed; %@ stopped",[progress objectForKey:@"processed"],[progress objectForKey:@"total"],[progress objectForKey:@"failed"],[progress objectForKey:@"cancelled"]];
-  status_.text=progress_.hidden?[library_ status]:[NSString stringWithFormat:@"%@\n%@",[library_ status],progress_.accessibilityLabel];
+  [self refreshStatus:nil];
   for(UIBarButtonItem *item in self.toolbarItems) {
     if(item.action==@selector(sync:)) item.enabled=[self enabled:@"sync"];
     if(item.action==@selector(syncAll:)) item.enabled=[self enabled:@"syncAll"];
@@ -81,6 +77,16 @@
     if(item.action==@selector(removePlaylist:)) item.enabled=[self enabled:@"removePlaylist"];
   }
   [self.tableView reloadData];
+}
+- (void)refreshStatus:(id)sender;
+{
+  (void)sender; if(![self isViewLoaded]) return;
+  NSDictionary *progress=[library_ activityProgress];
+  [statusBar_ setStatus:[library_ status] progress:progress busy:[library_ isBusy]];
+  double expected=[[progress objectForKey:@"expected"] doubleValue];
+  progress_.hidden=![[progress objectForKey:@"active"] boolValue] || expected<=0;
+  progress_.progress=expected>0?(float)MIN(1.0,[[progress objectForKey:@"completed"] doubleValue]/expected):0;
+  progress_.accessibilityLabel=[library_ status]; status_.text=[library_ status];
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)view; { (void)view; return (NSInteger)[sections_ count]; }
 - (NSInteger)tableView:(UITableView *)view numberOfRowsInSection:(NSInteger)section;

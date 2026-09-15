@@ -12,6 +12,7 @@
 #import "../shared/rdapp_store.h"
 #import <AVFoundation/AVFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
+#import "shared_status_test.h"
 
 static void require(BOOL condition,NSString *message) {
   if(!condition) [NSException raise:@"RDLPIOSOfflineTest" format:@"%@",message];
@@ -23,7 +24,6 @@ static void pump(void) { [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWi
 @interface RDLPOfflineLibrary : RDLPLibrary {
   NSDictionary *testProgress_;
   BOOL testBusy_;
-  NSString *testStatus_;
 }
 @property(nonatomic,retain) NSDictionary *testProgress;
 @property(nonatomic,assign) BOOL testBusy;
@@ -31,15 +31,20 @@ static void pump(void) { [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWi
 @end
 @implementation RDLPOfflineLibrary
 @synthesize testProgress=testProgress_, testBusy=testBusy_;
-- (NSString *)testStatus { return testStatus_; }
+- (NSString *)testStatus { return [super status]; }
 - (void)setTestStatus:(NSString *)status {
-  [testStatus_ release]; testStatus_=[status copy];
-  [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryDidChange object:self];
+  [self showStatus:status];
 }
-- (NSString *)status { return testStatus_?testStatus_:[super status]; }
+- (NSDictionary *)activityProgress {
+  if(!testProgress_ && !testBusy_) return [super activityProgress];
+  return [NSDictionary dictionaryWithObjectsAndKeys:
+    [NSNumber numberWithBool:[self isBusy] && [[self status] length]>0],@"active",
+    [testProgress_ objectForKey:@"processed"]?:@0,@"completed",
+    [testProgress_ objectForKey:@"total"]?:@0,@"expected",nil];
+}
 - (NSDictionary *)queueProgress { return testProgress_?testProgress_:[super queueProgress]; }
-- (BOOL)isBusy { return testBusy_ || [super isBusy]; }
-- (void)dealloc { [testProgress_ release]; [testStatus_ release]; [super dealloc]; }
+- (BOOL)isBusy { return testBusy_ || [[testProgress_ objectForKey:@"active"] boolValue] || [super isBusy]; }
+- (void)dealloc { [testProgress_ release]; [super dealloc]; }
 - (void)startNext { /* Deliberately never schedules network or media work. */ }
 - (void)work:(NSDictionary *)command {
   (void)command; [NSException raise:@"OfflineViolation" format:@"Worker must never run in this test"];
@@ -149,6 +154,26 @@ static void screenshot(UIWindow *window,NSString *path) {
   [@"RUNNING" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSString *report=@"PASS";
   @try {
+    testSharedStatus([documents_ stringByAppendingPathComponent:@"StatusFixture"]);
+    {
+      RDLPStatusTestLibrary *errors=[[[RDLPStatusTestLibrary alloc] initWithSupportDirectory:[documents_ stringByAppendingPathComponent:@"Alerts/Support"] downloadDirectory:[documents_ stringByAppendingPathComponent:@"Alerts/Downloads"]] autorelease];
+      RDLPAppDelegate *presenter=[[RDLPAppDelegate alloc] init];
+      [presenter setValue:errors forKey:@"library_"];
+      [errors showStatus:@"Downloading"];
+      [errors importCookies:@"/synthetic-missing-cookie-file"];
+      [presenter performSelector:@selector(showNextError)]; pump();
+      UIAlertView *first=[presenter valueForKey:@"errorAlert_"];
+      require(first.visible && [first.title isEqualToString:@"Couldn’t import cookies"],@"Shared error becomes a native alert");
+      [errors importCookies:@"/synthetic-missing-cookie-file"];
+      [presenter performSelector:@selector(showNextError)];
+      require([presenter valueForKey:@"errorAlert_"]==first && [errors hasErrors],@"A second error waits behind the native alert");
+      [first dismissWithClickedButtonIndex:0 animated:NO]; pump(); pump();
+      UIAlertView *second=[presenter valueForKey:@"errorAlert_"];
+      require(second.visible && ![errors hasErrors],@"Next error appears after dismissal");
+      [second dismissWithClickedButtonIndex:0 animated:NO]; pump(); pump();
+      require(![presenter valueForKey:@"errorAlert_"] && [[errors status] isEqualToString:@"Downloading"],@"Alerts leave download status alone");
+      [presenter release];
+    }
     require([[NSBundle mainBundle] pathForResource:@"cacert" ofType:@"pem"]==nil,@"Isolated bundle must not contain a CA resource");
     require([RDLPUIKit statusIcon:@"Downloaded"]!=nil && [RDLPUIKit queueActionIcon:YES]!=nil && [RDLPUIKit queueActionIcon:NO]!=nil,@"Status and queue action glyphs render");
     NSString *base=[documents_ stringByAppendingPathComponent:@"Fixture"];
@@ -185,10 +210,10 @@ static void screenshot(UIWindow *window,NSString *path) {
     [library_ startDownloads]; require(![library_ isPaused],@"Automatic queue startup");
     navigation_=[[RDLPOfflineNavigationController alloc] init]; window_.rootViewController=navigation_;
     RDLPOfflineLibrary *emptyLibrary=[[[RDLPOfflineLibrary alloc] initWithSupportDirectory:[base stringByAppendingPathComponent:@"EmptySupport"] downloadDirectory:[base stringByAppendingPathComponent:@"EmptyDownloads"]] autorelease];
-    require(emptyLibrary!=nil,@"Open empty queue fixture"); emptyLibrary.testStatus=@"Ready";
+    require(emptyLibrary!=nil,@"Open empty queue fixture"); emptyLibrary.testStatus=@"";
     RDLPQueueViewController *emptyQueue=[[[RDLPQueueViewController alloc] initWithLibrary:emptyLibrary] autorelease];
     [navigation_ setViewControllers:[NSArray arrayWithObject:emptyQueue] animated:NO]; [emptyQueue view]; [emptyQueue refresh:nil]; pump();
-    require([emptyQueue.tableView numberOfRowsInSection:0]==0 && navigation_.toolbarHidden && emptyQueue.tableView.tableFooterView==nil && ![emptyQueue respondsToSelector:@selector(tableView:titleForFooterInSection:)],@"Empty Queue has no placeholder section, footer, or Ready toolbar");
+    require([emptyQueue.tableView numberOfRowsInSection:0]==0 && navigation_.toolbarHidden && emptyQueue.tableView.tableFooterView==nil && ![emptyQueue respondsToSelector:@selector(tableView:titleForFooterInSection:)],@"Empty Queue has no placeholder section, footer, or idle toolbar");
     [RDLPLibrary savePreferredFormat:@"137+140"];
     RDLPPlaylistsViewController *root=[self show:RDLPScreenLibrary playlist:nil video:nil];
     require([root isKindOfClass:[UITableViewController class]] && root.view==root.tableView,@"Fresh-launch home is a native table controller");
@@ -201,14 +226,14 @@ static void screenshot(UIWindow *window,NSString *path) {
     require(bar!=nil && barProgress.hidden,@"Idle status is text only");
     CGRect homeTableFrame=root.tableView.frame;
     library_.testProgress=[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES],@"active",@3,@"processed",@5,@"total",@1,@"failed",@1,@"cancelled",nil];
-    [root refresh:nil]; pump();
+    library_.testStatus=@"Downloading"; [root refresh:nil]; pump();
     require(!barProgress.hidden && barProgress.progress>0.59f && barProgress.progress<0.61f && CGRectEqualToRect(homeTableFrame,root.tableView.frame),@"Toolbar progress preserves table geometry");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"toolbar-progress.png"]);
-    [bar setStatus:@"A very long download status that must fit beside the queue button without obscuring it" progress:library_.testProgress busy:NO];
+    [bar setStatus:@"A very long download status that must fit beside the queue button without obscuring it" progress:[library_ activityProgress] busy:NO];
     require(bar.frame.size.width<=bar.maximumWidth,@"Long status fits beside Queue");
     library_.testProgress=nil; [root refresh:nil];
     library_.testBusy=YES; [root refresh:nil];
-    require(!barProgress.hidden && barProgress.progress==0.5f,@"Unknown progress uses ENIL half-filled track");
+    require(barProgress.hidden && [[bar valueForKey:@"spinner_"] isAnimating],@"Unknown progress uses a spinner, never a fabricated percentage");
     library_.testBusy=NO; [root refresh:nil];
     [root queue:nil]; pump(); pump();
     UINavigationController *queueModal=(UINavigationController *)navigation_.presentedViewController;
@@ -273,14 +298,14 @@ static void screenshot(UIWindow *window,NSString *path) {
     [root discover:nil]; confirm(root,NO); require(![library_ isDiscoveryPending],@"Cancelled discovery does nothing");
     [root syncAll:nil]; confirm(root,NO); require(![library_ isSyncPendingForInput:@"PLfixture"],@"Cancelled Sync All does nothing");
     [root add:nil]; confirm(root,NO); require(![library_ isSyncPendingForInput:@""],@"Cancelled Add does nothing");
-    library_.testStatus=@"Ready";
+    library_.testStatus=@"";
     [root performRow:findRow(root,@"playlist")]; pump(); pump();
     require([navigation_.topViewController isKindOfClass:[RDLPPlaylistViewController class]] && navigation_.toolbarHidden,@"Playlist navigation opens the plain detail controller and hides home toolbar");
     [navigation_ popViewControllerAnimated:NO]; pump();
     require(!navigation_.toolbarHidden,@"Back restores the home toolbar");
     RDLPPlaylistViewController *list=[self show:RDLPScreenPlaylist playlist:playlist video:nil];
     require([list isKindOfClass:[UITableViewController class]] && list.view==list.tableView && list.tableView.style==UITableViewStylePlain,@"Playlist detail is a native plain table without a separate status area");
-    require([list.toolbarItems count]==4 && navigation_.toolbarHidden && list.tableView.tableFooterView==nil,@"Playlist has the parent toolbar, hidden for Ready, without a table status footer");
+    require([list.toolbarItems count]==4 && navigation_.toolbarHidden && list.tableView.tableFooterView==nil,@"Playlist has the parent toolbar, hidden when idle, without a table status footer");
     require(list.navigationItem.rightBarButtonItem.image!=nil && [list.navigationItem.rightBarButtonItem.accessibilityLabel isEqualToString:@"Sync"] && list.navigationItem.rightBarButtonItem.action==@selector(sync:),@"Playlist navigation has accessible Sync icon");
     RDLPStatusBarView *playlistBar=[list valueForKey:@"statusBar_"];
     UIBarButtonItem *playlistQueueButton=[list.toolbarItems lastObject];
@@ -291,8 +316,8 @@ static void screenshot(UIWindow *window,NSString *path) {
     UIProgressView *playlistProgress=[playlistBar valueForKey:@"progress_"];
     require(!navigation_.toolbarHidden && navigation_.lastToolbarChangeAnimated && !playlistProgress.hidden && playlistProgress.progress>0.39f && playlistProgress.progress<0.41f,@"Active status animates in the parent progress toolbar");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"playlist-toolbar.png"]);
-    library_.testStatus=@"Ready"; pump(); pump();
-    require(navigation_.toolbarHidden && navigation_.lastToolbarChangeAnimated,@"Ready animates toolbar out even when progress is still active");
+    library_.testStatus=@""; pump(); pump();
+    require(navigation_.toolbarHidden && navigation_.lastToolbarChangeAnimated,@"Empty status animates toolbar out even when progress is still active");
     library_.testStatus=@"Downloading again"; pump(); pump();
     library_.testStatus=@""; pump(); pump();
     require(navigation_.toolbarHidden && navigation_.lastToolbarChangeAnimated,@"Empty status animates toolbar out");
@@ -307,7 +332,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     while([toolbarExpiry timeIntervalSinceNow]>0) { [list refresh:nil]; pump(); }
     pump();
     require(navigation_.toolbarHidden && navigation_.lastToolbarChangeAnimated,@"Expired empty status animates the whole playlist toolbar out");
-    library_.testStatus=@"Ready";
+    library_.testStatus=@"";
     [navigation_ setViewControllers:[NSArray arrayWithObject:root] animated:NO]; pump();
     library_.testStatus=@"";
     require(!navigation_.toolbarHidden,@"Offscreen playlist refresh cannot hide parent toolbar");
@@ -452,10 +477,10 @@ static void screenshot(UIWindow *window,NSString *path) {
     RDLPStatusBarView *queueBar=[queue valueForKey:@"statusBar_"];
     UIProgressView *progress=[queueBar valueForKey:@"progress_"];
     require(progress.hidden,@"Historical jobs do not activate progress");
-    library_.testStatus=@"Ready"; require(navigation_.toolbarHidden,@"Ready queue has no toolbar");
+    library_.testStatus=@""; require(navigation_.toolbarHidden,@"Idle queue has no toolbar");
     library_.testProgress=[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES],@"active",[NSNumber numberWithInt:3],@"processed",[NSNumber numberWithInt:5],@"total",[NSNumber numberWithInt:1],@"failed",[NSNumber numberWithInt:1],@"cancelled",nil];
     [queue refresh:nil]; pump();
-    require(!navigation_.toolbarHidden && !progress.hidden && progress.progress>0.59f && progress.progress<0.61f,@"Active run shows toolbar progress even before a status message");
+    require(navigation_.toolbarHidden && progress.hidden,@"No message means no status toolbar even if work remains active");
     library_.testStatus=@"Downloading fixture"; pump();
     CGRect tableFrame=queue.tableView.frame; [queue refresh:nil];
     require(CGRectEqualToRect(tableFrame,queue.tableView.frame),@"Progress refresh keeps the native table frame stable");
@@ -467,27 +492,17 @@ static void screenshot(UIWindow *window,NSString *path) {
     library_.testStatus=nil;
     RDLPStatusBarView *timedBar=[[[RDLPStatusBarView alloc] initWithFrame:CGRectZero] autorelease];
     UILabel *timedLabel=[timedBar valueForKey:@"label_"];
-    [timedBar setStatus:@"Ready" progress:nil busy:NO];
-    require(![timedLabel.text length],@"Fresh idle toolbar never says Ready");
     [timedBar setStatus:@"Downloading" progress:nil busy:YES];
-    [timedBar setStatus:@"Ready" progress:nil busy:NO];
-    require([timedLabel.text isEqualToString:@"Downloading"],@"Ready preserves last active message");
-    [timedBar setStatus:@"Finished" progress:nil busy:NO];
-    NSDate *expiry=[NSDate dateWithTimeIntervalSinceNow:10.3];
-    while([expiry timeIntervalSinceNow]>0) {
-      [timedBar setStatus:@"Finished" progress:nil busy:NO]; pump();
-    }
-    require(![timedLabel.text length],@"Idle message expires despite repeated refreshes");
-    [timedBar setStatus:@"Finished" progress:nil busy:NO];
-    require(![timedLabel.text length],@"Expired message stays empty on refresh");
-    [timedBar setStatus:@"New work" progress:nil busy:YES];
-    require([timedLabel.text isEqualToString:@"New work"],@"New activity replaces expired text");
+    [timedBar setStatus:@"" progress:nil busy:NO];
+    require(![timedLabel.text length],@"Renderer clears immediately when shared status expires");
+    [timedBar setStatus:[library_ status] progress:[library_ activityProgress] busy:NO];
+    require(![timedLabel.text length],@"New view cannot resurrect expired shared status");
     /* Exercise playlist taps after the shared queue fixtures have been tested. */
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open playlist interaction fixture");
     rdapp_entry tapEntries[]={{"AAAAAAAAAAA","A playable video",0},{"BBBBBBBBBBB","Failed and queued video",1},{"CCCCCCCCCCC","Missing video",2},{"CCCCCCCCCCC","Repeated video",3},{"DDDDDDDDDDD","New video",4}};
     require(rdapp_store_snapshot(store,"PLfixture","Updated Playlist",tapEntries,5,&pid),@"Add undownloaded video fixture");
     require(rdapp_store_finish(store,2,"failed","","Synthetic playlist failure"),@"Restore failed quality after queue stop tests"); rdapp_store_close(store);
-    library_.testStatus=@"Ready";
+    library_.testStatus=@"";
     list=[self show:RDLPScreenPlaylist playlist:playlist video:nil];
     require([list.title isEqualToString:@"Updated Playlist"],@"Playlist title refreshes from library");
     NSIndexPath *playIndex=videoIndex(list,@"AAAAAAAAAAA",@"18"), *queuedIndex=videoIndex(list,@"BBBBBBBBBBB",@"18"), *newIndex=videoIndex(list,@"DDDDDDDDDDD",nil);
@@ -546,12 +561,12 @@ static void screenshot(UIWindow *window,NSString *path) {
     require([[NSData dataWithContentsOfFile:file] writeToFile:highFile atomically:YES],@"Publish second local quality");
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open All Downloads fixture");
     require(rdapp_store_finish(store,4,"complete","137+140",""),@"Complete second quality"); rdapp_store_close(store);
-    library_.testStatus=@"Ready";
+    library_.testStatus=@"";
     root=[self show:RDLPScreenLibrary playlist:nil video:nil];
     [root performRow:findRow(root,@"downloads")]; pump(); pump();
     RDLPDownloadsViewController *all=(RDLPDownloadsViewController *)navigation_.topViewController;
     require([all isKindOfClass:[RDLPDownloadsViewController class]] && [all isKindOfClass:[UITableViewController class]] && all.view==all.tableView && all.tableView.style==UITableViewStylePlain,@"All Downloads navigation opens a native plain table controller");
-    require([all.title isEqualToString:@"All Downloads"] && !all.navigationItem.rightBarButtonItem && navigation_.toolbarHidden && !all.tableView.tableFooterView,@"All Downloads has no Sync button or separate status footer and hides Ready toolbar");
+    require([all.title isEqualToString:@"All Downloads"] && !all.navigationItem.rightBarButtonItem && navigation_.toolbarHidden && !all.tableView.tableFooterView,@"All Downloads has no Sync button or separate status footer and hides idle toolbar");
     NSArray *downloadRows=[[sections(all) objectAtIndex:0] objectForKey:@"rows"];
     require([downloadRows count]==2,@"All Downloads keeps both completed qualities and excludes pending/failed jobs");
     NSIndexPath *lowIndex=videoIndex(all,@"AAAAAAAAAAA",@"18"), *highIndex=videoIndex(all,@"AAAAAAAAAAA",@"137+140");
@@ -569,7 +584,7 @@ static void screenshot(UIWindow *window,NSString *path) {
       require([player isKindOfClass:[MPMoviePlayerViewController class]] && [player.moviePlayer.contentURL isEqual:[NSURL fileURLWithPath:[format isEqualToString:@"18"]?file:highFile]],@"All Downloads plays precisely the tapped quality");
       [player.moviePlayer pause]; [all dismissMoviePlayerViewControllerAnimated];
       for(NSUInteger wait=0;wait<10 && (all.presentedViewController || navigation_.presentedViewController);++wait) pump();
-      require(!all.presentedViewController && navigation_.toolbarHidden,@"Playback returns to All Downloads with hidden Ready toolbar");
+      require(!all.presentedViewController && navigation_.toolbarHidden,@"Playback returns to All Downloads with hidden idle toolbar");
     }
     NSUInteger membershipCount=[[library_ entriesForPlaylist:[playlist objectForKey:@"id"]] count];
     require([all tableView:all.tableView canEditRowAtIndexPath:highIndex] && [all tableView:all.tableView editingStyleForRowAtIndexPath:highIndex]==UITableViewCellEditingStyleDelete,@"Completed qualities expose native swipe Delete");
@@ -593,8 +608,8 @@ static void screenshot(UIWindow *window,NSString *path) {
     require([downloadsQueue.topViewController.title isEqualToString:@"Download Queue"],@"All Downloads opens shared queue modal");
     [(RDLPQueueViewController *)downloadsQueue.topViewController dismissQueue:nil]; pump(); pump();
     require(!navigation_.presentedViewController && !navigation_.toolbarHidden,@"Queue dismissal restores All Downloads status toolbar");
-    library_.testStatus=@"Ready"; pump(); pump();
-    require(navigation_.toolbarHidden,@"All Downloads hides Ready even during active work");
+    library_.testStatus=@""; pump(); pump();
+    require(navigation_.toolbarHidden,@"All Downloads hides empty status even during active work");
     library_.testStatus=@"Another message"; pump();
     library_.testStatus=@""; pump(); pump();
     require(navigation_.toolbarHidden,@"All Downloads hides empty status");
@@ -607,7 +622,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     [all refresh:nil]; pump(); require(navigation_.toolbarHidden,@"Expired All Downloads message stays hidden");
     library_.testStatus=@"New download message"; pump(); pump();
     require(!navigation_.toolbarHidden,@"New message reopens expired All Downloads toolbar");
-    [navigation_ popViewControllerAnimated:NO]; pump(); library_.testStatus=@"Ready";
+    [navigation_ popViewControllerAnimated:NO]; pump(); library_.testStatus=@"";
     require(!navigation_.toolbarHidden,@"Offscreen All Downloads cannot hide home toolbar");
     [navigation_ pushViewController:all animated:NO]; pump();
     require([[NSFileManager defaultManager] removeItemAtPath:highFile error:NULL],@"Remove selected quality after snapshot");

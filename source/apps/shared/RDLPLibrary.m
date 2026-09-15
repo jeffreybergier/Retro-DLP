@@ -1,4 +1,5 @@
 #import "RDLPLibrary.h"
+#import <CoreFoundation/CoreFoundation.h>
 #include "rdapp_store.h"
 #include "rdapp_service.h"
 #include <retrodlp/retrodlp.h>
@@ -10,6 +11,8 @@
 #include <errno.h>
 
 NSString * const RDLPLibraryDidChange = @"RetroDLPLibraryDidChange";
+NSString * const RDLPLibraryStatusDidChange = @"RetroDLPLibraryStatusDidChange";
+NSString * const RDLPLibraryErrorDidOccur = @"RetroDLPLibraryErrorDidOccur";
 static NSString *string(const char *s) { NSString *v=s?[NSString stringWithUTF8String:s]:nil; return v?v:@""; }
 static long long identifier(NSString *value) { return value?strtoll([value UTF8String],NULL,10):0; }
 static int collect(void *context,int count,const char *const *names,const char *const *values) {
@@ -20,24 +23,41 @@ static int collect(void *context,int count,const char *const *names,const char *
 @interface RDLPLibrary (Private)
 - (void)startNext;
 - (void)work:(NSDictionary *)command;
-- (void)finished:(NSString *)message;
+- (void)finished:(NSDictionary *)result;
 - (void)changed;
 - (void)showStatus:(NSString *)message;
 - (BOOL)cancelled;
+- (void)reportError:(NSString *)title detail:(NSString *)detail;
+- (void)clearStatus;
+- (void)displayProgress:(NSDictionary *)progress;
+- (void)resolverEvent:(rdlp_event_type)type;
+- (void)queuePlaylistInput:(NSString *)input adding:(BOOL)adding;
 - (void)progress:(NSString *)phase completed:(uint64_t)completed expected:(uint64_t)expected;
 @end
 static void store_lock(void *context) { [(NSLock *)context lock]; }
 static void store_unlock(void *context) { [(NSLock *)context unlock]; }
 static int cancel_callback(void *context) { return [(RDLPLibrary *)context cancelled]?1:0; }
 static void event_callback(const rdlp_event *event,void *context) {
-  (void)event;
-  [(RDLPLibrary *)context progress:@"Loading YouTube metadata" completed:0 expected:0];
+  NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+  if(event) [(RDLPLibrary *)context resolverEvent:event->type];
+  [pool drain];
+}
+static void service_status(const char *message,void *context) {
+  [(RDLPLibrary *)context progress:string(message) completed:0 expected:0];
 }
 static void download_callback(const rdlp_download_event *event,void *context) {
-  const char *phases[]={"Downloading audio","Downloading video","Downloading video","Muxing MP4","Cleaning up"};
-  unsigned int index=(unsigned int)event->type;
+  NSString *phase;
+  if(!event) return;
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
-  [(RDLPLibrary *)context progress:string(index<5?phases[index]:"Downloading") completed:event->completed_bytes expected:event->expected_bytes];
+  switch(event->type) {
+    case RDLP_DOWNLOAD_EVENT_DOWNLOADING_AUDIO: phase=@"Downloading audio"; break;
+    case RDLP_DOWNLOAD_EVENT_DOWNLOADING_VIDEO: phase=@"Downloading video"; break;
+    case RDLP_DOWNLOAD_EVENT_DOWNLOADING_MEDIA: phase=@"Downloading"; break;
+    case RDLP_DOWNLOAD_EVENT_MUXING: phase=@"Combining audio and video…"; break;
+    case RDLP_DOWNLOAD_EVENT_CLEANING_UP: phase=@"Finishing download…"; break;
+    default: phase=@"Downloading"; break;
+  }
+  [(RDLPLibrary *)context progress:phase completed:event->completed_bytes expected:event->expected_bytes];
   [pool drain];
 }
 @implementation RDLPLibrary
@@ -74,28 +94,57 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   assets_=[[[NSBundle mainBundle] resourcePath] stringByAppendingPathComponent:@"ejs"];
   if(![[NSFileManager defaultManager] fileExistsAtPath:[assets_ stringByAppendingPathComponent:@"core.min.js"]])
     assets_=[support stringByAppendingPathComponent:@"ejs"];
-  assets_=[assets_ copy]; status_=[@"Ready" copy];
+  assets_=[assets_ copy]; status_=[@"" copy]; errors_=[[NSMutableArray alloc] init];
   if(!rdapp_make_directory([support fileSystemRepresentation]) || !rdapp_make_directory([root fileSystemRepresentation]) ||
      !rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],(rdapp_store **)&store_)) {
     [self release]; return nil;
   }
   chmod([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],0600);
-  /* Relaunch preserves pending jobs. Explicit Resume avoids surprise transfers. */
   paused_=YES;
-  if(rdapp_store_reconcile(store_,[root_ fileSystemRepresentation]))
-    [self showStatus:@"Ready. Resume Queue to start pending downloads."];
-  else [self showStatus:string(rdapp_store_error(store_))];
+  if(!rdapp_store_reconcile(store_,[root_ fileSystemRepresentation]))
+    [self reportError:@"Couldn’t read library" detail:string(rdapp_store_error(store_))];
   return self;
 }
 - (void)dealloc;
 {
+  [NSObject cancelPreviousPerformRequestsWithTarget:self];
+  [lastPhase_ release]; [lastReadError_ release]; [errors_ release];
   rdapp_store_close(store_); [lock_ release]; [commands_ release]; [activeCommand_ release]; [support_ release]; [root_ release];
   [ca_ release]; [assets_ release]; [cookies_ release]; [status_ release]; [super dealloc];
 }
 - (void)changed; { [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryDidChange object:self]; }
 - (void)showStatus:(NSString *)message;
-{ [status_ release]; status_=[message copy]; [self changed]; }
+{
+  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(clearStatus) object:nil];
+  NSString *next=[(message?message:@"") copy]; [status_ release]; status_=next;
+  if([status_ length] && !stopping_)
+    [self performSelector:@selector(clearStatus) withObject:nil afterDelay:10
+                 inModes:[NSArray arrayWithObject:(NSString *)kCFRunLoopCommonModes]];
+  [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryStatusDidChange object:self];
+}
+- (void)clearStatus;
+{ transferCompleted_=0; transferExpected_=0; [self showStatus:@""]; }
 - (NSString *)status; { return status_; }
+- (NSDictionary *)activityProgress;
+{
+  return [NSDictionary dictionaryWithObjectsAndKeys:
+    [NSNumber numberWithBool:busy_ && [status_ length]>0],@"active",
+    [NSNumber numberWithUnsignedLongLong:transferCompleted_],@"completed",
+    [NSNumber numberWithUnsignedLongLong:transferExpected_],@"expected",nil];
+}
+- (void)reportError:(NSString *)title detail:(NSString *)detail;
+{
+  NSDictionary *error=[NSDictionary dictionaryWithObjectsAndKeys:title,@"title",detail?detail:@"",@"detail",nil];
+  if(![errors_ containsObject:error]) [errors_ addObject:error];
+  [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryErrorDidOccur object:self];
+}
+- (NSDictionary *)takeError;
+{
+  if(![errors_ count]) return nil;
+  NSDictionary *error=[[[errors_ objectAtIndex:0] retain] autorelease];
+  [errors_ removeObjectAtIndex:0]; return error;
+}
+- (BOOL)hasErrors; { return [errors_ count]>0; }
 - (BOOL)isBusy; { return busy_; }
 - (NSDictionary *)queueProgress;
 {
@@ -139,14 +188,18 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   return @"Imported";
 }
 - (void)startDownloads;
-{ paused_=NO; [self showStatus:@"Ready"]; [self startNext]; }
+{ paused_=NO; [self startNext]; }
 - (BOOL)isPaused; { return paused_; }
 - (NSArray *)rows:(rdapp_query)query playlist:(NSString *)key;
 {
   NSMutableArray *rows=[NSMutableArray array];
   [lock_ lock];
-  if(!rdapp_store_list(store_,query,identifier(key),collect,rows)) { [status_ release]; status_=[string(rdapp_store_error(store_)) copy]; }
-  [lock_ unlock]; return rows;
+  NSString *error=nil;
+  if(!rdapp_store_list(store_,query,identifier(key),collect,rows)) error=[string(rdapp_store_error(store_)) copy];
+  [lock_ unlock];
+  if(error && ![error isEqualToString:lastReadError_]) [self reportError:@"Couldn’t read library" detail:error];
+  [lastReadError_ release]; lastReadError_=error;
+  return rows;
 }
 - (NSArray *)playlists; { return [self rows:RDAPP_PLAYLISTS playlist:nil]; }
 - (NSArray *)entriesForPlaylist:(NSString *)key; { return [self rows:RDAPP_ENTRIES playlist:key]; }
@@ -156,29 +209,72 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 {
   paused_=paused;
   [lock_ lock]; if(paused && activeJob_) cancel_=YES; [lock_ unlock];
-  [self showStatus:paused?@"Queue paused. Active transfers stop and can be retried.":@"Queue resumed"];
+  [self changed];
   [self startNext];
 }
 - (void)shutdown;
-{ stopping_=YES; [commands_ removeAllObjects]; [lock_ lock]; cancel_=YES; [lock_ unlock]; }
+{ stopping_=YES; [NSObject cancelPreviousPerformRequestsWithTarget:self]; [commands_ removeAllObjects]; [lock_ lock]; cancel_=YES; [lock_ unlock]; }
 - (BOOL)cancelled;
 { BOOL value; [lock_ lock]; value=cancel_; [lock_ unlock]; return value; }
+- (void)resolverEvent:(rdlp_event_type)type;
+{
+  NSString *command=[activeCommand_ objectForKey:@"type"], *phase=nil;
+  if(![command isEqualToString:@"download"]) {
+    phase=[command isEqualToString:@"discover"]?@"Loading playlists…":
+      ([[activeCommand_ objectForKey:@"adding"] boolValue]?@"Adding playlist…":@"Syncing playlist…");
+  } else switch(type) {
+    case RDLP_EVENT_AUTHENTICATING: phase=@"Reading cookies…"; break;
+    case RDLP_EVENT_LOADING_CONFIGURATION: phase=@"Configuring client…"; break;
+    case RDLP_EVENT_FETCHING_BOOTSTRAP: phase=@"Loading mobile player…"; break;
+    case RDLP_EVENT_REQUESTING_METADATA: phase=@"Requesting metadata…"; break;
+    case RDLP_EVENT_REFRESHING_METADATA: phase=@"Refreshing visitor data…"; break;
+    case RDLP_EVENT_SELECTING_FORMATS: phase=@"Selecting format…"; break;
+    case RDLP_EVENT_LOADING_PLAYER_JAVASCRIPT: phase=@"Downloading player script…"; break;
+    case RDLP_EVENT_SOLVING_CHALLENGES: phase=@"Solving challenges…"; break;
+    case RDLP_EVENT_ENUMERATING_PLAYLIST: phase=@"Reading playlist…"; break;
+    case RDLP_EVENT_OTHER: return;
+  }
+  if(phase) [self progress:phase completed:0 expected:0];
+}
 - (void)progress:(NSString *)phase completed:(uint64_t)completed expected:(uint64_t)expected;
 {
-  struct timeval t; double now; NSString *message=phase;
-  gettimeofday(&t,NULL); now=(double)t.tv_sec+(double)t.tv_usec/1000000.0;
-  if(now-lastProgress_<0.25) return;
+  struct timeval t; gettimeofday(&t,NULL);
+  double now=(double)t.tv_sec+(double)t.tv_usec/1000000.0;
+  BOOL changed=![phase isEqualToString:lastPhase_];
+  if(changed) { [lastPhase_ release]; lastPhase_=[phase copy]; transferStarted_=now; }
+  /* Only repeated byte ticks are throttled. Every new CLI phase is delivered. */
+  if(!changed && completed && now-lastProgress_<0.25 && (!expected || completed<expected)) return;
   lastProgress_=now;
-  if(expected) message=[NSString stringWithFormat:@"%@: %.0f%% (%.1f MB)",phase,100.0*(double)completed/(double)expected,(double)completed/1048576.0];
-  else if(completed) message=[NSString stringWithFormat:@"%@: %.1f MB",phase,(double)completed/1048576.0];
-  [self performSelectorOnMainThread:@selector(showStatus:) withObject:message waitUntilDone:NO];
+  NSString *message=phase;
+  if(completed || expected) {
+    double elapsed=now-transferStarted_;
+    NSString *speed=elapsed>0?[NSString stringWithFormat:@" · %.1f Mbps",(double)completed*8.0/elapsed/1000000.0]:@"";
+    message=expected?[NSString stringWithFormat:@"%@ · %.0f%%%@",phase,MIN(100.0,100.0*(double)completed/(double)expected),speed]:
+      [NSString stringWithFormat:@"%@%@",phase,speed];
+  }
+  NSDictionary *update=[NSDictionary dictionaryWithObjectsAndKeys:message,@"message",
+    [NSNumber numberWithUnsignedLongLong:completed],@"completed",
+    [NSNumber numberWithUnsignedLongLong:expected],@"expected",nil];
+  [self performSelectorOnMainThread:@selector(displayProgress:) withObject:update waitUntilDone:NO];
 }
+- (void)displayProgress:(NSDictionary *)progress;
+{
+  if(stopping_) return;
+  transferCompleted_=[[progress objectForKey:@"completed"] unsignedLongLongValue];
+  transferExpected_=[[progress objectForKey:@"expected"] unsignedLongLongValue];
+  [self showStatus:[progress objectForKey:@"message"]];
+}
+- (void)addPlaylistInput:(NSString *)input;
+{ [self queuePlaylistInput:input adding:YES]; }
 - (void)syncPlaylistInput:(NSString *)input;
+{ [self queuePlaylistInput:input adding:NO]; }
+- (void)queuePlaylistInput:(NSString *)input adding:(BOOL)adding;
 {
   input=[input stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-  if(![input length]) { [self showStatus:@"Enter a playlist URL or ID."]; return; }
+  if(![input length]) { [self reportError:@"Enter a playlist" detail:@"Enter a playlist URL or ID."]; return; }
   if([self isSyncPendingForInput:input]) return;
-  [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",input,@"input",nil]]; [self startNext];
+  [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",input,@"input",
+    [NSNumber numberWithBool:adding],@"adding",nil]]; [self startNext];
 }
 - (void)syncAll;
 {
@@ -191,22 +287,31 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (void)enqueuePlaylist:(NSString *)key video:(NSString *)video format:(NSString *)format;
 {
   int ok;
-  if(![key length]) { [self showStatus:@"Select a synced playlist first."]; return; }
-  if(!rdlp_format_expression_valid([format UTF8String])) { [self showStatus:@"Enter an exact format such as 18 or 136+140."]; return; }
+  if(![key length]) { [self reportError:@"Select a playlist" detail:@"Select a synced playlist first."]; return; }
+  if(!rdlp_format_expression_valid([format UTF8String])) { [self reportError:@"Invalid format" detail:@"Enter a format ID, such as 18 or 136+140."]; return; }
   [lock_ lock]; ok=rdapp_store_enqueue(store_,identifier(key),[video UTF8String],[format UTF8String]);
-  NSString *message=ok?@"Added missing downloads. Existing jobs can be retried in Queue.":string(rdapp_store_error(store_));
-  [message retain]; [lock_ unlock]; [self showStatus:message]; [message release];
+  NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy];
+  [lock_ unlock];
+  if(error) [self reportError:@"Couldn’t queue download" detail:error];
+  [error release]; [self changed];
   [self startNext];
 }
 - (void)retryJob:(NSString *)key;
 {
-  [lock_ lock]; rdapp_store_reconcile(store_,[root_ fileSystemRepresentation]);
-  int ok=rdapp_store_retry(store_,identifier(key)); [lock_ unlock];
+  [lock_ lock];
+  int ok=rdapp_store_reconcile(store_,[root_ fileSystemRepresentation]) && rdapp_store_retry(store_,identifier(key));
+  NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy]; [lock_ unlock];
   if(ok) { [self changed]; [self startNext]; }
+  else [self reportError:@"Couldn’t retry download" detail:error];
+  [error release];
 }
 - (void)cancelJob:(NSString *)key;
 {
-  [lock_ lock]; if(activeJob_==identifier(key)) cancel_=YES; else rdapp_store_cancel(store_,identifier(key)); [lock_ unlock]; [self changed];
+  int ok=1; [lock_ lock];
+  if(activeJob_==identifier(key)) cancel_=YES; else ok=rdapp_store_cancel(store_,identifier(key));
+  NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy]; [lock_ unlock];
+  if(error) [self reportError:@"Couldn’t stop download" detail:error];
+  [error release]; [self changed];
 }
 - (NSString *)fileForJob:(NSDictionary *)job;
 {
@@ -219,33 +324,33 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (void)removeDownload:(NSDictionary *)job;
 {
   NSString *key=[job objectForKey:@"id"];
-  if(busy_) { [self showStatus:@"Pause the queue and wait for the current operation before removing files."]; return; }
+  if(busy_) { [self reportError:@"Couldn’t delete download" detail:@"Wait for the current operation to finish."]; return; }
   [lock_ lock];
   int ok=rdapp_store_remove_file(store_,identifier(key),[root_ fileSystemRepresentation]);
-  NSString *message=[(ok?@"Download removed; playlist membership retained.":string(rdapp_store_error(store_))) retain];
-  [lock_ unlock]; [self showStatus:message]; [message release];
+  NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy];
+  [lock_ unlock]; if(error) [self reportError:@"Couldn’t delete download" detail:error]; [error release]; [self changed];
 }
 - (void)removePlaylist:(NSDictionary *)playlist;
 {
-  if(busy_) { [self showStatus:@"Wait for the current operation before removing a playlist."]; return; }
+  if(busy_) { [self reportError:@"Couldn’t remove playlist" detail:@"Wait for the current operation to finish."]; return; }
   [lock_ lock]; int ok=rdapp_store_remove_playlist(store_,identifier([playlist objectForKey:@"id"]),[root_ fileSystemRepresentation]);
-  NSString *message=[(ok?@"Playlist removed.":string(rdapp_store_error(store_))) retain]; [lock_ unlock];
+  NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy]; [lock_ unlock];
   if(ok) { unlink([[self playlistFile:playlist] fileSystemRepresentation]); rmdir([[root_ stringByAppendingPathComponent:[playlist objectForKey:@"directory"]] fileSystemRepresentation]); }
-  [self showStatus:message]; [message release];
+  if(error) [self reportError:@"Couldn’t remove playlist" detail:error]; [error release]; [self changed];
 }
 - (BOOL)importCookies:(NSString *)path;
 {
-  if(busy_) { [self showStatus:@"Wait for the current operation before replacing cookies."]; return NO; }
+  if(busy_) { [self reportError:@"Couldn’t import cookies" detail:@"Wait for the current operation to finish."]; return NO; }
   NSData *data=[NSData dataWithContentsOfFile:path];
-  if(!data || ![data length] || [data length]>4*1024*1024) { [self showStatus:@"Choose a Netscape cookies.txt file smaller than 4 MB."]; return NO; }
-  if(![data writeToFile:cookies_ atomically:YES] || chmod([cookies_ fileSystemRepresentation],0600)) { [self showStatus:@"Could not save cookies."]; return NO; }
-  [self showStatus:@"Cookies imported. Load My Playlists to discover your account library."]; return YES;
+  if(!data || ![data length] || [data length]>4*1024*1024) { [self reportError:@"Couldn’t import cookies" detail:@"Choose a readable, nonempty Netscape cookies.txt file of 4 MiB or less."]; return NO; }
+  if(![data writeToFile:cookies_ atomically:YES] || chmod([cookies_ fileSystemRepresentation],0600)) { [self reportError:@"Couldn’t save cookies" detail:@"Check available storage and try again."]; return NO; }
+  [self changed]; return YES;
 }
 - (void)clearCookies;
 {
-  if(busy_) { [self showStatus:@"Wait for the current operation before removing cookies."]; return; }
-  if(unlink([cookies_ fileSystemRepresentation]) && errno!=ENOENT) [self showStatus:@"Could not remove cookies."];
-  else [self showStatus:@"Cookies removed."];
+  if(busy_) { [self reportError:@"Couldn’t remove cookies" detail:@"Wait for the current operation to finish."]; return; }
+  if(unlink([cookies_ fileSystemRepresentation]) && errno!=ENOENT) [self reportError:@"Couldn’t remove cookies" detail:string(strerror(errno))];
+  else [self changed];
 }
 - (void)startNext;
 {
@@ -255,7 +360,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   else if(!paused_) {
     NSMutableArray *rows=[NSMutableArray array];
     [lock_ lock]; int ok=rdapp_store_claim(store_,collect,rows); [lock_ unlock];
-    if(!ok) { [self showStatus:@"Could not claim a download job."]; return; }
+    if(!ok) { [self reportError:@"Couldn’t start download" detail:string(rdapp_store_error(store_))]; return; }
     if([rows count]) command=[NSDictionary dictionaryWithObjectsAndKeys:@"download",@"type",[rows objectAtIndex:0],@"job",nil];
   }
   if(!command) {
@@ -267,10 +372,15 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   }
   [activeCommand_ release]; activeCommand_=[command retain];
   busy_=YES; [lock_ lock]; cancel_=NO; activeJob_=identifier([[command objectForKey:@"job"] objectForKey:@"id"]); [lock_ unlock];
-  [self showStatus:@"Starting…"];
+  transferCompleted_=0; transferExpected_=0; lastProgress_=0;
+  [lastPhase_ release]; lastPhase_=nil;
+  NSString *type=[command objectForKey:@"type"];
+  [self showStatus:[type isEqualToString:@"download"]?@"Resolving video…":
+    ([type isEqualToString:@"discover"]?@"Loading playlists…":([[command objectForKey:@"adding"] boolValue]?@"Adding playlist…":@"Syncing playlist…"))];
+  [self changed];
   [NSThread detachNewThreadSelector:@selector(work:) toTarget:self withObject:command];
 }
-- (void)finished:(NSString *)message;
+- (void)finished:(NSDictionary *)result;
 {
   if([[activeCommand_ objectForKey:@"type"] isEqualToString:@"download"]) {
     ++queueProcessed_;
@@ -283,17 +393,37 @@ static void download_callback(const rdlp_download_event *event,void *context) {
       break;
     }
   }
+  NSString *type=[activeCommand_ objectForKey:@"type"];
+  BOOL download=[type isEqualToString:@"download"], discover=[type isEqualToString:@"discover"];
+  BOOL adding=[[activeCommand_ objectForKey:@"adding"] boolValue];
+  rdlp_error_code code=(rdlp_error_code)[[result objectForKey:@"code"] intValue];
+  NSString *status=download?@"Download complete":(discover?@"Playlists loaded":(adding?@"Playlist added":@"Playlist synced"));
+  if(download && code==RDLP_OK) status=[NSString stringWithFormat:@"Downloaded · %.1f MiB",[[result objectForKey:@"bytes"] doubleValue]/1048576.0];
+  if(code==RDLP_ERROR_CANCELLED) status=download?@"Download stopped":@"Playlist operation stopped";
+  else if(code!=RDLP_OK) status=download?@"Download failed":(discover?@"Error loading playlists":(adding?@"Error adding playlist":@"Error syncing playlist"));
+  BOOL warning=[[result objectForKey:@"warning"] boolValue];
+  if(warning) status=@"Download needs attention";
+  if((code!=RDLP_OK && code!=RDLP_ERROR_CANCELLED) || warning) {
+    NSString *title=download?[[activeCommand_ objectForKey:@"job"] objectForKey:@"title"]:[activeCommand_ objectForKey:@"input"];
+    NSString *detail=[result objectForKey:@"message"];
+    if([title length]) detail=[NSString stringWithFormat:@"%@\n\n%@",title,detail];
+    [self reportError:status detail:detail];
+  }
   [activeCommand_ release]; activeCommand_=nil;
-  busy_=NO; [lock_ lock]; activeJob_=0; [lock_ unlock];
-  [self showStatus:message];
-  [self performSelector:@selector(startNext) withObject:nil afterDelay:0.1];
+  busy_=NO; transferCompleted_=0; transferExpected_=0;
+  [lock_ lock]; activeJob_=0; [lock_ unlock];
+  if(!stopping_) { [self showStatus:status]; [self changed];
+    [self performSelector:@selector(startNext) withObject:nil afterDelay:0.1]; }
+
 }
 - (void)work:(NSDictionary *)command;
 {
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
-  rdapp_service_config config; rdapp_job job; char message[1024];
+  rdapp_service_config config; rdapp_service_result outcome; rdapp_job job; char message[1024];
+  rdlp_error_code code=RDLP_OK; memset(&outcome,0,sizeof(outcome));
   memset(&config,0,sizeof(config)); memset(&job,0,sizeof(job));
   config.download_root=[root_ fileSystemRepresentation];
+  config.result=&outcome; config.status_callback=service_status; config.status_context=self;
   config.resolver.struct_size=sizeof(config.resolver);
   config.resolver.ca_bundle_path=[ca_ fileSystemRepresentation];
   config.resolver.ejs_asset_directory=[assets_ fileSystemRepresentation];
@@ -314,10 +444,14 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   NSString *type=[command objectForKey:@"type"];
   rdapp_operation operation=[type isEqualToString:@"sync"]?RDAPP_SYNC:([type isEqualToString:@"discover"]?RDAPP_DISCOVER:RDAPP_DOWNLOAD);
   if(!ca_) {
+    code=RDLP_ERROR_CERTIFICATE_BUNDLE;
     snprintf(message,sizeof(message),"The application is missing its CA certificate bundle.");
     if(row) { [lock_ lock]; rdapp_store_finish(store_,job.id,"failed","",message); [lock_ unlock]; }
-  } else rdapp_service_run(store_,&config,operation,[[command objectForKey:@"input"] UTF8String],&job,message,sizeof(message));
-  [self performSelectorOnMainThread:@selector(finished:) withObject:string(message) waitUntilDone:NO];
+  } else code=rdapp_service_run(store_,&config,operation,[[command objectForKey:@"input"] UTF8String],&job,message,sizeof(message));
+  NSDictionary *result=[NSDictionary dictionaryWithObjectsAndKeys:string(message),@"message",
+    [NSNumber numberWithInt:code],@"code",[NSNumber numberWithBool:outcome.warning!=0],@"warning",
+    [NSNumber numberWithUnsignedLongLong:outcome.downloaded_bytes],@"bytes",nil];
+  [self performSelectorOnMainThread:@selector(finished:) withObject:result waitUntilDone:NO];
   [pool drain];
 }
 @end

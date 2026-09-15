@@ -1,6 +1,8 @@
 #import <Foundation/Foundation.h>
 
 extern NSString * const RDLPLibraryDidChange;
+extern NSString * const RDLPLibraryStatusDidChange;
+extern NSString * const RDLPLibraryErrorDidOccur;
 /* Main-thread interface. Only this class imports application C headers. */
 @interface RDLPLibrary : NSObject {
 @private
@@ -12,6 +14,10 @@ extern NSString * const RDLPLibraryDidChange;
   BOOL busy_, paused_, cancel_, stopping_;
   long long activeJob_;
   double lastProgress_;
+  NSString *lastPhase_, *lastReadError_;
+  double transferStarted_;
+  unsigned long long transferCompleted_, transferExpected_;
+  NSMutableArray *errors_;
   BOOL queueRun_;
   NSUInteger queueProcessed_, queueFailed_, queueCancelled_;
 }
@@ -27,6 +33,12 @@ extern NSString * const RDLPLibraryDidChange;
 - (NSArray *)entriesForPlaylist:(NSString *)key;
 - (NSArray *)jobsForPlaylist:(NSString *)key completedOnly:(BOOL)completed;
 - (NSString *)status;
+/* Current transfer, separate from queue attempt counts. Empty status is idle.
+   Every new status expires after ten seconds, even if its text is unchanged. */
+- (NSDictionary *)activityProgress;
+/* Main-thread alert queue; errors never replace status text. */
+- (NSDictionary *)takeError;
+- (BOOL)hasErrors;
 - (BOOL)isBusy;
 /* Item counts for this run only; historical completed jobs are excluded. */
 - (NSDictionary *)queueProgress;
@@ -39,6 +51,7 @@ extern NSString * const RDLPLibraryDidChange;
 - (void)startDownloads;
 - (void)setPaused:(BOOL)paused;
 - (void)syncPlaylistInput:(NSString *)input;
+- (void)addPlaylistInput:(NSString *)input;
 - (void)syncAll;
 - (void)discoverPlaylists;
 - (void)enqueuePlaylist:(NSString *)key video:(NSString *)video format:(NSString *)format;

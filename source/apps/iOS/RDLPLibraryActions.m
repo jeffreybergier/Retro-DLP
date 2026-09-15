@@ -68,7 +68,7 @@
   alert_.delegate=nil; [alert_ release]; alert_=nil; [request_ release]; request_=nil; [alertActions_ release]; alertActions_=nil;
   if(index==0) return;
   NSString *op=[request objectForKey:@"operation"];
-  if([op isEqualToString:@"add"]) [library_ syncPlaylistInput:text];
+  if([op isEqualToString:@"add"]) [library_ addPlaylistInput:text];
   else if([op isEqualToString:@"quality"]) {
     if(![RDLPLibrary savePreferredFormat:text]) [RDLPUIKit showMessage:@"Enter an exact format such as 18 or 136+140."];
   } else if([op isEqualToString:@"jobActions"]) {
@@ -111,7 +111,6 @@
   } else if([op isEqualToString:@"import"]) {
     if([library_ isBusy]) return;
     if([library_ importCookies:[request objectForKey:@"path"]] && [[request objectForKey:@"discover"] boolValue]) [library_ discoverPlaylists];
-    [RDLPUIKit showMessage:[library_ status]];
   } else if([op isEqualToString:@"clearCookies"]) { if([self enabled:@"clearCookies"]) [library_ clearCookies]; }
   else if([op isEqualToString:@"removePlaylist"]) {
     NSDictionary *playlist=[request objectForKey:@"playlist"];

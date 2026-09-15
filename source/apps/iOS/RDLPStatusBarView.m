@@ -1,7 +1,5 @@
 #import "RDLPStatusBarView.h"
 
-NSString * const RDLPStatusBarDidClearStatus=@"RDLPStatusBarDidClearStatus";
-
 /* ENIL's content sizing and optical alignment: 15pt steady text, 13pt active
  * text, a 100pt progress track, and a 2pt gap in a 30pt custom view. */
 @implementation RDLPStatusBarView
@@ -13,6 +11,8 @@ NSString * const RDLPStatusBarDidClearStatus=@"RDLPStatusBarDidClearStatus";
   label_=[[UILabel alloc] initWithFrame:CGRectZero];
   label_.backgroundColor=[UIColor clearColor]; label_.textAlignment=1;
   label_.font=[UIFont boldSystemFontOfSize:15];
+  /* Middle truncation is value 5 in both the iOS 5 and iOS 6+ enums. */
+  label_.lineBreakMode=5;
   BOOL modern=[self respondsToSelector:@selector(tintColor)];
   label_.textColor=modern?[UIColor blackColor]:[UIColor whiteColor];
   if(!modern) {
@@ -22,17 +22,19 @@ NSString * const RDLPStatusBarDidClearStatus=@"RDLPStatusBarDidClearStatus";
   [self addSubview:label_];
   progress_=[[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
   progress_.hidden=YES; [self addSubview:progress_];
+  spinner_=[[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:modern?UIActivityIndicatorViewStyleGray:UIActivityIndicatorViewStyleWhite];
+  spinner_.hidesWhenStopped=YES; [self addSubview:spinner_];
   return self;
 }
 - (void)dealloc;
 {
-  [NSObject cancelPreviousPerformRequestsWithTarget:self];
-  [lastStatus_ release]; [label_ release]; [progress_ release]; [super dealloc];
+  [spinner_ release]; [label_ release]; [progress_ release]; [super dealloc];
 }
 - (void)resizeToContent;
 {
   [label_ sizeToFit];
   CGFloat width=label_.bounds.size.width;
+  if([spinner_ isAnimating]) width+=26;
   if(!progress_.hidden) width=MAX(width,100);
   width=MIN(width,maximumWidth_);
   BOOL changed=self.frame.size.width!=width;
@@ -50,51 +52,20 @@ NSString * const RDLPStatusBarDidClearStatus=@"RDLPStatusBarDidClearStatus";
   width=MAX(0,width); if(maximumWidth_==width) return;
   maximumWidth_=width; [self resizeToContent];
 }
-- (void)clearIdleStatus;
-{
-  hideStatusAt_=0;
-  label_.text=@"";
-  [self resizeToContent];
-  [[NSNotificationCenter defaultCenter] postNotificationName:RDLPStatusBarDidClearStatus object:self];
-}
 - (BOOL)hasStatus; { return [label_.text length]>0; }
-- (void)updateStatus:(NSString *)status active:(BOOL)active;
-{
-  NSString *message=status?status:@"";
-  BOOL ready=![message length] || [message isEqualToString:@"Ready"];
-  BOOL changed=![lastStatus_ isEqualToString:message];
-  [lastStatus_ release]; lastStatus_=[message copy];
-  if(active) {
-    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(clearIdleStatus) object:nil];
-    hideStatusAt_=0;
-    if(!ready) label_.text=message;
-  } else {
-    /* Refreshes repeat the same library status; they must not restart the
-     * dwell time or resurrect a message that has already expired. */
-    if(!ready && (changed || wasActive_)) label_.text=message;
-    if([label_.text length] && (wasActive_ || (!ready && changed))) {
-      [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(clearIdleStatus) object:nil];
-      hideStatusAt_=[NSDate timeIntervalSinceReferenceDate]+10;
-      [self performSelector:@selector(clearIdleStatus) withObject:nil afterDelay:10 inModes:[NSArray arrayWithObject:NSRunLoopCommonModes]];
-    }
-    if(hideStatusAt_>0 && [NSDate timeIntervalSinceReferenceDate]>=hideStatusAt_) {
-      [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(clearIdleStatus) object:nil];
-      [self clearIdleStatus];
-    }
-  }
-  wasActive_=active;
-}
 - (void)setStatus:(NSString *)status progress:(NSDictionary *)progress busy:(BOOL)busy;
 {
-  NSUInteger total=[[progress objectForKey:@"total"] unsignedIntegerValue];
-  NSUInteger processed=[[progress objectForKey:@"processed"] unsignedIntegerValue];
-  BOOL running=[[progress objectForKey:@"active"] boolValue];
-  BOOL active=running || busy;
-  [self updateStatus:status active:active];
+  (void)busy;
+  label_.text=status?status:@"";
+  BOOL active=[[progress objectForKey:@"active"] boolValue] && [label_.text length]>0;
+  double completed=[[progress objectForKey:@"completed"] doubleValue];
+  double expected=[[progress objectForKey:@"expected"] doubleValue];
   label_.font=[UIFont boldSystemFontOfSize:active?13:15];
-  progress_.hidden=!active;
-  progress_.progress=running && total?MIN(1.0f,(float)processed/(float)total):0.5f;
-  progress_.accessibilityLabel=running && total?[NSString stringWithFormat:@"%@ processed of %@; %@ failed; %@ stopped",[progress objectForKey:@"processed"],[progress objectForKey:@"total"],[progress objectForKey:@"failed"],[progress objectForKey:@"cancelled"]]:@"In progress";
+  progress_.hidden=!active || expected<=0;
+  progress_.progress=expected>0?(float)MIN(1.0,completed/expected):0;
+  progress_.accessibilityLabel=label_.text;
+  if(active && expected<=0) [spinner_ startAnimating]; else [spinner_ stopAnimating];
+  spinner_.accessibilityLabel=label_.text;
   [self resizeToContent];
 }
 - (void)layoutSubviews;
@@ -104,7 +75,9 @@ NSString * const RDLPStatusBarDidClearStatus=@"RDLPStatusBarDidClearStatus";
   CGFloat labelHeight=label_.font.lineHeight;
   CGFloat descender=label_.font.descender;
   if(progress_.hidden) {
-    label_.frame=CGRectMake(0,(height-labelHeight)*0.5f+descender*0.3f,width,labelHeight);
+    CGFloat inset=[spinner_ isAnimating]?26:0;
+    spinner_.frame=CGRectMake(0,(height-20)*0.5f,20,20);
+    label_.frame=CGRectMake(inset,(height-labelHeight)*0.5f+descender*0.3f,MAX(0,width-inset),labelHeight);
   } else {
     CGFloat progressHeight=progress_.bounds.size.height;
     CGFloat top=(height-(labelHeight+2+progressHeight))*0.5f;

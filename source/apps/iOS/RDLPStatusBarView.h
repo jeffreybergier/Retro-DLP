@@ -1,16 +1,12 @@
 #import <UIKit/UIKit.h>
 
-extern NSString * const RDLPStatusBarDidClearStatus;
-
 /* Adapted from ENIL's SyncMiniBarView. Hosted in a real UIToolbar so UIKit
  * supplies the appropriate iOS 5/6 or iOS 7+ chrome. */
 @interface RDLPStatusBarView : UIView {
   UILabel *label_;
   UIProgressView *progress_;
   CGFloat maximumWidth_;
-  NSString *lastStatus_;
-  BOOL wasActive_;
-  NSTimeInterval hideStatusAt_;
+  UIActivityIndicatorView *spinner_;
 }
 @property(nonatomic,assign) CGFloat maximumWidth;
 @property(nonatomic,readonly) BOOL hasStatus;

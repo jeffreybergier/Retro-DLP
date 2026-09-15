@@ -13,6 +13,7 @@
   library_=[library retain]; model_=[[RDLPLibrarySections alloc] initWithLibrary:library];
   self.title=@"Playlists";
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPLibraryStatusDidChange object:library_];
   return self;
 }
 - (void)dealloc;
@@ -44,8 +45,13 @@
   (void)sender; if(![self isViewLoaded]) return;
   NSArray *sections=[model_ sectionsForScreen:RDLPScreenLibrary playlist:nil video:nil collapsed:nil];
   [sections_ release]; sections_=[sections copy];
-  [statusBar_ setStatus:[library_ status] progress:[library_ queueProgress] busy:[library_ isBusy]];
+  [self refreshStatus:nil];
   [self.tableView reloadData];
+}
+- (void)refreshStatus:(id)sender;
+{
+  (void)sender; if(![self isViewLoaded]) return;
+  [statusBar_ setStatus:[library_ status] progress:[library_ activityProgress] busy:[library_ isBusy]];
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table;
 { (void)table; return (NSInteger)[sections_ count]; }
@@ -110,7 +116,6 @@
     else [self requestCookieImport:[self documentsCookiePath] discover:YES];
   } else if([operation isEqualToString:@"import"] && ![library_ isBusy]) {
     if([library_ importCookies:[request objectForKey:@"path"]] && [[request objectForKey:@"discover"] boolValue]) [library_ discoverPlaylists];
-    [RDLPUIKit showMessage:[library_ status]];
   }
 }
 - (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)index;
@@ -120,7 +125,7 @@
   NSString *text=alert.alertViewStyle==UIAlertViewStylePlainTextInput?[[[alert textFieldAtIndex:0].text copy] autorelease]:nil;
   alert_.delegate=nil; [alert_ release]; alert_=nil; [request_ release]; request_=nil; [alertActions_ release]; alertActions_=nil;
   if(index==0) return;
-  if([[request objectForKey:@"operation"] isEqualToString:@"add"]) [library_ syncPlaylistInput:text];
+  if([[request objectForKey:@"operation"] isEqualToString:@"add"]) [library_ addPlaylistInput:text];
   else [self performConfirmed:request];
   [self refresh:nil];
 }

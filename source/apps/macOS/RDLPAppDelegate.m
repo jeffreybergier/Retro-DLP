@@ -1,6 +1,10 @@
 #import "RDLPAppDelegate.h"
 #import "RDLPAppKit.h"
 
+@interface RDLPAppDelegate (Errors)
+- (void)errorsChanged:(id)sender;
+- (void)showNextError;
+@end
 @implementation RDLPAppDelegate
 - (void)applicationDidFinishLaunching:(NSNotification *)notification;
 {
@@ -39,11 +43,35 @@
     item=[mainMenu addItemWithTitle:title action:NULL keyEquivalent:@""]; [mainMenu setSubmenu:menu forItem:item];
   }
   [NSApp setMainMenu:mainMenu]; [window_ showWindow:nil]; [NSApp activateIgnoringOtherApps:YES];
-  [library_ startDownloads];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(errorsChanged:) name:RDLPLibraryErrorDidOccur object:library_];
+  [self errorsChanged:nil]; [library_ startDownloads];
 }
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)application hasVisibleWindows:(BOOL)visible;
 { (void)application; (void)visible; [window_ showWindow:nil]; return YES; }
 - (void)applicationWillTerminate:(NSNotification *)notification;
 { (void)notification; [library_ shutdown]; }
-- (void)dealloc; { [window_ release]; [library_ release]; [super dealloc]; }
+- (void)errorsChanged:(id)sender;
+{
+  (void)sender;
+  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(showNextError) object:nil];
+  [self performSelector:@selector(showNextError) withObject:nil afterDelay:0.1];
+}
+- (void)showNextError;
+{
+  if(showingError_ || ![library_ hasErrors]) return;
+  if([[window_ window] attachedSheet] || [NSApp modalWindow]) { [self errorsChanged:nil]; return; }
+  NSDictionary *error=[library_ takeError]; if(!error) return;
+  showingError_=YES;
+  NSAlert *alert=[[[NSAlert alloc] init] autorelease];
+  [alert setMessageText:[error objectForKey:@"title"]];
+  [alert setInformativeText:[error objectForKey:@"detail"]];
+  [alert addButtonWithTitle:@"OK"]; [alert runModal];
+  showingError_=NO; [self errorsChanged:nil];
+}
+- (void)dealloc;
+{
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
+  [NSObject cancelPreviousPerformRequestsWithTarget:self];
+  [window_ release]; [library_ release]; [super dealloc];
+}
 @end

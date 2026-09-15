@@ -83,6 +83,14 @@ static rdlp_error_code download_job(rdapp_store *s,const rdapp_service_config *c
   options.cookie_file=c->cookie_file; options.format_expression=job->format;
   code=rdlp_resolve_video(context,job->video_id,&options,&selection,error);
   if(code!=RDLP_OK) return code;
+  if(c->status_callback) {
+    char status[1024];
+    snprintf(status,sizeof(status),"Format: %s · %dx%d",rdlp_selection_format_id(selection),
+      rdlp_selection_media_width(selection,0),rdlp_selection_media_height(selection,0));
+    c->status_callback(status,c->status_context);
+    snprintf(status,sizeof(status),"File: %s",strrchr(destination,'/')+1);
+    c->status_callback(status,c->status_context);
+  }
   /* Persist actual format before file publication for crash reconciliation. */
   lock_store(c); ok=rdapp_store_finish(s,job->id,"running",rdlp_selection_format_id(selection),""); unlock_store(c);
   if(!ok) { code=RDLP_ERROR_STORAGE_IO; goto end; }
@@ -101,11 +109,14 @@ static rdlp_error_code download_job(rdapp_store *s,const rdapp_service_config *c
     snprintf(error->message,sizeof(error->message),"Cannot publish downloaded file: %s",strerror(errno)); goto end;
   }
   unlink(temporary); rmdir(staging);
+  if(c->result) c->result->downloaded_bytes=result.bytes_written>0?(uint64_t)result.bytes_written:0;
   lock_store(c);
   ok=rdapp_store_finish(s,job->id,"complete",rdlp_selection_format_id(selection),"");
   if(!ok) {
+    if(c->result) c->result->warning=1;
     snprintf(message,cap,"File downloaded, but its database update failed. Reopen the library to recover it.");
   } else if(!rdapp_store_export(s,job->playlist_id,c->download_root)) {
+    if(c->result) c->result->warning=1;
     snprintf(message,cap,"Downloaded. VLC playlist export failed: %s. Sync the playlist to retry export.",rdapp_store_error(s));
   } else snprintf(message,cap,"Download complete (%s)",rdlp_selection_format_id(selection));
   unlock_store(c);
@@ -118,6 +129,7 @@ rdlp_error_code rdapp_service_run(rdapp_store *s,const rdapp_service_config *c,
   memset(&error,0,sizeof(error)); error.struct_size=sizeof(error);
   if(!s || !c || !message || !cap || !c->download_root) return RDLP_ERROR_INVALID_ARGUMENT;
   message[0]=0;
+  if(c->result) memset(c->result,0,sizeof(*c->result));
   code=rdlp_context_create(&c->resolver,&context,&error);
   if(code==RDLP_OK) {
     switch(operation) {

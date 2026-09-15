@@ -14,8 +14,6 @@
 - (void)dealloc;
 { [selectedJobID_ release]; [jobActions_ release]; [super dealloc]; }
 - (BOOL)showsQueueButton; { return NO; }
-- (BOOL)shouldHideToolbar;
-{ return ![[[library_ queueProgress] objectForKey:@"active"] boolValue] && ![library_ isBusy] && [super shouldHideToolbar]; }
 - (NSIndexPath *)selectedJobIndex;
 {
   NSArray *rows=[[sections_ lastObject] objectForKey:@"rows"];

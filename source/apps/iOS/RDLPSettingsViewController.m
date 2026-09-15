@@ -88,7 +88,6 @@
 {
   if([library_ isBusy]) return;
   if([library_ importCookies:[request objectForKey:@"path"]] && [[request objectForKey:@"discover"] boolValue]) [library_ discoverPlaylists];
-  [RDLPUIKit showMessage:[library_ status]];
 }
 - (BOOL)requestCookieImport:(NSString *)path discover:(BOOL)discover;
 {

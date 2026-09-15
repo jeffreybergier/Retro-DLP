@@ -106,14 +106,31 @@ its exact job and containing playlist for toolbar/menu targeting. Selection
 survives refresh and status changes without regrouping or automatic scrolling.
 There is no queue footer or global Pause control.
 
-During processing, a native NSProgressIndicator in the app-wide status bar shows
-processed attempts out of the current run's total. The progress tooltip reports
-failed and stopped attempts separately.
-Historical downloads do not contribute; new pending jobs extend the total and
-cancelled pending jobs leave it. Draining the queue hides the indicator, and the
-next run starts fresh. Playlist metadata work does not activate queue progress.
-Detailed transfer bytes remain in the app-wide status. The queue table's frame does
-not change when progress appears.
+During processing, the app-wide status bar follows the same resolver and download
+steps as the CLI: reading cookies, configuring the client, loading the mobile
+player, requesting/refreshing metadata, selecting a format, downloading the player
+script, solving challenges, the selected format and destination, transfer, and
+finalization. Transfer text includes percentage (when known) and average Mbps;
+the progress indicator measures the current transfer's bytes. Unknown progress
+uses an indeterminate indicator. Completion shows `Downloaded · {size} MiB`.
+The queue table's frame does not change when progress appears.
+
+The complete wording is listed in [Status bar messages](status-messages.md).
+
+`RDLPLibrary` owns the labels, transfer values, and one shared ten-second expiry.
+Every new message resets the timer, including identical text; reading or refreshing
+the UI does not. After ten seconds without a new message, both text and progress
+clear, even if a worker is still busy. A new screen reads the same current value
+and cannot resurrect expired text. Progress notifications update the status views
+without rebuilding the library tables.
+
+Adding, syncing, and discovering playlists use simple operation/result messages,
+such as `Adding playlist…`, `Playlist added`, or `Error adding playlist`.
+Cookie import/removal, file deletion, and queue bookkeeping do not write status
+messages. Errors go into a shared alert queue; each app presents the title and
+details using native alerts, one at a time. Download and playlist errors also
+leave a short final status. Successful downloads with database/export warnings
+produce an alert instead of hiding those warnings inside progress text.
 
 The sidebar is an NSOutlineView with three collapsible, nonselectable parent
 rows: System (All Downloads), Added Playlists (manually added), and My Playlists
@@ -253,18 +270,17 @@ quality is available in Settings. Cancel does nothing.
 The home screen uses ENIL's status-toolbar layout: a content-sized center view
 between flexible spaces, with a Font Awesome Queue button on the right. UIKit
 provides the native iOS 5/6 gloss and bordered button, or iOS 7+ flat chrome and
-tinted button. “Ready” is never displayed. Once idle, the last non-ready message stays for ten
-seconds and then clears; repeated refreshes do not extend that time. A new
-message replaces it and starts a fresh ten-second period. Active work keeps its
-status visible. Idle text is bold 15pt; active text is bold 13pt over a 100pt
-progress track. Legacy text uses ENIL's white engraved shadow; iOS 7+ uses dark
-text without a shadow. Unknown progress holds at half fill. Long text truncates
-to leave room for Queue; its full text and progress counts remain accessible.
+tinted button. Empty status is idle. The shared bridge clears the last message
+after ten seconds without a new event on both platforms. Idle text is bold 15pt;
+active text is bold 13pt with a 100pt transfer-progress track when its total is
+known, or a spinner when it is unknown. Legacy text uses ENIL's white engraved
+shadow; iOS 7+ uses dark text without a shadow. Long text truncates in the middle
+to leave room for Queue; its full text remains accessible.
 The toolbar replaces the home screen's old status footer. Playlist and All Downloads
 share `RDLPVideoListViewController`, a plain `UITableViewController`, including
 subtitle cells, status accessories, playback/retry handling, and toolbar lifecycle.
-Their entire toolbar is hidden for Ready or empty status, and animates out when
-an idle message expires after ten seconds. Offscreen refreshes do not change the
+Their entire toolbar is hidden for empty status and animates out when
+the shared message expires after ten seconds. Offscreen refreshes do not change the
 visible screen's toolbar. Playlist alone adds the Sync button. Both video lists
 remain blank when empty, with no placeholder section footer.
 
@@ -324,12 +340,10 @@ Stop Download, and Delete Download actions. Actions recheck the stable job ID an
 current state after confirmation. Revealing a job selects and scrolls to its exact
 quality. Ordinary refreshes retain selection without scrolling or regrouping rows.
 
-Queue uses the shared bottom status toolbar without a Queue button. Active work
-keeps progress visible; idle messages expire after ten seconds and the toolbar
-hides with animation. Ready and empty idle statuses hide it immediately. The video
-detail screen retains its fixed status area. Progress counts describe attempts in
-the current run, including failed and stopped counts in the accessible description;
-historical jobs do not contribute.
+Queue uses the same shared bottom status toolbar without a Queue button. It hides
+with animation when the shared status clears. The older video detail controller
+retains its fixed status area. Progress always describes the current transfer;
+historical jobs and queue attempt counts do not contribute to the visible bar.
 
 Deleting a download, stopping work, removing a playlist, replacing/removing
 cookies, and bulk operations require confirmation. For swipe deletion, tapping
@@ -705,3 +719,16 @@ and static analysis, and artifact checks passed. One automated Tiger run checked
 outline groups, collapse persistence, existing action targeting, and promotion
 to My Playlists while retaining the selected playlist. No manual UI tour or live
 YouTube discovery was performed.
+
+
+Shared status revision (2026-09-15): all four macOS and both iOS slices built
+without compiler warnings. Both static analyzers reported zero warnings/errors;
+portable store/service tests and app artifact validation passed. The same bridge
+regressions passed natively on Tiger 10.4.11 and iOS 8.4 (`koolphone5`), covering
+CLI phase delivery, byte progress, simple playlist results, silent cookie changes,
+separate errors, identical-message timer reset, and expiry while busy. Native Mac
+and iOS suites also exercised real error alerts; iOS checked sequential dismissal.
+Tests used isolated synthetic libraries and test bundles without the CA resource;
+no live YouTube downloads were performed. The Tiger run caught the Foundation
+common-mode constant's 10.5 dependency; shared expiry uses the Tiger-compatible
+Core Foundation constant instead.

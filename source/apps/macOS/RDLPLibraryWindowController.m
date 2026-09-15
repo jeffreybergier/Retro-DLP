@@ -65,6 +65,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (NSUInteger)queuedCount;
 - (void)setToolbarItem:(NSString *)key title:(NSString *)title tip:(NSString *)tip icon:(NSImage *)icon enabled:(BOOL)enabled;
 - (void)updateToolbar;
+- (void)refreshStatus:(id)sender;
 - (void)updateControls;
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)view;
 - (id)tableView:(NSTableView *)view objectValueForTableColumn:(NSTableColumn *)column row:(NSInteger)row;
@@ -193,6 +194,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [self setSplitViewAutosaveName:@"RetroDLPThreePaneDividers"];
 
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library_];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPLibraryStatusDidChange object:library_];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:NSApplicationDidBecomeActiveNotification object:NSApp];
   [self refresh:nil]; return self;
 }
@@ -584,16 +586,21 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [self setToolbarItem:@"downloads" title:@"Queue" tip:[self isInspectorCollapsed]?@"Show Queue. Right-click for queue actions.":@"Hide Queue. Right-click for queue actions." icon:nil enabled:YES];
 }
 - (void)updateControls;
+{ [self updateToolbar]; [self refreshStatus:nil]; }
+- (void)refreshStatus:(id)sender;
 {
-  [self updateToolbar];
+  (void)sender;
   [status_ setStringValue:[library_ status]];
   [status_ setToolTip:[library_ status]];
-  NSDictionary *progress=[library_ queueProgress];
-  NSUInteger processed=[[progress objectForKey:@"processed"] unsignedLongValue];
-  NSUInteger total=[[progress objectForKey:@"total"] unsignedLongValue];
-  [queueProgress_ setHidden:![[progress objectForKey:@"active"] boolValue]];
-  [queueProgress_ setMaxValue:(double)MAX(total,1)]; [queueProgress_ setDoubleValue:(double)processed];
-  [queueProgress_ setToolTip:[NSString stringWithFormat:@"%lu of %lu processed · %@ failed · %@ stopped",(unsigned long)processed,(unsigned long)total,[progress objectForKey:@"failed"],[progress objectForKey:@"cancelled"]]];
+  NSDictionary *progress=[library_ activityProgress];
+  BOOL active=[[progress objectForKey:@"active"] boolValue];
+  double expected=[[progress objectForKey:@"expected"] doubleValue];
+  [queueProgress_ setHidden:!active];
+  [queueProgress_ setIndeterminate:expected<=0];
+  if(active && expected<=0) [queueProgress_ startAnimation:nil]; else [queueProgress_ stopAnimation:nil];
+  [queueProgress_ setMaxValue:MAX(expected,1)];
+  [queueProgress_ setDoubleValue:MIN(expected,[[progress objectForKey:@"completed"] doubleValue])];
+  [queueProgress_ setToolTip:[library_ status]];
 }
 
 - (NSInteger)outlineView:(NSOutlineView *)outline numberOfChildrenOfItem:(id)item;
@@ -779,7 +786,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   (void)context; NSString *input=[[input_ stringValue] copy]; [sheet orderOut:nil];
   [addSheet_ release]; addSheet_=nil; input_=nil;
-  if(code==1) [library_ syncPlaylistInput:input]; [input release];
+  if(code==1) [library_ addPlaylistInput:input]; [input release];
 }
 - (void)confirmRequest:(NSDictionary *)request title:(NSString *)title detail:(NSString *)detail action:(NSString *)action;
 {

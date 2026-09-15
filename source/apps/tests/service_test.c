@@ -9,7 +9,7 @@
 
 typedef struct {
   const char *base; const char *media; int fail, cancel, cancel_on_progress, depth;
-  char player[4096];
+  char player[4096]; int format_seen, target_seen;
 } fixture;
 static const char playlist_json[] =
   "{\"metadata\":{\"playlistMetadataRenderer\":{\"title\":\"Offline playlist\"}},"
@@ -36,6 +36,12 @@ static int cancelled(void *ctx) { return ((fixture *)ctx)->cancel; }
 static void progress(const rdlp_download_event *event,void *ctx) {
   fixture *f=ctx; assert(!f->depth); if(f->cancel_on_progress && event->completed_bytes) f->cancel=1;
 }
+static void status_message(const char *message,void *ctx) {
+  fixture *f=ctx; assert(!f->depth);
+  if(!strncmp(message,"Format: ",8)) { assert(strstr(message,"640x360")); ++f->format_seen; }
+  else if(!strncmp(message,"File: ",6)) { assert(f->format_seen>f->target_seen); ++f->target_seen; }
+  else assert(0);
+}
 typedef struct { rdapp_job job; char video[64],format[64],path[1024],state[64]; int count, account_count; } claimed;
 static int collect(void *ctx,int count,const char *const *names,const char *const *values) {
   claimed *c=ctx; int i; ++c->count;
@@ -54,7 +60,7 @@ static int collect(void *ctx,int count,const char *const *names,const char *cons
 static void claim(rdapp_store *s,claimed *c) { memset(c,0,sizeof(*c)); assert(rdapp_store_claim(s,collect,c)); assert(c->count==1); }
 static void require(rdlp_error_code code,const char *message) { if(code!=RDLP_OK) { fprintf(stderr,"service failed: %d %s\n",code,message); abort(); } }
 int main(int argc,char **argv) {
-  rdapp_store *s=NULL; rdapp_service_config config; rdlp_transport transport; fixture f;
+  rdapp_store *s=NULL; rdapp_service_config config; rdapp_service_result outcome; rdlp_transport transport; fixture f;
   char db[2048],cookies[2048],message[1024],file[2048],export[2048]; FILE *output;
   int64_t key=0; claimed c; rdlp_error_code code; struct stat st;
   assert(argc==4); memset(&config,0,sizeof(config)); memset(&transport,0,sizeof(transport)); memset(&f,0,sizeof(f));
@@ -64,6 +70,7 @@ int main(int argc,char **argv) {
   transport.struct_size=sizeof(transport); transport.send=send_fixture; transport.context=&f; config.resolver.transport=&transport;
   config.download.struct_size=sizeof(config.download); config.download.ca_bundle_path=argv[3];
   config.download.cancel_callback=cancelled; config.download.event_callback=progress; config.download.callback_context=&f;
+  config.result=&outcome; config.status_callback=status_message; config.status_context=&f;
   config.lock=lock; config.unlock=unlock; config.lock_context=&f;
   snprintf(db,sizeof(db),"%s/library.sqlite",argv[1]); assert(rdapp_store_open(db,&s));
   require(rdapp_service_run(s,&config,RDAPP_SYNC,"PLfixture",NULL,message,sizeof(message)),message);
@@ -80,6 +87,7 @@ int main(int argc,char **argv) {
   assert(rdapp_store_enqueue(s,key,NULL,"18")); claim(s,&c);
   require(rdapp_service_run(s,&config,RDAPP_DOWNLOAD,NULL,&c.job,message,sizeof(message)),message);
   snprintf(file,sizeof(file),"%s/%s",argv[1],c.path); assert(stat(file,&st)==0 && st.st_size>0);
+  assert(outcome.downloaded_bytes==(uint64_t)st.st_size && !outcome.warning && f.format_seen==1 && f.target_seen==1);
   snprintf(export,sizeof(export),"%s/Playlists/Offline playlist [PLfixture]/Playlist.m3u8",argv[1]); output=fopen(export,"r"); assert(output); assert(fgets(message,sizeof(message),output)); assert(!strcmp(message,"#EXTM3U\n")); assert(fgets(message,sizeof(message),output)); assert(strstr(message,"One video")); fclose(output);
   /* A second explicit quality expression exercises HTTP failure and fresh retry. */
   assert(rdapp_store_enqueue(s,key,NULL,"18/18")); claim(s,&c); f.media="status";
@@ -92,6 +100,12 @@ int main(int argc,char **argv) {
   f.cancel=0; f.cancel_on_progress=0; f.media="media"; assert(rdapp_store_retry(s,c.job.id)); claim(s,&c);
   require(rdapp_service_run(s,&config,RDAPP_DOWNLOAD,NULL,&c.job,message,sizeof(message)),message);
   assert(rdapp_store_remove_file(s,c.job.id,argv[1]));
+  /* Successful media with an export problem must produce an alertable warning. */
+  assert(rdapp_store_enqueue(s,key,NULL,"18/18/18/18")); claim(s,&c);
+  assert(unlink(export)==0 && mkdir(export,0700)==0);
+  require(rdapp_service_run(s,&config,RDAPP_DOWNLOAD,NULL,&c.job,message,sizeof(message)),message);
+  assert(outcome.warning && outcome.downloaded_bytes>0 && strstr(message,"export failed"));
+  assert(rmdir(export)==0);
   assert(!f.depth); rdapp_store_close(s);
   puts("PASS: application sync, account discovery, download, export, HTTP retry, cancellation, and removal"); return 0;
 }

@@ -2,5 +2,6 @@
 
 @interface RDLPAppDelegate : NSObject {
   RDLPLibrary *library_; RDLPLibraryWindowController *window_;
+  BOOL showingError_;
 }
 @end

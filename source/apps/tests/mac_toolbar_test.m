@@ -4,6 +4,7 @@
 #import "../macOS/RDLPLibraryWindowController.h"
 #import "../macOS/RDLPToolbarButton.h"
 #import "../macOS/RDLPAppKit.h"
+#import "../macOS/RDLPAppDelegate.h"
 #import "../shared/rdapp_store.h"
 #import <math.h>
 @interface RDLPLibraryWindowController (RDLPToolbarTest)
@@ -18,8 +19,37 @@
 - (void)dismissDownload:(id)sender;
 - (void)clearCookies:(id)sender;
 @end
+#import "shared_status_test.h"
+
 static void requireCondition(BOOL condition,NSString *message) {
   if(!condition) [NSException raise:@"RDLPToolbarTest" format:@"%@",message];
+}
+@interface RDLPErrorAlertProbe : NSObject {
+@public
+  BOOL appeared;
+}
+- (void)dismiss:(NSTimer *)timer;
+@end
+@implementation RDLPErrorAlertProbe
+- (void)dismiss:(NSTimer *)timer;
+{
+  if([NSApp modalWindow]) { appeared=YES; [timer invalidate]; [[[NSApp modalWindow] defaultButtonCell] performClick:nil]; }
+}
+@end
+static void testMacErrorAlert(RDLPLibraryWindowController *window) {
+  RDLPStatusTestLibrary *errors=[[[RDLPStatusTestLibrary alloc]
+    initWithSupportDirectory:@"/tmp/retrodlp-toolbar-fixture/Alerts/Support"
+    downloadDirectory:@"/tmp/retrodlp-toolbar-fixture/Alerts/Downloads"] autorelease];
+  RDLPAppDelegate *presenter=[[RDLPAppDelegate alloc] init];
+  [presenter setValue:errors forKey:@"library_"]; [presenter setValue:window forKey:@"window_"];
+  [errors showStatus:@"Downloading"]; [errors importCookies:@"/synthetic-missing-cookie-file"];
+  RDLPErrorAlertProbe *probe=[[[RDLPErrorAlertProbe alloc] init] autorelease];
+  NSTimer *timer=[NSTimer timerWithTimeInterval:0.1 target:probe selector:@selector(dismiss:) userInfo:nil repeats:YES];
+  [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSModalPanelRunLoopMode];
+  [presenter performSelector:@selector(showNextError)]; [timer invalidate];
+  requireCondition(probe->appeared && ![errors hasErrors],@"Shared error becomes a native Mac alert");
+  requireCondition([[errors status] isEqualToString:@"Downloading"],@"Native alert leaves download status alone");
+  [NSObject cancelPreviousPerformRequestsWithTarget:presenter]; [presenter release];
 }
 /* Exercise VLC-present/absent branches without changing installed applications. */
 static BOOL probeVLC, probeDefault;
@@ -146,6 +176,7 @@ static NSArray *titles(NSMenu *menu) {
     [[NSUserDefaults standardUserDefaults] setObject:@"18" forKey:@"downloadFormat"];
     library_=[[RDLPLibrary alloc] initWithSupportDirectory:@"/tmp/retrodlp-toolbar-fixture/Support" downloadDirectory:@"/tmp/retrodlp-toolbar-fixture/Downloads"];
     requireCondition(library_!=nil,@"Fixture failed to open");
+    testSharedStatus(@"/tmp/retrodlp-toolbar-fixture/Status");
     requireCondition([[library_ playlists] count]==1 && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Use a fresh fixture");
     RDLPDownloadPolicy *policy=[[[RDLPDownloadPolicy alloc] initWithLibrary:library_] autorelease];
     requireCondition(![policy playable:nil] && ![policy canRetry:nil] && ![policy canCancel:nil] &&
@@ -397,7 +428,7 @@ static NSArray *titles(NSMenu *menu) {
     requireCondition([[progress objectForKey:@"active"] boolValue] && [[progress objectForKey:@"running"] boolValue] && [[progress objectForKey:@"total"] unsignedLongValue]==attempts && [[progress objectForKey:@"processed"] unsignedLongValue]==0,@"New queue run must exclude historical jobs");
     requireCondition(![[window_ valueForKey:@"queueProgress_"] isHidden],@"Processing must show the progress bar");
     [library_ setPaused:YES]; pump();
-    requireCondition(![[window_ valueForKey:@"queueProgress_"] isHidden],@"Paused run must keep its progress visible");
+    requireCondition([[window_ valueForKey:@"queueProgress_"] isHidden],@"Stopped work hides transfer progress even while the queue remains paused");
     [library_ setPaused:NO];
     NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:20];
     while(([[[library_ queueProgress] objectForKey:@"active"] boolValue] || [library_ isBusy]) && [deadline timeIntervalSinceNow]>0) pump();
@@ -405,7 +436,7 @@ static NSArray *titles(NSMenu *menu) {
     requireCondition(![[progress objectForKey:@"active"] boolValue] && [[progress objectForKey:@"processed"] unsignedLongValue]==attempts && [[progress objectForKey:@"failed"] unsignedLongValue]==attempts,@"Queue must count failed attempts separately and finish the run");
     requireCondition([[window_ valueForKey:@"queueProgress_"] isHidden],@"Drained queue must hide the progress area");
     [library_ syncPlaylistInput:@"PLfixture"];
-    requireCondition([library_ isBusy] && ![[[library_ queueProgress] objectForKey:@"active"] boolValue] && [[window_ valueForKey:@"queueProgress_"] isHidden],@"Metadata work must not activate queue progress");
+    requireCondition([library_ isBusy] && ![[[library_ queueProgress] objectForKey:@"active"] boolValue] && ![[window_ valueForKey:@"queueProgress_"] isHidden],@"Metadata work uses indeterminate activity progress");
     deadline=[NSDate dateWithTimeIntervalSinceNow:20];
     while([library_ isBusy] && [deadline timeIntervalSinceNow]>0) pump();
     requireCondition(![library_ isBusy],@"Local metadata failure did not finish");
@@ -419,7 +450,8 @@ static NSArray *titles(NSMenu *menu) {
     deadline=[NSDate dateWithTimeIntervalSinceNow:20];
     while(([[[library_ queueProgress] objectForKey:@"active"] boolValue] || [library_ isBusy]) && [deadline timeIntervalSinceNow]>0) pump();
     requireCondition(![[[library_ queueProgress] objectForKey:@"active"] boolValue],@"Retried run did not drain");
-    report=@"PASS: VLC preference and system fallback, download policy, textured window, flat five-column queue, exact-quality menu actions, selection stability, item-based queue progress and local failures, sidebar outline groups, discovery promotion, Download/Play targeting, adaptive menus, cancellation and retry; no network requests.";
+    testMacErrorAlert(window_);
+    report=@"PASS: shared status expiry, native error alerts, VLC preference and system fallback, download policy, textured window, flat five-column queue, exact-quality menu actions, selection stability, transfer progress, queue accounting and local failures, sidebar outline groups, discovery promotion, Download/Play targeting, adaptive menus, cancellation and retry; no network requests.";
 
   } @catch(NSException *exception) { report=[NSString stringWithFormat:@"FAIL: %@",exception]; }
   [report writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];

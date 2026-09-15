@@ -12,6 +12,7 @@
   model_=[[RDLPLibrarySections alloc] initWithLibrary:library];
   self.title=mode==RDLPScreenDownloads?@"All Downloads":[playlist objectForKey:@"title"];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library_];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPLibraryStatusDidChange object:library_];
   return self;
 }
 - (void)dealloc;
@@ -28,7 +29,6 @@
   statusBar_=[[RDLPStatusBarView alloc] initWithFrame:CGRectZero];
   statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-([self showsQueueButton]?80:24));
   self.toolbarItems=[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:[self showsQueueButton]?@selector(queue:):NULL];
-  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(statusCleared:) name:RDLPStatusBarDidClearStatus object:statusBar_];
   [self refresh:nil];
 }
 - (void)viewWillAppear:(BOOL)animated;
@@ -53,11 +53,15 @@
 - (BOOL)shouldHideToolbar;
 {
   NSString *status=[library_ status];
-  return ![status length] || [status isEqualToString:@"Ready"] || !statusBar_.hasStatus;
+  return ![status length];
 }
 - (UIImage *)statusIcon:(NSString *)status; { return [RDLPUIKit statusIcon:status]; }
-- (void)statusCleared:(NSNotification *)notification;
-{ (void)notification; [self updateToolbarAnimated:YES]; }
+- (void)refreshStatus:(id)sender;
+{
+  (void)sender; if(![self isViewLoaded]) return;
+  [statusBar_ setStatus:[library_ status] progress:[library_ activityProgress] busy:[library_ isBusy]];
+  [self updateToolbarAnimated:YES];
+}
 - (void)refresh:(id)sender;
 {
   (void)sender; if(![self isViewLoaded]) return;
@@ -67,8 +71,7 @@
     NSArray *sections=[model_ sectionsForScreen:mode_ playlist:playlist_ video:nil collapsed:nil];
     [sections_ release]; sections_=[sections copy];
   }
-  [statusBar_ setStatus:[library_ status] progress:[library_ queueProgress] busy:[library_ isBusy]];
-  [self updateToolbarAnimated:YES];
+  [self refreshStatus:nil];
   if(!swipeJobID_) [self.tableView reloadData];
 }
 - (void)queue:(id)sender;
