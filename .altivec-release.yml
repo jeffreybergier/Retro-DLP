@@ -39,6 +39,21 @@ targets:
     artifact: build/iOS/retro-dlp-iOS.zip
     asset_name: Retro-DLP-{version}-iOS.zip
 
+  - name: macOS application
+    workdir: .
+    build:
+      - make app-macOS
+    artifact: build/apps/macOS/RetroDLP.zip
+    asset_name: Retro-DLP-{version}-macOS.zip
+
+  - name: iOS application
+    workdir: .
+    build:
+      - make app-iOS
+      - make app-validate
+    artifact: build/apps/iOS/RetroDLP.ipa
+    asset_name: Retro-DLP-{version}-iOS.ipa
+
   - name: Linux Library
     workdir: .
     build:

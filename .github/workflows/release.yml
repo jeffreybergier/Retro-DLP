@@ -165,6 +165,18 @@ jobs:
             rm -rf -- "$unpacked"
           done
 
+          macos_app="dist/Retro-DLP-${RELEASE_VERSION}-macOS.zip"
+          test -s "$macos_app"
+          unzip -t "$macos_app" >/dev/null
+          unzip -Z1 "$macos_app" | grep -Fx 'RetroDLP.app/Contents/MacOS/RetroDLP' >/dev/null
+          unzip -Z1 "$macos_app" | grep -Fx 'RetroDLP.app/Contents/Info.plist' >/dev/null
+
+          ios_app="dist/Retro-DLP-${RELEASE_VERSION}-iOS.ipa"
+          test -s "$ios_app"
+          unzip -t "$ios_app" >/dev/null
+          unzip -Z1 "$ios_app" | grep -Fx 'Payload/RetroDLP.app/RetroDLP' >/dev/null
+          unzip -Z1 "$ios_app" | grep -Fx 'Payload/RetroDLP.app/Info.plist' >/dev/null
+
           for platform in linux macOS iOS; do
             asset="dist/Retro-DLP-${RELEASE_VERSION}-${platform}-library.zip"
             test -s "$asset"

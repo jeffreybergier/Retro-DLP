@@ -149,7 +149,10 @@ mkdir -p "$test_home/.retro-dlp/cache/assets/ejs/0.7.0"
 printf 'wrong version' > \
   "$test_home/.retro-dlp/cache/assets/ejs/0.7.0/core.min.js"
 
-self_test_output=$($test_binary)
+if ! self_test_output=$($test_binary); then
+  printf '%s\n' "$self_test_output" >&2
+  fail "test binary failed"
+fi
 printf '%s\n' "$self_test_output" | grep -q '^PASS: cJSON$' || \
   fail "test binary did not pass cJSON"
 printf '%s\n' "$self_test_output" | grep -q '^PASS: QuickJS$' || \
