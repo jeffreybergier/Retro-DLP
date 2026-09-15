@@ -12,6 +12,9 @@
 - (void)refresh:(id)sender;
 - (void)showJobInQueue:(NSDictionary *)job;
 - (void)hideQueue:(id)sender;
+- (NSDictionary *)selectedJob;
+- (id)tableView:(NSTableView *)view objectValueForTableColumn:(NSTableColumn *)column row:(NSInteger)row;
+- (NSString *)tableView:(NSTableView *)view toolTipForCell:(NSCell *)cell rect:(NSRectPointer)rect tableColumn:(NSTableColumn *)column row:(NSInteger)row mouseLocation:(NSPoint)point;
 - (void)dismissDownload:(id)sender;
 - (void)clearCookies:(id)sender;
 @end
@@ -49,15 +52,6 @@ static NSString *probeOpened;
 }
 @end
 static void pump(void) { [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.3]]; }
-static void clickQueueAction(NSOutlineView *outline) {
-  [[outline window] makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES]; pump();
-  NSRect frame=[outline frameOfCellAtColumn:1 row:[outline selectedRow]];
-  requireCondition(NSContainsRect([outline visibleRect],frame),@"Queue action cell must remain inside the visible pane");
-  NSPoint point=[outline convertPoint:NSMakePoint(NSMidX(frame),NSMidY(frame)) toView:nil];
-  NSEvent *down=[NSEvent mouseEventWithType:NSLeftMouseDown location:point modifierFlags:0 timestamp:0 windowNumber:[[outline window] windowNumber] context:nil eventNumber:1 clickCount:1 pressure:1];
-  NSEvent *up=[NSEvent mouseEventWithType:NSLeftMouseUp location:point modifierFlags:0 timestamp:0.1 windowNumber:[[outline window] windowNumber] context:nil eventNumber:2 clickCount:1 pressure:0];
-  [NSApp postEvent:up atStart:YES]; [outline mouseDown:down]; pump();
-}
 static RDLPToolbarButton *toolbarButton(RDLPLibraryWindowController *window,NSString *key) {
   return (RDLPToolbarButton *)[[[window valueForKey:@"toolbarItems_"] objectForKey:key] view];
 }
@@ -215,29 +209,41 @@ static NSArray *titles(NSMenu *menu) {
     NSRect visibleScreen=[[nativeWindow screen] visibleFrame];
     [nativeWindow setFrameTopLeftPoint:NSMakePoint(NSMinX(visibleScreen),NSMaxY(visibleScreen))];
     [window_ toggleSidebar:nil]; [window_ toggleInspector:nil]; pump();
-    NSOutlineView *queueTable=[window_ valueForKey:@"queue_"];
+    NSTableView *queueTable=[window_ valueForKey:@"queue_"];
     NSScrollView *queueScroll=[queueTable enclosingScrollView];
-    RDLPQueueTree *tree=[window_ valueForKey:@"queueTree_"];
-    requireCondition([queueTable isKindOfClass:[NSOutlineView class]],@"Queue must be an outline");
-    /* NSScrollView is flipped on Tiger: its header occupies the first 17 points.
-       Compare bottom edges in window coordinates, where up is positive. */
-    NSRect clipInWindow=[queueScroll convertRect:[[queueScroll contentView] frame] toView:nil];
-    NSRect scrollInWindow=[queueScroll convertRect:[queueScroll bounds] toView:nil];
-    requireCondition(NSEqualRects([queueScroll frame],[[queueScroll superview] bounds]) && NSMinY(clipInWindow)==NSMinY(scrollInWindow),[NSString stringWithFormat:@"Queue rows must fill the pane through its bottom edge: scroll=%@ pane=%@ clip=%@ collapsed=%d",NSStringFromRect([queueScroll frame]),NSStringFromRect([[queueScroll superview] bounds]),NSStringFromRect([[queueScroll contentView] frame]),[window_ isInspectorCollapsed]]);
-    requireCondition([[tree roots] count]==4 && [[tree nodeForKey:@"status:3"]->title isEqualToString:@"Needs Attention"],@"Expected Done, Downloading, Queued, Needs Attention");
-    requireCondition([[window_ valueForKey:@"queueProgress_"] superview]==[status superview],@"Progress belongs to the app-wide status bar");
-    requireCondition([[window_ valueForKey:@"queueProgress_"] isHidden],@"An idle library must not show processing progress");
+    requireCondition([queueTable isKindOfClass:[NSTableView class]] && ![queueTable isKindOfClass:[NSOutlineView class]],@"Queue must be a flat native table");
+    requireCondition(NSEqualRects([queueScroll frame],[[queueScroll superview] bounds]),@"Queue scroll view fills its pane");
+    NSArray *queueColumns=[queueTable tableColumns];
+    NSArray *identifiers=[NSArray arrayWithObjects:@"number",@"state",@"quality",@"title",@"playlist_title",nil];
+    NSArray *headings=[NSArray arrayWithObjects:@"",@"",@"Quality",@"Video",@"Playlist",nil];
+    requireCondition([queueColumns count]==5,@"Queue has exactly five columns");
+    NSUInteger columnIndex;
+    for(columnIndex=0;columnIndex<[identifiers count];++columnIndex) {
+      NSTableColumn *column=[queueColumns objectAtIndex:columnIndex];
+      requireCondition([[column identifier] isEqual:[identifiers objectAtIndex:columnIndex]] && [[[column headerCell] stringValue] isEqual:[headings objectAtIndex:columnIndex]],@"Queue columns and blank headers follow requested order");
+      requireCondition(![column isEditable],@"Queue status and text cells are read-only");
+    }
+    requireCondition([[window_ valueForKey:@"queueProgress_"] superview]==[status superview] && [[window_ valueForKey:@"queueProgress_"] isHidden],@"Idle queue progress stays in the app-wide status bar");
+    NSArray *ordered=[window_ valueForKey:@"queueRows_"];
+    requireCondition([ordered count]==3 && [queueTable numberOfRows]==3,@"Each download quality gets one row with no group rows");
+    NSUInteger queueIndex; long long previousID=0;
+    for(queueIndex=0;queueIndex<[ordered count];++queueIndex) {
+      NSDictionary *job=[ordered objectAtIndex:queueIndex];
+      requireCondition([[job objectForKey:@"id"] intValue]>previousID,@"Queue follows processing order"); previousID=[[job objectForKey:@"id"] intValue];
+      requireCondition([[window_ tableView:queueTable objectValueForTableColumn:[queueColumns objectAtIndex:0] row:(NSInteger)queueIndex] unsignedLongValue]==queueIndex+1,@"Display numbers are consecutive");
+      requireCondition([[window_ tableView:queueTable objectValueForTableColumn:[queueColumns objectAtIndex:3] row:(NSInteger)queueIndex] isEqual:[job objectForKey:@"title"]] && [[window_ tableView:queueTable objectValueForTableColumn:[queueColumns objectAtIndex:4] row:(NSInteger)queueIndex] isEqual:[job objectForKey:@"playlist_title"]],@"Queue exposes video and playlist in their own columns");
+      requireCondition([[window_ tableView:queueTable objectValueForTableColumn:[queueColumns objectAtIndex:2] row:(NSInteger)queueIndex] rangeOfString:[job objectForKey:@"format"]].location!=NSNotFound,@"Quality identifies the exact requested format");
+    }
     selectRow(window_,@"queue_",1);
-    RDLPQueueNode *failed=[queueTable itemAtRow:[queueTable selectedRow]];
-    NSString *failedKey=[[failed->key copy] autorelease];
-    requireCondition(failed->kind==RDLPQueueQuality && failed->action==RDLPQueueRetry && [queueTable levelForItem:failed]==3,@"Failed quality must offer Retry at depth three");
-    RDLPQueueNode *video=[tree nodeForKey:failed->parentKey], *playlist=[tree nodeForKey:video->parentKey];
-    requireCondition(video->kind==RDLPQueueVideo && playlist->kind==RDLPQueuePlaylist && [playlist->parentKey isEqualToString:@"status:3"],@"Quality must belong to video and playlist under Needs Attention");
-    [queueTable collapseItem:playlist]; [window_ refresh:nil];
-    requireCondition(![queueTable isItemExpanded:playlist],@"Refreshing must preserve collapsed queue playlists");
+    NSString *failedKey=[[[[window_ selectedJob] objectForKey:@"id"] copy] autorelease];
+    NSInteger failedRow=[queueTable selectedRow];
+    requireCondition([[[window_ selectedJob] objectForKey:@"state"] isEqual:@"failed"],@"Failed job is directly selectable");
+    NSString *failureTip=[window_ tableView:queueTable toolTipForCell:nil rect:NULL tableColumn:[queueColumns objectAtIndex:1] row:failedRow mouseLocation:NSZeroPoint];
+    requireCondition([failureTip rangeOfString:@"Synthetic failure"].location!=NSNotFound,@"Status tooltip retains the full failure reason");
+    [window_ refresh:nil];
+    requireCondition([queueTable selectedRow]==failedRow && [[[window_ selectedJob] objectForKey:@"id"] isEqual:failedKey],@"Refresh preserves the selected download");
     selectRow(window_,@"queue_",2);
-    RDLPQueueNode *done=[queueTable itemAtRow:[queueTable selectedRow]];
-    requireCondition(done->action==RDLPQueueNoAction && ![[[[queueTable tableColumns] objectAtIndex:1] dataCellForRow:[queueTable selectedRow]] isKindOfClass:[NSButtonCell class]],@"Completed qualities must have no button");
+    requireCondition(![[[queueColumns objectAtIndex:1] dataCellForRow:[queueTable selectedRow]] isKindOfClass:[NSButtonCell class]],@"Status column uses the playlist image cell, with actions in menus");
     NSMenu *initialQueueMenu=[window_ menuForToolbarIdentifier:@"downloads"];
     requireCondition(![initialQueueMenu itemWithTitle:@"Pause Queue"] && ![initialQueueMenu itemWithTitle:@"Resume Queue…"],@"Global pause and resume must be removed");
     [window_ hideQueue:nil];
@@ -325,11 +331,11 @@ static NSArray *titles(NSMenu *menu) {
     requireCondition(![download itemWithTitle:@"Retry Download"] && ![download itemWithTitle:@"Download Again"],@"Redundant retry entries must be removed");
     invoke(window_,choice([choice(download,@"Download Quality") submenu],@"Medium"));
     requireCondition([window_ validateMenuItem:choice(download,@"Download Video")],@"Download Video must allow failed jobs at the selected quality");
-    clickQueueAction(queueTable);
-    requireCondition([tree nodeForKey:failedKey]==failed && [queueTable itemAtRow:[queueTable selectedRow]]==failed && failed->action==RDLPQueueStop,[NSString stringWithFormat:@"Retry must preserve selected quality identity while moving to Queued: identity=%d selected=%d action=%ld state=%@ row=%ld",[tree nodeForKey:failedKey]==failed,[queueTable itemAtRow:[queueTable selectedRow]]==failed,(long)failed->action,[failed->job objectForKey:@"state"],(long)[queueTable selectedRow]]);
+    invoke(window_,choice([queueTable menu],@"Retry"));
+    requireCondition([[[window_ selectedJob] objectForKey:@"id"] isEqual:failedKey] && [queueTable selectedRow]==failedRow && [[[window_ selectedJob] objectForKey:@"state"] isEqual:@"queued"],@"Retry preserves exact job identity and row position");
     requireCondition(![window_ validateMenuItem:choice(download,@"Download Video")] && [window_ validateMenuItem:choice(download,@"Cancel Download…")],@"Queued job must disable duplicate Download Video");
     requireCondition([library_ isPaused] && ![library_ isBusy],@"Explicit retry must preserve Pause");
-    clickQueueAction(queueTable); confirm(window_,NO);
+    invoke(window_,choice([queueTable menu],@"Stop Download…")); confirm(window_,NO);
     requireCondition([window_ validateMenuItem:choice(download,@"Cancel Download…")],@"Cancelled sheet changed job");
     invoke(window_,choice(download,@"Cancel Download…")); confirm(window_,YES);
     [window_ hideQueue:nil];
@@ -413,7 +419,7 @@ static NSArray *titles(NSMenu *menu) {
     deadline=[NSDate dateWithTimeIntervalSinceNow:20];
     while(([[[library_ queueProgress] objectForKey:@"active"] boolValue] || [library_ isBusy]) && [deadline timeIntervalSinceNow]>0) pump();
     requireCondition(![[[library_ queueProgress] objectForKey:@"active"] boolValue],@"Retried run did not drain");
-    report=@"PASS: VLC preference and system fallback, download policy, textured window, edge-to-edge queue outline, quality action mouse clicks, selection stability, item-based queue progress and local failures, outline groups, discovery promotion, Download/Play targeting, adaptive menus, cancellation and retry; no network requests.";
+    report=@"PASS: VLC preference and system fallback, download policy, textured window, flat five-column queue, exact-quality menu actions, selection stability, item-based queue progress and local failures, sidebar outline groups, discovery promotion, Download/Play targeting, adaptive menus, cancellation and retry; no network requests.";
 
   } @catch(NSException *exception) { report=[NSString stringWithFormat:@"FAIL: %@",exception]; }
   [report writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];

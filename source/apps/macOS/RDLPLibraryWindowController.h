@@ -1,6 +1,5 @@
 #import <AICookieCutterWindowController.h>
 #import "RDLPLibrary.h"
-#import "RDLPQueueOutlineView.h"
 #import "RDLPDownloadPolicy.h"
 #import "RDLPLibraryMenus.h"
 @interface RDLPLibraryWindowController : AICookieCutterWindowController <RDLPLibraryMenuContext> {
@@ -9,9 +8,8 @@
   NSOutlineView *sidebar_;
   NSTableView *table_;
   NSTableColumn *qualityColumn_;
-  RDLPQueueOutlineView *queue_;
-  RDLPQueueTree *queueTree_;
-  NSMutableSet *queueCollapsed_;
+  NSTableView *queue_;
+  NSArray *queueRows_;
   NSMutableDictionary *sidebarItems_;
   BOOL sidebarLoaded_;
   NSTextField *input_, *status_, *customFormat_, *customError_, *customSummary_;

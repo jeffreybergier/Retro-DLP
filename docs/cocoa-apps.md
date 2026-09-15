@@ -85,32 +85,28 @@ and playback labels follow the active video or playlist selection. File's Downlo
 command retries a selected queue quality using that job's exact format. Toolbar
 menus retain their task-specific grouping.
 
-The queue is an edge-to-edge, cell-based NSOutlineView, compatible with Tiger.
-Its groups are Done, Downloading, Queued, and Needs Attention; beneath each are
-playlist, video, and quality rows. Needs Attention includes failed, stopped,
-interrupted, and missing-file downloads, with the reason on the quality row and
-full errors in tooltips or Show Error. Expansion and selected quality survive
-refreshes and status changes. Playlist and video rows provide their respective
-toolbar contexts; individual download operations require a quality row.
+The queue is a flat, cell-based NSTableView, compatible with Tiger. Its columns
+are number (blank header), status (blank header), Quality, Video, and Playlist.
+Each download quality occupies one row in processing order (ascending permanent
+job ID), numbered consecutively. Deliberately deleted jobs are hidden; missing
+files remain visible for retry. Text columns can be resized, with horizontal
+scrolling available in narrow panes. Number and status columns stay compact.
 
-The queue uses AppKit’s default row height and indentation. Top-level titles
-use the playlist sidebar’s bold styling without parenthesized counts; child
-rows use the default font.
-Actionable quality rows have one circular textured NSButtonCell sized to fit the row: Font
-Awesome pause to stop queued/running work, rotate-right to retry stopped/failed
-or missing-file work. Stop uses the existing cancellation confirmation; retry
-restarts that exact quality. Completed qualities and parent rows have no button.
-NSTableColumn dataCellForRow: supplies these cells on Tiger; no view-based rows
-or Leopard-only outline delegate API is required. There is no queue footer or
-global Pause control.
+The queue uses AppKit’s default row height and the same status image cells and
+Font Awesome icons as the video table. Status tooltips and Show Error expose full
+failure details. Play, Retry, Stop Download, and Delete Download remain available
+through the context menu; double-click plays a downloaded video. Each row retains
+its exact job and containing playlist for toolbar/menu targeting. Selection
+survives refresh and status changes without regrouping or automatic scrolling.
+There is no queue footer or global Pause control.
 
 During processing, a native NSProgressIndicator in the app-wide status bar shows
-processed attempts out of the current run's total. Downloading also shows this
-count; the progress tooltip reports failed and stopped attempts separately.
+processed attempts out of the current run's total. The progress tooltip reports
+failed and stopped attempts separately.
 Historical downloads do not contribute; new pending jobs extend the total and
 cancelled pending jobs leave it. Draining the queue hides the indicator, and the
 next run starts fresh. Playlist metadata work does not activate queue progress.
-Detailed transfer bytes remain in the app-wide status. The outline's frame does
+Detailed transfer bytes remain in the app-wide status. The queue table's frame does
 not change when progress appears.
 
 The sidebar is an NSOutlineView with three collapsible, nonselectable parent
@@ -397,7 +393,7 @@ by both applications.
 | macOS change | UIKit equivalent |
 | --- | --- |
 | Sidebar outline and discovery provenance | Collapsible System, Added Playlists, My Playlists sections |
-| Queue outline and quality action cells | Native flat subtitle cells, consecutive numbers, status accessories, and stable-ID job actions |
+| Flat queue table with number, status, quality, video, playlist columns | Native flat subtitle cells, consecutive numbers, status accessories, and stable-ID job actions |
 | Context commands, quality preferences, confirmations | Video/job dialogs, Settings, and captured/revalidated alert requests |
 | Representative status and app-wide progress | Shared download policy, status icons, fixed status/progress area |
 | Automatic queue processing | Automatic foreground processing; background pause/cancellation |
@@ -440,8 +436,8 @@ confirmation sheets. Its collaborators have narrower responsibilities:
   they do not depend on deleting items at hard-coded positions.
 - `RDLPLibraryViews` constructs AppKit controls and owns the small selection,
   accessibility, and Tiger pane-layout helpers.
-- `RDLPQueueTree` builds stable queue nodes; `RDLPQueueOutlineView` and
-  `RDLPQueueActionColumn` handle queue interaction and rendering.
+- The queue reuses `RDLPTableView` and `RDLPStatusCell`; a flat job snapshot
+  preserves processing order and selection by permanent job ID.
 - `RDLPToolbarButton` handles toolbar interactions; its private
   `RDLPToolbarGeometry` object keeps drawing and hit testing consistent.
 - `RDLPAppKit` exposes Objective-C class methods for OS compatibility, icon
@@ -457,6 +453,15 @@ usage. The other narrow exceptions are the `main` entry point and the drawing
 math (`isfinite`/`ceil`) and AppKit ABI adaptation inside `RDLPAppKit`.
 
 ## Validation
+
+Flat macOS Queue (2026-09-15): PowerPC, i386, x86_64, and arm64 builds and
+package validation passed. The static analyzer reported zero warnings/errors.
+The offline native suite passed on x4-vm (Tiger 10.4.11), covering five-column
+order and blank headers, consecutive processing-order numbers, one row per
+quality, status/error tooltips, exact-quality context-menu retry and stop,
+selection stability, and existing playback, sidebar, menu, and progress behavior.
+The Tiger run caught unsupported integer convenience methods in the initial
+implementation/test; the final code uses Tiger-compatible numeric APIs.
 
 Native iOS Queue (2026-09-15): armv7/arm64 builds, package validation, and the
 static analyzer passed with zero warnings/errors. All 13 portable store tests and
