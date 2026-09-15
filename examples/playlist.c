@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <inttypes.h>
 
 #include <retrodlp/retrodlp.h>
 
@@ -26,11 +27,18 @@ int main(int argc, char **argv) {
 
   printf("%s (%s)\n", rdlp_playlist_title(playlist),
          rdlp_playlist_id(playlist));
-  for (index = 0; index < rdlp_playlist_entry_count(playlist); ++index)
+  for (index = 0; index < rdlp_playlist_entry_count(playlist); ++index) {
+    uint64_t duration;
+    const char *channel = rdlp_playlist_entry_channel(playlist, index);
     printf("%lu\t%s\t%s\n",
            (unsigned long)rdlp_playlist_entry_index(playlist, index),
            rdlp_playlist_entry_video_id(playlist, index),
            rdlp_playlist_entry_title(playlist, index));
+    if (rdlp_playlist_entry_duration(playlist, index, &duration))
+      printf("  Duration: %" PRIu64 " seconds\n", duration);
+    if (channel != NULL)
+      printf("  Channel: %s\n", channel);
+  }
 
   rdlp_playlist_destroy(playlist);
   rdlp_context_destroy(context);

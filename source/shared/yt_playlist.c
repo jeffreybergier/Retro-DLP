@@ -214,33 +214,399 @@ static const char *renderer_text(cJSON *renderer, const char *name) {
   return yt_json_string(first, "text");
 }
 
-static YTStatus append_entry(YTPlaylist *playlist, const char *video_id,
-                             const char *title) {
+/* Metadata is copied only from the renderer already being enumerated. */
+static YTStatus copy_optional(char **out, const char *text) {
+  if (*out != NULL || text == NULL || text[0] == '\0')
+    return YT_OK;
+  *out = yt_copy_string(text);
+  return *out == NULL ? YT_ERR_OUT_OF_MEMORY : YT_OK;
+}
+
+static YTStatus copy_text(char **out, cJSON *node) {
+  const char *text;
+  cJSON *run;
+  cJSON *runs;
+  size_t length = 0;
+  size_t offset = 0;
+  if (*out != NULL || !cJSON_IsObject(node))
+    return YT_OK;
+  text = yt_json_string(node, "simpleText");
+  if (text == NULL)
+    text = yt_json_string(node, "content");
+  if (text != NULL && text[0] != '\0')
+    return copy_optional(out, text);
+  runs = cJSON_GetObjectItemCaseSensitive(node, "runs");
+  if (!cJSON_IsArray(runs))
+    return YT_OK;
+  cJSON_ArrayForEach(run, runs) {
+    text = yt_json_string(run, "text");
+    if (text != NULL) {
+      size_t part = strlen(text);
+      if (part > (size_t)-1 - length - 1)
+        return YT_ERR_OUT_OF_MEMORY;
+      length += part;
+    }
+  }
+  if (length == 0)
+    return YT_OK;
+  *out = (char *)malloc(length + 1);
+  if (*out == NULL)
+    return YT_ERR_OUT_OF_MEMORY;
+  cJSON_ArrayForEach(run, runs) {
+    text = yt_json_string(run, "text");
+    if (text != NULL) {
+      size_t part = strlen(text);
+      memcpy(*out + offset, text, part);
+      offset += part;
+    }
+  }
+  (*out)[length] = '\0';
+  return YT_OK;
+}
+
+/* JSON numbers must remain exact when serialized by cJSON (IEEE doubles). */
+#define YT_METADATA_INTEGER_MAX UINT64_C(9007199254740991)
+static int parse_unsigned(const char *text, uint64_t *value) {
+  uint64_t number = 0;
+  if (text == NULL || *text == '\0')
+    return 0;
+  for (; *text != '\0'; ++text) {
+    unsigned digit = (unsigned char)*text - '0';
+    if (digit > 9 || number > (YT_METADATA_INTEGER_MAX - digit) / 10)
+      return 0;
+    number = number * 10 + digit;
+  }
+  *value = number;
+  return 1;
+}
+
+static int parse_number(cJSON *node, uint64_t *value) {
+  double number;
+  if (cJSON_IsString(node))
+    return parse_unsigned(node->valuestring, value);
+  if (!cJSON_IsNumber(node))
+    return 0;
+  number = node->valuedouble;
+  if (!(number >= 0 && number <= (double)YT_METADATA_INTEGER_MAX))
+    return 0;
+  *value = (uint64_t)number;
+  return (double)*value == number;
+}
+
+static int parse_duration(const char *text, uint64_t *value) {
+  uint64_t total = 0;
+  uint64_t part = 0;
+  unsigned digits = 0;
+  unsigned groups = 0;
+  const char *cursor;
+  if (text == NULL)
+    return 0;
+  for (cursor = text;; ++cursor) {
+    if (*cursor >= '0' && *cursor <= '9') {
+      if (part > (YT_METADATA_INTEGER_MAX - 9) / 10)
+        return 0;
+      part = part * 10 + (unsigned)(*cursor - '0');
+      ++digits;
+    } else if (*cursor == ':' || *cursor == '\0') {
+      if (digits == 0 || (groups != 0 && (part >= 60 || digits != 2)) ||
+          groups >= 3 || total > (YT_METADATA_INTEGER_MAX - part) / 60)
+        return 0;
+      total = total * 60 + part;
+      ++groups;
+      if (*cursor == '\0')
+        break;
+      part = 0;
+      digits = 0;
+    } else {
+      return 0;
+    }
+  }
+  if (groups < 2)
+    return 0;
+  *value = total;
+  return 1;
+}
+
+/* Only unabridged English labels are numeric. Keep all labels as text. */
+static int parse_views(const char *text, uint64_t *value) {
+  char digits[32];
+  size_t count = 0;
+  unsigned group = 0;
+  int comma = 0;
+  if (text == NULL)
+    return 0;
+  if (strcasecmp(text, "No views") == 0) {
+    *value = 0;
+    return 1;
+  }
+  while ((*text >= '0' && *text <= '9') || *text == ',') {
+    if (*text == ',') {
+      if (group == 0 || (comma ? group != 3 : group > 3))
+        return 0;
+      comma = 1;
+      group = 0;
+    } else {
+      if (count + 1 >= sizeof(digits))
+        return 0;
+      digits[count++] = *text;
+      ++group;
+    }
+    ++text;
+  }
+  if ((comma && group != 3) ||
+      (strcmp(text, " views") != 0 && strcmp(text, " view") != 0))
+    return 0;
+  digits[count] = '\0';
+  return parse_unsigned(digits, value);
+}
+
+static void free_entry(YTPlaylistEntry *entry) {
+  size_t index;
+  free(entry->video_id);
+  free(entry->title);
+  free(entry->channel);
+  free(entry->channel_id);
+  for (index = 0; index < entry->thumbnail_count; ++index)
+    free(entry->thumbnail_urls[index]);
+  free(entry->thumbnail_urls);
+  free(entry->view_count_text);
+  free(entry->published_text);
+  free(entry->description_snippet);
+  memset(entry, 0, sizeof(*entry));
+}
+
+static YTStatus copy_thumbnails(YTPlaylistEntry *entry, cJSON *sources) {
+  cJSON *source;
+  if (!cJSON_IsArray(sources))
+    return YT_OK;
+  cJSON_ArrayForEach(source, sources) {
+    const char *url = yt_json_string(source, "url");
+    char **grown;
+    if (url == NULL || url[0] == '\0')
+      continue;
+    grown = (char **)realloc(entry->thumbnail_urls,
+                            (entry->thumbnail_count + 1) * sizeof(*grown));
+    if (grown == NULL)
+      return YT_ERR_OUT_OF_MEMORY;
+    entry->thumbnail_urls = grown;
+    grown[entry->thumbnail_count] = yt_copy_string(url);
+    if (grown[entry->thumbnail_count] == NULL)
+      return YT_ERR_OUT_OF_MEMORY;
+    ++entry->thumbnail_count;
+  }
+  return YT_OK;
+}
+
+static YTStatus copy_channel(YTPlaylistEntry *entry, cJSON *text) {
+  cJSON *endpoint = find_named_object(text, "browseEndpoint");
+  const char *id = yt_json_string(endpoint, "browseId");
+  YTStatus status = copy_text(&entry->channel, text);
+  if (status != YT_OK)
+    return status;
+  if (id != NULL && strncmp(id, "UC", 2) == 0)
+    return copy_optional(&entry->channel_id, id);
+  return YT_OK;
+}
+
+static YTStatus copy_video_info(YTPlaylistEntry *entry, cJSON *node) {
+  char *text = NULL;
+  char *separator;
+  YTStatus status = copy_text(&text, node);
+  if (status != YT_OK || text == NULL)
+    return status;
+  separator = strstr(text, " • ");
+  if (separator == NULL)
+    separator = strstr(text, " · ");
+  if (separator != NULL) {
+    size_t width = strstr(separator, " • ") == separator ? 5 : 4;
+    *separator = '\0';
+    /* Do not mistake unrelated combined metadata for view/publication text. */
+    if (strstr(text, " view") != NULL) {
+      status = copy_optional(&entry->view_count_text, text);
+      if (status == YT_OK)
+        status = copy_optional(&entry->published_text, separator + width);
+    }
+  }
+  free(text);
+  return status;
+}
+
+static int has_live_or_upcoming_badge(cJSON *node) {
+  cJSON *child;
+  const char *style;
+  if (node == NULL)
+    return 0;
+  child = cJSON_GetObjectItemCaseSensitive(node, "thumbnailBadgeViewModel");
+  style = yt_json_string(child, "text");
+  if (style != NULL && (strcasecmp(style, "LIVE") == 0 ||
+                        strcasecmp(style, "UPCOMING") == 0))
+    return 1;
+  style = yt_json_string(node, "style");
+  if (style != NULL && (strcmp(style, "LIVE") == 0 ||
+                        strcmp(style, "BADGE_STYLE_TYPE_LIVE_NOW") == 0))
+    return 1;
+  style = yt_json_string(node, "badgeStyle");
+  if (style != NULL && (strcmp(style, "THUMBNAIL_OVERLAY_BADGE_STYLE_LIVE") == 0 ||
+                        strcmp(style, "BADGE_STYLE_TYPE_LIVE_NOW") == 0))
+    return 1;
+  cJSON_ArrayForEach(child, node) {
+    if (has_live_or_upcoming_badge(child))
+      return 1;
+  }
+  return 0;
+}
+
+static int thumbnail_badge_duration(cJSON *node, uint64_t *duration) {
+  cJSON *child;
+  cJSON *badge;
+  if (node == NULL)
+    return 0;
+  badge = cJSON_GetObjectItemCaseSensitive(node, "thumbnailBadgeViewModel");
+  if (parse_duration(yt_json_string(badge, "text"), duration))
+    return 1;
+  cJSON_ArrayForEach(child, node) {
+    if (thumbnail_badge_duration(child, duration))
+      return 1;
+  }
+  return 0;
+}
+
+static YTStatus parse_entry_metadata(YTPlaylistEntry *entry, cJSON *renderer,
+                                    int lockup) {
+  cJSON *node;
+  cJSON *child;
+  cJSON *image;
+  char *duration_text = NULL;
+  YTStatus status = YT_OK;
+#define COPY_TEXT(field, object, name) do { \
+  status = copy_text(&entry->field, cJSON_GetObjectItemCaseSensitive(object, name)); \
+  if (status != YT_OK) goto finished; \
+} while (0)
+  if (!lockup) {
+    COPY_TEXT(title, renderer, "title");
+    node = cJSON_GetObjectItemCaseSensitive(renderer, "lengthSeconds");
+    entry->has_duration = parse_number(node, &entry->duration);
+    status = copy_text(&duration_text,
+                      cJSON_GetObjectItemCaseSensitive(renderer, "lengthText"));
+    if (status != YT_OK)
+      goto finished;
+    if (!entry->has_duration)
+      entry->has_duration = parse_duration(duration_text, &entry->duration);
+    free(duration_text);
+    duration_text = NULL;
+    node = find_named_object(
+        cJSON_GetObjectItemCaseSensitive(renderer, "thumbnailOverlays"),
+        "thumbnailOverlayTimeStatusRenderer");
+    status = copy_text(&duration_text,
+                      cJSON_GetObjectItemCaseSensitive(node, "text"));
+    if (status != YT_OK)
+      goto finished;
+    node = cJSON_GetObjectItemCaseSensitive(renderer, "shortBylineText");
+    status = copy_channel(entry, node);
+    if (status == YT_OK)
+      status = copy_channel(entry, cJSON_GetObjectItemCaseSensitive(renderer, "ownerText"));
+    if (status != YT_OK)
+      goto finished;
+    image = cJSON_GetObjectItemCaseSensitive(renderer, "thumbnail");
+    status = copy_thumbnails(entry, cJSON_GetObjectItemCaseSensitive(image, "thumbnails"));
+    if (status != YT_OK)
+      goto finished;
+    COPY_TEXT(view_count_text, renderer, "viewCountText");
+    COPY_TEXT(view_count_text, renderer, "shortViewCountText");
+    COPY_TEXT(published_text, renderer, "publishedTimeText");
+    COPY_TEXT(description_snippet, renderer, "descriptionSnippet");
+    node = cJSON_GetObjectItemCaseSensitive(renderer, "detailedMetadataSnippets");
+    if (cJSON_IsArray(node)) {
+      cJSON_ArrayForEach(child, node) {
+        COPY_TEXT(description_snippet, child, "snippetText");
+      }
+    }
+    status = copy_video_info(entry, cJSON_GetObjectItemCaseSensitive(renderer, "videoInfo"));
+  } else {
+    node = find_named_object(cJSON_GetObjectItemCaseSensitive(renderer, "metadata"),
+                             "lockupMetadataViewModel");
+    COPY_TEXT(title, node, "title");
+    image = cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(renderer, "contentImage"), "thumbnailViewModel");
+    status = copy_thumbnails(entry, cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(image, "image"), "sources"));
+    if (status != YT_OK)
+      goto finished;
+    entry->has_duration = thumbnail_badge_duration(
+        cJSON_GetObjectItemCaseSensitive(image, "overlays"), &entry->duration);
+    node = find_named_object(node, "contentMetadataViewModel");
+    node = cJSON_GetObjectItemCaseSensitive(node, "metadataRows");
+    if (cJSON_IsArray(node)) {
+      cJSON_ArrayForEach(child, node) {
+        cJSON *parts = cJSON_GetObjectItemCaseSensitive(child, "metadataParts");
+        cJSON *part;
+        cJSON *first;
+        cJSON *last;
+        if (!cJSON_IsArray(parts))
+          continue;
+        cJSON_ArrayForEach(part, parts) {
+          cJSON *text = cJSON_GetObjectItemCaseSensitive(part, "text");
+          cJSON *endpoint = find_named_object(text, "browseEndpoint");
+          const char *id = yt_json_string(endpoint, "browseId");
+          if (id != NULL && strncmp(id, "UC", 2) == 0 && entry->channel == NULL) {
+            status = copy_channel(entry, text);
+            if (status != YT_OK)
+              goto finished;
+          }
+        }
+        first = cJSON_GetArrayItem(parts, 0);
+        last = cJSON_GetArrayItem(parts, cJSON_GetArraySize(parts) - 1);
+        /* YouTube marks the view/time row with an accessibility label. */
+        if (cJSON_IsString(cJSON_GetObjectItemCaseSensitive(last, "accessibilityLabel")) &&
+            cJSON_GetArraySize(parts) == 2) {
+          COPY_TEXT(view_count_text, first, "text");
+          COPY_TEXT(published_text, last, "text");
+        }
+      }
+    }
+  }
+  if (!entry->has_duration)
+    entry->has_duration = parse_duration(duration_text, &entry->duration);
+  entry->has_view_count =
+      !has_live_or_upcoming_badge(renderer) &&
+      !cJSON_IsObject(cJSON_GetObjectItemCaseSensitive(renderer, "upcomingEventData")) &&
+      (duration_text == NULL || (strcasecmp(duration_text, "UPCOMING") != 0 &&
+                                 strcasecmp(duration_text, "LIVE") != 0)) &&
+      parse_views(entry->view_count_text, &entry->view_count);
+finished:
+  free(duration_text);
+#undef COPY_TEXT
+  return status;
+}
+
+static YTStatus append_entry(YTPlaylist *playlist, cJSON *renderer, int lockup) {
+  const char *video_id = yt_json_string(renderer, lockup ? "contentId" : "videoId");
   YTPlaylistEntry *grown;
-  YTPlaylistEntry *entry;
-  size_t capacity;
+  YTPlaylistEntry entry;
+  YTStatus status;
   if (video_id == NULL || strlen(video_id) != 11 ||
       playlist->entry_count >= YT_PLAYLIST_MAX_ENTRIES)
     return playlist->entry_count >= YT_PLAYLIST_MAX_ENTRIES
-               ? YT_ERR_INVALID_RESPONSE
-               : YT_OK;
-  capacity = playlist->entry_count + 1;
-  grown = (YTPlaylistEntry *)realloc(
-      playlist->entries, capacity * sizeof(*playlist->entries));
-  if (grown == NULL)
-    return YT_ERR_OUT_OF_MEMORY;
-  playlist->entries = grown;
-  entry = &playlist->entries[playlist->entry_count];
-  memset(entry, 0, sizeof(*entry));
-  entry->video_id = yt_copy_string(video_id);
-  entry->title = yt_copy_string(title == NULL ? "[Unavailable video]" : title);
-  if (entry->video_id == NULL || entry->title == NULL) {
-    free(entry->video_id);
-    free(entry->title);
+               ? YT_ERR_INVALID_RESPONSE : YT_OK;
+  memset(&entry, 0, sizeof(entry));
+  status = copy_optional(&entry.video_id, video_id);
+  if (status == YT_OK)
+    status = parse_entry_metadata(&entry, renderer, lockup);
+  if (status == YT_OK && entry.title == NULL)
+    status = copy_optional(&entry.title, "[Unavailable video]");
+  if (status != YT_OK) {
+    free_entry(&entry);
+    return status;
+  }
+  grown = (YTPlaylistEntry *)realloc(playlist->entries,
+      (playlist->entry_count + 1) * sizeof(*grown));
+  if (grown == NULL) {
+    free_entry(&entry);
     return YT_ERR_OUT_OF_MEMORY;
   }
-  entry->index = playlist->entry_count + 1;
-  ++playlist->entry_count;
+  playlist->entries = grown;
+  entry.index = playlist->entry_count + 1;
+  playlist->entries[playlist->entry_count++] = entry;
   return YT_OK;
 }
 
@@ -257,14 +623,12 @@ static YTStatus collect_entries(cJSON *node, YTPlaylist *playlist) {
     if (cJSON_IsObject(lockup)) {
       type = yt_json_string(lockup, "contentType");
       if (type != NULL && strcmp(type, "LOCKUP_CONTENT_TYPE_VIDEO") == 0)
-        return append_entry(playlist, yt_json_string(lockup, "contentId"),
-                            lockup_title(lockup));
+        return append_entry(playlist, lockup, 1);
     }
     renderer = cJSON_GetObjectItemCaseSensitive(node,
                                                  "playlistVideoRenderer");
     if (cJSON_IsObject(renderer))
-      return append_entry(playlist, yt_json_string(renderer, "videoId"),
-                          renderer_text(renderer, "title"));
+      return append_entry(playlist, renderer, 0);
   }
   cJSON_ArrayForEach(child, node) {
     status = collect_entries(child, playlist);
@@ -750,8 +1114,7 @@ void yt_playlist_free(YTPlaylist *playlist) {
   if (playlist == NULL)
     return;
   for (index = 0; index < playlist->entry_count; ++index) {
-    free(playlist->entries[index].video_id);
-    free(playlist->entries[index].title);
+    free_entry(&playlist->entries[index]);
   }
   free(playlist->entries);
   free(playlist->playlist_id);

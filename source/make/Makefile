@@ -30,6 +30,7 @@ TEST_SOURCES := \
 	source/shared/test/cookie_test.c \
 	source/shared/test/ejs_test.c source/shared/test/ejs_test_data.c \
 	source/shared/test/self_test.c source/shared/test/self_test_data.c \
+	source/shared/test/playlist_metadata_test.c \
 	source/shared/test/yt_formats_test_support.c
 MACOS_COMMON_SOURCES := $(CLI_SOURCES)
 IOS_COMMON_SOURCES := $(CLI_SOURCES)
@@ -309,7 +310,7 @@ $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM): $(LINUX_TEST_OBJECTS) \
 		$(QUICKJS_LIBRARY) $(LINUX_LSMASH_LIBRARY)
 	@echo "--- Building retro-dlp Linux Tests ---"
 	@mkdir -p $(dir $@)
-	@$(CC) $(LDFLAGS) -Wl,--wrap=malloc -Wl,--wrap=calloc \
+	@$(CC) $(LDFLAGS) -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc \
 		$(LINUX_TEST_OBJECTS) $(LINUX_LIBRARIES) $(LDLIBS) -o $@
 	@echo "  > $@"
 

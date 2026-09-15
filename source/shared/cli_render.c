@@ -376,6 +376,57 @@ int cli_render_download_result(const char *path, int64_t bytes_written) {
   return 0;
 }
 
+static int playlist_optional_string(cJSON *document, const char *name,
+                                    const char *value) {
+  return value == NULL || cJSON_AddStringToObject(document, name, value) != NULL;
+}
+
+static int playlist_metadata_json(cJSON *document, const rdlp_playlist *playlist,
+                                  size_t index) {
+  uint64_t value;
+  size_t thumbnail_index;
+  size_t count = rdlp_playlist_entry_thumbnail_count(playlist, index);
+  cJSON *thumbnails;
+  if (!playlist_optional_string(document, "channel",
+        rdlp_playlist_entry_channel(playlist, index)))
+    return 0;
+  if (!playlist_optional_string(document, "channel_id",
+        rdlp_playlist_entry_channel_id(playlist, index)))
+    return 0;
+  if (!playlist_optional_string(document, "view_count_text",
+        rdlp_playlist_entry_view_count_text(playlist, index)))
+    return 0;
+  if (!playlist_optional_string(document, "published_text",
+        rdlp_playlist_entry_published_text(playlist, index)))
+    return 0;
+  if (!playlist_optional_string(document, "description_snippet",
+        rdlp_playlist_entry_description_snippet(playlist, index)))
+    return 0;
+  if (rdlp_playlist_entry_duration(playlist, index, &value) &&
+      !cJSON_AddNumberToObject(document, "duration", (double)value))
+    return 0;
+  if (rdlp_playlist_entry_view_count(playlist, index, &value) &&
+      !cJSON_AddNumberToObject(document, "view_count", (double)value))
+    return 0;
+  if (count == 0)
+    return 1;
+  thumbnails = cJSON_AddArrayToObject(document, "thumbnails");
+  if (thumbnails == NULL)
+    return 0;
+  for (thumbnail_index = 0; thumbnail_index < count; ++thumbnail_index) {
+    cJSON *thumbnail = cJSON_CreateObject();
+    if (thumbnail == NULL)
+      return 0;
+    if (!cJSON_AddStringToObject(thumbnail, "url",
+          rdlp_playlist_entry_thumbnail_url(playlist, index, thumbnail_index)) ||
+        !cJSON_AddItemToArray(thumbnails, thumbnail)) {
+      cJSON_Delete(thumbnail);
+      return 0;
+    }
+  }
+  return 1;
+}
+
 int cli_render_playlist_json(const rdlp_playlist *playlist) {
   size_t index;
   for (index = 0; index < rdlp_playlist_entry_count(playlist); ++index) {
@@ -394,7 +445,8 @@ int cli_render_playlist_json(const rdlp_playlist *playlist) {
         !cJSON_AddStringToObject(document, "playlist_title", rdlp_playlist_title(playlist)) ||
         !cJSON_AddNumberToObject(document, "playlist_index", (double)rdlp_playlist_entry_index(playlist, index)) ||
         !cJSON_AddStringToObject(document, "_type", "url") ||
-        !cJSON_AddStringToObject(document, "extractor_key", "Youtube")) {
+        !cJSON_AddStringToObject(document, "extractor_key", "Youtube") ||
+        !playlist_metadata_json(document, playlist, index)) {
       cJSON_Delete(document);
       return 1;
     }

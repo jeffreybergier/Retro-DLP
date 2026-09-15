@@ -890,6 +890,74 @@ size_t rdlp_playlist_entry_index(const rdlp_playlist *playlist,
              : playlist->value.entries[entry_index].index;
 }
 
+static const YTPlaylistEntry *playlist_entry_at(const rdlp_playlist *playlist,
+                                                size_t entry_index) {
+  return playlist == NULL || entry_index >= playlist->value.entry_count
+             ? NULL : &playlist->value.entries[entry_index];
+}
+
+const char *rdlp_playlist_entry_channel(const rdlp_playlist *playlist,
+                                             size_t entry_index) {
+  const YTPlaylistEntry *entry = playlist_entry_at(playlist, entry_index);
+  return entry == NULL ? NULL : entry->channel;
+}
+
+const char *rdlp_playlist_entry_channel_id(const rdlp_playlist *playlist,
+                                             size_t entry_index) {
+  const YTPlaylistEntry *entry = playlist_entry_at(playlist, entry_index);
+  return entry == NULL ? NULL : entry->channel_id;
+}
+
+const char *rdlp_playlist_entry_view_count_text(const rdlp_playlist *playlist,
+                                             size_t entry_index) {
+  const YTPlaylistEntry *entry = playlist_entry_at(playlist, entry_index);
+  return entry == NULL ? NULL : entry->view_count_text;
+}
+
+const char *rdlp_playlist_entry_published_text(const rdlp_playlist *playlist,
+                                             size_t entry_index) {
+  const YTPlaylistEntry *entry = playlist_entry_at(playlist, entry_index);
+  return entry == NULL ? NULL : entry->published_text;
+}
+
+const char *rdlp_playlist_entry_description_snippet(const rdlp_playlist *playlist,
+                                             size_t entry_index) {
+  const YTPlaylistEntry *entry = playlist_entry_at(playlist, entry_index);
+  return entry == NULL ? NULL : entry->description_snippet;
+}
+
+int rdlp_playlist_entry_duration(const rdlp_playlist *playlist,
+                                    size_t entry_index, uint64_t *value) {
+  const YTPlaylistEntry *entry = playlist_entry_at(playlist, entry_index);
+  if (entry == NULL || !entry->has_duration || value == NULL)
+    return 0;
+  *value = entry->duration;
+  return 1;
+}
+
+int rdlp_playlist_entry_view_count(const rdlp_playlist *playlist,
+                                    size_t entry_index, uint64_t *value) {
+  const YTPlaylistEntry *entry = playlist_entry_at(playlist, entry_index);
+  if (entry == NULL || !entry->has_view_count || value == NULL)
+    return 0;
+  *value = entry->view_count;
+  return 1;
+}
+
+size_t rdlp_playlist_entry_thumbnail_count(const rdlp_playlist *playlist,
+                                             size_t entry_index) {
+  const YTPlaylistEntry *entry = playlist_entry_at(playlist, entry_index);
+  return entry == NULL ? 0 : entry->thumbnail_count;
+}
+
+const char *rdlp_playlist_entry_thumbnail_url(const rdlp_playlist *playlist,
+                                               size_t entry_index,
+                                               size_t thumbnail_index) {
+  const YTPlaylistEntry *entry = playlist_entry_at(playlist, entry_index);
+  return entry == NULL || thumbnail_index >= entry->thumbnail_count
+             ? NULL : entry->thumbnail_urls[thumbnail_index];
+}
+
 void rdlp_playlist_collection_destroy(rdlp_playlist_collection *collection) {
   if (collection == NULL)
     return;

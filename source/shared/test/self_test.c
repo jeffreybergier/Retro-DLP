@@ -22,6 +22,8 @@
 #include "yt_resolver.h"
 #include "yt_formats_test_support.h"
 
+int retro_dlp_run_playlist_metadata_tests(void);
+
 #define SELF_TEST_VIDEO_ID "YE7VzlLtp-4"
 
 static void announce_test(const char *description) {
@@ -686,6 +688,7 @@ int retro_dlp_run_self_tests(void) {
   failures += test_playlist_id();
   failures += test_playlist_collection_json();
   failures += test_playlist_page_fixtures();
+  failures += retro_dlp_run_playlist_metadata_tests();
   announce_test("title-based default output path");
   failures += test_default_output_path();
   announce_test("cJSON parsing");

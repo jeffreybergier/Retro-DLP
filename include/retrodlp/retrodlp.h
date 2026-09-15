@@ -282,6 +282,33 @@ RDLP_API const char *rdlp_playlist_entry_title(const rdlp_playlist *playlist,
 RDLP_API size_t rdlp_playlist_entry_index(const rdlp_playlist *playlist,
                                           size_t entry_index);
 
+/* Optional data copied from existing playlist responses; no per-video requests.
+ * Strings are borrowed until rdlp_playlist_destroy; absent/invalid entries
+ * return NULL. Publication text may be relative and descriptions truncated.
+ * Numeric getters return 1 when present (including zero), 0 otherwise and
+ * leave the output untouched. A NULL output also returns 0. Counts are exact,
+ * never expanded from abbreviated labels. Indices are zero based.
+ */
+RDLP_API const char *rdlp_playlist_entry_channel(
+    const rdlp_playlist *playlist, size_t entry_index);
+RDLP_API const char *rdlp_playlist_entry_channel_id(
+    const rdlp_playlist *playlist, size_t entry_index);
+RDLP_API const char *rdlp_playlist_entry_view_count_text(
+    const rdlp_playlist *playlist, size_t entry_index);
+RDLP_API const char *rdlp_playlist_entry_published_text(
+    const rdlp_playlist *playlist, size_t entry_index);
+RDLP_API const char *rdlp_playlist_entry_description_snippet(
+    const rdlp_playlist *playlist, size_t entry_index);
+RDLP_API int rdlp_playlist_entry_duration(
+    const rdlp_playlist *playlist, size_t entry_index, uint64_t *value);
+RDLP_API int rdlp_playlist_entry_view_count(
+    const rdlp_playlist *playlist, size_t entry_index, uint64_t *value);
+/* Duration is seconds. Thumbnail URLs are not fetched; count is zero if absent. */
+RDLP_API size_t rdlp_playlist_entry_thumbnail_count(
+    const rdlp_playlist *playlist, size_t entry_index);
+RDLP_API const char *rdlp_playlist_entry_thumbnail_url(
+    const rdlp_playlist *playlist, size_t entry_index, size_t thumbnail_index);
+
 RDLP_API void rdlp_playlist_collection_destroy(
     rdlp_playlist_collection *collection);
 RDLP_API size_t rdlp_playlist_collection_count(

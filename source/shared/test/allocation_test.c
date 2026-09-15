@@ -11,17 +11,35 @@
 typedef enum {
   ALLOCATION_FAILURE_NONE = 0,
   ALLOCATION_FAILURE_MALLOC_SIZE,
+  ALLOCATION_FAILURE_NTH,
   ALLOCATION_FAILURE_NEXT_CALLOC
 } AllocationFailureMode;
 
 static AllocationFailureMode allocation_failure_mode;
 static size_t allocation_failure_size;
 static size_t allocation_observed_size;
+static size_t allocation_countdown;
 
 void *__real_malloc(size_t size);
 void *__real_calloc(size_t count, size_t size);
+void *__real_realloc(void *pointer, size_t size);
+
+static int fail_nth_allocation(void) {
+  if (allocation_failure_mode == ALLOCATION_FAILURE_NTH &&
+      --allocation_countdown == 0) {
+    allocation_failure_mode = ALLOCATION_FAILURE_NONE;
+    return 1;
+  }
+  return 0;
+}
+
+void *__wrap_realloc(void *pointer, size_t size) {
+  return fail_nth_allocation() ? NULL : __real_realloc(pointer, size);
+}
 
 void *__wrap_malloc(size_t size) {
+  if (fail_nth_allocation())
+    return NULL;
   if (allocation_failure_mode == ALLOCATION_FAILURE_MALLOC_SIZE)
     allocation_observed_size = size;
   if (allocation_failure_mode == ALLOCATION_FAILURE_MALLOC_SIZE &&
@@ -33,6 +51,8 @@ void *__wrap_malloc(size_t size) {
 }
 
 void *__wrap_calloc(size_t count, size_t size) {
+  if (fail_nth_allocation())
+    return NULL;
   if (allocation_failure_mode == ALLOCATION_FAILURE_NEXT_CALLOC) {
     allocation_failure_mode = ALLOCATION_FAILURE_NONE;
     return NULL;
@@ -163,12 +183,62 @@ static int test_pagination_token_allocation(void) {
   return 0;
 }
 
+static int test_metadata_allocations(void) {
+  static const char json[] =
+      "{\"contents\":[{\"playlistVideoRenderer\":{"
+      "\"videoId\":\"AAAAAAAAAAA\",\"title\":{\"runs\":[{\"text\":\"Rich \"},"
+      "{\"text\":\"title\"}]},\"lengthText\":{\"simpleText\":\"1:02\"},"
+      "\"shortBylineText\":{\"runs\":[{\"text\":\"Channel\",\"navigationEndpoint\":{"
+      "\"browseEndpoint\":{\"browseId\":\"UC_fixture\"}}}]},"
+      "\"thumbnail\":{\"thumbnails\":[{\"url\":\"https://img.example/1\"},"
+      "{\"url\":\"https://img.example/2\"}]},"
+      "\"descriptionSnippet\":{\"simpleText\":\"Description\"},"
+      "\"publishedTimeText\":{\"simpleText\":\"Yesterday\"},"
+      "\"viewCountText\":{\"simpleText\":\"123 views\"}}}]}";
+  cJSON *document = cJSON_Parse(json);
+  size_t nth;
+  int complete = 0;
+  if (document == NULL)
+    return 1;
+  for (nth = 1; nth < 100; ++nth) {
+    YTPlaylist playlist;
+    char *continuation = NULL;
+    YTStatus status;
+    int injected;
+    memset(&playlist, 0, sizeof(playlist));
+    allocation_countdown = nth;
+    allocation_failure_mode = ALLOCATION_FAILURE_NTH;
+    status = yt_playlist_collect_entries(document, &playlist, &continuation);
+    injected = allocation_failure_mode == ALLOCATION_FAILURE_NONE;
+    reset_allocation_failure();
+    free(continuation);
+    yt_playlist_free(&playlist);
+    if (status != (injected ? YT_ERR_OUT_OF_MEMORY : YT_OK)) {
+      fprintf(stderr, "FAIL: playlist metadata allocation %lu (status=%d)\n",
+              (unsigned long)nth, (int)status);
+      cJSON_Delete(document);
+      return 1;
+    }
+    if (!injected) {
+      complete = 1;
+      break;
+    }
+  }
+  cJSON_Delete(document);
+  if (!complete)
+    return 1;
+  printf("PASS: playlist metadata cleanup at every allocation failure (%lu sites)\n",
+         (unsigned long)(nth - 1));
+  return 0;
+}
+
 int retro_dlp_run_allocation_tests(void) {
   int failures;
   printf("RUN: injectable allocation failures\n");
   fflush(stdout);
   failures = test_owned_result_allocations();
   failures += test_pagination_token_allocation();
+  failures += test_metadata_allocations();
   reset_allocation_failure();
   return failures;
 }

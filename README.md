@@ -67,6 +67,27 @@ So if you authenticate with cookies, **please be careful.**
 
 - [Exporting Cookies Guide](https://github.com/yt-dlp/yt-dlp/wiki/Extractors)
 
+### Playlist metadata without per-video requests
+
+```sh
+retro-dlp --flat-playlist -j 'https://www.youtube.com/playlist?list=PLAYLIST_ID'
+```
+
+Each JSON line includes optional `duration` (seconds), `channel`, `channel_id`,
+`thumbnails` (objects containing `url`), `view_count`, `view_count_text`,
+`published_text`, and `description_snippet` when available in the existing
+playlist responses. Missing fields are omitted. For example, a row can include:
+
+```json
+{"duration":62,"channel":"Example channel","view_count_text":"1.2M views","published_text":"2 days ago","description_snippet":"A short description…","thumbnails":[{"url":"https://example.com/thumbnail.jpg"}]}
+```
+
+`view_count` is included only for exact, unabridged counts; rounded labels stay
+in `view_count_text`. Publication text stays as supplied, including relative
+ages, and snippets may be truncated. Thumbnail URLs are listed without fetching
+the images. The normal playlist webpage, browse, and continuation request flow
+is unchanged; individual videos are never resolved for these fields.
+
 ## Compatibility
 
 | Platform | Architectures | Minimum OS | Tested |

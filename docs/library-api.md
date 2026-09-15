@@ -165,9 +165,38 @@ When `include_format_inventory` was nonzero, the format accessors expose each
 format's itag, MIME type, dimensions, frame rate, video/audio presence, and
 whether Retro-DLP supports it.
 
-Playlist accessors expose ID, title, and ordered entries. Each entry has its
-service index, video ID, and title. Playlist-collection accessors expose the
-count and each playlist's service index, ID, and title.
+Playlist accessors expose ID, title, and ordered entries, preserving duplicate
+video occurrences. Each entry has its service index, video ID, and title.
+Playlist-collection accessors expose the count and each playlist's service
+index, ID, and title.
+
+Optional entry metadata is copied from the classic playlist or lockup renderer
+in the existing playlist webpage/browse/continuation responses. No per-video
+resolution or thumbnail downloads are added. If the existing browse reload
+succeeds, its rows remain authoritative; metadata present only in the discarded
+bootstrap page is not merged into those rows.
+
+| Accessor suffix (`rdlp_playlist_entry_…`) | Value |
+|---|---|
+| `duration(playlist, index, &value)` | Duration in seconds |
+| `channel`, `channel_id` | Channel display name and available channel ID |
+| `thumbnail_count`, `thumbnail_url(playlist, index, thumbnail_index)` | Listed thumbnail URLs, without image requests |
+| `view_count(playlist, index, &value)` | Exact, unabridged view count |
+| `view_count_text` | Original display label, including rounded counts or live viewers |
+| `published_text` | Original publication text, often relative |
+| `description_snippet` | Available snippet, potentially truncated |
+
+All indices are zero based. Optional string getters return `NULL` when absent;
+thumbnail count returns zero. The numeric getters return 1 when present,
+including a value of zero, and write a `uint64_t` output. They return 0 and leave
+the output untouched for missing values, invalid entry indices, or a `NULL`
+playlist/output pointer. Numeric values are limited to 2^53−1 so CLI JSON
+numbers remain exact. Abbreviated/localized/ambiguous count labels stay as text;
+live/upcoming counts are not exposed as cumulative `view_count`. Publication
+text is not converted into estimated dates. Joined text runs retain the full
+available title, byline, or snippet. All strings follow the borrowed lifetime
+rules above. The CLI exposes these same optional values with
+`--flat-playlist -j`, omitting absent JSON fields.
 
 On every failed operation, its output pointer is set to `NULL`. Destroy
 functions accept `NULL`.
@@ -321,6 +350,7 @@ methods are `RDLP_HTTP_GET`, `RDLP_HTTP_POST`, and `RDLP_HTTP_HEAD`.
 | Selected media | `rdlp_selection_media_count`, `rdlp_selection_media_url`, `rdlp_selection_media_mime_type`, `rdlp_selection_media_itag`, `rdlp_selection_media_width`, `rdlp_selection_media_height`, `rdlp_selection_media_content_length`, `rdlp_selection_media_fps`, `rdlp_selection_media_audio_channels`, `rdlp_selection_media_header_count`, `rdlp_selection_media_header` |
 | Format inventory | `rdlp_selection_format_count`, `rdlp_selection_format_itag`, `rdlp_selection_format_mime_type`, `rdlp_selection_format_width`, `rdlp_selection_format_height`, `rdlp_selection_format_fps`, `rdlp_selection_format_has_video`, `rdlp_selection_format_has_audio`, `rdlp_selection_format_is_supported` |
 | Playlist | `rdlp_playlist_destroy`, `rdlp_playlist_id`, `rdlp_playlist_title`, `rdlp_playlist_entry_count`, `rdlp_playlist_entry_video_id`, `rdlp_playlist_entry_title`, `rdlp_playlist_entry_index` |
+| Optional playlist metadata | `rdlp_playlist_entry_duration`, `rdlp_playlist_entry_channel`, `rdlp_playlist_entry_channel_id`, `rdlp_playlist_entry_thumbnail_count`, `rdlp_playlist_entry_thumbnail_url`, `rdlp_playlist_entry_view_count`, `rdlp_playlist_entry_view_count_text`, `rdlp_playlist_entry_published_text`, `rdlp_playlist_entry_description_snippet` |
 | Playlist collection | `rdlp_playlist_collection_destroy`, `rdlp_playlist_collection_count`, `rdlp_playlist_collection_id`, `rdlp_playlist_collection_title`, `rdlp_playlist_collection_index` |
 
 All accessors are side-effect-free. Pointer accessors return borrowed pointers;
