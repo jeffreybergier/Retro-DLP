@@ -1,5 +1,25 @@
 #import <Foundation/Foundation.h>
 
+/* Immutable, count-first database list. Row payloads are loaded on demand and
+   cached in a bounded working set. Each list holds its own WAL read snapshot. */
+@class RDLPLibrary;
+@interface RDLPLibraryRows : NSArray {
+@private
+  void *reader_;
+  RDLPLibrary *owner_;
+  BOOL readFailed_;
+  int query_;
+  long long key_;
+  NSString *video_, *format_;
+  NSUInteger count_, lastIndex_;
+  long long lastIdentity_;
+  NSMutableDictionary *cache_;
+}
+- (NSUInteger)indexForIdentity:(NSString *)identity;
+- (id)cachedObjectAtIndex:(NSUInteger)index;
+/* Resolve a playlist within this list's snapshot, preserving sidebar selection. */
+- (NSDictionary *)playlistForID:(NSString *)key;
+@end
 extern NSString * const RDLPLibraryDidChange;
 extern NSString * const RDLPLibraryStatusDidChange;
 extern NSString * const RDLPLibraryErrorDidOccur;
@@ -7,7 +27,7 @@ extern NSString * const RDLPLibraryErrorDidOccur;
 @interface RDLPLibrary : NSObject {
 @private
   void *store_;
-  NSLock *lock_;
+  NSLock *lock_, *cancelLock_;
   NSMutableArray *commands_;
   NSDictionary *activeCommand_;
   NSString *support_, *root_, *ca_, *assets_, *cookies_, *status_;
@@ -30,7 +50,21 @@ extern NSString * const RDLPLibraryErrorDidOccur;
 + (BOOL)savePreferredFormat:(NSString *)format;
 - (id)initWithSupportDirectory:(NSString *)support downloadDirectory:(NSString *)root;
 - (NSArray *)playlists;
+- (NSArray *)playlistsFromAccount:(BOOL)account;
+- (NSArray *)playlistIDsFromAccount:(BOOL)account;
+- (NSDictionary *)playlistForID:(NSString *)key;
+- (NSDictionary *)jobForID:(NSString *)key;
+- (NSArray *)jobsForPlaylist:(NSString *)key video:(NSString *)video;
+- (NSDictionary *)jobForPlaylist:(NSString *)key video:(NSString *)video format:(NSString *)format;
+- (RDLPLibraryRows *)queueRows;
+- (NSUInteger)queuedCount;
+- (BOOL)hasBlockingJobsForPlaylist:(NSString *)key;
+- (BOOL)hasPlaylistsToSync;
+/* Menu validation uses stored states; explicit bulk planning also checks files. */
+- (BOOL)hasMissingEntriesForPlaylist:(NSString *)key format:(NSString *)format;
+- (NSArray *)missingPlanForPlaylist:(NSString *)key format:(NSString *)format;
 - (NSArray *)entriesForPlaylist:(NSString *)key;
+- (BOOL)playlist:(NSString *)key containsVideo:(NSString *)video;
 - (NSArray *)jobsForPlaylist:(NSString *)key completedOnly:(BOOL)completed;
 - (NSString *)status;
 /* Current transfer, separate from queue attempt counts. Empty status is idle.

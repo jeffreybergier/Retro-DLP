@@ -18,7 +18,7 @@
   NSAlert *confirmation_;
   NSDictionary *confirmationRequest_;
   NSPanel *addSheet_, *downloadSheet_;
-  NSArray *playlists_, *rows_, *jobs_;
+  NSArray *playlists_, *rows_, *addedPlaylists_, *accountPlaylists_;
   NSString *selectedPlaylist_, *downloadFormat_;
   NSDictionary *downloadRequest_;
   int mode_, context_;

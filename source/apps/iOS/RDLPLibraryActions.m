@@ -9,12 +9,9 @@
   if([action isEqualToString:@"clearCookies"]) return ![library_ isBusy] && ![[library_ cookieStatus] isEqualToString:@"Not Imported"];
   if([action isEqualToString:@"discover"]) return ![library_ isBusy] && ![library_ isDiscoveryPending];
   if([action isEqualToString:@"sync"]) return playlist_ && ![library_ isSyncPendingForInput:[playlist_ objectForKey:@"service_id"]];
-  if([action isEqualToString:@"syncAll"]) {
-    for(NSDictionary *playlist in [library_ playlists]) if(![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) return YES;
-    return NO;
-  }
+  if([action isEqualToString:@"syncAll"]) return [library_ hasPlaylistsToSync];
   if([action isEqualToString:@"removePlaylist"]) return [model_ canRemovePlaylist:playlist_];
-  if([action isEqualToString:@"bulk"]) return [[model_ missingPlanForPlaylist:[playlist_ objectForKey:@"id"] format:[RDLPLibrary preferredFormat]] count]>0;
+  if([action isEqualToString:@"bulk"]) return [library_ hasMissingEntriesForPlaylist:[playlist_ objectForKey:@"id"] format:[RDLPLibrary preferredFormat]];
   if([action isEqualToString:@"delete"]) return ![library_ isBusy];
   return YES;
 }

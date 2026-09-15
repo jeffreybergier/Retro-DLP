@@ -1,4 +1,5 @@
 #import "RDLPLibraryViews.h"
+#import "RDLPLibrary.h"
 
 /* Preserve spoken status text even though the visible cell contains only an icon. */
 
@@ -132,7 +133,13 @@
   return [RDLPAppKit controlIcon:icon style:AIFontAwesomeStyleSolid iconSize:24 canvasSize:32 scale:[RDLPAppKit backingScaleForWindow:window]];
 }
 + (void)restoreSelection:(NSTableView *)view rows:(NSArray *)rows key:(NSString *)key value:(NSString *)value {
-  unsigned int i; [view deselectAll:nil];
+  [view deselectAll:nil];
+  if([rows isKindOfClass:[RDLPLibraryRows class]]) {
+    NSUInteger index=[(RDLPLibraryRows *)rows indexForIdentity:value];
+    if(index!=NSNotFound) [view selectRowIndexes:[NSIndexSet indexSetWithIndex:index] byExtendingSelection:NO];
+    return;
+  }
+  unsigned int i;
   for(i=0;value && i<[rows count];++i) if([[[rows objectAtIndex:i] objectForKey:key] isEqualToString:value]) {
     [view selectRowIndexes:[NSIndexSet indexSetWithIndex:i] byExtendingSelection:NO]; break;
   }

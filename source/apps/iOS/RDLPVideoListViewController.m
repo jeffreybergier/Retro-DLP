@@ -95,7 +95,10 @@
 - (BOOL)tableView:(UITableView *)table canEditRowAtIndexPath:(NSIndexPath *)index;
 {
   (void)table;
-  return [self canDeleteJob:[model_ currentJob:[[[self rowAtIndex:index] objectForKey:@"job"] objectForKey:@"id"]]];
+  RDLPLibraryRows *rows=[[sections_ objectAtIndex:(NSUInteger)index.section] objectForKey:@"rows"];
+  /* UIKit may ask about offscreen rows. Only inspect the displayed row here;
+   * deleteJob: revalidates the captured job ID immediately before mutation. */
+  return [self canDeleteJob:[[rows cachedObjectAtIndex:(NSUInteger)index.row] objectForKey:@"job"]];
 }
 - (UITableViewCellEditingStyle)tableView:(UITableView *)table editingStyleForRowAtIndexPath:(NSIndexPath *)index;
 { return [self tableView:table canEditRowAtIndexPath:index]?UITableViewCellEditingStyleDelete:UITableViewCellEditingStyleNone; }
@@ -186,8 +189,7 @@
   if(!retry) return;
   /* A sync or another download can finish while the confirmation is open. */
   BOOL eligible=mode_==RDLPScreenDownloads;
-  if(!eligible) for(NSDictionary *candidate in [library_ entriesForPlaylist:[playlist_ objectForKey:@"id"]])
-    if([[candidate objectForKey:@"video_id"] isEqualToString:[[request objectForKey:@"entry"] objectForKey:@"video_id"]]) { eligible=YES; break; }
+  if(!eligible) eligible=[library_ playlist:[playlist_ objectForKey:@"id"] containsVideo:[[request objectForKey:@"entry"] objectForKey:@"video_id"]];
   NSDictionary *job=[model_ currentJob:[request objectForKey:@"job"]];
   if(eligible && ([policy_ canRetry:job] || [policy_ canDownloadAgain:job]))
     [library_ retryJob:[job objectForKey:@"id"]];

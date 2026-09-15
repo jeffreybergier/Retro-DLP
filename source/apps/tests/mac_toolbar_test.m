@@ -178,6 +178,7 @@ static NSArray *titles(NSMenu *menu) {
     requireCondition(library_!=nil,@"Fixture failed to open");
     testSharedStatus(@"/tmp/retrodlp-toolbar-fixture/Status");
     requireCondition([[library_ playlists] count]==1 && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Use a fresh fixture");
+    testSharedLists(library_);
     RDLPDownloadPolicy *policy=[[[RDLPDownloadPolicy alloc] initWithLibrary:library_] autorelease];
     requireCondition(![policy playable:nil] && ![policy canRetry:nil] && ![policy canCancel:nil] &&
       ![policy canDownloadAgain:nil] && ![policy canRemove:nil],@"No selection must enable no job actions");

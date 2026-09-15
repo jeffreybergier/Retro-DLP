@@ -20,6 +20,66 @@ static int collect(void *context,int count,const char *const *names,const char *
   for(i=0;i<count;++i) [row setObject:string(values[i]) forKey:string(names[i])];
   [(NSMutableArray *)context addObject:row]; return 1;
 }
+@interface RDLPLibrary (ReadErrors)
+- (void)reportError:(NSString *)title detail:(NSString *)detail;
+@end
+@interface RDLPLibraryRows (Private)
+- (id)initWithLibrary:(RDLPLibrary *)library path:(NSString *)path query:(rdapp_query)query key:(NSString *)key video:(NSString *)video format:(NSString *)format;
+@end
+@implementation RDLPLibraryRows
+- (id)initWithLibrary:(RDLPLibrary *)library path:(NSString *)path query:(rdapp_query)query key:(NSString *)key video:(NSString *)video format:(NSString *)format;
+{
+  self=[super init]; if(!self) return nil;
+  owner_=[library retain]; query_=(int)query; key_=identifier(key); video_=[video copy]; format_=[format copy];
+  cache_=[[NSMutableDictionary alloc] init]; int64_t count=0;
+  if(!rdapp_store_open_reader([path fileSystemRepresentation],(rdapp_store **)&reader_) ||
+     !rdapp_store_count(reader_,query,key_,[video UTF8String],[format UTF8String],&count)) { [self release]; return nil; }
+  count_=(NSUInteger)count; lastIndex_=NSNotFound; return self;
+}
+- (void)dealloc;
+{ rdapp_store_close(reader_); [owner_ release]; [video_ release]; [format_ release]; [cache_ release]; [super dealloc]; }
+- (NSUInteger)count; { return count_; }
+- (id)copyWithZone:(NSZone *)zone; { (void)zone; return [self retain]; }
+- (id)objectAtIndex:(NSUInteger)index;
+{
+  if(index>=count_) [NSException raise:NSRangeException format:@"Library row %lu outside %lu rows",(unsigned long)index,(unsigned long)count_];
+  NSNumber *key=[NSNumber numberWithUnsignedLong:index];
+  NSDictionary *row=[cache_ objectForKey:key];
+  if(!row) {
+    NSMutableArray *rows=[NSMutableArray array];
+    BOOL seek=lastIndex_!=NSNotFound && index==lastIndex_+1 &&
+      query_!=RDAPP_PLAYLISTS && query_!=RDAPP_ADDED_PLAYLISTS && query_!=RDAPP_ACCOUNT_PLAYLISTS && query_!=RDAPP_PLAYLIST && query_!=RDAPP_PLAYLIST_INPUT && query_!=RDAPP_ADDED_IDS && query_!=RDAPP_ACCOUNT_IDS;
+    int ok=seek?rdapp_store_after(reader_,(rdapp_query)query_,key_,[video_ UTF8String],[format_ UTF8String],lastIdentity_,collect,rows):
+      rdapp_store_page(reader_,(rdapp_query)query_,key_,[video_ UTF8String],[format_ UTF8String],(int64_t)index,1,collect,rows);
+    if(!ok && !readFailed_) {
+      readFailed_=YES;
+      [owner_ reportError:@"Couldn’t read library" detail:string(rdapp_store_error(reader_))];
+    }
+    row=[rows count]?[rows objectAtIndex:0]:[NSDictionary dictionary];
+    /* Retain only a small working set, even after scrolling through a huge list. */
+    if([cache_ count]>=128) [cache_ removeAllObjects];
+    [cache_ setObject:row forKey:key];
+  }
+  lastIndex_=index; lastIdentity_=identifier([row objectForKey:(query_==RDAPP_ENTRIES || query_==RDAPP_VIDEO_ENTRIES || query_==RDAPP_MISSING || query_==RDAPP_DOWNLOAD_CANDIDATES)?@"position":@"id"]);
+  return [[row retain] autorelease];
+}
+- (id)cachedObjectAtIndex:(NSUInteger)index;
+{ return [cache_ objectForKey:[NSNumber numberWithUnsignedLong:index]]; }
+- (NSDictionary *)playlistForID:(NSString *)key;
+{
+  if(!key) return nil;
+  NSMutableArray *rows=[NSMutableArray array];
+  if(!rdapp_store_page(reader_,RDAPP_PLAYLIST,identifier(key),NULL,NULL,0,1,collect,rows)) return nil;
+  return [rows count]?[rows objectAtIndex:0]:nil;
+}
+- (NSUInteger)indexForIdentity:(NSString *)identity;
+{
+  int64_t index=-1;
+  if(!identity) return NSNotFound;
+  if(!rdapp_store_index(reader_,(rdapp_query)query_,key_,identifier(identity),&index)) return NSNotFound;
+  return index<0?NSNotFound:(NSUInteger)index;
+}
+@end
 @interface RDLPLibrary (Private)
 - (void)startNext;
 - (void)work:(NSDictionary *)command;
@@ -88,7 +148,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (id)initWithSupportDirectory:(NSString *)support downloadDirectory:(NSString *)root;
 {
   self=[super init]; if(!self) return nil;
-  support_=[support copy]; root_=[root copy]; lock_=[[NSLock alloc] init]; commands_=[[NSMutableArray alloc] init];
+  support_=[support copy]; root_=[root copy]; lock_=[[NSLock alloc] init]; cancelLock_=[[NSLock alloc] init]; commands_=[[NSMutableArray alloc] init];
   cookies_=[[support stringByAppendingPathComponent:@"cookies.txt"] copy];
   ca_=[[[NSBundle mainBundle] pathForResource:@"cacert" ofType:@"pem"] copy];
   assets_=[[[NSBundle mainBundle] resourcePath] stringByAppendingPathComponent:@"ejs"];
@@ -101,15 +161,15 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   }
   chmod([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],0600);
   paused_=YES;
-  if(!rdapp_store_reconcile(store_,[root_ fileSystemRepresentation]))
-    [self reportError:@"Couldn’t read library" detail:string(rdapp_store_error(store_))];
+  [commands_ addObject:[NSDictionary dictionaryWithObject:@"reconcile" forKey:@"type"]];
+  [self performSelector:@selector(startNext) withObject:nil afterDelay:0];
   return self;
 }
 - (void)dealloc;
 {
   [NSObject cancelPreviousPerformRequestsWithTarget:self];
   [lastPhase_ release]; [lastReadError_ release]; [errors_ release];
-  rdapp_store_close(store_); [lock_ release]; [commands_ release]; [activeCommand_ release]; [support_ release]; [root_ release];
+  rdapp_store_close(store_); [lock_ release]; [cancelLock_ release]; [commands_ release]; [activeCommand_ release]; [support_ release]; [root_ release];
   [ca_ release]; [assets_ release]; [cookies_ release]; [status_ release]; [super dealloc];
 }
 - (void)changed; { [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryDidChange object:self]; }
@@ -148,12 +208,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (BOOL)isBusy; { return busy_; }
 - (NSDictionary *)queueProgress;
 {
-  NSUInteger pending=0, running=0;
-  NSEnumerator *e=[[self jobsForPlaylist:nil completedOnly:NO] objectEnumerator]; NSDictionary *job;
-  while((job=[e nextObject])) {
-    NSString *state=[job objectForKey:@"state"];
-    if([state isEqualToString:@"queued"]) ++pending;
-  }
+  NSUInteger pending=[self queuedCount], running=0;
   /* The worker can finish its store update before finished: reaches the UI. */
   if([[activeCommand_ objectForKey:@"type"] isEqualToString:@"download"]) running=1;
   return [NSDictionary dictionaryWithObjectsAndKeys:
@@ -190,32 +245,93 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (void)startDownloads;
 { paused_=NO; [self startNext]; }
 - (BOOL)isPaused; { return paused_; }
-- (NSArray *)rows:(rdapp_query)query playlist:(NSString *)key;
+- (RDLPLibraryRows *)rows:(rdapp_query)query playlist:(NSString *)key video:(NSString *)video format:(NSString *)format;
 {
-  NSMutableArray *rows=[NSMutableArray array];
-  [lock_ lock];
-  NSString *error=nil;
-  if(!rdapp_store_list(store_,query,identifier(key),collect,rows)) error=[string(rdapp_store_error(store_)) copy];
-  [lock_ unlock];
-  if(error && ![error isEqualToString:lastReadError_]) [self reportError:@"Couldn’t read library" detail:error];
-  [lastReadError_ release]; lastReadError_=error;
+  RDLPLibraryRows *rows=[[[RDLPLibraryRows alloc] initWithLibrary:self path:[support_ stringByAppendingPathComponent:@"retrodlp.sqlite"] query:query key:key video:video format:format] autorelease];
+  if(!rows && !lastReadError_) {
+    lastReadError_=[@"Could not open a library read snapshot." copy];
+    [self reportError:@"Couldn’t read library" detail:lastReadError_];
+  } else if(rows) { [lastReadError_ release]; lastReadError_=nil; }
   return rows;
 }
+- (NSArray *)rows:(rdapp_query)query playlist:(NSString *)key;
+{ return [self rows:query playlist:key video:nil format:nil]; }
 - (NSArray *)playlists; { return [self rows:RDAPP_PLAYLISTS playlist:nil]; }
+- (NSArray *)playlistsFromAccount:(BOOL)account;
+{ return [self rows:account?RDAPP_ACCOUNT_PLAYLISTS:RDAPP_ADDED_PLAYLISTS playlist:nil]; }
+- (NSDictionary *)playlistForID:(NSString *)key;
+{ NSArray *rows=key?[self rows:RDAPP_PLAYLIST playlist:key]:nil; return [rows count]?[rows objectAtIndex:0]:nil; }
+- (NSArray *)playlistIDsFromAccount:(BOOL)account;
+{ return [self rows:account?RDAPP_ACCOUNT_IDS:RDAPP_ADDED_IDS playlist:nil]; }
+- (NSDictionary *)jobForID:(NSString *)key;
+{ NSArray *rows=key?[self rows:RDAPP_JOB playlist:key]:nil; return [rows count]?[rows objectAtIndex:0]:nil; }
+- (NSArray *)jobsForPlaylist:(NSString *)key video:(NSString *)video;
+{ return key && video?[self rows:RDAPP_VIDEO_JOBS playlist:key video:video format:nil]:[NSArray array]; }
+- (NSDictionary *)jobForPlaylist:(NSString *)key video:(NSString *)video format:(NSString *)format;
+{
+  NSArray *rows=key && video && format?[self rows:RDAPP_VIDEO_JOBS playlist:key video:video format:format]:nil;
+  return [rows count]?[rows objectAtIndex:0]:nil;
+}
+- (BOOL)playlist:(NSString *)key containsVideo:(NSString *)video;
+{ return [[self rows:RDAPP_VIDEO_ENTRIES playlist:key video:video format:nil] count]>0; }
 - (NSArray *)entriesForPlaylist:(NSString *)key; { return [self rows:RDAPP_ENTRIES playlist:key]; }
 - (NSArray *)jobsForPlaylist:(NSString *)key completedOnly:(BOOL)completed;
 { return [self rows:completed?RDAPP_DOWNLOADS:RDAPP_JOBS playlist:key]; }
+- (RDLPLibraryRows *)queueRows;
+{ return [self rows:RDAPP_QUEUE playlist:nil video:nil format:nil]; }
+- (NSUInteger)queuedCount; { return [[self rows:RDAPP_PENDING playlist:nil] count]; }
+- (BOOL)hasBlockingJobsForPlaylist:(NSString *)key;
+{ return [[self rows:RDAPP_BLOCKING_JOBS playlist:key] count]>0; }
+- (BOOL)hasPlaylistsToSync;
+{
+  NSUInteger total=[[self playlists] count];
+  if(!total) return NO;
+  NSMutableSet *pending=[NSMutableSet set];
+  if([[activeCommand_ objectForKey:@"type"] isEqualToString:@"sync"])
+    [pending addObject:[activeCommand_ objectForKey:@"input"]];
+  NSEnumerator *e=[commands_ objectEnumerator]; NSDictionary *command;
+  while((command=[e nextObject])) if([[command objectForKey:@"type"] isEqualToString:@"sync"])
+    [pending addObject:[command objectForKey:@"input"]];
+  if(total>[pending count]) return YES;
+  NSUInteger matched=0; e=[pending objectEnumerator]; NSString *input;
+  while((input=[e nextObject]))
+    matched+=[[self rows:RDAPP_PLAYLIST_INPUT playlist:nil video:input format:nil] count];
+  return total>matched;
+}
+- (BOOL)hasMissingEntriesForPlaylist:(NSString *)key format:(NSString *)format;
+{ return [[self rows:RDAPP_MISSING playlist:key video:nil format:format] count]>0; }
+- (NSArray *)missingPlanForPlaylist:(NSString *)key format:(NSString *)format;
+{
+  NSMutableArray *plan=[NSMutableArray array];
+  NSArray *candidates=[self rows:RDAPP_DOWNLOAD_CANDIDATES playlist:key video:nil format:format];
+  NSEnumerator *e=[candidates objectEnumerator];
+  for(;;) {
+    NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+    NSDictionary *entry=[e nextObject];
+    if(!entry) { [pool drain]; break; }
+    NSString *path=[self fileForJob:entry];
+    BOOL exists=[[entry objectForKey:@"state"] isEqualToString:@"complete"] && path &&
+      [[NSFileManager defaultManager] fileExistsAtPath:path];
+    if(!exists) {
+      NSMutableDictionary *item=[NSMutableDictionary dictionaryWithObjectsAndKeys:key,@"playlist",[entry objectForKey:@"video_id"],@"video",format,@"format",nil];
+      if([[entry objectForKey:@"job_id"] length]) [item setObject:[entry objectForKey:@"job_id"] forKey:@"job"];
+      [plan addObject:item];
+    }
+    [pool drain];
+  }
+  return plan;
+}
 - (void)setPaused:(BOOL)paused;
 {
   paused_=paused;
-  [lock_ lock]; if(paused && activeJob_) cancel_=YES; [lock_ unlock];
+  [cancelLock_ lock]; if(paused && activeJob_) cancel_=YES; [cancelLock_ unlock];
   [self changed];
   [self startNext];
 }
 - (void)shutdown;
-{ stopping_=YES; [NSObject cancelPreviousPerformRequestsWithTarget:self]; [commands_ removeAllObjects]; [lock_ lock]; cancel_=YES; [lock_ unlock]; }
+{ stopping_=YES; [NSObject cancelPreviousPerformRequestsWithTarget:self]; [commands_ removeAllObjects]; [cancelLock_ lock]; cancel_=YES; [cancelLock_ unlock]; }
 - (BOOL)cancelled;
-{ BOOL value; [lock_ lock]; value=cancel_; [lock_ unlock]; return value; }
+{ BOOL value; [cancelLock_ lock]; value=cancel_; [cancelLock_ unlock]; return value; }
 - (void)resolverEvent:(rdlp_event_type)type;
 {
   NSString *command=[activeCommand_ objectForKey:@"type"], *phase=nil;
@@ -299,7 +415,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (void)retryJob:(NSString *)key;
 {
   [lock_ lock];
-  int ok=rdapp_store_reconcile(store_,[root_ fileSystemRepresentation]) && rdapp_store_retry(store_,identifier(key));
+  int ok=rdapp_store_reconcile_job(store_,identifier(key),[root_ fileSystemRepresentation]) && rdapp_store_retry(store_,identifier(key));
   NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy]; [lock_ unlock];
   if(ok) { [self changed]; [self startNext]; }
   else [self reportError:@"Couldn’t retry download" detail:error];
@@ -307,9 +423,14 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 }
 - (void)cancelJob:(NSString *)key;
 {
-  int ok=1; [lock_ lock];
-  if(activeJob_==identifier(key)) cancel_=YES; else ok=rdapp_store_cancel(store_,identifier(key));
-  NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy]; [lock_ unlock];
+  NSString *error=nil;
+  if(activeJob_==identifier(key)) {
+    [cancelLock_ lock]; cancel_=YES; [cancelLock_ unlock];
+  } else {
+    [lock_ lock];
+    if(!rdapp_store_cancel(store_,identifier(key))) error=[string(rdapp_store_error(store_)) copy];
+    [lock_ unlock];
+  }
   if(error) [self reportError:@"Couldn’t stop download" detail:error];
   [error release]; [self changed];
 }
@@ -371,27 +492,32 @@ static void download_callback(const rdlp_download_event *event,void *context) {
     queueRun_=YES; queueProcessed_=0; queueFailed_=0; queueCancelled_=0;
   }
   [activeCommand_ release]; activeCommand_=[command retain];
-  busy_=YES; [lock_ lock]; cancel_=NO; activeJob_=identifier([[command objectForKey:@"job"] objectForKey:@"id"]); [lock_ unlock];
+  busy_=YES; [cancelLock_ lock]; cancel_=NO; [cancelLock_ unlock];
+  activeJob_=identifier([[command objectForKey:@"job"] objectForKey:@"id"]);
   transferCompleted_=0; transferExpected_=0; lastProgress_=0;
   [lastPhase_ release]; lastPhase_=nil;
   NSString *type=[command objectForKey:@"type"];
-  [self showStatus:[type isEqualToString:@"download"]?@"Resolving video…":
+  if(![type isEqualToString:@"reconcile"]) [self showStatus:[type isEqualToString:@"download"]?@"Resolving video…":
     ([type isEqualToString:@"discover"]?@"Loading playlists…":([[command objectForKey:@"adding"] boolValue]?@"Adding playlist…":@"Syncing playlist…"))];
   [self changed];
   [NSThread detachNewThreadSelector:@selector(work:) toTarget:self withObject:command];
 }
 - (void)finished:(NSDictionary *)result;
 {
+  if([[activeCommand_ objectForKey:@"type"] isEqualToString:@"reconcile"]) {
+    [activeCommand_ release]; activeCommand_=nil; busy_=NO;
+    if([[result objectForKey:@"code"] intValue]!=RDLP_OK)
+      [self reportError:@"Couldn’t read library" detail:[result objectForKey:@"message"]];
+    if(!stopping_) { [self changed]; [self performSelector:@selector(startNext) withObject:nil afterDelay:0]; }
+    return;
+  }
   if([[activeCommand_ objectForKey:@"type"] isEqualToString:@"download"]) {
     ++queueProcessed_;
     NSString *key=[[activeCommand_ objectForKey:@"job"] objectForKey:@"id"];
-    NSEnumerator *e=[[self jobsForPlaylist:nil completedOnly:NO] objectEnumerator]; NSDictionary *job;
-    while((job=[e nextObject])) if([[job objectForKey:@"id"] isEqualToString:key]) {
-      if([[job objectForKey:@"state"] isEqualToString:@"failed"]) ++queueFailed_;
-      if([[job objectForKey:@"state"] isEqualToString:@"cancelled"] ||
-         [[job objectForKey:@"state"] isEqualToString:@"interrupted"]) ++queueCancelled_;
-      break;
-    }
+    NSDictionary *job=[self jobForID:key];
+    if([[job objectForKey:@"state"] isEqualToString:@"failed"]) ++queueFailed_;
+    if([[job objectForKey:@"state"] isEqualToString:@"cancelled"] ||
+       [[job objectForKey:@"state"] isEqualToString:@"interrupted"]) ++queueCancelled_;
   }
   NSString *type=[activeCommand_ objectForKey:@"type"];
   BOOL download=[type isEqualToString:@"download"], discover=[type isEqualToString:@"discover"];
@@ -411,7 +537,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   }
   [activeCommand_ release]; activeCommand_=nil;
   busy_=NO; transferCompleted_=0; transferExpected_=0;
-  [lock_ lock]; activeJob_=0; [lock_ unlock];
+  activeJob_=0;
   if(!stopping_) { [self showStatus:status]; [self changed];
     [self performSelector:@selector(startNext) withObject:nil afterDelay:0.1]; }
 
@@ -419,6 +545,14 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (void)work:(NSDictionary *)command;
 {
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+  if([[command objectForKey:@"type"] isEqualToString:@"reconcile"]) {
+    [lock_ lock]; BOOL ok=rdapp_store_reconcile(store_,[root_ fileSystemRepresentation])!=0;
+    NSString *message=ok?@"":[NSString stringWithUTF8String:rdapp_store_error(store_)];
+    NSDictionary *result=[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithInt:ok?RDLP_OK:RDLP_ERROR_STORAGE_IO],@"code",message,@"message",nil];
+    [lock_ unlock];
+    [self performSelectorOnMainThread:@selector(finished:) withObject:result waitUntilDone:NO];
+    [pool drain]; return;
+  }
   rdapp_service_config config; rdapp_service_result outcome; rdapp_job job; char message[1024];
   rdlp_error_code code=RDLP_OK; memset(&outcome,0,sizeof(outcome));
   memset(&config,0,sizeof(config)); memset(&job,0,sizeof(job));

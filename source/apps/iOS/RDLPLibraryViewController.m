@@ -64,8 +64,10 @@
 {
   (void)sender; if(![self isViewLoaded]) return;
   /* Keep the displayed playlist current after sync or discovery promotion. */
-  for(NSDictionary *playlist in [library_ playlists]) if([[playlist objectForKey:@"id"] isEqualToString:[playlist_ objectForKey:@"id"]]) {
-    [playlist retain]; [playlist_ release]; playlist_=playlist; if(mode_==RDLPScreenPlaylist) self.title=[playlist objectForKey:@"title"]; break;
+  NSDictionary *playlist=[library_ playlistForID:[playlist_ objectForKey:@"id"]];
+  if(playlist) {
+    [playlist retain]; [playlist_ release]; playlist_=playlist;
+    if(mode_==RDLPScreenPlaylist) self.title=[playlist objectForKey:@"title"];
   }
   NSArray *sections=[model_ sectionsForScreen:mode_ playlist:playlist_ video:video_ collapsed:nil]; [sections_ release]; sections_=[sections copy];
   [self refreshStatus:nil];
@@ -137,9 +139,10 @@
 }
 - (CGFloat)tableView:(UITableView *)view heightForRowAtIndexPath:(NSIndexPath *)index;
 {
-  NSDictionary *row=[self rowAtIndex:index];
-  if(mode_==RDLPScreenPlaylist || mode_==RDLPScreenLibrary || (mode_==RDLPScreenSettings && [[row objectForKey:@"action"] isEqualToString:@"custom"])) return view.rowHeight;
-  return [[row objectForKey:@"detail"] length]?64:44;
+  (void)index;
+  /* UIKit asks heights for offscreen rows too. Never load their payloads here. */
+  if(mode_==RDLPScreenPlaylist || mode_==RDLPScreenLibrary || mode_==RDLPScreenSettings) return view.rowHeight;
+  return 64;
 }
 - (void)tableView:(UITableView *)view didSelectRowAtIndexPath:(NSIndexPath *)index;
 {

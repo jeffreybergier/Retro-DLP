@@ -17,10 +17,9 @@
 - (NSIndexPath *)selectedJobIndex;
 {
   NSArray *rows=[[sections_ lastObject] objectForKey:@"rows"];
-  for(NSUInteger i=0;i<[rows count];++i)
-    if([[[[rows objectAtIndex:i] objectForKey:@"job"] objectForKey:@"id"] isEqualToString:selectedJobID_])
-      return [NSIndexPath indexPathForRow:(NSInteger)i inSection:0];
-  return nil;
+  if(!selectedJobID_ || ![rows count]) return nil;
+  NSUInteger index=[(RDLPLibraryRows *)rows indexForIdentity:selectedJobID_];
+  return index==NSNotFound?nil:[NSIndexPath indexPathForRow:(NSInteger)index inSection:0];
 }
 - (void)refresh:(id)sender;
 {

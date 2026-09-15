@@ -410,7 +410,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)dealloc;
 {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
-  [sidebarItems_ release]; [downloadPolicy_ release]; [library_ release]; [playlists_ release]; [rows_ release]; [jobs_ release]; [selectedPlaylist_ release];
+  [sidebarItems_ release]; [downloadPolicy_ release]; [library_ release]; [playlists_ release]; [rows_ release]; [addedPlaylists_ release]; [accountPlaylists_ release]; [selectedPlaylist_ release];
   [qualityColumn_ release]; [addSheet_ release]; [downloadSheet_ release]; [downloadRequest_ release]; [downloadFormat_ release]; [queueRows_ release]; [toolbarItems_ release]; [confirmation_ release]; [confirmationRequest_ release]; [super dealloc];
 }
 - (NSDictionary *)selectedRow;
@@ -419,9 +419,9 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 { NSInteger row=[queue_ selectedRow]; return row>=0 && (NSUInteger)row<[queueRows_ count]?[queueRows_ objectAtIndex:(NSUInteger)row]:nil; }
 
 - (NSDictionary *)selectedPlaylist;
-{ unsigned int i; for(i=0;i<[playlists_ count];++i) if([[[playlists_ objectAtIndex:i] objectForKey:@"id"] isEqualToString:selectedPlaylist_]) return [playlists_ objectAtIndex:i]; return nil; }
+{ return [(RDLPLibraryRows *)playlists_ playlistForID:selectedPlaylist_]; }
 - (NSDictionary *)jobForEntry:(NSDictionary *)entry;
-{ return [downloadPolicy_ representativeJobForEntry:entry playlist:selectedPlaylist_ jobs:jobs_]; }
+{ return [downloadPolicy_ representativeJobForEntry:entry playlist:selectedPlaylist_ jobs:[library_ jobsForPlaylist:selectedPlaylist_ video:[entry objectForKey:@"video_id"]]]; }
 - (NSString *)statusForJob:(NSDictionary *)job;
 { return [downloadPolicy_ statusForJob:job]; }
 
@@ -435,21 +435,11 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSString *queueSelection=[[[self selectedJob] objectForKey:@"id"] copy];
   NSString *oldGroup=selectedPlaylist_?[RDLPLibraryViews groupForPlaylist:[self selectedPlaylist]]:nil;
   [playlists_ release]; playlists_=[[library_ playlists] copy];
-  NSEnumerator *pe=[playlists_ objectEnumerator]; NSDictionary *p;
-  while((p=[pe nextObject])) {
-    NSString *identifier=[p objectForKey:@"id"];
-    if(![sidebarItems_ objectForKey:identifier]) [sidebarItems_ setObject:identifier forKey:identifier];
-  }
+  [addedPlaylists_ release]; addedPlaylists_=[[library_ playlistIDsFromAccount:NO] copy];
+  [accountPlaylists_ release]; accountPlaylists_=[[library_ playlistIDsFromAccount:YES] copy];
   if(mode_==0 && ![self selectedPlaylist]) { mode_=1; [selectedPlaylist_ release]; selectedPlaylist_=nil; [selection release]; selection=nil; }
   [rows_ release]; rows_=[(mode_==0?[library_ entriesForPlaylist:selectedPlaylist_]:[library_ jobsForPlaylist:nil completedOnly:YES]) copy];
-  [jobs_ release]; jobs_=[[library_ jobsForPlaylist:nil completedOnly:NO] copy];
-  /* Database queries are newest first; downloads are processed by ascending ID.
-   * Retain missing-file jobs, but omit deliberately deleted downloads. */
-  NSMutableArray *queueRows=[NSMutableArray array];
-  NSEnumerator *queued=[jobs_ reverseObjectEnumerator]; NSDictionary *queuedJob;
-  while((queuedJob=[queued nextObject]))
-    if(![RDLPDownloadPolicy job:queuedJob hasState:@"removed"] || [[queuedJob objectForKey:@"error"] length]) [queueRows addObject:queuedJob];
-  [queueRows_ release]; queueRows_=[queueRows copy];
+  [queueRows_ release]; queueRows_=[[library_ queueRows] copy];
   BOOL hasQuality=[table_ tableColumnWithIdentifier:@"quality"]!=nil;
   if(mode_==0 && hasQuality) [table_ removeTableColumn:qualityColumn_];
   else if(mode_==1 && !hasQuality) [table_ addTableColumn:qualityColumn_];
@@ -483,9 +473,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSString *key=job?[job objectForKey:@"playlist_id"]:selectedPlaylist_;
   if(context_==2) key=[[self selectedJob] objectForKey:@"playlist_id"];
   if(!key) return nil;
-  NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
-  while((playlist=[e nextObject])) if([[playlist objectForKey:@"id"] isEqualToString:key]) return playlist;
-  return nil;
+  return [library_ playlistForID:key];
 }
 - (NSString *)targetVideoID;
 { return context_==2?[[self selectedJob] objectForKey:@"video_id"]:(context_==1?[[self selectedRow] objectForKey:@"video_id"]:nil); }
@@ -493,9 +481,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 { NSDictionary *job=[self targetJob]; return (context_==2 || (context_==1 && mode_==1))?([job objectForKey:@"format"]?:downloadFormat_):downloadFormat_; }
 - (NSDictionary *)jobForPlaylist:(NSString *)playlist video:(NSString *)video format:(NSString *)format;
 {
-  NSEnumerator *e=[jobs_ objectEnumerator]; NSDictionary *job;
-  while((job=[e nextObject])) if([[job objectForKey:@"playlist_id"] isEqualToString:playlist] && [[job objectForKey:@"video_id"] isEqualToString:video] && [[job objectForKey:@"format"] isEqualToString:format]) return job;
-  return nil;
+  return [library_ jobForPlaylist:playlist video:video format:format];
 }
 - (BOOL)canRetry:(NSDictionary *)job;
 { return [downloadPolicy_ canRetry:job]; }
@@ -507,18 +493,15 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 { return [downloadPolicy_ canCancel:job]; }
 - (NSDictionary *)currentJob:(NSString *)key;
 {
-  NSEnumerator *e=[[library_ jobsForPlaylist:nil completedOnly:NO] objectEnumerator]; NSDictionary *job;
-  while((job=[e nextObject])) if([[job objectForKey:@"id"] isEqualToString:key]) return job;
-  return nil;
+  return [library_ jobForID:key];
 }
 - (NSString *)playFileForPlaylist:(NSDictionary *)playlist;
 {
   if(!playlist) return nil;
   NSString *path=[library_ playlistFile:playlist];
   if(![[NSFileManager defaultManager] fileExistsAtPath:path]) return nil;
-  NSEnumerator *e=[jobs_ objectEnumerator]; NSDictionary *job;
-  while((job=[e nextObject])) if([[job objectForKey:@"playlist_id"] isEqualToString:[playlist objectForKey:@"id"]] && [self playable:job]) return path;
-  return nil;
+  /* Recovery/export maintains this file. Toolbar validation only needs a count. */
+  return [[library_ jobsForPlaylist:[playlist objectForKey:@"id"] completedOnly:YES] count]?path:nil;
 }
 - (NSString *)targetPlaylistFolder;
 {
@@ -528,19 +511,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   return path && [[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&directory] && directory?path:nil;
 }
 - (NSArray *)missingPlanForPlaylist:(NSString *)playlist format:(NSString *)format;
-{
-  NSMutableArray *plan=[NSMutableArray array]; NSMutableSet *seen=[NSMutableSet set];
-  NSEnumerator *e=[[library_ entriesForPlaylist:playlist] objectEnumerator]; NSDictionary *entry;
-  while((entry=[e nextObject])) {
-    NSString *video=[entry objectForKey:@"video_id"]; if([seen containsObject:video]) continue; [seen addObject:video];
-    NSDictionary *job=[self jobForPlaylist:playlist video:video format:format];
-    if(!job || [self canDownloadAgain:job]) {
-      NSMutableDictionary *item=[NSMutableDictionary dictionaryWithObjectsAndKeys:playlist,@"playlist",video,@"video",format,@"format",nil];
-      if(job) [item setObject:[job objectForKey:@"id"] forKey:@"job"];
-      [plan addObject:item];
-    }
-  }
-  return plan;
+{ return [library_ missingPlanForPlaylist:playlist format:format];
 }
 - (NSArray *)syncPlan;
 {
@@ -550,9 +521,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (NSUInteger)queuedCount;
 {
-  NSUInteger count=0; NSEnumerator *e=[jobs_ objectEnumerator]; NSDictionary *job;
-  while((job=[e nextObject])) if([RDLPDownloadPolicy job:job hasState:@"queued"]) ++count;
-  return count;
+  return [library_ queuedCount];
 }
 - (void)setToolbarItem:(NSString *)key title:(NSString *)title tip:(NSString *)tip icon:(NSImage *)icon enabled:(BOOL)enabled;
 {
@@ -607,18 +576,17 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   (void)outline;
   if(!item) return 3; if([item isEqual:@"System"]) return 1;
-  NSInteger count=0; NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
-  while((playlist=[e nextObject])) if([[RDLPLibraryViews groupForPlaylist:playlist] isEqual:item]) ++count;
-  return count;
+  return (NSInteger)[([item isEqual:@"My Playlists"]?accountPlaylists_:addedPlaylists_) count];
 }
 - (id)outlineView:(NSOutlineView *)outline child:(NSInteger)index ofItem:(id)item;
 {
   (void)outline;
   if(!item) return [[NSArray arrayWithObjects:@"System",@"Added Playlists",@"My Playlists",nil] objectAtIndex:(NSUInteger)index];
   if([item isEqual:@"System"]) return @"All Downloads";
-  NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
-  while((playlist=[e nextObject])) if([[RDLPLibraryViews groupForPlaylist:playlist] isEqual:item] && index--==0) return [sidebarItems_ objectForKey:[playlist objectForKey:@"id"]];
-  return nil;
+  NSDictionary *playlist=[([item isEqual:@"My Playlists"]?accountPlaylists_:addedPlaylists_) objectAtIndex:(NSUInteger)index];
+  NSString *key=[playlist objectForKey:@"id"];
+  if(![sidebarItems_ objectForKey:key]) [sidebarItems_ setObject:key forKey:key];
+  return [sidebarItems_ objectForKey:key];
 }
 - (BOOL)outlineView:(NSOutlineView *)outline isItemExpandable:(id)item;
 { (void)outline; return [RDLPLibraryViews isSidebarGroup:item]; }
@@ -628,9 +596,8 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   (void)outline; (void)column;
   if([RDLPLibraryViews isSidebarGroup:item] || [item isEqual:@"All Downloads"]) return item;
-  NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
-  while((playlist=[e nextObject])) if([[playlist objectForKey:@"id"] isEqual:item]) return [NSString stringWithFormat:@"%@ (%@)",[playlist objectForKey:@"title"],[playlist objectForKey:@"count"]];
-  return @"";
+  NSDictionary *playlist=[library_ playlistForID:item];
+  return playlist?[NSString stringWithFormat:@"%@ (%@)",[playlist objectForKey:@"title"],[playlist objectForKey:@"count"]]:@"";
 }
 - (void)outlineView:(NSOutlineView *)outline willDisplayCell:(id)cell forTableColumn:(NSTableColumn *)column item:(id)item;
 {
@@ -646,7 +613,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   BOOL queue=view==queue_;
   NSDictionary *entry=[(queue?queueRows_:rows_) objectAtIndex:(NSUInteger)row]; NSString *key=[column identifier];
-  NSDictionary *job=!queue && mode_==0?[self jobForEntry:entry]:entry;
+  NSDictionary *job=!queue && mode_==0 && [key isEqualToString:@"state"]?[self jobForEntry:entry]:entry;
   if(queue && [key isEqualToString:@"number"]) return [NSNumber numberWithLong:(long)row+1];
   if(queue && [key isEqualToString:@"quality"]) {
     NSString *format=[job objectForKey:@"format"], *actual=[job objectForKey:@"actual_format"];
@@ -722,7 +689,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(action==@selector(replaceCookies:) || action==@selector(clearCookies:)) return ![library_ isBusy] && !noCookies;
   if(action==@selector(discover:)) return ![library_ isBusy] && ![library_ isDiscoveryPending];
   if(action==@selector(sync:)) return playlist && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
-  if(action==@selector(syncAll:)) return [[self syncPlan] count]>0;
+  if(action==@selector(syncAll:)) return [library_ hasPlaylistsToSync];
   if(action==@selector(chooseDownload:)) {
     BOOL all=[item tag]>=5; NSUInteger index=(NSUInteger)[item tag]%5;
     if(index>0) {
@@ -735,7 +702,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     playlist=[self contextPlaylist];
     if(!playlist || (!all && ![self hasTargetVideo])) return NO;
     NSString *format=downloadFormat_;
-    if(all) return [[self missingPlanForPlaylist:[playlist objectForKey:@"id"] format:format] count]>0;
+    if(all) return [library_ hasMissingEntriesForPlaylist:[playlist objectForKey:@"id"] format:format];
     NSDictionary *matching=[self jobForPlaylist:[playlist objectForKey:@"id"] video:[self targetVideoID] format:format];
     return !matching || [self canRetry:matching] || [self canDownloadAgain:matching];
   }
@@ -849,9 +816,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
 {
   if(!playlist || [library_ isBusy]) return NO;
-  NSEnumerator *e=[[library_ jobsForPlaylist:[playlist objectForKey:@"id"] completedOnly:NO] objectEnumerator]; NSDictionary *job;
-  while((job=[e nextObject])) if([self canCancel:job] || [RDLPDownloadPolicy job:job hasState:@"complete"]) return NO;
-  return YES;
+  return ![library_ hasBlockingJobsForPlaylist:[playlist objectForKey:@"id"]];
 }
 - (void)retryAndRevealJob:(NSDictionary *)job;
 {
@@ -862,8 +827,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)enqueueSingle:(NSDictionary *)request allowRetry:(BOOL)allowRetry;
 {
   NSString *playlist=[request objectForKey:@"playlist"], *video=[request objectForKey:@"video"], *format=[request objectForKey:@"format"];
-  NSDictionary *job=nil; NSEnumerator *e=[[library_ jobsForPlaylist:playlist completedOnly:NO] objectEnumerator]; NSDictionary *candidate;
-  while((candidate=[e nextObject])) if([[candidate objectForKey:@"video_id"] isEqualToString:video] && [[candidate objectForKey:@"format"] isEqualToString:format]) { job=candidate; break; }
+  NSDictionary *job=[library_ jobForPlaylist:playlist video:video format:format];
   if(!job) {
     [library_ enqueuePlaylist:playlist video:video format:format];
     [self refresh:nil]; [self showJobInQueue:[self jobForPlaylist:playlist video:video format:format]];

@@ -86,10 +86,7 @@
 - (BOOL)enabled:(NSString *)action;
 {
   if([action isEqualToString:@"discover"]) return ![library_ isBusy] && ![library_ isDiscoveryPending];
-  if([action isEqualToString:@"syncAll"]) {
-    for(NSDictionary *playlist in [library_ playlists]) if(![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) return YES;
-    return NO;
-  }
+  if([action isEqualToString:@"syncAll"]) return [library_ hasPlaylistsToSync];
   return ![action isEqualToString:@"removePlaylist"];
 }
 - (void)settings:(id)sender;

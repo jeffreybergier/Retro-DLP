@@ -206,7 +206,9 @@ static void screenshot(UIWindow *window,NSString *path) {
     [[NSFileManager defaultManager] createDirectoryAtPath:[file stringByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:NULL];
     require([[NSData dataWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"fixture" ofType:@"mp4"]] writeToFile:file atomically:YES],@"Copy synthetic local media");
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Reopen fixture");
-    require(rdapp_store_finish(store,1,"complete","18",""),@"Publish completed fixture"); rdapp_store_close(store);
+    require(rdapp_store_finish(store,1,"complete","18",""),@"Publish completed fixture");
+    require(rdapp_store_reconcile(store,[downloads fileSystemRepresentation]),@"Reconcile offline fixture without starting a worker"); rdapp_store_close(store);
+    testSharedLists(library_);
     [library_ startDownloads]; require(![library_ isPaused],@"Automatic queue startup");
     navigation_=[[RDLPOfflineNavigationController alloc] init]; window_.rootViewController=navigation_;
     RDLPOfflineLibrary *emptyLibrary=[[[RDLPOfflineLibrary alloc] initWithSupportDirectory:[base stringByAppendingPathComponent:@"EmptySupport"] downloadDirectory:[base stringByAppendingPathComponent:@"EmptyDownloads"]] autorelease];
@@ -285,6 +287,10 @@ static void screenshot(UIWindow *window,NSString *path) {
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"library.png"]);
     NSDictionary *playlist=[[[[[sections(root) objectAtIndex:1] objectForKey:@"rows"] objectAtIndex:0] objectForKey:@"playlist"] retain];
     RDLPLibrarySections *model=[[[RDLPLibrarySections alloc] initWithLibrary:library_] autorelease];
+    NSArray *lazySections=[model sectionsForScreen:RDLPScreenLibrary playlist:nil video:nil collapsed:nil];
+    NSArray *lazyRows=[[lazySections objectAtIndex:1] objectForKey:@"rows"];
+    require([lazyRows count]>0 && [(RDLPLibraryRows *)lazyRows cachedObjectAtIndex:0]==nil,@"Section counts do not format playlist rows");
+    require([[lazyRows objectAtIndex:0] objectForKey:@"playlist"]!=nil && [(RDLPLibraryRows *)lazyRows cachedObjectAtIndex:0]!=nil,@"Playlist formatting happens on row access");
     RDLPDownloadPolicy *policy=[[[RDLPDownloadPolicy alloc] initWithLibrary:library_] autorelease];
     RDLPDownloadsViewController *nativeList=[self show:RDLPScreenDownloads playlist:nil video:nil];
     nativeDelete(nativeList,videoIndex(nativeList,@"AAAAAAAAAAA",@"18"));

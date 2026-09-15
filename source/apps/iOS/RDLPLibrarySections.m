@@ -1,5 +1,43 @@
 #import "RDLPLibrarySections.h"
 
+/* Formatting belongs to row access, never to section/count construction. */
+@interface RDLPLibrarySections (Rows)
+- (NSDictionary *)displayRow:(NSDictionary *)item screen:(RDLPScreen)screen index:(NSUInteger)index playlist:(NSString *)playlist;
+@end
+@interface RDLPSectionRows : NSArray {
+  NSArray *source_;
+  RDLPLibrarySections *model_;
+  RDLPScreen screen_;
+  NSString *playlist_;
+  NSMutableDictionary *cache_;
+}
+- (id)initWithRows:(NSArray *)rows model:(RDLPLibrarySections *)model screen:(RDLPScreen)screen playlist:(NSString *)playlist;
+- (NSUInteger)indexForIdentity:(NSString *)identity;
+- (id)cachedObjectAtIndex:(NSUInteger)index;
+@end
+@implementation RDLPSectionRows
+- (id)initWithRows:(NSArray *)rows model:(RDLPLibrarySections *)model screen:(RDLPScreen)screen playlist:(NSString *)playlist;
+{ self=[super init]; if(self) { cache_=[[NSMutableDictionary alloc] init]; source_=[rows retain]; model_=[model retain]; screen_=screen; playlist_=[playlist copy]; } return self; }
+- (void)dealloc; { [cache_ release]; [source_ release]; [model_ release]; [playlist_ release]; [super dealloc]; }
+- (NSUInteger)count; { return [source_ count]; }
+- (id)copyWithZone:(NSZone *)zone; { (void)zone; return [self retain]; }
+- (id)objectAtIndex:(NSUInteger)index;
+{
+  NSNumber *key=[NSNumber numberWithUnsignedLong:index];
+  NSDictionary *row=[cache_ objectForKey:key];
+  if(!row) {
+    row=[model_ displayRow:[source_ objectAtIndex:index] screen:screen_ index:index playlist:playlist_];
+    if([cache_ count]>=128) [cache_ removeAllObjects];
+    [cache_ setObject:row forKey:key];
+  }
+  return [[row retain] autorelease];
+}
+- (id)cachedObjectAtIndex:(NSUInteger)index;
+{ return [cache_ objectForKey:[NSNumber numberWithUnsignedLong:index]]; }
+- (NSUInteger)indexForIdentity:(NSString *)identity;
+{ return [(RDLPLibraryRows *)source_ indexForIdentity:identity]; }
+@end
+
 @implementation RDLPLibrarySections
 - (id)initWithLibrary:(RDLPLibrary *)library;
 { self=[super init]; if(self) { library_=[library retain]; policy_=[[RDLPDownloadPolicy alloc] initWithLibrary:library]; } return self; }
@@ -9,33 +47,16 @@
 - (NSMutableDictionary *)row:(NSString *)title detail:(NSString *)detail action:(NSString *)action;
 { return [NSMutableDictionary dictionaryWithObjectsAndKeys:title?title:@"Untitled",@"title",detail?detail:@"",@"detail",action,@"action",nil]; }
 - (NSDictionary *)currentJob:(NSString *)key;
-{
-  for(NSDictionary *job in [library_ jobsForPlaylist:nil completedOnly:NO])
-    if([[job objectForKey:@"id"] isEqualToString:key]) return job;
-  return nil;
-}
+{ return [library_ jobForID:key]; }
 - (NSDictionary *)jobForPlaylist:(NSString *)playlist video:(NSString *)video format:(NSString *)format;
-{
-  for(NSDictionary *job in [library_ jobsForPlaylist:playlist completedOnly:NO])
-    if([[job objectForKey:@"video_id"] isEqualToString:video] && [[job objectForKey:@"format"] isEqualToString:format]) return job;
-  return nil;
-}
+{ return [library_ jobForPlaylist:playlist video:video format:format]; }
 - (NSArray *)missingPlanForPlaylist:(NSString *)playlist format:(NSString *)format;
-{
-  NSMutableArray *plan=[NSMutableArray array]; NSMutableSet *seen=[NSMutableSet set];
-  for(NSDictionary *entry in [library_ entriesForPlaylist:playlist]) {
-    NSString *video=[entry objectForKey:@"video_id"]; if([seen containsObject:video]) continue; [seen addObject:video];
-    NSDictionary *job=[self jobForPlaylist:playlist video:video format:format];
-    if(!job || [policy_ canDownloadAgain:job]) [plan addObject:[NSDictionary dictionaryWithObjectsAndKeys:playlist,@"playlist",video,@"video",format,@"format",nil]];
-  }
-  return plan;
+{ return [library_ missingPlanForPlaylist:playlist format:format];
 }
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
 {
   if(!playlist || [library_ isBusy]) return NO;
-  for(NSDictionary *job in [library_ jobsForPlaylist:[playlist objectForKey:@"id"] completedOnly:NO])
-    if([policy_ canCancel:job] || [RDLPDownloadPolicy job:job hasState:@"complete"]) return NO;
-  return YES;
+  return ![library_ hasBlockingJobsForPlaylist:[playlist objectForKey:@"id"]];
 }
 - (NSArray *)actionsForJob:(NSDictionary *)job;
 {
@@ -63,21 +84,30 @@
   [row setObject:[policy_ statusForJob:job] forKey:@"status"];
   return row;
 }
-- (NSArray *)queueSections:(NSArray *)jobs;
+- (NSArray *)displayRows:(NSArray *)rows screen:(RDLPScreen)screen playlist:(NSString *)playlist;
+{ return [[[RDLPSectionRows alloc] initWithRows:rows model:self screen:screen playlist:playlist] autorelease]; }
+- (NSDictionary *)displayRow:(NSDictionary *)item screen:(RDLPScreen)screen index:(NSUInteger)index playlist:(NSString *)playlist;
 {
-  NSMutableArray *rows=[NSMutableArray array];
-  /* Store queries return newest first; the worker claims the lowest job ID.
-   * Number visible rows consecutively, independently of permanent database IDs. */
-  for(NSDictionary *job in [jobs reverseObjectEnumerator]) {
-    if([RDLPDownloadPolicy job:job hasState:@"removed"] && ![[job objectForKey:@"error"] length]) continue;
-    NSString *title=[NSString stringWithFormat:@"%lu) %@",(unsigned long)[rows count]+1,[job objectForKey:@"title"]];
-    NSString *detail=[NSString stringWithFormat:@"%@ · %@",[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],[job objectForKey:@"playlist_title"]];
-    NSMutableDictionary *row=[self row:title detail:detail action:@"job"];
-    NSString *status=[policy_ statusForJob:job];
-    [row setObject:[status isEqualToString:@"Cancelled"]?@"Stopped":status forKey:@"status"];
-    [row setObject:job forKey:@"job"]; [rows addObject:row];
+  if(screen==RDLPScreenLibrary) {
+    NSMutableDictionary *row=[self row:[item objectForKey:@"title"] detail:[[item objectForKey:@"synced_at"] length]?[NSString stringWithFormat:@"%@ videos",[item objectForKey:@"count"]]:@"Not synced" action:@"playlist"];
+    [row setObject:item forKey:@"playlist"]; return row;
   }
-  return [NSArray arrayWithObject:[self section:@"" rows:rows]];
+  if(screen==RDLPScreenQueue) {
+    NSString *title=[NSString stringWithFormat:@"%lu) %@",(unsigned long)index+1,[item objectForKey:@"title"]];
+    NSString *detail=[NSString stringWithFormat:@"%@ · %@",[RDLPLibrary qualityLabelForFormat:[item objectForKey:@"format"]],[item objectForKey:@"playlist_title"]];
+    NSMutableDictionary *row=[self row:title detail:detail action:@"job"];
+    NSString *status=[policy_ statusForJob:item];
+    [row setObject:[status isEqualToString:@"Cancelled"]?@"Stopped":status forKey:@"status"];
+    [row setObject:item forKey:@"job"]; return row;
+  }
+  if(screen==RDLPScreenPlaylist) {
+    NSArray *jobs=[library_ jobsForPlaylist:playlist video:[item objectForKey:@"video_id"]];
+    NSDictionary *job=[policy_ representativeJobForEntry:item playlist:playlist jobs:jobs];
+    return [self videoRow:item job:job playlist:playlist showQuality:[policy_ playable:job]];
+  }
+  if(screen==RDLPScreenDownloads)
+    return [self videoRow:item job:item playlist:[item objectForKey:@"playlist_id"] showQuality:YES];
+  return [self jobRow:item];
 }
 - (NSArray *)sectionsForScreen:(RDLPScreen)screen playlist:(NSDictionary *)playlist video:(NSDictionary *)video collapsed:(NSSet *)collapsed;
 {
@@ -87,16 +117,8 @@
   if(screen==RDLPScreenLibrary) {
     [rows addObject:[self row:@"All Downloads" detail:@"" action:@"downloads"]];
     [sections addObject:[self section:@"System" rows:rows]];
-    for(NSString *origin in [NSArray arrayWithObjects:@"manual",@"discovered",nil]) {
-      NSMutableArray *playlists=[NSMutableArray array];
-      for(NSDictionary *item in [library_ playlists]) {
-        BOOL discovered=[[item objectForKey:@"source"] isEqualToString:@"account"];
-        if(discovered!=[origin isEqualToString:@"discovered"]) continue;
-        NSMutableDictionary *row=[self row:[item objectForKey:@"title"] detail:[[item objectForKey:@"synced_at"] length]?[NSString stringWithFormat:@"%@ videos",[item objectForKey:@"count"]]:@"Not synced" action:@"playlist"];
-        [row setObject:item forKey:@"playlist"]; [playlists addObject:row];
-      }
-      [sections addObject:[self section:[origin isEqualToString:@"manual"]?@"Added Playlists":@"My Playlists" rows:playlists]];
-    }
+    [sections addObject:[self section:@"Added Playlists" rows:[self displayRows:[library_ playlistsFromAccount:NO] screen:screen playlist:nil]]];
+    [sections addObject:[self section:@"My Playlists" rows:[self displayRows:[library_ playlistsFromAccount:YES] screen:screen playlist:nil]]];
   } else if(screen==RDLPScreenSettings) {
     NSArray *titles=[RDLPLibrary qualityTitles], *formats=[RDLPLibrary qualityFormats]; NSString *format=[RDLPLibrary preferredFormat];
     for(NSUInteger i=0;i<[titles count];++i) {
@@ -111,18 +133,13 @@
     [cookies addObject:[self row:@"Cookie Export Guide" detail:@"" action:@"guide"]];
     [sections addObject:[self section:@"Cookies" rows:cookies]];
   } else {
-    NSArray *jobs=[library_ jobsForPlaylist:screen==RDLPScreenVideo || screen==RDLPScreenPlaylist?pid:nil completedOnly:screen==RDLPScreenDownloads];
-    if(screen==RDLPScreenQueue) return [self queueSections:jobs];
-    if(screen==RDLPScreenPlaylist) {
-      for(NSDictionary *entry in [library_ entriesForPlaylist:pid]) {
-        NSDictionary *job=[policy_ representativeJobForEntry:entry playlist:pid jobs:jobs];
-        [rows addObject:[self videoRow:entry job:job playlist:pid showQuality:[policy_ playable:job]]];
-      }
-    } else if(screen==RDLPScreenDownloads) {
-      /* Completed jobs retain their individual quality and playlist identity. */
-      for(NSDictionary *job in jobs)
-        [rows addObject:[self videoRow:job job:job playlist:[job objectForKey:@"playlist_id"] showQuality:YES]];
+    if(screen==RDLPScreenQueue)
+      return [NSArray arrayWithObject:[self section:@"" rows:[self displayRows:[library_ queueRows] screen:screen playlist:nil]]];
+    if(screen==RDLPScreenPlaylist || screen==RDLPScreenDownloads) {
+      NSArray *source=screen==RDLPScreenPlaylist?[library_ entriesForPlaylist:pid]:[library_ jobsForPlaylist:nil completedOnly:YES];
+      return [NSArray arrayWithObject:[self section:screen==RDLPScreenPlaylist?@"Videos":@"Downloads" rows:[self displayRows:source screen:screen playlist:pid]]];
     } else {
+      NSArray *jobs=[library_ jobsForPlaylist:pid video:[video objectForKey:@"video_id"]];
       if(screen==RDLPScreenVideo) {
         NSMutableArray *commands=[NSMutableArray array];
         NSDictionary *representative=[policy_ representativeJobForEntry:video playlist:pid jobs:jobs];
@@ -137,13 +154,9 @@
         [commands addObject:[self row:@"Download Quality" detail:@"" action:@"settings"]];
         [sections addObject:[self section:([video objectForKey:@"title"]?[video objectForKey:@"title"]:@"Video") rows:commands]];
       }
-      for(NSDictionary *job in jobs) {
-        if(screen==RDLPScreenVideo && ![[job objectForKey:@"video_id"] isEqualToString:[video objectForKey:@"video_id"]]) continue;
-        NSMutableDictionary *row=[NSMutableDictionary dictionaryWithDictionary:[self jobRow:job]];
-        [rows addObject:row];
-      }
+      [sections addObject:[self section:@"Downloads" rows:[self displayRows:jobs screen:screen playlist:pid]]];
+      return sections;
     }
-    [sections addObject:[self section:screen==RDLPScreenPlaylist?@"Videos":@"Downloads" rows:rows]];
   }
   return sections;
 }

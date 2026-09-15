@@ -49,7 +49,7 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
   }
   version=sqlite3_column_int(p,0);
   sqlite3_finalize(p);
-  if (!sql(s, "PRAGMA foreign_keys=ON; BEGIN IMMEDIATE;"
+  if (!sql(s, "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; BEGIN IMMEDIATE;"
     "CREATE TABLE IF NOT EXISTS playlists (id INTEGER PRIMARY KEY, service_id TEXT NOT NULL UNIQUE,"
     " title TEXT NOT NULL, directory TEXT NOT NULL, synced_at INTEGER);"
     "CREATE TABLE IF NOT EXISTS videos (id TEXT PRIMARY KEY, title TEXT NOT NULL);"
@@ -66,7 +66,14 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
     rdapp_store_close(s); return 0;
   }
   if ((version<2 && !sql(s,"ALTER TABLE playlists ADD COLUMN source TEXT NOT NULL DEFAULT 'added';")) ||
-      !sql(s,"PRAGMA user_version=2; COMMIT;")) { rdapp_store_close(s); return 0; }
+      !sql(s,"CREATE INDEX IF NOT EXISTS playlists_title ON playlists(title COLLATE NOCASE,id);"
+        "CREATE INDEX IF NOT EXISTS playlists_source_title ON playlists(source,title COLLATE NOCASE,id);"
+        "CREATE INDEX IF NOT EXISTS jobs_playlist_id ON jobs(playlist_id,id);"
+        "CREATE INDEX IF NOT EXISTS jobs_queue_visible ON jobs(id) WHERE state<>'removed' OR error<>'';"
+        "CREATE INDEX IF NOT EXISTS jobs_video_id ON jobs(playlist_id,video_id,id);"
+        "CREATE INDEX IF NOT EXISTS jobs_playlist_state ON jobs(playlist_id,state,id);"
+        "CREATE INDEX IF NOT EXISTS entries_video_position ON entries(playlist_id,video_id,position);"
+        "PRAGMA user_version=2; COMMIT;")) { rdapp_store_close(s); return 0; }
   *out = s; return 1;
 }
 void rdapp_filename(const char *text, char *out, size_t cap) {
@@ -113,18 +120,127 @@ static int each(rdapp_store *s, sqlite3_stmt *p, rdapp_row_callback cb, void *ct
   if(rc!=SQLITE_DONE) failure(s,sqlite3_errmsg(s->db));
   sqlite3_finalize(p); return rc==SQLITE_DONE;
 }
-int rdapp_store_list(rdapp_store *s, rdapp_query kind, int64_t key, rdapp_row_callback cb, void *ctx) {
-  const char *q;
-  sqlite3_stmt *p;
+int rdapp_store_open_reader(const char *path, rdapp_store **out) {
+  rdapp_store *s=calloc(1,sizeof(*s)); *out=NULL;
+  if(!s) return 0;
+  if(sqlite3_open_v2(path,&s->db,SQLITE_OPEN_READONLY,NULL)!=SQLITE_OK ||
+     !sql(s,"BEGIN")) { rdapp_store_close(s); return 0; }
+  *out=s; return 1;
+}
+/* Keep counting free of row projection, sorting and correlated metadata queries. */
+static int query_parts(rdapp_query kind,int64_t key,const char *format,
+                       const char **fields,const char **from,const char **order) {
+  *fields="j.*, p.title AS playlist_title";
+  *order="j.id DESC";
   switch(kind) {
-    case RDAPP_PLAYLISTS: q="SELECT p.*, (SELECT count(*) FROM entries e WHERE e.playlist_id=p.id) AS count FROM playlists p ORDER BY title COLLATE NOCASE"; break;
-    case RDAPP_ENTRIES: q="SELECT e.*, coalesce((SELECT j.state FROM jobs j WHERE j.playlist_id=e.playlist_id AND j.video_id=e.video_id ORDER BY (j.state='complete') DESC,j.id DESC LIMIT 1),'not downloaded') AS state, coalesce((SELECT j.actual_format FROM jobs j WHERE j.playlist_id=e.playlist_id AND j.video_id=e.video_id AND j.state='complete' ORDER BY j.id DESC LIMIT 1),'') AS quality FROM entries e WHERE e.playlist_id=? ORDER BY position"; break;
-    case RDAPP_DOWNLOADS: q="SELECT j.*, p.title AS playlist_title FROM jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.state='complete' AND (?=0 OR j.playlist_id=?) ORDER BY j.id DESC"; break;
-    default: q="SELECT j.*, p.title AS playlist_title FROM jobs j JOIN playlists p ON p.id=j.playlist_id WHERE (?=0 OR j.playlist_id=?) ORDER BY j.id DESC"; break;
+    case RDAPP_ADDED_IDS: case RDAPP_ACCOUNT_IDS:
+      *fields="p.id";
+      *from=kind==RDAPP_ADDED_IDS?"playlists p WHERE p.source='added'":"playlists p WHERE p.source='account'";
+      *order="p.title COLLATE NOCASE,p.id"; break;
+    case RDAPP_PLAYLISTS: case RDAPP_ADDED_PLAYLISTS: case RDAPP_ACCOUNT_PLAYLISTS: case RDAPP_PLAYLIST: case RDAPP_PLAYLIST_INPUT:
+      *fields="p.*, (SELECT count(*) FROM entries e WHERE e.playlist_id=p.id) AS count";
+      *from=kind==RDAPP_ADDED_PLAYLISTS?"playlists p WHERE p.source='added'":
+        (kind==RDAPP_ACCOUNT_PLAYLISTS?"playlists p WHERE p.source='account'":
+        (kind==RDAPP_PLAYLIST?"playlists p WHERE p.id=?1":(kind==RDAPP_PLAYLIST_INPUT?"playlists p WHERE p.service_id=?2":"playlists p WHERE 1")));
+      *order="p.title COLLATE NOCASE,p.id"; break;
+    case RDAPP_MISSING: case RDAPP_DOWNLOAD_CANDIDATES:
+      *fields="e.*,j.id AS job_id,j.state,j.path";
+      *from=kind==RDAPP_MISSING?
+        "entries e LEFT JOIN jobs j ON j.playlist_id=e.playlist_id AND j.video_id=e.video_id AND j.format=?3 WHERE e.playlist_id=?1 AND (j.id IS NULL OR j.state='removed') AND e.position=(SELECT min(e2.position) FROM entries e2 WHERE e2.playlist_id=e.playlist_id AND e2.video_id=e.video_id)":
+        "entries e LEFT JOIN jobs j ON j.playlist_id=e.playlist_id AND j.video_id=e.video_id AND j.format=?3 WHERE e.playlist_id=?1 AND (j.id IS NULL OR j.state IN ('removed','complete')) AND e.position=(SELECT min(e2.position) FROM entries e2 WHERE e2.playlist_id=e.playlist_id AND e2.video_id=e.video_id)";
+      *order="e.position"; break;
+    case RDAPP_VIDEO_ENTRIES:
+      *fields="e.*"; *from="entries e WHERE e.playlist_id=?1 AND e.video_id=?2"; *order="e.position"; break;
+    case RDAPP_ENTRIES:
+      *fields="e.*"; *from="entries e WHERE e.playlist_id=?1"; *order="e.position"; break;
+    case RDAPP_DOWNLOADS:
+      *from=key?"jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.state='complete' AND j.playlist_id=?1":
+        "jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.state='complete'"; break;
+    case RDAPP_QUEUE:
+      *from="jobs j JOIN playlists p ON p.id=j.playlist_id WHERE (j.state<>'removed' OR j.error<>'')";
+      *order="j.id"; break;
+    case RDAPP_PENDING:
+      *from="jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.state='queued'"; break;
+    case RDAPP_BLOCKING_JOBS:
+      *from="jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.playlist_id=?1 AND j.state IN ('queued','running','complete')"; break;
+    case RDAPP_VIDEO_JOBS:
+      *from=format?"jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.playlist_id=?1 AND j.video_id=?2 AND j.format=?3":
+        "jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.playlist_id=?1 AND j.video_id=?2"; break;
+    case RDAPP_JOB:
+      *from="jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.id=?1"; break;
+    case RDAPP_JOBS:
+      *from=key?"jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.playlist_id=?1":
+        "jobs j JOIN playlists p ON p.id=j.playlist_id WHERE 1"; break;
+    default: return 0;
   }
-  p=prepare(s,q); if(!p) return 0;
-  sqlite3_bind_int64(p,1,key); sqlite3_bind_int64(p,2,key);
+  return 1;
+}
+static sqlite3_stmt *list_statement(rdapp_store *s,rdapp_query kind,int64_t key,
+                                   const char *video,const char *format,int count) {
+  const char *fields,*from,*order; char query[2048]; sqlite3_stmt *p;
+  if(!query_parts(kind,key,format,&fields,&from,&order)) { failure(s,"Invalid list query"); return NULL; }
+  if(count && !strncmp(from,"jobs j JOIN playlists p ON p.id=j.playlist_id WHERE ",strlen("jobs j JOIN playlists p ON p.id=j.playlist_id WHERE ")))
+    snprintf(query,sizeof(query),"SELECT count(*) FROM jobs j WHERE %s",from+strlen("jobs j JOIN playlists p ON p.id=j.playlist_id WHERE "));
+  else if(count) snprintf(query,sizeof(query),"SELECT count(*) FROM %s",from);
+  else snprintf(query,sizeof(query),"SELECT %s FROM %s ORDER BY %s LIMIT ?4 OFFSET ?5",fields,from,order);
+  p=prepare(s,query);
+  if(p) { sqlite3_bind_int64(p,1,key); bind_text(p,2,video); bind_text(p,3,format); }
+  return p;
+}
+int rdapp_store_count(rdapp_store *s,rdapp_query kind,int64_t key,const char *video,const char *format,int64_t *count) {
+  sqlite3_stmt *p=list_statement(s,kind,key,video,format,1); int ok;
+  *count=0; if(!p) return 0;
+  ok=sqlite3_step(p)==SQLITE_ROW;
+  if(ok) *count=sqlite3_column_int64(p,0); else failure(s,sqlite3_errmsg(s->db));
+  sqlite3_finalize(p); return ok;
+}
+int rdapp_store_page(rdapp_store *s,rdapp_query kind,int64_t key,const char *video,const char *format,
+                     int64_t offset,int64_t limit,rdapp_row_callback cb,void *ctx) {
+  sqlite3_stmt *p;
+  if(offset<0 || limit< -1) return failure(s,"Invalid page range");
+  p=list_statement(s,kind,key,video,format,0); if(!p) return 0;
+  sqlite3_bind_int64(p,4,limit); sqlite3_bind_int64(p,5,offset); return each(s,p,cb,ctx);
+}
+int rdapp_store_after(rdapp_store *s,rdapp_query kind,int64_t key,const char *video,const char *format,
+                      int64_t identity,rdapp_row_callback cb,void *ctx) {
+  const char *fields,*from,*order; char query[2048]; sqlite3_stmt *p;
+  if(!query_parts(kind,key,format,&fields,&from,&order) || kind==RDAPP_PLAYLISTS ||
+     kind==RDAPP_ADDED_PLAYLISTS || kind==RDAPP_ACCOUNT_PLAYLISTS || kind==RDAPP_PLAYLIST || kind==RDAPP_PLAYLIST_INPUT ||
+     kind==RDAPP_ADDED_IDS || kind==RDAPP_ACCOUNT_IDS)
+    return failure(s,"Invalid seek query");
+  snprintf(query,sizeof(query),"SELECT %s FROM %s AND %s%s?4 ORDER BY %s LIMIT 1",fields,from,
+    (kind==RDAPP_ENTRIES || kind==RDAPP_VIDEO_ENTRIES || kind==RDAPP_MISSING || kind==RDAPP_DOWNLOAD_CANDIDATES)?"e.position":"j.id",
+    (kind==RDAPP_ENTRIES || kind==RDAPP_VIDEO_ENTRIES || kind==RDAPP_MISSING || kind==RDAPP_DOWNLOAD_CANDIDATES || kind==RDAPP_QUEUE)?">":"<",order);
+  p=prepare(s,query); if(!p) return 0;
+  sqlite3_bind_int64(p,1,key); bind_text(p,2,video); bind_text(p,3,format); sqlite3_bind_int64(p,4,identity);
   return each(s,p,cb,ctx);
+}
+int rdapp_store_list(rdapp_store *s,rdapp_query kind,int64_t key,rdapp_row_callback cb,void *ctx) {
+  if(kind==RDAPP_ENTRIES) {
+    sqlite3_stmt *p=prepare(s,"SELECT e.*, coalesce((SELECT j.state FROM jobs j WHERE j.playlist_id=e.playlist_id AND j.video_id=e.video_id ORDER BY (j.state='complete') DESC,j.id DESC LIMIT 1),'not downloaded') AS state, coalesce((SELECT j.actual_format FROM jobs j WHERE j.playlist_id=e.playlist_id AND j.video_id=e.video_id AND j.state='complete' ORDER BY j.id DESC LIMIT 1),'') AS quality FROM entries e WHERE e.playlist_id=? ORDER BY position");
+    if(!p) return 0;
+    sqlite3_bind_int64(p,1,key); return each(s,p,cb,ctx);
+  }
+  return rdapp_store_page(s,kind,key,NULL,NULL,0,-1,cb,ctx);
+}
+int rdapp_store_index(rdapp_store *s,rdapp_query kind,int64_t key,int64_t identity,int64_t *index) {
+  const char *fields,*from,*order,*column,*comparison; char query[2048]; sqlite3_stmt *p; int ok;
+  *index=-1;
+  if(kind!=RDAPP_ENTRIES && kind!=RDAPP_DOWNLOADS && kind!=RDAPP_QUEUE) return failure(s,"Invalid indexed list");
+  if(!query_parts(kind,key,NULL,&fields,&from,&order)) return failure(s,"Invalid indexed list");
+  column=kind==RDAPP_ENTRIES?"e.position":"j.id"; comparison=kind==RDAPP_DOWNLOADS?">":"<";
+  snprintf(query,sizeof(query),"SELECT count(*) FROM %s AND %s=?2",from,column);
+  p=prepare(s,query); if(!p) return 0;
+  sqlite3_bind_int64(p,1,key); sqlite3_bind_int64(p,2,identity);
+  ok=sqlite3_step(p)==SQLITE_ROW;
+  if(!ok || !sqlite3_column_int64(p,0)) { sqlite3_finalize(p); return ok; }
+  sqlite3_finalize(p);
+  snprintf(query,sizeof(query),"SELECT count(*) FROM %s AND %s%s?2",from,column,comparison);
+  p=prepare(s,query); if(!p) return 0;
+  sqlite3_bind_int64(p,1,key); sqlite3_bind_int64(p,2,identity);
+  ok=sqlite3_step(p)==SQLITE_ROW;
+  if(ok) *index=sqlite3_column_int64(p,0); else failure(s,sqlite3_errmsg(s->db));
+  sqlite3_finalize(p); return ok;
 }
 int rdapp_store_playlist(rdapp_store *s,const char *id,const char *title,int64_t *key) {
   char safe[128], directory[256]; sqlite3_stmt *p; int ok;
@@ -265,6 +381,23 @@ int rdapp_store_export(rdapp_store *s,int64_t key,const char *root) {
   return 1;
 }
 
+int rdapp_store_reconcile_job(rdapp_store *s,int64_t key,const char *root) {
+  sqlite3_stmt *p=prepare(s,"SELECT path,state,actual_format FROM jobs WHERE id=?");
+  int rc,ok=1; struct stat st; char path[PATH_MAX];
+  if(!p) return 0;
+  sqlite3_bind_int64(p,1,key); rc=sqlite3_step(p);
+  if(rc==SQLITE_ROW) {
+    const char *state=(const char *)sqlite3_column_text(p,1);
+    const char *format=(const char *)sqlite3_column_text(p,2);
+    int exists=snprintf(path,sizeof(path),"%s/%s",root,sqlite3_column_text(p,0))<(int)sizeof(path) &&
+      lstat(path,&st)==0 && S_ISREG(st.st_mode) && st.st_size>0;
+    if(!strcmp(state,"complete") && !exists)
+      ok=rdapp_store_finish(s,key,"removed",format,"File is missing. Retry to download it again.");
+    else if(!strcmp(state,"interrupted") && exists && format[0])
+      ok=rdapp_store_finish(s,key,"complete",format,"Recovered completed download after interruption.");
+  } else if(rc!=SQLITE_DONE) ok=failure(s,sqlite3_errmsg(s->db));
+  sqlite3_finalize(p); return ok;
+}
 int rdapp_store_reconcile(rdapp_store *s,const char *root) {
   sqlite3_stmt *p=prepare(s,"SELECT id,path,state,actual_format FROM jobs WHERE state IN ('complete','interrupted')");
   int rc,ok=1; struct stat st;

@@ -14,8 +14,9 @@
 - (void)refresh:(id)sender;
 {
   if(![self isViewLoaded]) return;
-  for(NSDictionary *playlist in [library_ playlists]) if([[playlist objectForKey:@"id"] isEqualToString:[playlist_ objectForKey:@"id"]]) {
-    [playlist retain]; [playlist_ release]; playlist_=playlist; self.title=[playlist objectForKey:@"title"]; break;
+  NSDictionary *playlist=[library_ playlistForID:[playlist_ objectForKey:@"id"]];
+  if(playlist) {
+    [playlist retain]; [playlist_ release]; playlist_=playlist; self.title=[playlist objectForKey:@"title"];
   }
   self.navigationItem.rightBarButtonItem.enabled=![library_ isSyncPendingForInput:[playlist_ objectForKey:@"service_id"]];
   [super refresh:sender];
