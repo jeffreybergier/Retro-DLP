@@ -13,6 +13,18 @@ static CGFloat RDLPMainScreenScale(void) {
   CGFloat scale=[[UIScreen mainScreen] scale];
   return isfinite(scale) && scale>=1.0?scale:1.0;
 }
+/* Every glyph starts as a white alpha mask. The selector guard keeps the
+   explicit iOS 7 template mode safe on iOS 5/6. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunguarded-availability"
+static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat canvas,CGFloat scale) {
+  UIImage *image=[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid
+    iconSize:size canvasSize:canvas color:[UIColor whiteColor] scale:scale];
+  if([image respondsToSelector:@selector(imageWithRenderingMode:)])
+    image=[image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+  return image;
+}
+#pragma clang diagnostic pop
 @implementation RDLPUIKit
 + (void)configureContentEdges:(UIViewController *)controller;
 {
@@ -31,28 +43,28 @@ static CGFloat RDLPMainScreenScale(void) {
   if([status isEqualToString:@"Downloaded"]) icon=AIFACircleCheck;
   else if([status isEqualToString:@"Downloading"] || [status isEqualToString:@"Queued"]) icon=AIFAHourglass;
   else if([status isEqualToString:@"Not downloaded"]) icon=AIFADownload;
-  UIImage *image=[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid iconSize:14 canvasSize:18 color:[UIColor darkGrayColor] scale:scale];
+  UIImage *image=RDLPFontAwesomeImage(icon,14,18,scale);
   if(image) [images setObject:image forKey:key]; return image;
 }
 + (UIImage *)queueActionIcon:(BOOL)stop;
-{ return [AIFontAwesome imageForIcon:stop?AIFAPause:AIFARotateRight style:AIFontAwesomeStyleSolid iconSize:14 canvasSize:20 color:[UIColor blackColor] scale:RDLPMainScreenScale()]; }
+{ return RDLPFontAwesomeImage(stop?AIFAPause:AIFARotateRight,14,20,RDLPMainScreenScale()); }
 
 + (UIImage *)settingsIcon;
-{ return [AIFontAwesome imageForIcon:AIFAGear style:AIFontAwesomeStyleSolid iconSize:22 canvasSize:26 color:[UIColor blackColor] scale:RDLPMainScreenScale()]; }
+{ return RDLPFontAwesomeImage(AIFAGear,22,26,RDLPMainScreenScale()); }
 
 + (UIImage *)plusIcon;
 {
   /* Font Awesome "plus"; this bundled header names U+F067 AIFAStd12. */
-  return [AIFontAwesome imageForIcon:(AIFontAwesomeIcon)0xF067 style:AIFontAwesomeStyleSolid iconSize:22 canvasSize:26 color:[UIColor blackColor] scale:RDLPMainScreenScale()]; }
+  return RDLPFontAwesomeImage((AIFontAwesomeIcon)0xF067,22,26,RDLPMainScreenScale()); }
 
 + (UIImage *)queueToolbarIcon;
 {
   /* ENIL's toolbar glyph geometry; UIKit supplies tint on iOS 7+. */
-  return [AIFontAwesome imageForIcon:AIFAListCheck style:AIFontAwesomeStyleSolid iconSize:18 canvasSize:28 color:[UIColor whiteColor] scale:RDLPMainScreenScale()];
+  return RDLPFontAwesomeImage(AIFAListCheck,18,28,RDLPMainScreenScale());
 }
 
 + (UIImage *)syncIcon;
-{ return [AIFontAwesome imageForIcon:AIFAArrowsRotate style:AIFontAwesomeStyleSolid iconSize:22 canvasSize:26 color:[UIColor blackColor] scale:RDLPMainScreenScale()]; }
+{ return RDLPFontAwesomeImage(AIFAArrowsRotate,22,26,RDLPMainScreenScale()); }
 
 + (NSArray *)statusToolbarItems:(RDLPStatusBarView *)status target:(id)target queueAction:(SEL)action;
 {

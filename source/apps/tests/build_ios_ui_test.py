@@ -32,6 +32,8 @@ info.update(CFBundleExecutable='RetroDLPIOSOfflineTest',
             CFBundleIdentifier='test.retrodlp.ios',
             CFBundleURLTypes=[dict(CFBundleURLName='Offline Test',
                                   CFBundleURLSchemes=['retrodlp-offline-test'])])
+if os.environ.get('RDLP_TEST_ICONS_ONLY') == '1':
+    info['RDLPTestIconsOnly'] = True
 plist.write_bytes(plistlib.dumps(info))
 objects = root / 'build/apps/iOS/Intermediates'
 cmd = ['/usr/bin/clang', '-target', 'armv7-apple-ios5.0', '-arch', 'armv7',

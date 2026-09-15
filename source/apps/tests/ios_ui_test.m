@@ -157,9 +157,13 @@ static void screenshot(UIWindow *window,NSString *path) {
   [@"RUNNING" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSString *report=@"PASS";
   @try {
+    testIOSIconScale();
+    if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestIconsOnly"] boolValue]) {
+      [@"PASS: white icon pixels, screen scale, and compatible template rendering" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      return;
+    }
     testSharedMetadata();
     testSharedVideoRows([documents_ stringByAppendingPathComponent:@"RowFixture"]);
-    testIOSIconScale();
     testSharedStatus([documents_ stringByAppendingPathComponent:@"StatusFixture"]);
     {
       RDLPStatusTestLibrary *errors=[[[RDLPStatusTestLibrary alloc] initWithSupportDirectory:[documents_ stringByAppendingPathComponent:@"Alerts/Support"] downloadDirectory:[documents_ stringByAppendingPathComponent:@"Alerts/Downloads"]] autorelease];

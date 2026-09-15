@@ -2,12 +2,37 @@
 #import <AIFontAwesome.h>
 #import <math.h>
 
-static void testIOSIconImage(UIImage *image,CGFloat canvas,CGFloat scale) {
+static void testIOSIconDimensions(UIImage *image,CGFloat canvas,CGFloat scale) {
   if(!image || image.scale!=scale || image.size.width!=canvas || image.size.height!=canvas ||
      CGImageGetWidth(image.CGImage)!=(size_t)ceil(canvas*scale) ||
      CGImageGetHeight(image.CGImage)!=(size_t)ceil(canvas*scale))
     [NSException raise:@"RDLPIOSIconTest" format:@"Icon must preserve point size and screen-resolution pixels (%gpt @%gx)",canvas,scale];
 }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunguarded-availability"
+static void testIOSIconImage(UIImage *image,CGFloat canvas,CGFloat scale) {
+  testIOSIconDimensions(image,canvas,scale);
+  if([image respondsToSelector:@selector(renderingMode)] && image.renderingMode!=UIImageRenderingModeAlwaysTemplate)
+    [NSException raise:@"RDLPIOSIconTest" format:@"Every app icon must use template rendering on iOS 7+"];
+  size_t width=CGImageGetWidth(image.CGImage), height=CGImageGetHeight(image.CGImage), i;
+  unsigned char *pixels=calloc(width*height,4);
+  CGColorSpaceRef colors=CGColorSpaceCreateDeviceRGB();
+  CGContextRef context=CGBitmapContextCreate(pixels,width,height,8,width*4,colors,kCGImageAlphaPremultipliedLast|kCGBitmapByteOrder32Big);
+  if(!pixels || !context) [NSException raise:@"RDLPIOSIconTest" format:@"Create icon pixel probe"];
+  CGContextDrawImage(context,CGRectMake(0,0,width,height),image.CGImage);
+  BOOL white=YES, ink=NO, clear=NO;
+  for(i=0;i<width*height;++i) {
+    unsigned char *pixel=pixels+i*4;
+    if(pixel[3]) {
+      ink=YES;
+      if(abs((int)pixel[0]-pixel[3])>1 || abs((int)pixel[1]-pixel[3])>1 || abs((int)pixel[2]-pixel[3])>1) white=NO;
+    } else clear=YES;
+  }
+  CGContextRelease(context); CGColorSpaceRelease(colors); free(pixels);
+  if(!white || !ink || !clear)
+    [NSException raise:@"RDLPIOSIconTest" format:@"Every app icon must contain only white glyph pixels and transparency"];
+}
+#pragma clang diagnostic pop
 static void testIOSIconScale(void) {
   CGFloat scale=[[UIScreen mainScreen] scale];
   testIOSIconImage([RDLPUIKit plusIcon],26,scale);
@@ -25,7 +50,7 @@ static void testIOSIconScale(void) {
   /* Pin the dependency contract, including the previous scale:0 call path. */
   unsigned int factor;
   for(factor=0;factor<=3;++factor)
-    testIOSIconImage([AIFontAwesome imageForIcon:(AIFontAwesomeIcon)0xf067
+    testIOSIconDimensions([AIFontAwesome imageForIcon:(AIFontAwesomeIcon)0xf067
       style:AIFontAwesomeStyleSolid iconSize:22 canvasSize:26 color:[UIColor blackColor]
       scale:factor],26,factor?factor:scale);
 }
