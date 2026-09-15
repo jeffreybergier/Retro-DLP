@@ -1,6 +1,7 @@
 #import "RDLPLibraryViewController.h"
 #import "RDLPUIKit.h"
 #import "RDLPPlaylistViewController.h"
+#import "RDLPDownloadsViewController.h"
 
 @implementation RDLPLibraryViewController
 @synthesize tableView=tableView_;
@@ -202,7 +203,8 @@
 {
   UIViewController *controller=mode==RDLPScreenPlaylist?
     (UIViewController *)[[RDLPPlaylistViewController alloc] initWithLibrary:library_ playlist:playlist]:
-    [[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:mode playlist:playlist video:video];
+    (mode==RDLPScreenDownloads?(UIViewController *)[[RDLPDownloadsViewController alloc] initWithLibrary:library_]:
+    [[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:mode playlist:playlist video:video]);
   [self.navigationController pushViewController:controller animated:YES]; [controller release];
 }
 - (void)showJobInQueue:(NSDictionary *)job;

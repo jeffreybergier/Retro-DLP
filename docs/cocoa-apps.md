@@ -258,8 +258,13 @@ status visible. Idle text is bold 15pt; active text is bold 13pt over a 100pt
 progress track. Legacy text uses ENIL's white engraved shadow; iOS 7+ uses dark
 text without a shadow. Unknown progress holds at half fill. Long text truncates
 to leave room for Queue; its full text and progress counts remain accessible.
-The toolbar replaces the home screen's old status footer. Other screens retain
-their existing controls.
+The toolbar replaces the home screen's old status footer. Playlist and All Downloads
+share `RDLPVideoListViewController`, a plain `UITableViewController`, including
+subtitle cells, status accessories, playback/retry handling, and toolbar lifecycle.
+Their entire toolbar is hidden for Ready or empty status, and animates out when
+an idle message expires after ten seconds. Offscreen refreshes do not change the
+visible screen's toolbar. Playlist alone adds the Sync button. Both video lists
+remain blank when empty, with no placeholder section footer.
 
 Queue opens modally in its own navigation controller with a **Done** button.
 The toolbar button and Show in Queue actions use the same presentation. Revealing a
@@ -268,21 +273,34 @@ job inside Queue reuses the open screen instead of stacking another modal.
 Open a playlist and tap **Sync**. Pending syncs/discovery
 cannot be submitted again. Sync All and account discovery confirm their scope.
 
-Both the Playlists home screen and individual playlist video lists use standard
+The Playlists home screen, individual playlist video lists, and All Downloads use standard
 UIKit subtitle cells, with default typography, single-line labels, and row heights.
 
-Playlist videos summarize every downloaded quality. A playable file takes
-priority over running, queued, failed/missing, and stopped work, even when the
-preferred quality differs. Status icons also have text equivalents. Opening a
-video offers native playback of its representative download, the action for the
-preferred quality, quality settings, and individual download jobs. All Downloads
-keeps individual qualities with their playlist and requested format visible.
+Playlist keeps one row per playlist entry and summarizes every downloaded quality.
+A playable file takes priority over running, queued, failed/missing, and stopped
+work, even when the preferred quality differs. All Downloads keeps one row per
+completed job, including multiple qualities of the same video. Both screens show
+the video title, requested quality subtitle, and accessible trailing status icon.
+Tapping plays that row's local file, ignores pending work, or offers an exact-quality
+retry for failed/missing downloads. An undownloaded playlist entry queues the
+preferred quality. All Downloads retains each job's playlist identity internally.
+
+Swipe a completed, failed, interrupted, or stopped video row to reveal **Delete**.
+Tapping Delete removes that row's quality and any staged audio/video fragments;
+other qualities and playlist membership remain. All Downloads removes the row,
+while Playlist updates its representative download or shows an undownloaded row.
+Queued/running downloads must be stopped first, and deletion is disabled while the
+library is busy. The selected job stays fixed during the swipe, and its eligibility
+is checked again when Delete is tapped. Dismissing the swipe does nothing.
+Deletion and the post-swipe refresh run after UIKit's editing callbacks return;
+reloading during confirmation dismissal can recursively reenter UIKit on iOS 8.
 
 Choosing Low, Medium, High, or saving a valid Custom Format only saves the
 preference. It does not download anything. **Download Missing** confirms an exact,
 deduplicated plan at the selected quality. It includes new and removed/missing-file
 downloads, skips failed/interrupted/stopped jobs, and rechecks eligibility before
-performing the captured plan. Single-video downloads and retries are immediate.
+performing the captured plan. Single-video downloads are immediate; failed or
+missing rows in Playlist and All Downloads confirm an exact-quality retry.
 
 Queue has Done, Downloading, Queued, and Needs Attention sections, with
 collapsible playlist and video rows above individual qualities. Each pending or
@@ -293,13 +311,16 @@ that exact quality. Selection follows its status changes. Other collapsed branch
 stay collapsed. Job actions show only applicable playback, download, stop, delete,
 and Show in Queue commands; full errors are available in the job dialog.
 
-On the playlist, video, downloads, and queue screens, a fixed status area below the table shows current activity and a native progress
+On the video detail and queue screens, a fixed status area below the table shows
+current activity and a native progress
 bar for processed attempts in the current run. Failed and stopped counts are
 included in its accessible description. Historical jobs do not contribute, and
 progress appearing or disappearing never changes the table's frame.
 
 Deleting a download, stopping work, removing a playlist, replacing/removing
-cookies, and bulk operations require confirmation. Cancel performs no operation.
+cookies, and bulk operations require confirmation. For swipe deletion, tapping
+the revealed Delete button is the confirmation; other deletion actions use a dialog.
+Cancel performs no operation.
 Playlist removal is disabled until pending jobs and completed downloads have
 been removed. Cookie changes and discovery are disabled while busy; cookie status
 indicates local file availability, not authentication. Settings includes the
@@ -427,6 +448,23 @@ usage. The other narrow exceptions are the `main` entry point and the drawing
 math (`isfinite`/`ceil`) and AppKit ABI adaptation inside `RDLPAppKit`.
 
 ## Validation
+
+Shared iOS video lists (2026-09-15): armv7/arm64 app builds and artifact checks
+passed, the iOS static analyzer reported zero warnings/errors, and the portable
+store/service suites passed. The isolated native suite passed on `koolphone5`,
+covering matching Playlist/All Downloads cells, representative playlist rows,
+separate completed qualities, exact-file playback, missing-file retry, empty state,
+and animated ten-second toolbar expiry across navigation and modal dismissal.
+Playlist and All Downloads screenshots were inspected.
+The follow-up native swipe-deletion suite also passed on the same device: it
+verified exact-quality deletion, sibling and playlist preservation, cleanup of all
+staged fragments for failed/interrupted/cancelled jobs, cancelled swipe behavior,
+and revalidation when work starts or a quality is requeued during the gesture.
+An iOS 8 crash report subsequently exposed recursive table reload during UIKit's
+confirmation dismissal, which direct delegate-call tests missed. The fix defers
+deletion and refresh until those callbacks return. The updated native suite passed
+on `koolphone5`, including pressing UIKit's real row-edit/Delete controls to remove
+the last All Downloads row, plus the existing playback, toolbar, and cleanup tests.
 
 iOS parity refactor (2026-09-14): armv7 and arm64 builds completed without compiler
 warnings, both Apple static analyzers reported zero warnings/errors, and both

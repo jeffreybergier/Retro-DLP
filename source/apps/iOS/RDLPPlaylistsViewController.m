@@ -1,6 +1,7 @@
 #import "RDLPPlaylistsViewController.h"
 #import "RDLPLibraryViewController.h"
 #import "RDLPPlaylistViewController.h"
+#import "RDLPDownloadsViewController.h"
 #import "RDLPSettingsViewController.h"
 #import "RDLPUIKit.h"
 
@@ -72,7 +73,7 @@
   if(![action isEqualToString:@"playlist"] && ![action isEqualToString:@"downloads"]) return;
   UIViewController *controller=[action isEqualToString:@"playlist"]?
     (UIViewController *)[[[RDLPPlaylistViewController alloc] initWithLibrary:library_ playlist:[row objectForKey:@"playlist"]] autorelease]:
-    [[[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:RDLPScreenDownloads playlist:nil video:nil] autorelease];
+    [[[RDLPDownloadsViewController alloc] initWithLibrary:library_] autorelease];
   [self.navigationController pushViewController:controller animated:YES];
 }
 - (BOOL)enabled:(NSString *)action;
