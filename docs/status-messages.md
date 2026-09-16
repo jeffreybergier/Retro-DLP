@@ -1,9 +1,12 @@
 # Status bar messages
 
 macOS and iOS use the same messages and timer in `source/apps/shared/RDLPLibrary.m`.
-Each new message replaces the previous one and resets the ten-second timer,
-including a new event with identical text. Ten seconds without another message
-clears the text and progress. Screen refreshes and navigation do not reset it.
+Active operations keep their current phase and progress visible until completion.
+Once idle, each new message resets the ten-second expiry timer, including identical
+text. Ten idle seconds without another message clears the text and progress.
+Screen refreshes and navigation do not reset it. Add Video queues locally and
+shows `Video added` when idle, preserving another active operation’s status.
+Its queued download uses the normal resolver and transfer phases below.
 
 ## Download steps
 

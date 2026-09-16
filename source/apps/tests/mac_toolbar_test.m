@@ -8,6 +8,7 @@
 #import "../shared/rdapp_store.h"
 #import <math.h>
 #include <sys/resource.h>
+#include <stdlib.h>
 @interface RDLPLibraryWindowController (RDLPToolbarTest)
 - (void)tableWasUsed:(NSTableView *)view;
 - (BOOL)validateMenuItem:(NSMenuItem *)item;
@@ -299,7 +300,8 @@ static NSArray *titles(NSMenu *menu) {
     NSUInteger queueIndex; long long previousID=0;
     for(queueIndex=0;queueIndex<[ordered count];++queueIndex) {
       NSDictionary *job=[ordered objectAtIndex:queueIndex];
-      requireCondition(queueIndex==0 || [[job objectForKey:@"id"] longLongValue]<previousID,@"Queue shows newest items first"); previousID=[[job objectForKey:@"id"] longLongValue];
+      long long jobID=strtoll([[job objectForKey:@"id"] UTF8String],NULL,10);
+      requireCondition(queueIndex==0 || jobID<previousID,@"Queue shows newest items first"); previousID=jobID;
       requireCondition([[window_ tableView:queueTable objectValueForTableColumn:[queueColumns objectAtIndex:0] row:(NSInteger)queueIndex] isEqual:[job objectForKey:@"id"]],@"Queue numbers show permanent database job IDs");
       requireCondition([[window_ tableView:queueTable objectValueForTableColumn:[queueColumns objectAtIndex:3] row:(NSInteger)queueIndex] isEqual:[job objectForKey:@"title"]] && [[window_ tableView:queueTable objectValueForTableColumn:[queueColumns objectAtIndex:4] row:(NSInteger)queueIndex] isEqual:[job objectForKey:@"playlist_title"]],@"Queue exposes video and playlist in their own columns");
       requireCondition([[window_ tableView:queueTable objectValueForTableColumn:[queueColumns objectAtIndex:2] row:(NSInteger)queueIndex] rangeOfString:[job objectForKey:@"format"]].location!=NSNotFound,@"Quality identifies the exact requested format");
@@ -515,7 +517,11 @@ static NSArray *titles(NSMenu *menu) {
     requireCondition(![window_ validateMenuItem:[[[NSMenuItem alloc] initWithTitle:@"Sync" action:@selector(sync:) keyEquivalent:@""] autorelease]],@"Ad-Hoc menu sync is disabled");
     [window_ addVideo:nil]; pump();
     requireCondition([[[window_ valueForKey:@"addSheet_"] title] isEqualToString:@"Add Video"],@"Mac Add Video sheet opens");
-    [NSApp endSheet:[window_ valueForKey:@"addSheet_"] returnCode:0]; pump();
+    [library_ setPaused:YES];
+    [[window_ valueForKey:@"input_"] setStringValue:@"https://youtu.be/LMNOPQRSTUV"];
+    [NSApp endSheet:[window_ valueForKey:@"addSheet_"] returnCode:1]; pump();
+    NSDictionary *addedJob=[library_ jobForPlaylist:[adhoc objectForKey:@"id"] video:@"LMNOPQRSTUV" format:[RDLPLibrary preferredFormat]];
+    requireCondition([[addedJob objectForKey:@"state"] isEqualToString:@"queued"] && [[addedJob objectForKey:@"title"] isEqualToString:@"LMNOPQRSTUV"],@"Mac Add Video sheet queues immediately without network access");
     testMacErrorAlert(window_);
     report=@"PASS: Ad-Hoc grouping and disabled sync, Add Video sheet, shared status expiry, native error alerts, VLC preference and system fallback, download policy, textured window, flat five-column queue, exact-quality menu actions, selection stability, transfer progress, queue accounting and local failures, sidebar outline groups, discovery promotion, Download/Play targeting, adaptive menus, cancellation and retry; no network requests.";
 

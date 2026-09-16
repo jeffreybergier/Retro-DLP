@@ -39,6 +39,7 @@ for name, args in {
     'add_adhoc_download':[P,S,S,S,C.POINTER(I)],
     'discovered_playlist':[P,S,S], 'playlist':[P,S,S,C.POINTER(I)], 'enqueue':[P,I,S,S],
     'claim':[P,CB,P], 'finish':[P,I,S,S,S], 'retry':[P,I],
+    'resolve_job':[P,I,S,S,C.c_size_t],
     'cancel':[P,I], 'forget_file':[P,I], 'reconcile_job':[P,I,S], 'remove_playlist':[P,I,S],
     'reconcile':[P,S], 'remove_file':[P,I,S],
     'export':[P,I,S], 'list':[P,C.c_int,I,CB,P],
@@ -157,6 +158,36 @@ class StoreTests(unittest.TestCase):
         add(b'18')
         self.assertEqual(self.count(2,key=adhoc.value),2)
         self.assertEqual(self.count(1,key=adhoc.value),1)
+
+    def test_adhoc_resolves_title_and_path_without_changing_other_downloads(self):
+        adhoc=I()
+        self.check(lib.rdapp_store_add_adhoc_download(self.db,b'ABCDEFGHIJK',None,b'18',C.byref(adhoc)))
+        self.assertEqual(self.page(2,key=adhoc.value)[0]['title'],'ABCDEFGHIJK')
+        first=self.claim()
+        path=C.create_string_buffer(4096)
+        self.check(lib.rdapp_store_resolve_job(self.db,int(first['id']),b'Resolved / title',path,len(path)))
+        resolved=self.page(10,key=int(first['id']))[0]
+        self.assertEqual(resolved['title'],'Resolved / title')
+        self.assertEqual(resolved['path'],path.value.decode())
+        self.assertNotEqual(resolved['path'],first['path'])
+        self.assertEqual(Path(resolved['path']).parent,Path(first['path']).parent)
+        self.assertEqual(self.page(1,key=adhoc.value)[0]['title'],'Resolved / title')
+        self.check(lib.rdapp_store_finish(self.db,int(first['id']),b'complete',b'18',b''))
+        self.check(lib.rdapp_store_add_adhoc_download(self.db,b'ABCDEFGHIJK',None,b'18',C.byref(adhoc)))
+        self.assertEqual(self.page(10,key=int(first['id']))[0],dict(resolved,state='complete',actual_format='18'))
+        self.check(lib.rdapp_store_add_adhoc_download(self.db,b'ABCDEFGHIJK',None,b'137+140',C.byref(adhoc)))
+        second=self.claim()
+        self.assertEqual(second['title'],'Resolved / title')
+        self.assertFalse(lib.rdapp_store_resolve_job(self.db,int(second['id']),b'New title',path,1))
+        self.assertEqual(self.page(1,key=adhoc.value)[0]['title'],'Resolved / title')
+        self.check(lib.rdapp_store_resolve_job(self.db,int(second['id']),b'New title',path,len(path)))
+        self.assertEqual(self.page(10,key=int(first['id']))[0]['path'],resolved['path'])
+        self.assertFalse(lib.rdapp_store_resolve_job(self.db,int(first['id']),b'Cannot rename complete',path,len(path)))
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
+        playlist_job=self.claim()
+        before=self.page(10,key=int(playlist_job['id']))[0]
+        self.check(lib.rdapp_store_resolve_job(self.db,int(playlist_job['id']),b'Different resolver title',path,len(path)))
+        self.assertEqual(self.page(10,key=int(playlist_job['id']))[0],before)
 
     def test_adhoc_download_rolls_back_entry_if_queueing_fails(self):
         with sqlite3.connect(self.path/'db.sqlite') as db:

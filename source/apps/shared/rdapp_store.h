@@ -46,12 +46,17 @@ int rdapp_store_snapshot(rdapp_store *, const char *id, const char *title,
 int rdapp_store_add_adhoc(rdapp_store *, const char *video_id, const char *title,
                           int64_t *key);
 /* Atomically adds the entry and queues its quality, retrying stopped/removed
-   jobs while preserving queued, running and completed downloads. */
+   jobs while preserving queued, running and completed downloads. A NULL title
+   preserves known titles or uses the video ID until download resolution. */
 int rdapp_store_add_adhoc_download(rdapp_store *, const char *video_id,
                                   const char *title, const char *format, int64_t *key);
 int rdapp_store_enqueue(rdapp_store *, int64_t playlist, const char *video_id,
                         const char *format); /* NULL video means whole playlist */
 int rdapp_store_claim(rdapp_store *, rdapp_row_callback, void *);
+/* Finalizes an Ad-Hoc title/path before transfer; other playlists keep theirs.
+   The job must be running. Copies the persisted relative path into path. */
+int rdapp_store_resolve_job(rdapp_store *, int64_t job, const char *title,
+                            char *path, size_t capacity);
 int rdapp_store_finish(rdapp_store *, int64_t job, const char *state,
                        const char *actual_format, const char *message);
 int rdapp_store_retry(rdapp_store *, int64_t job);

@@ -12,7 +12,7 @@
 
 typedef struct {
   const char *base; const char *media; int fail, cancel, cancel_on_progress, depth;
-  char player[4096]; int format_seen, target_seen, requests;
+  char player[4096]; int format_seen, target_seen, requests, changes;
 } fixture;
 static const char playlist_json[] =
   "{\"metadata\":{\"playlistMetadataRenderer\":{\"title\":\"Offline playlist\"}},"
@@ -49,6 +49,9 @@ static void status_message(const char *message,void *ctx) {
   if(!strncmp(message,"Format: ",8)) { assert(strstr(message,"640x360")); ++f->format_seen; }
   else if(!strncmp(message,"File: ",6)) { assert(f->format_seen>f->target_seen); ++f->target_seen; }
   else assert(0);
+}
+static void library_changed(void *ctx) {
+  fixture *f=ctx; assert(!f->depth); ++f->changes;
 }
 typedef struct { rdapp_job job; char video[64],format[64],path[1024],state[64]; int count, account_count; } claimed;
 static int collect(void *ctx,int count,const char *const *names,const char *const *values) {
@@ -100,24 +103,32 @@ int main(int argc,char **argv) {
   config.download.struct_size=sizeof(config.download); config.download.ca_bundle_path=argv[3];
   config.download.cancel_callback=cancelled; config.download.event_callback=progress; config.download.callback_context=&f;
   config.result=&outcome; config.status_callback=status_message; config.status_context=&f;
+  config.change_callback=library_changed;
   config.lock=lock; config.unlock=unlock; config.lock_context=&f;
   snprintf(db,sizeof(db),"%s/library.sqlite",argv[1]); assert(rdapp_store_open(db,&s));
   require(rdapp_service_run(s,&config,RDAPP_SYNC,"PLfixture",NULL,message,sizeof(message)),message);
   assert(f.requests==2); /* Existing playlist page + browse; no image/video requests. */
   memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_PLAYLISTS,0,collect,&c)); assert(c.count==1); key=c.job.id;
   {
-    rdapp_job added; int before=f.requests;
+    rdapp_job added; rdapp_service_config local; int before=f.requests;
+    memset(&local,0,sizeof(local)); local.download_root=argv[1];
     memset(&added,0,sizeof(added)); added.format="137+140"; /* Unavailable download preference must not block adding metadata. */
-    require(rdapp_service_run(s,&config,RDAPP_ADD_VIDEO,"https://youtu.be/YE7VzlLtp-4",&added,message,sizeof(message)),message);
-    assert(f.requests==before+2 && strstr(message,"Ad-Hoc")); /* Local fixture watch/player only. */
+    require(rdapp_service_run(s,&local,RDAPP_ADD_VIDEO,"https://youtu.be/YE7VzlLtp-4",&added,message,sizeof(message)),message);
+    assert(f.requests==before && strstr(message,"Ad-Hoc")); /* Adding never resolves or fetches metadata. */
     claim(s,&c); assert(!strcmp(c.format,"137+140") && !strcmp(c.video,"YE7VzlLtp-4") && c.job.playlist_id!=key);
     assert(rdapp_service_run(s,&config,RDAPP_DOWNLOAD,NULL,&c.job,message,sizeof(message))==RDLP_ERROR_FORMAT_UNAVAILABLE);
     /* A supported quality must download through the normal queue after Add,
        without an explicit enqueue call. */
     added.format="18";
+    before=f.requests; f.fail=1; /* Local admission works while networking is unavailable. */
     require(rdapp_service_run(s,&config,RDAPP_ADD_VIDEO,"YE7VzlLtp-4",&added,message,sizeof(message)),message);
+    assert(f.requests==before); f.fail=0;
     claim(s,&c); assert(!strcmp(c.format,"18") && c.job.playlist_id!=key);
     require(rdapp_service_run(s,&config,RDAPP_DOWNLOAD,NULL,&c.job,message,sizeof(message)),message);
+    assert(f.requests==before+2); /* Exactly one watch/player pass for add + download. */
+    assert(f.changes==1); /* Both native frontends are told when the title/path is ready. */
+    assert(rdapp_store_list(s,RDAPP_JOB,c.job.id,collect,&c));
+    assert(strstr(c.path,"One video ["));
     snprintf(file,sizeof(file),"%s/%s",argv[1],c.path); assert(stat(file,&st)==0 && st.st_size>0);
     require(rdapp_service_run(s,&config,RDAPP_ADD_VIDEO,"YE7VzlLtp-4",&added,message,sizeof(message)),message);
     memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_PENDING,0,collect,&c)); assert(c.count==0);

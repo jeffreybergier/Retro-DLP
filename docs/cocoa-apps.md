@@ -124,10 +124,11 @@ The queue table's frame does not change when progress appears.
 
 The complete wording is listed in [Status bar messages](status-messages.md).
 
-`RDLPLibrary` owns the labels, transfer values, and one shared ten-second expiry.
-Every new message resets the timer, including identical text; reading or refreshing
-the UI does not. After ten seconds without a new message, both text and progress
-clear, even if a worker is still busy. A new screen reads the same current value
+`RDLPLibrary` owns the labels, transfer values, and one shared ten-second idle expiry.
+Active operations retain their current phase and progress until they finish, even
+when no events arrive for more than ten seconds. Once idle, every new message
+resets the timer, including identical text; reading or refreshing the UI does not.
+After ten idle seconds without a new message, text and progress clear. A new screen reads the same current value
 and cannot resurrect expired text. Progress notifications update the status views
 without rebuilding the library tables.
 
@@ -145,13 +146,16 @@ rows: System (All Downloads and the local **Ad-Hoc** collection), Added Playlist
 collapse state during library refreshes. Selecting a child keeps the existing
 Download/Play targeting behavior. Discovery promotes an existing manual playlist
 without duplicating it and preserves its selection, membership, and downloads.
-Adding an individual video resolves its title, appends it to Ad-Hoc, and queues
-its download at the quality selected when Add Video was submitted. Downloads
+Adding an individual video parses its URL/ID locally and immediately queues it
+in Ad-Hoc at the quality selected when Add Video was submitted. A new video
+initially displays its ID; known titles are preserved. The download worker resolves
+the selected quality once, then updates the title and filename before transferring.
+Both apps refresh the queued row as soon as its title is available. Downloads
 start automatically while the queue is active; a paused queue stays paused.
 Re-adding a video preserves queued, running, and completed downloads of that
 quality, and retries failed, cancelled, interrupted, or deleted downloads.
-This local collection is never synced to YouTube. Title resolution uses automatic
-format selection independently of the saved download quality.
+This local collection is never synced to YouTube. Unavailable videos or qualities
+fail as normal queue jobs and remain available for retry.
 
 Database version 2 records discovery origin. Existing version-1 playlists migrate
 to Added Playlists because their original source was not recorded. Running Load
@@ -288,7 +292,7 @@ The home screen uses ENIL's status-toolbar layout: a content-sized center view
 between flexible spaces, with a Font Awesome Queue button on the right. UIKit
 provides the native iOS 5/6 gloss and bordered button, or iOS 7+ flat chrome and
 tinted button. Empty status is idle. The shared bridge clears the last message
-after ten seconds without a new event on both platforms. Idle text is bold 15pt;
+after ten idle seconds without a new event on both platforms; active work remains visible. Idle text is bold 15pt;
 active text is bold 13pt with a 100pt transfer-progress track when its total is
 known, or a spinner when it is unknown. Legacy text uses ENIL's white engraved
 shadow; iOS 7+ uses dark text without a shadow. Long text truncates in the middle
@@ -297,7 +301,7 @@ The toolbar replaces the home screen's old status footer. Playlist and All Downl
 share `RDLPVideoListViewController`, a plain `UITableViewController`, including
 subtitle cells, status accessories, playback/retry handling, and toolbar lifecycle.
 Their entire toolbar is hidden for empty status and animates out when
-the shared message expires after ten seconds. Offscreen refreshes do not change the
+the shared idle message expires after ten seconds. Offscreen refreshes do not change the
 visible screen's toolbar. Playlist alone adds the Sync button. Both video lists
 remain blank when empty, with no placeholder section footer.
 
@@ -795,6 +799,24 @@ queue/download/playback regressions. These tests use isolated fixture libraries;
 live YouTube access was not tested. The release IPA was installed on koolphone5,
 and the Mac release was extracted to `~/Desktop/RetroDLP-AdHoc/RetroDLP.app`.
 Review logs and native results are in `build/apps/tests/adhoc-review/`.
+
+### Ad-Hoc startup and active progress validation (2026-09-16)
+
+Add Video now queues locally with no resolver requests. The normal download
+worker resolves the requested quality once, publishes the title and final path,
+and notifies both frontends before transferring. Active status survives quiet
+phases longer than ten seconds; idle completion messages still expire.
+
+All 32 portable store tests and the local HTTPS service integration passed,
+including zero-request admission, one resolver pass, title/path persistence,
+duplicate submissions, retries, and preservation of completed files. Both
+universal app builds and static analyzers passed (zero warnings/errors).
+The full offline native suites passed on x4-vm (Tiger 10.4.11) and koolphone5
+(iOS 8.4.1), including local admission during active work and a quiet active
+phase lasting over ten seconds. Queue-order test expectations were corrected
+for Tiger's string APIs and the iOS fixture's additional queued jobs.
+No real YouTube requests were made; device tests used isolated libraries and
+synthetic media. Live network startup latency was not measured.
 
 ### Ad-Hoc automatic download validation (2026-09-15)
 

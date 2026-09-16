@@ -457,9 +457,10 @@ static void screenshot(UIWindow *window,NSString *path) {
     require([sections(queue) count]==1 && queue.tableView.tableFooterView==nil,@"Flat Queue has no groups or empty footer");
     require([queue.toolbarItems count]==3 && [[queue.toolbarItems objectAtIndex:1] customView]==[queue valueForKey:@"statusBar_"],@"Queue has centered status without a Queue button");
     NSArray *queueRows=[[sections(queue) objectAtIndex:0] objectForKey:@"rows"];
-    long long previousID=0; NSUInteger position=0;
+    long long previousID=0; NSUInteger position=0,failedIndex=NSNotFound;
     for(NSDictionary *row in queueRows) {
       NSDictionary *job=[row objectForKey:@"job"]; ++position;
+      if([[job objectForKey:@"id"] isEqualToString:@"2"]) failedIndex=position-1;
       require(position==1 || [[job objectForKey:@"id"] longLongValue]<previousID,@"Queue shows newest items first");
       previousID=[[job objectForKey:@"id"] longLongValue];
       require([[row objectForKey:@"title"] isEqualToString:[NSString stringWithFormat:@"%@) %@",[job objectForKey:@"id"],[job objectForKey:@"title"]]],@"Queue uses permanent database job IDs and video titles");
@@ -467,7 +468,7 @@ static void screenshot(UIWindow *window,NSString *path) {
       require([row objectForKey:@"depth"]==nil && [[row objectForKey:@"action"] isEqualToString:@"job"],@"Every queue row is a download, with no outline nodes");
     }
     [queue showJobInQueue:[model currentJob:@"2"]]; NSIndexPath *selected=queue.tableView.indexPathForSelectedRow;
-    require(selected.row==2 && selected.section==0,@"Reveal selects the exact quality in newest-first order");
+    require(failedIndex!=NSNotFound && selected.row==(NSInteger)failedIndex && selected.section==0,@"Reveal selects the exact quality in newest-first order");
     UITableViewCell *cell=[queue.tableView cellForRowAtIndexPath:selected];
     UITableViewCell *defaultCell=[[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil] autorelease];
     require([cell.accessoryView isKindOfClass:[UIImageView class]] && cell.imageView.image==nil && cell.indentationLevel==0 && cell.textLabel.font.pointSize==defaultCell.textLabel.font.pointSize && cell.detailTextLabel.font.pointSize==defaultCell.detailTextLabel.font.pointSize,@"Queue shares native subtitle cell styling and trailing status icon");
@@ -486,7 +487,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"queued"],@"Cancelled row stop does nothing");
     [queue tableView:queue.tableView didSelectRowAtIndexPath:selected]; choose(queue,@"Stop Download…"); confirm(queue,YES);
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"cancelled"] && [RDLPDownloadPolicy job:[model currentJob:@"3"] hasState:@"queued"] && ![library_ isPaused],@"Stopping one quality preserves other pending work");
-    require([queue.tableView.indexPathForSelectedRow isEqual:selected] && [[[[[sections(queue) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:2] objectForKey:@"status"] isEqualToString:@"Stopped"],@"Status changes preserve row position and stable selection");
+    require([queue.tableView.indexPathForSelectedRow isEqual:selected] && [[[[[sections(queue) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:failedIndex] objectForKey:@"status"] isEqualToString:@"Stopped"],@"Status changes preserve row position and stable selection");
     /* Deleting a job preserves the other jobs' permanent display numbers. */
     nativeDelete(queue,selected); [queue refresh:nil];
     queueRows=[[sections(queue) objectAtIndex:0] objectForKey:@"rows"];
@@ -727,11 +728,11 @@ static void screenshot(UIWindow *window,NSString *path) {
     if([root valueForKey:@"alert_"]) confirm(root,NO);
     require([RDLPLibrary savePreferredFormat:@"137+140"],@"Select Add Video quality");
     [library_ addVideoInput:@"  YE7VzlLtp-4  "];
-    NSDictionary *addCommand=[[library_ valueForKey:@"commands_"] lastObject];
+    NSDictionary *addedJob=[library_ jobForPlaylist:[[library_ adhocPlaylist] objectForKey:@"id"] video:@"YE7VzlLtp-4" format:@"137+140"];
     require([RDLPLibrary savePreferredFormat:@"18"],@"Change quality after adding");
-    require([[addCommand objectForKey:@"type"] isEqualToString:@"addVideo"] &&
-      [[addCommand objectForKey:@"input"] isEqualToString:@"YE7VzlLtp-4"] &&
-      [[addCommand objectForKey:@"format"] isEqualToString:@"137+140"],@"Add Video captures the selected download quality at submission");
+    require([[addedJob objectForKey:@"state"] isEqualToString:@"queued"] &&
+      [[addedJob objectForKey:@"video_id"] isEqualToString:@"YE7VzlLtp-4"] &&
+      [[addedJob objectForKey:@"format"] isEqualToString:@"137+140"],@"Add Video immediately queues the selected download quality without a worker");
   } @catch(NSException *exception) { report=[NSString stringWithFormat:@"FAIL: %@\n%@",exception,[exception callStackSymbols]]; }
   [report writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSLog(@"%@",report);

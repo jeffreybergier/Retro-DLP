@@ -23,12 +23,15 @@ typedef struct {
   void *lock_context;
   /* Optional app presentation hooks. Called on the worker, outside store locks. */
   void (*status_callback)(const char *message, void *context);
+  /* Resolved metadata is ready for a UI reload. Uses status_context. */
+  void (*change_callback)(void *context);
   void *status_context;
   rdapp_service_result *result;
 } rdapp_service_config;
 /* Synchronous, portable workflow. Call on a worker. All configuration is borrowed
    for the duration of this call. Download jobs must already have been claimed
-   in SQLite. ADD_VIDEO uses job->format to queue the added video's download. */
+   in SQLite. ADD_VIDEO is local-only and uses job->format to queue immediately;
+   it requires neither a resolver context nor certificates. */
 rdlp_error_code rdapp_service_run(rdapp_store *, const rdapp_service_config *,
                                  rdapp_operation, const char *input,
                                  const rdapp_job *, char *message, size_t capacity);

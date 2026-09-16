@@ -74,17 +74,27 @@ static void testSharedStatus(NSString *base) {
   statusRequire([[library status] isEqualToString:@"Error syncing playlist"] &&
     [[[[library takeError] objectForKey:@"detail"] description] isEqualToString:@"Synthetic database failure"],@"Playlist failure has short status and detailed alert");
 
-  /* Identical new messages reset the shared deadline; reads/refreshes do not. */
-  [library setValue:nil forKey:@"activeCommand_"];
+  /* Shared by iOS and macOS: admission must not wait for the active worker. */
+  [library setValue:[NSDictionary dictionaryWithObject:@"download" forKey:@"type"] forKey:@"activeCommand_"];
   [library setValue:[NSNumber numberWithBool:YES] forKey:@"busy_"];
-  [library showStatus:@"Downloading"];
+  [library showStatus:@"Requesting metadata…"];
+  [library addVideoInput:@" https://youtu.be/ABCDEFGHIJK "];
+  NSDictionary *added=[[library queueRows] objectAtIndex:0];
+  statusRequire([[added objectForKey:@"video_id"] isEqualToString:@"ABCDEFGHIJK"] && [[added objectForKey:@"state"] isEqualToString:@"queued"],@"Add Video persists immediately while another worker is busy");
+  statusRequire([[library status] isEqualToString:@"Requesting metadata…"],@"Queuing another video preserves the active operation's status");
+  statusWait(10.2);
+  statusRequire([[library status] isEqualToString:@"Requesting metadata…"] && [[[library activityProgress] objectForKey:@"active"] boolValue],@"A quiet active phase remains visible after ten seconds on both platforms");
+  [library setValue:[NSNumber numberWithBool:NO] forKey:@"busy_"];
+  [library setValue:nil forKey:@"activeCommand_"];
+  /* Identical idle messages reset the deadline; reads/refreshes do not. */
+  [library showStatus:@"Download complete"];
   statusWait(6);
-  [library showStatus:@"Downloading"];
+  [library showStatus:@"Download complete"];
   statusWait(5);
-  statusRequire([[library status] isEqualToString:@"Downloading"],@"Identical new message resets ten-second deadline");
+  statusRequire([[library status] isEqualToString:@"Download complete"],@"Identical idle message resets ten-second deadline");
   NSDate *expiry=[NSDate dateWithTimeIntervalSinceNow:5.2];
   while([expiry timeIntervalSinceNow]>0) { [library status]; [library activityProgress]; statusWait(0.1); }
-  statusRequire(![[library status] length] && ![[[library activityProgress] objectForKey:@"active"] boolValue],@"Ten seconds without messages clears text and progress even while busy");
+  statusRequire(![[library status] length] && ![[[library activityProgress] objectForKey:@"active"] boolValue],@"Idle completion text expires after ten seconds");
   [library showStatus:@"Downloading"];
   statusRequire([[library status] isEqualToString:@"Downloading"],@"Same text can reappear after expiry as a new event");
   NSConditionLock *gate=[[NSConditionLock alloc] initWithCondition:0];
@@ -92,7 +102,7 @@ static void testSharedStatus(NSString *base) {
   [NSThread detachNewThreadSelector:@selector(holdStore:) toTarget:library withObject:gate];
   [gate lockWhenCondition:1]; [gate unlockWithCondition:3];
   NSDate *started=[NSDate date];
-  statusRequire([[library playlists] count]==0,@"UI counts work while the worker holds the store lock");
+  statusRequire([[library playlists] count]==1,@"UI counts work while the worker holds the store lock");
   [library setPaused:YES]; [library shutdown];
   NSTimeInterval elapsed=-[started timeIntervalSinceNow];
   BOOL cancelled=[library cancelled];

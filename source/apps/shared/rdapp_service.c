@@ -79,15 +79,14 @@ static rdlp_error_code discover(rdapp_store *s,const rdapp_service_config *c,
   unlock_store(c); rdlp_playlist_collection_destroy(p); return code;
 }
 static rdlp_error_code add_video(rdapp_store *s,const rdapp_service_config *c,
-    rdlp_context *context,const char *input,const rdapp_job *job,char *message,size_t cap,rdlp_error *error) {
-  rdlp_selection *selection=NULL; rdlp_resolve_options options; rdlp_error_code code; int ok;
+    const char *input,const rdapp_job *job,char *message,size_t cap,rdlp_error *error) {
+  char video_id[12]; rdlp_error_code code; int ok;
   if(!job || !rdlp_format_expression_valid(job->format)) return RDLP_ERROR_INVALID_ARGUMENT;
-  memset(&options,0,sizeof(options)); options.struct_size=sizeof(options); options.cookie_file=c->cookie_file;
-  code=rdlp_resolve_video(context,input,&options,&selection,error); if(code!=RDLP_OK) return code;
-  lock_store(c); ok=rdapp_store_add_adhoc_download(s,rdlp_selection_video_id(selection),rdlp_selection_title(selection),job->format,NULL); unlock_store(c);
-  if(ok) snprintf(message,cap,"Added %s to Ad-Hoc",rdlp_selection_title(selection));
+  code=rdlp_parse_video_id(input,video_id,error); if(code!=RDLP_OK) return code;
+  lock_store(c); ok=rdapp_store_add_adhoc_download(s,video_id,NULL,job->format,NULL); unlock_store(c);
+  if(ok) snprintf(message,cap,"Queued %s in Ad-Hoc",video_id);
   else { snprintf(error->message,sizeof(error->message),"%s",rdapp_store_error(s)); code=RDLP_ERROR_STORAGE_IO; }
-  rdlp_selection_destroy(selection); return code;
+  return code;
 }
 static rdlp_error_code provision(const rdapp_service_config *c,rdlp_error *error) {
   rdlp_ejs_asset_info info; rdlp_ejs_asset_options options;
@@ -103,7 +102,7 @@ static rdlp_error_code provision(const rdapp_service_config *c,rdlp_error *error
 }
 static rdlp_error_code download_job(rdapp_store *s,const rdapp_service_config *c,
     rdlp_context *context,const rdapp_job *job,char *message,size_t cap,rdlp_error *error) {
-  char destination[PATH_MAX],directory[PATH_MAX],staging[PATH_MAX],temporary[PATH_MAX],cleanup[PATH_MAX];
+  char destination[PATH_MAX],directory[PATH_MAX],staging[PATH_MAX],temporary[PATH_MAX],cleanup[PATH_MAX],relative[PATH_MAX];
   char *slash; const char *suffixes[]={"",".part",".video.mp4",".video.mp4.part",".audio.m4a",".audio.m4a.part"};
   rdlp_selection *selection=NULL; rdlp_resolve_options options; rdlp_download_result result;
   rdlp_error_code code; size_t i; int ok;
@@ -117,6 +116,16 @@ static rdlp_error_code download_job(rdapp_store *s,const rdapp_service_config *c
   options.cookie_file=c->cookie_file; options.format_expression=job->format;
   code=rdlp_resolve_video(context,job->video_id,&options,&selection,error);
   if(code!=RDLP_OK) return code;
+  if(cancelled(c)) { code=RDLP_ERROR_CANCELLED; goto end; }
+  lock_store(c);
+  ok=rdapp_store_resolve_job(s,job->id,rdlp_selection_title(selection),relative,sizeof(relative));
+  if(!ok) snprintf(error->message,sizeof(error->message),"%s",rdapp_store_error(s));
+  unlock_store(c);
+  if(!ok) { code=RDLP_ERROR_STORAGE_IO; goto end; }
+  if(snprintf(destination,sizeof(destination),"%s/%s",c->download_root,relative)>=(int)sizeof(destination)) {
+    code=RDLP_ERROR_INVALID_PATH; goto end;
+  }
+  if(c->change_callback) c->change_callback(c->status_context);
   if(c->status_callback) {
     char status[1024];
     snprintf(status,sizeof(status),"Format: %s · %dx%d",rdlp_selection_format_id(selection),
@@ -164,14 +173,16 @@ rdlp_error_code rdapp_service_run(rdapp_store *s,const rdapp_service_config *c,
   if(!s || !c || !message || !cap || !c->download_root) return RDLP_ERROR_INVALID_ARGUMENT;
   message[0]=0;
   if(c->result) memset(c->result,0,sizeof(*c->result));
-  code=rdlp_context_create(&c->resolver,&context,&error);
-  if(code==RDLP_OK) {
-    switch(operation) {
-      case RDAPP_SYNC: code=sync_playlist(s,c,context,input,message,cap,&error); break;
-      case RDAPP_DISCOVER: code=discover(s,c,context,message,cap,&error); break;
-      case RDAPP_DOWNLOAD: code=download_job(s,c,context,job,message,cap,&error); break;
-      case RDAPP_ADD_VIDEO: code=add_video(s,c,context,input,job,message,cap,&error); break;
-      default: code=RDLP_ERROR_INVALID_ARGUMENT;
+  if(operation==RDAPP_ADD_VIDEO) code=add_video(s,c,input,job,message,cap,&error);
+  else {
+    code=rdlp_context_create(&c->resolver,&context,&error);
+    if(code==RDLP_OK) {
+      switch(operation) {
+        case RDAPP_SYNC: code=sync_playlist(s,c,context,input,message,cap,&error); break;
+        case RDAPP_DISCOVER: code=discover(s,c,context,message,cap,&error); break;
+        case RDAPP_DOWNLOAD: code=download_job(s,c,context,job,message,cap,&error); break;
+        default: code=RDLP_ERROR_INVALID_ARGUMENT;
+      }
     }
   }
   if(code!=RDLP_OK) {

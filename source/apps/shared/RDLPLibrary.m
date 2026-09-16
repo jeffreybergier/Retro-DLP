@@ -116,6 +116,9 @@ static void event_callback(const rdlp_event *event,void *context) {
 static void service_status(const char *message,void *context) {
   [(RDLPLibrary *)context progress:string(message) completed:0 expected:0];
 }
+static void service_changed(void *context) {
+  [(RDLPLibrary *)context performSelectorOnMainThread:@selector(changed) withObject:nil waitUntilDone:NO];
+}
 static void download_callback(const rdlp_download_event *event,void *context) {
   NSString *phase;
   if(!event) return;
@@ -234,13 +237,13 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 {
   [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(clearStatus) object:nil];
   NSString *next=[(message?message:@"") copy]; [status_ release]; status_=next;
-  if([status_ length] && !stopping_)
+  if([status_ length] && !busy_ && !stopping_)
     [self performSelector:@selector(clearStatus) withObject:nil afterDelay:10
                  inModes:[NSArray arrayWithObject:(NSString *)kCFRunLoopCommonModes]];
   [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryStatusDidChange object:self];
 }
 - (void)clearStatus;
-{ transferCompleted_=0; transferExpected_=0; [self showStatus:@""]; }
+{ if(busy_) return; transferCompleted_=0; transferExpected_=0; [self showStatus:@""]; }
 - (NSString *)status; { return status_; }
 - (NSDictionary *)activityProgress;
 {
@@ -394,7 +397,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (void)resolverEvent:(rdlp_event_type)type;
 {
   NSString *command=[activeCommand_ objectForKey:@"type"], *phase=nil;
-  if(![command isEqualToString:@"download"]) {
+  if(![command isEqualToString:@"download"] && ![command isEqualToString:@"addVideo"]) {
     phase=[command isEqualToString:@"discover"]?@"Loading playlists…":
       ([[activeCommand_ objectForKey:@"adding"] boolValue]?@"Adding playlist…":@"Syncing playlist…");
   } else switch(type) {
@@ -457,8 +460,17 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 {
   input=[input stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
   if(![input length]) { [self reportError:@"Enter a video" detail:@"Enter a YouTube video URL or ID."]; return; }
-  [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"addVideo",@"type",input,@"input",
-    [RDLPLibrary preferredFormat],@"format",nil]]; [self startNext];
+  /* Admission is local: show the row immediately, even during another transfer.
+     The normal worker resolves metadata and media URLs once, when claimed. */
+  rdapp_service_config config; rdapp_job job; char message[1024];
+  memset(&config,0,sizeof(config)); memset(&job,0,sizeof(job));
+  config.download_root=[root_ fileSystemRepresentation];
+  config.lock=store_lock; config.unlock=store_unlock; config.lock_context=lock_;
+  job.format=[[RDLPLibrary preferredFormat] UTF8String];
+  rdlp_error_code code=rdapp_service_run(store_,&config,RDAPP_ADD_VIDEO,[input UTF8String],&job,message,sizeof(message));
+  if(code!=RDLP_OK) { [self reportError:@"Couldn’t add video" detail:string(message)]; return; }
+  if(!busy_) [self showStatus:@"Video added"];
+  [self changed]; [self startNext];
 }
 - (void)syncAll;
 {
@@ -626,6 +638,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   memset(&config,0,sizeof(config)); memset(&job,0,sizeof(job));
   config.download_root=[root_ fileSystemRepresentation];
   config.result=&outcome; config.status_callback=service_status; config.status_context=self;
+  config.change_callback=service_changed;
   config.resolver.struct_size=sizeof(config.resolver);
   config.resolver.ca_bundle_path=[ca_ fileSystemRepresentation];
   config.resolver.ejs_asset_directory=[assets_ fileSystemRepresentation];
