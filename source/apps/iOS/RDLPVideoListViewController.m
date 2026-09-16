@@ -27,7 +27,7 @@
 {
   [super viewDidLoad]; [RDLPUIKit configureContentEdges:self];
   statusBar_=[[RDLPStatusBarView alloc] initWithFrame:CGRectZero];
-  statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-([self showsQueueButton]?80:24));
+  statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-112);
   self.toolbarItems=[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:[self showsQueueButton]?@selector(queue:):NULL];
   [self refresh:nil];
 }
@@ -42,7 +42,7 @@
   [swipeJobID_ release]; swipeJobID_=nil; [super viewWillDisappear:animated];
 }
 - (void)viewDidLayoutSubviews;
-{ [super viewDidLayoutSubviews]; statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-([self showsQueueButton]?80:24)); }
+{ [super viewDidLayoutSubviews]; statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-112); }
 - (void)updateToolbarAnimated:(BOOL)animated;
 {
   if(!visible_ || self.navigationController.topViewController!=self) return;

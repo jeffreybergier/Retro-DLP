@@ -39,13 +39,8 @@
   }
   if(mode_==RDLPScreenLibrary) {
     statusBar_=[[RDLPStatusBarView alloc] initWithFrame:CGRectZero];
-    statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-80);
-    UIBarButtonItem *left=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
-    UIBarButtonItem *right=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
-    UIBarButtonItem *status=[[[UIBarButtonItem alloc] initWithCustomView:statusBar_] autorelease];
-    UIBarButtonItem *queue=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit queueToolbarIcon] style:UIBarButtonItemStyleBordered target:self action:@selector(queue:)] autorelease];
-    queue.accessibilityLabel=@"Download Queue";
-    self.toolbarItems=[NSArray arrayWithObjects:left,status,right,queue,nil];
+    statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-112);
+    self.toolbarItems=[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:@selector(queue:)];
     self.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit plusIcon] style:UIBarButtonItemStylePlain target:self action:@selector(showPlaylistActions:)] autorelease];
     self.navigationItem.leftBarButtonItem=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit settingsIcon] style:UIBarButtonItemStylePlain target:self action:@selector(settings:)] autorelease];
     self.navigationItem.leftBarButtonItem.accessibilityLabel=@"Settings";
@@ -58,7 +53,7 @@
 - (void)viewDidLayoutSubviews;
 {
   [super viewDidLayoutSubviews];
-  statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-80);
+  statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-112);
 }
 - (void)refresh:(id)sender;
 {

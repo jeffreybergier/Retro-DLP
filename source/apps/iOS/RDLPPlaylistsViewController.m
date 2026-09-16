@@ -32,14 +32,14 @@
   self.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit plusIcon] style:UIBarButtonItemStylePlain target:self action:@selector(showPlaylistActions:)] autorelease];
   self.navigationItem.rightBarButtonItem.accessibilityLabel=@"Library Actions";
   statusBar_=[[RDLPStatusBarView alloc] initWithFrame:CGRectZero];
-  statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-80);
+  statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-112);
   self.toolbarItems=[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:@selector(queue:)];
   [self refresh:nil];
 }
 - (void)viewWillAppear:(BOOL)animated;
 { [super viewWillAppear:animated]; [self.navigationController setToolbarHidden:NO animated:animated]; [self refresh:nil]; }
 - (void)viewDidLayoutSubviews;
-{ [super viewDidLayoutSubviews]; statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-80); }
+{ [super viewDidLayoutSubviews]; statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-112); }
 - (void)refresh:(id)sender;
 {
   (void)sender; if(![self isViewLoaded]) return;

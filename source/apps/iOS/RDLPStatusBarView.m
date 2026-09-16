@@ -4,6 +4,7 @@
  * text, a 100pt progress track, and a 2pt gap in a 30pt custom view. */
 @implementation RDLPStatusBarView
 @synthesize maximumWidth=maximumWidth_;
+@synthesize spinner=spinner_;
 - (id)initWithFrame:(CGRect)frame;
 {
   self=[super initWithFrame:frame]; if(!self) return nil;
@@ -23,7 +24,7 @@
   progress_=[[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
   progress_.hidden=YES; [self addSubview:progress_];
   spinner_=[[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:modern?UIActivityIndicatorViewStyleGray:UIActivityIndicatorViewStyleWhite];
-  spinner_.hidesWhenStopped=YES; [self addSubview:spinner_];
+  spinner_.hidesWhenStopped=YES;
   return self;
 }
 - (void)dealloc;
@@ -34,7 +35,6 @@
 {
   [label_ sizeToFit];
   CGFloat width=label_.bounds.size.width;
-  if([spinner_ isAnimating]) width+=26;
   if(!progress_.hidden) width=MAX(width,100);
   width=MIN(width,maximumWidth_);
   BOOL changed=self.frame.size.width!=width;
@@ -75,9 +75,7 @@
   CGFloat labelHeight=label_.font.lineHeight;
   CGFloat descender=label_.font.descender;
   if(progress_.hidden) {
-    CGFloat inset=[spinner_ isAnimating]?26:0;
-    spinner_.frame=CGRectMake(0,(height-20)*0.5f,20,20);
-    label_.frame=CGRectMake(inset,(height-labelHeight)*0.5f+descender*0.3f,MAX(0,width-inset),labelHeight);
+    label_.frame=CGRectMake(0,(height-labelHeight)*0.5f+descender*0.3f,width,labelHeight);
   } else {
     CGFloat progressHeight=progress_.bounds.size.height;
     CGFloat top=(height-(labelHeight+2+progressHeight))*0.5f;

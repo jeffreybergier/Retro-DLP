@@ -17,14 +17,23 @@ static CGFloat RDLPMainScreenScale(void) {
    The selector guard keeps explicit iOS 7 template mode safe on those systems. */
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunguarded-availability"
-static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat canvas,CGFloat scale,UIColor *color) {
+static UIImage *RDLPFontAwesomeImageWithOffset(AIFontAwesomeIcon icon,CGFloat size,CGFloat canvas,CGFloat scale,UIColor *color,CGFloat verticalOffset) {
   UIImage *image=[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid
     iconSize:size canvasSize:canvas color:color scale:scale];
+  if(image && verticalOffset!=0) {
+    UIGraphicsBeginImageContextWithOptions(image.size,NO,image.scale);
+    [image drawAtPoint:CGPointMake(0,verticalOffset)];
+    image=UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+  }
   if([image respondsToSelector:@selector(imageWithRenderingMode:)])
     image=[image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
   return image;
 }
 #pragma clang diagnostic pop
+static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat canvas,CGFloat scale,UIColor *color) {
+  return RDLPFontAwesomeImageWithOffset(icon,size,canvas,scale,color,0);
+}
 @implementation RDLPUIKit
 + (void)configureContentEdges:(UIViewController *)controller;
 {
@@ -50,31 +59,42 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
 { return RDLPFontAwesomeImage(stop?AIFAPause:AIFARotateRight,14,20,RDLPMainScreenScale(),[UIColor whiteColor]); }
 
 + (UIImage *)settingsIcon;
-{ return RDLPFontAwesomeImage(AIFAGear,22,26,RDLPMainScreenScale(),[UIColor whiteColor]); }
+{ return RDLPFontAwesomeImageWithOffset(AIFAGear,18,26,RDLPMainScreenScale(),[UIColor whiteColor],-1); }
 
 + (UIImage *)plusIcon;
 {
   /* Font Awesome "plus"; this bundled header names U+F067 AIFAStd12. */
-  return RDLPFontAwesomeImage((AIFontAwesomeIcon)0xF067,22,26,RDLPMainScreenScale(),[UIColor whiteColor]); }
+  return RDLPFontAwesomeImageWithOffset((AIFontAwesomeIcon)0xF067,18,26,RDLPMainScreenScale(),[UIColor whiteColor],-1); }
 
 + (UIImage *)queueToolbarIcon;
 {
-  /* ENIL's toolbar glyph geometry; UIKit supplies tint on iOS 7+. */
-  return RDLPFontAwesomeImage(AIFAListCheck,18,28,RDLPMainScreenScale(),[UIColor whiteColor]);
+  /* Lift the glyph within its canvas to align with the legacy bordered button.
+   * Keep the same optical adjustment on every iOS version. */
+  return RDLPFontAwesomeImageWithOffset(AIFAListCheck,18,28,RDLPMainScreenScale(),[UIColor whiteColor],-1);
 }
 
 + (UIImage *)syncIcon;
-{ return RDLPFontAwesomeImage(AIFAArrowsRotate,22,26,RDLPMainScreenScale(),[UIColor whiteColor]); }
+{ return RDLPFontAwesomeImageWithOffset(AIFAArrowsRotate,18,26,RDLPMainScreenScale(),[UIColor whiteColor],-1); }
 
 + (NSArray *)statusToolbarItems:(RDLPStatusBarView *)status target:(id)target queueAction:(SEL)action;
 {
+  /* Reserve the spinner slot even when it is hidden so hidesWhenStopped never
+   * changes the message layout. Let UIKit size the native Queue button. */
+  UIView *spinnerSlot=[[[UIView alloc] initWithFrame:CGRectMake(0,0,36,30)] autorelease];
+  status.spinner.center=CGPointMake(18,15);
+  [spinnerSlot addSubview:status.spinner];
+  UIBarButtonItem *activity=[[[UIBarButtonItem alloc] initWithCustomView:spinnerSlot] autorelease];
   UIBarButtonItem *left=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
   UIBarButtonItem *right=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
   UIBarButtonItem *message=[[[UIBarButtonItem alloc] initWithCustomView:status] autorelease];
-  if(!action) return [NSArray arrayWithObjects:left,message,right,nil];
+  if(!action) {
+    UIView *emptySlot=[[[UIView alloc] initWithFrame:CGRectMake(0,0,36,30)] autorelease];
+    UIBarButtonItem *empty=[[[UIBarButtonItem alloc] initWithCustomView:emptySlot] autorelease];
+    return [NSArray arrayWithObjects:activity,left,message,right,empty,nil];
+  }
   UIBarButtonItem *queue=[[[UIBarButtonItem alloc] initWithImage:[self queueToolbarIcon] style:UIBarButtonItemStyleBordered target:target action:action] autorelease];
   queue.accessibilityLabel=@"Download Queue";
-  return [NSArray arrayWithObjects:left,message,right,queue,nil];
+  return [NSArray arrayWithObjects:activity,left,message,right,queue,nil];
 }
 
 + (void)showMessage:(NSString *)message; {

@@ -294,7 +294,10 @@ provides the native iOS 5/6 gloss and bordered button, or iOS 7+ flat chrome and
 tinted button. Empty status is idle. The shared bridge clears the last message
 after ten idle seconds without a new event on both platforms; active work remains visible. Idle text is bold 15pt;
 active text is bold 13pt with a 100pt transfer-progress track when its total is
-known, or a spinner when it is unknown. Legacy text uses ENIL's white engraved
+known, or a spinner in the left toolbar slot when it is unknown. The spinner
+hides when stopped while its toolbar slot remains reserved. The Queue button
+uses UIKit's natural width; on Queue itself the right slot is empty.
+Legacy text uses ENIL's white engraved
 shadow; iOS 7+ uses dark text without a shadow. Long text truncates in the middle
 to leave room for Queue; its full text remains accessible.
 The toolbar replaces the home screen's old status footer. Playlist and All Downloads

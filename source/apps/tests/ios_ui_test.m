@@ -234,7 +234,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     testIOSIconImage(root.navigationItem.rightBarButtonItem.image,26,[[UIScreen mainScreen] scale],YES);
     require([root isKindOfClass:[UITableViewController class]] && root.view==root.tableView,@"Fresh-launch home is a native table controller");
     require([root.title isEqualToString:@"Playlists"] && root.tableView.style==UITableViewStylePlain,@"Plain Playlists home");
-    require([root.toolbarItems count]==4 && !navigation_.toolbarHidden,@"ENIL-style home toolbar");
+    require([root.toolbarItems count]==5 && !navigation_.toolbarHidden,@"ENIL-style home toolbar");
     UIBarButtonItem *queueButton=[root.toolbarItems lastObject];
     require(queueButton.image!=nil && queueButton.action==@selector(queue:),@"Trailing Queue button");
     RDLPStatusBarView *bar=[root valueForKey:@"statusBar_"];
@@ -331,11 +331,11 @@ static void screenshot(UIWindow *window,NSString *path) {
     require(!navigation_.toolbarHidden,@"Back restores the home toolbar");
     RDLPPlaylistViewController *list=[self show:RDLPScreenPlaylist playlist:playlist video:nil];
     require([list isKindOfClass:[UITableViewController class]] && list.view==list.tableView && list.tableView.style==UITableViewStylePlain,@"Playlist detail is a native plain table without a separate status area");
-    require([list.toolbarItems count]==4 && navigation_.toolbarHidden && list.tableView.tableFooterView==nil,@"Playlist has the parent toolbar, hidden when idle, without a table status footer");
+    require([list.toolbarItems count]==5 && navigation_.toolbarHidden && list.tableView.tableFooterView==nil,@"Playlist has the parent toolbar, hidden when idle, without a table status footer");
     require(list.navigationItem.rightBarButtonItem.image!=nil && [list.navigationItem.rightBarButtonItem.accessibilityLabel isEqualToString:@"Sync"] && list.navigationItem.rightBarButtonItem.action==@selector(sync:),@"Playlist navigation has accessible Sync icon");
     RDLPStatusBarView *playlistBar=[list valueForKey:@"statusBar_"];
     UIBarButtonItem *playlistQueueButton=[list.toolbarItems lastObject];
-    require([[list.toolbarItems objectAtIndex:1] customView]==playlistBar && playlistQueueButton.action==@selector(queue:),@"Parent layout has centered status and trailing Queue");
+    require([[list.toolbarItems objectAtIndex:2] customView]==playlistBar && playlistQueueButton.action==@selector(queue:),@"Parent layout has centered status and trailing Queue");
     library_.testBusy=YES;
     library_.testProgress=[NSDictionary dictionaryWithObjectsAndKeys:@YES,@"active",@2,@"processed",@5,@"total",@0,@"failed",@0,@"cancelled",nil];
     library_.testStatus=@"Downloading video"; pump(); pump();
@@ -455,7 +455,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     RDLPQueueViewController *queue=[self show:RDLPScreenQueue playlist:nil video:nil];
     require([queue isKindOfClass:[UITableViewController class]] && queue.view==queue.tableView && queue.tableView.style==UITableViewStylePlain,@"Queue is a native plain table controller");
     require([sections(queue) count]==1 && queue.tableView.tableFooterView==nil,@"Flat Queue has no groups or empty footer");
-    require([queue.toolbarItems count]==3 && [[queue.toolbarItems objectAtIndex:1] customView]==[queue valueForKey:@"statusBar_"],@"Queue has centered status without a Queue button");
+    require([queue.toolbarItems count]==5 && [[queue.toolbarItems objectAtIndex:2] customView]==[queue valueForKey:@"statusBar_"],@"Queue has centered status without a Queue button");
     NSArray *queueRows=[[sections(queue) objectAtIndex:0] objectForKey:@"rows"];
     long long previousID=0; NSUInteger position=0,failedIndex=NSNotFound;
     for(NSDictionary *row in queueRows) {
