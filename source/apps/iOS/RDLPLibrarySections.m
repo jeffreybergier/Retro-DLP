@@ -3,7 +3,7 @@
 
 /* Formatting belongs to row access, never to section/count construction. */
 @interface RDLPLibrarySections (Rows)
-- (NSDictionary *)displayRow:(NSDictionary *)item screen:(RDLPScreen)screen index:(NSUInteger)index playlist:(NSString *)playlist;
+- (NSDictionary *)displayRow:(NSDictionary *)item screen:(RDLPScreen)screen playlist:(NSString *)playlist;
 @end
 @interface RDLPSectionRows : NSArray {
   NSArray *source_;
@@ -27,7 +27,7 @@
   NSNumber *key=[NSNumber numberWithUnsignedLong:index];
   NSDictionary *row=[cache_ objectForKey:key];
   if(!row) {
-    row=[model_ displayRow:[source_ objectAtIndex:index] screen:screen_ index:index playlist:playlist_];
+    row=[model_ displayRow:[source_ objectAtIndex:index] screen:screen_ playlist:playlist_];
     if([cache_ count]>=128) [cache_ removeAllObjects];
     [cache_ setObject:row forKey:key];
   }
@@ -77,14 +77,14 @@
 }
 - (NSArray *)displayRows:(NSArray *)rows screen:(RDLPScreen)screen playlist:(NSString *)playlist;
 { return [[[RDLPSectionRows alloc] initWithRows:rows model:self screen:screen playlist:playlist] autorelease]; }
-- (NSDictionary *)displayRow:(NSDictionary *)item screen:(RDLPScreen)screen index:(NSUInteger)index playlist:(NSString *)playlist;
+- (NSDictionary *)displayRow:(NSDictionary *)item screen:(RDLPScreen)screen playlist:(NSString *)playlist;
 {
   if(screen==RDLPScreenLibrary) {
     NSMutableDictionary *row=[self row:[item objectForKey:@"title"] detail:[[item objectForKey:@"synced_at"] length]?[NSString stringWithFormat:@"%@ videos",[item objectForKey:@"count"]]:@"Not synced" action:@"playlist"];
     [row setObject:item forKey:@"playlist"]; return row;
   }
   if(screen==RDLPScreenQueue) {
-    NSString *title=[NSString stringWithFormat:@"%lu) %@",(unsigned long)index+1,[item objectForKey:@"title"]];
+    NSString *title=[NSString stringWithFormat:@"%@) %@",[item objectForKey:@"id"],[item objectForKey:@"title"]];
     NSString *detail=[NSString stringWithFormat:@"%@ · %@",[RDLPLibrary qualityLabelForFormat:[item objectForKey:@"format"]],[item objectForKey:@"playlist_title"]];
     NSMutableDictionary *row=[self row:title detail:detail action:@"job"];
     NSString *status=[policy_ statusForJob:item];

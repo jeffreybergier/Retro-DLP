@@ -193,7 +193,7 @@ static int query_parts(rdapp_query kind,int64_t key,const char *format,
         "jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.state='complete'"; break;
     case RDAPP_QUEUE:
       *from="jobs j JOIN playlists p ON p.id=j.playlist_id WHERE (j.state<>'removed' OR j.error<>'')";
-      *order="j.id"; break;
+      *order="j.id DESC"; break;
     case RDAPP_PENDING:
       *from="jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.state='queued'"; break;
     case RDAPP_BLOCKING_JOBS:
@@ -245,7 +245,7 @@ int rdapp_store_after(rdapp_store *s,rdapp_query kind,int64_t key,const char *vi
     return failure(s,"Invalid seek query");
   snprintf(query,sizeof(query),"SELECT %s FROM %s AND %s%s?4 ORDER BY %s LIMIT 1",fields,from,
     (kind==RDAPP_ENTRIES || kind==RDAPP_VIDEO_ENTRIES || kind==RDAPP_MISSING || kind==RDAPP_DOWNLOAD_CANDIDATES)?"e.position":"j.id",
-    (kind==RDAPP_ENTRIES || kind==RDAPP_VIDEO_ENTRIES || kind==RDAPP_MISSING || kind==RDAPP_DOWNLOAD_CANDIDATES || kind==RDAPP_QUEUE)?">":"<",order);
+    (kind==RDAPP_ENTRIES || kind==RDAPP_VIDEO_ENTRIES || kind==RDAPP_MISSING || kind==RDAPP_DOWNLOAD_CANDIDATES)?">":"<",order);
   p=prepare(s,query); if(!p) return 0;
   sqlite3_bind_int64(p,1,key); bind_text(p,2,video); bind_text(p,3,format); sqlite3_bind_int64(p,4,identity);
   return each(s,p,cb,ctx);
@@ -263,7 +263,7 @@ int rdapp_store_index(rdapp_store *s,rdapp_query kind,int64_t key,int64_t identi
   *index=-1;
   if(kind!=RDAPP_ENTRIES && kind!=RDAPP_DOWNLOADS && kind!=RDAPP_QUEUE) return failure(s,"Invalid indexed list");
   if(!query_parts(kind,key,NULL,&fields,&from,&order)) return failure(s,"Invalid indexed list");
-  column=kind==RDAPP_ENTRIES?"e.position":"j.id"; comparison=kind==RDAPP_DOWNLOADS?">":"<";
+  column=kind==RDAPP_ENTRIES?"e.position":"j.id"; comparison=kind==RDAPP_ENTRIES?"<":">";
   snprintf(query,sizeof(query),"SELECT count(*) FROM %s AND %s=?2",from,column);
   p=prepare(s,query); if(!p) return 0;
   sqlite3_bind_int64(p,1,key); sqlite3_bind_int64(p,2,identity);

@@ -10,7 +10,7 @@ static void testIOSIconDimensions(UIImage *image,CGFloat canvas,CGFloat scale) {
 }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunguarded-availability"
-static void testIOSIconImage(UIImage *image,CGFloat canvas,CGFloat scale) {
+static void testIOSIconImage(UIImage *image,CGFloat canvas,CGFloat scale,BOOL expectWhite) {
   testIOSIconDimensions(image,canvas,scale);
   if([image respondsToSelector:@selector(renderingMode)] && image.renderingMode!=UIImageRenderingModeAlwaysTemplate)
     [NSException raise:@"RDLPIOSIconTest" format:@"Every app icon must use template rendering on iOS 7+"];
@@ -20,30 +20,31 @@ static void testIOSIconImage(UIImage *image,CGFloat canvas,CGFloat scale) {
   CGContextRef context=CGBitmapContextCreate(pixels,width,height,8,width*4,colors,kCGImageAlphaPremultipliedLast|kCGBitmapByteOrder32Big);
   if(!pixels || !context) [NSException raise:@"RDLPIOSIconTest" format:@"Create icon pixel probe"];
   CGContextDrawImage(context,CGRectMake(0,0,width,height),image.CGImage);
-  BOOL white=YES, ink=NO, clear=NO;
+  BOOL correctColor=YES, ink=NO, clear=NO;
   for(i=0;i<width*height;++i) {
     unsigned char *pixel=pixels+i*4;
     if(pixel[3]) {
       ink=YES;
-      if(abs((int)pixel[0]-pixel[3])>1 || abs((int)pixel[1]-pixel[3])>1 || abs((int)pixel[2]-pixel[3])>1) white=NO;
+      int expected=expectWhite?pixel[3]:0;
+      if(abs((int)pixel[0]-expected)>1 || abs((int)pixel[1]-expected)>1 || abs((int)pixel[2]-expected)>1) correctColor=NO;
     } else clear=YES;
   }
   CGContextRelease(context); CGColorSpaceRelease(colors); free(pixels);
-  if(!white || !ink || !clear)
-    [NSException raise:@"RDLPIOSIconTest" format:@"Every app icon must contain only white glyph pixels and transparency"];
+  if(!correctColor || !ink || !clear)
+    [NSException raise:@"RDLPIOSIconTest" format:@"Icon must contain only %@ glyph pixels and transparency",expectWhite?@"white":@"black"];
 }
 #pragma clang diagnostic pop
 static void testIOSIconScale(void) {
   CGFloat scale=[[UIScreen mainScreen] scale];
-  testIOSIconImage([RDLPUIKit plusIcon],26,scale);
-  testIOSIconImage([RDLPUIKit settingsIcon],26,scale);
-  testIOSIconImage([RDLPUIKit syncIcon],26,scale);
-  testIOSIconImage([RDLPUIKit queueToolbarIcon],28,scale);
-  testIOSIconImage([RDLPUIKit queueActionIcon:NO],20,scale);
-  testIOSIconImage([RDLPUIKit queueActionIcon:YES],20,scale);
+  testIOSIconImage([RDLPUIKit plusIcon],26,scale,YES);
+  testIOSIconImage([RDLPUIKit settingsIcon],26,scale,YES);
+  testIOSIconImage([RDLPUIKit syncIcon],26,scale,YES);
+  testIOSIconImage([RDLPUIKit queueToolbarIcon],28,scale,YES);
+  testIOSIconImage([RDLPUIKit queueActionIcon:NO],20,scale,YES);
+  testIOSIconImage([RDLPUIKit queueActionIcon:YES],20,scale,YES);
   for(NSString *status in [NSArray arrayWithObjects:@"Downloaded",@"Downloading",@"Queued",@"Not downloaded",@"Failed",nil]) {
     UIImage *image=[RDLPUIKit statusIcon:status];
-    testIOSIconImage(image,18,scale);
+    testIOSIconImage(image,18,scale,NO);
     if(image!=[RDLPUIKit statusIcon:status])
       [NSException raise:@"RDLPIOSIconTest" format:@"Status icons must reuse the same-scale cache"];
   }

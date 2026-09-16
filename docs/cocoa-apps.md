@@ -92,8 +92,10 @@ menus retain their task-specific grouping.
 
 The queue is a flat, cell-based NSTableView, compatible with Tiger. Its columns
 are number (blank header), status (blank header), Quality, Video, and Playlist.
-Each download quality occupies one row in processing order (ascending permanent
-job ID), numbered consecutively. Deliberately deleted jobs are hidden; missing
+Each download quality occupies one row, newest first (descending permanent
+job ID), labeled with that permanent database job ID. Downloads still process
+oldest first.
+Deliberately deleted jobs are hidden; missing
 files remain visible for retry. Text columns can be resized, with horizontal
 scrolling available in narrow panes. Number and status columns stay compact.
 
@@ -370,9 +372,11 @@ performing the captured plan. Single-video downloads are immediate; failed or
 missing rows in Playlist and All Downloads confirm an exact-quality retry.
 
 Queue shares the native `UITableViewController` base and standard subtitle cells
-with Playlist and All Downloads. It is a flat list in processing order (ascending
-permanent job ID). Titles use consecutive display numbers, such as `1) My Video`;
-these numbers close gaps when jobs are deleted. Each quality gets its own row,
+with Playlist and All Downloads. It is a flat list with newest items first
+(descending permanent job ID); downloads still process oldest first.
+Titles use permanent database job IDs, such as `42) My Video`;
+these numbers stay the same across retries and retain gaps when jobs are deleted.
+Each quality gets its own row,
 with quality followed by playlist in the subtitle and the same trailing Font Awesome status
 icons as Playlist and All Downloads.
 States are Queued, Downloading, Downloaded, Failed, Stopped, Interrupted, and File
@@ -459,7 +463,7 @@ by both applications.
 | macOS change | UIKit equivalent |
 | --- | --- |
 | Sidebar outline and discovery provenance | Collapsible System, Added Playlists, My Playlists sections |
-| Flat queue table with number, status, quality, video, playlist columns | Native flat subtitle cells, consecutive numbers, status accessories, and stable-ID job actions |
+| Flat queue table with job ID, status, quality, video, playlist columns | Native flat subtitle cells, permanent job IDs, status accessories, and stable-ID job actions |
 | Context commands, quality preferences, confirmations | Video/job dialogs, Settings, and captured/revalidated alert requests |
 | Representative status and app-wide progress | Shared download policy, status icons, fixed status/progress area |
 | Automatic queue processing | Automatic foreground processing; background pause/cancellation |
@@ -503,7 +507,7 @@ confirmation sheets. Its collaborators have narrower responsibilities:
 - `RDLPLibraryViews` constructs AppKit controls and owns the small selection,
   accessibility, and Tiger pane-layout helpers.
 - The queue reuses `RDLPTableView` and `RDLPStatusCell`; a flat job snapshot
-  preserves processing order and selection by permanent job ID.
+  displays newest items first and preserves selection by permanent job ID.
 - `RDLPToolbarButton` handles toolbar interactions; its private
   `RDLPToolbarGeometry` object keeps drawing and hit testing consistent.
 - `RDLPAppKit` exposes Objective-C class methods for OS compatibility, icon

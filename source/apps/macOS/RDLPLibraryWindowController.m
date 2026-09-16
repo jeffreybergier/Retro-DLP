@@ -647,7 +647,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSDictionary *entry=[(queue?queueRows_:videoRows_) objectAtIndex:(NSUInteger)row]; NSString *key=[column identifier];
   NSDictionary *job=entry;
   if(!queue && ![key isEqualToString:@"state"]) return [entry objectForKey:key];
-  if(queue && [key isEqualToString:@"number"]) return [NSNumber numberWithLong:(long)row+1];
+  if(queue && [key isEqualToString:@"number"]) return [job objectForKey:@"id"];
   if(queue && [key isEqualToString:@"quality"]) {
     NSString *format=[job objectForKey:@"format"], *actual=[job objectForKey:@"actual_format"];
     NSString *label=[RDLPLibrary qualityLabelForFormat:format];

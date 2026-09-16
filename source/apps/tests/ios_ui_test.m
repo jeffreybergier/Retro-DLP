@@ -231,7 +231,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     require([emptyQueue.tableView numberOfRowsInSection:0]==0 && navigation_.toolbarHidden && emptyQueue.tableView.tableFooterView==nil && ![emptyQueue respondsToSelector:@selector(tableView:titleForFooterInSection:)],@"Empty Queue has no placeholder section, footer, or idle toolbar");
     [RDLPLibrary savePreferredFormat:@"137+140"];
     RDLPPlaylistsViewController *root=[self show:RDLPScreenLibrary playlist:nil video:nil];
-    testIOSIconImage(root.navigationItem.rightBarButtonItem.image,26,[[UIScreen mainScreen] scale]);
+    testIOSIconImage(root.navigationItem.rightBarButtonItem.image,26,[[UIScreen mainScreen] scale],YES);
     require([root isKindOfClass:[UITableViewController class]] && root.view==root.tableView,@"Fresh-launch home is a native table controller");
     require([root.title isEqualToString:@"Playlists"] && root.tableView.style==UITableViewStylePlain,@"Plain Playlists home");
     require([root.toolbarItems count]==4 && !navigation_.toolbarHidden,@"ENIL-style home toolbar");
@@ -460,14 +460,14 @@ static void screenshot(UIWindow *window,NSString *path) {
     long long previousID=0; NSUInteger position=0;
     for(NSDictionary *row in queueRows) {
       NSDictionary *job=[row objectForKey:@"job"]; ++position;
-      require([[job objectForKey:@"id"] longLongValue]>previousID,@"Queue follows database processing order");
+      require(position==1 || [[job objectForKey:@"id"] longLongValue]<previousID,@"Queue shows newest items first");
       previousID=[[job objectForKey:@"id"] longLongValue];
-      require([[row objectForKey:@"title"] isEqualToString:[NSString stringWithFormat:@"%lu) %@",(unsigned long)position,[job objectForKey:@"title"]]],@"Queue uses consecutive display numbers and video titles");
+      require([[row objectForKey:@"title"] isEqualToString:[NSString stringWithFormat:@"%@) %@",[job objectForKey:@"id"],[job objectForKey:@"title"]]],@"Queue uses permanent database job IDs and video titles");
       require([[row objectForKey:@"detail"] rangeOfString:[job objectForKey:@"playlist_title"]].location!=NSNotFound && [[row objectForKey:@"detail"] rangeOfString:[job objectForKey:@"format"]].location!=NSNotFound,@"Subtitle identifies playlist and exact quality");
       require([row objectForKey:@"depth"]==nil && [[row objectForKey:@"action"] isEqualToString:@"job"],@"Every queue row is a download, with no outline nodes");
     }
     [queue showJobInQueue:[model currentJob:@"2"]]; NSIndexPath *selected=queue.tableView.indexPathForSelectedRow;
-    require(selected.row==1 && selected.section==0,@"Reveal selects the exact quality in processing order");
+    require(selected.row==2 && selected.section==0,@"Reveal selects the exact quality in newest-first order");
     UITableViewCell *cell=[queue.tableView cellForRowAtIndexPath:selected];
     UITableViewCell *defaultCell=[[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil] autorelease];
     require([cell.accessoryView isKindOfClass:[UIImageView class]] && cell.imageView.image==nil && cell.indentationLevel==0 && cell.textLabel.font.pointSize==defaultCell.textLabel.font.pointSize && cell.detailTextLabel.font.pointSize==defaultCell.detailTextLabel.font.pointSize,@"Queue shares native subtitle cell styling and trailing status icon");
@@ -486,11 +486,15 @@ static void screenshot(UIWindow *window,NSString *path) {
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"queued"],@"Cancelled row stop does nothing");
     [queue tableView:queue.tableView didSelectRowAtIndexPath:selected]; choose(queue,@"Stop Download…"); confirm(queue,YES);
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"cancelled"] && [RDLPDownloadPolicy job:[model currentJob:@"3"] hasState:@"queued"] && ![library_ isPaused],@"Stopping one quality preserves other pending work");
-    require([queue.tableView.indexPathForSelectedRow isEqual:selected] && [[[[[sections(queue) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:1] objectForKey:@"status"] isEqualToString:@"Stopped"],@"Status changes preserve row position and stable selection");
-    /* A deleted job leaves a permanent ID gap but no gap in display numbers. */
+    require([queue.tableView.indexPathForSelectedRow isEqual:selected] && [[[[[sections(queue) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:2] objectForKey:@"status"] isEqualToString:@"Stopped"],@"Status changes preserve row position and stable selection");
+    /* Deleting a job preserves the other jobs' permanent display numbers. */
     nativeDelete(queue,selected); [queue refresh:nil];
     queueRows=[[sections(queue) objectAtIndex:0] objectForKey:@"rows"];
-    require([[[[queueRows objectAtIndex:1] objectForKey:@"job"] objectForKey:@"id"] isEqualToString:@"3"] && [[[queueRows objectAtIndex:1] objectForKey:@"title"] hasPrefix:@"2) "],@"Deleted jobs are hidden and display numbers close the gap");
+    require([queueRows count]+1==position,@"Deleting a job removes exactly one queue row");
+    for(NSDictionary *row in queueRows) {
+      NSString *jobID=[[row objectForKey:@"job"] objectForKey:@"id"];
+      require(![jobID isEqualToString:@"2"] && [[row objectForKey:@"title"] hasPrefix:[NSString stringWithFormat:@"%@) ",jobID]],@"Deleted jobs are hidden without renumbering the remaining jobs");
+    }
     BOOL hasMissing=NO; for(NSDictionary *row in queueRows) if([[row objectForKey:@"status"] isEqualToString:@"File missing"]) hasMissing=YES;
     require(hasMissing,@"Missing files remain visible for retry");
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Restore queue fixture");

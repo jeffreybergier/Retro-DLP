@@ -299,8 +299,8 @@ static NSArray *titles(NSMenu *menu) {
     NSUInteger queueIndex; long long previousID=0;
     for(queueIndex=0;queueIndex<[ordered count];++queueIndex) {
       NSDictionary *job=[ordered objectAtIndex:queueIndex];
-      requireCondition([[job objectForKey:@"id"] intValue]>previousID,@"Queue follows processing order"); previousID=[[job objectForKey:@"id"] intValue];
-      requireCondition([[window_ tableView:queueTable objectValueForTableColumn:[queueColumns objectAtIndex:0] row:(NSInteger)queueIndex] unsignedLongValue]==queueIndex+1,@"Display numbers are consecutive");
+      requireCondition(queueIndex==0 || [[job objectForKey:@"id"] longLongValue]<previousID,@"Queue shows newest items first"); previousID=[[job objectForKey:@"id"] longLongValue];
+      requireCondition([[window_ tableView:queueTable objectValueForTableColumn:[queueColumns objectAtIndex:0] row:(NSInteger)queueIndex] isEqual:[job objectForKey:@"id"]],@"Queue numbers show permanent database job IDs");
       requireCondition([[window_ tableView:queueTable objectValueForTableColumn:[queueColumns objectAtIndex:3] row:(NSInteger)queueIndex] isEqual:[job objectForKey:@"title"]] && [[window_ tableView:queueTable objectValueForTableColumn:[queueColumns objectAtIndex:4] row:(NSInteger)queueIndex] isEqual:[job objectForKey:@"playlist_title"]],@"Queue exposes video and playlist in their own columns");
       requireCondition([[window_ tableView:queueTable objectValueForTableColumn:[queueColumns objectAtIndex:2] row:(NSInteger)queueIndex] rangeOfString:[job objectForKey:@"format"]].location!=NSNotFound,@"Quality identifies the exact requested format");
     }

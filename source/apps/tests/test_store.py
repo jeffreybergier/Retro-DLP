@@ -180,9 +180,9 @@ class StoreTests(unittest.TestCase):
         self.check(lib.rdapp_store_finish(self.db,int(jobs[1]['id']),b'removed',b'',b'Missing file'))
         self.check(lib.rdapp_store_finish(self.db,int(jobs[2]['id']),b'complete',b'18',b''))
         self.assertEqual(self.count(6),2) # Deliberate deletion hidden; missing retained.
-        self.assertEqual([r['id'] for r in self.page(6,limit=10)],[jobs[2]['id'],jobs[1]['id']])
-        self.assertEqual(self.page(6,after=int(jobs[2]['id']))[0]['id'],jobs[1]['id'])
-        self.assertEqual(self.index(6,int(jobs[1]['id'])),1)
+        self.assertEqual([r['id'] for r in self.page(6,limit=10)],[jobs[1]['id'],jobs[2]['id']])
+        self.assertEqual(self.page(6,after=int(jobs[1]['id']))[0]['id'],jobs[2]['id'])
+        self.assertEqual(self.index(6,int(jobs[1]['id'])),0)
         self.assertEqual(self.index(6,int(jobs[0]['id'])),-1)
         self.assertEqual(self.count(3),1)
         self.assertEqual(self.index(3,int(jobs[2]['id'])),0)
@@ -191,6 +191,26 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.page(9,video=b'abcdefghijk',format=b'18')[0]['id'],jobs[2]['id'])
         self.assertEqual(self.page(10,key=int(jobs[1]['id']))[0]['error'],'Missing file')
         self.assertEqual(self.page(11)[0]['service_id'],'PLtest')
+
+    def test_queue_newest_first_paging_selection_and_fifo_processing(self):
+        self.check(self.snapshot([(b'abcdefghijk',b'First',0),(b'lmnopqrstuv',b'Second',1)]))
+        for quality in (b'18',b'136+140'):
+            self.check(lib.rdapp_store_enqueue(self.db,self.key,None,quality))
+        self.assertEqual([r['id'] for r in self.page(6,limit=10)],['4','3','2','1'])
+        self.assertEqual(self.claim()['id'],'1','Display order must not change processing order')
+        self.check(lib.rdapp_store_finish(self.db,3,b'removed',b'',b''))
+        self.check(lib.rdapp_store_finish(self.db,2,b'removed',b'',b'Missing file'))
+        expected=['4','2','1']
+        self.assertEqual([r['id'] for r in self.rows(6)],expected)
+        for position,identity in enumerate(expected):
+            self.assertEqual(self.page(6,offset=position)[0]['id'],identity)
+            self.assertEqual(self.index(6,int(identity)),position)
+            following=self.page(6,after=int(identity))
+            self.assertEqual([r['id'] for r in following],expected[position+1:position+2])
+        self.assertEqual(self.index(6,3),-1)
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'137+140'))
+        self.assertEqual(self.page(6)[0]['id'],'5')
+        self.assertEqual(self.index(6,4),1,'Selection follows its identity when a newer job appears')
 
     def test_missing_plan_deduplicates_and_excludes_retry_only_states(self):
         self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
