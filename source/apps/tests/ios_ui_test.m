@@ -14,6 +14,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import "shared_status_test.h"
+#import "ios_lifecycle_test.h"
 #import "shared_metadata_test.h"
 #import "shared_video_rows_test.h"
 
@@ -165,6 +166,8 @@ static void screenshot(UIWindow *window,NSString *path) {
     testSharedMetadata();
     testSharedVideoRows([documents_ stringByAppendingPathComponent:@"RowFixture"]);
     testSharedStatus([documents_ stringByAppendingPathComponent:@"StatusFixture"]);
+    testIOSLifecycle([documents_ stringByAppendingPathComponent:@"LifecycleFixture"]);
+    testIOSDownloadNotifications([documents_ stringByAppendingPathComponent:@"NotificationFixture"]);
     {
       RDLPStatusTestLibrary *errors=[[[RDLPStatusTestLibrary alloc] initWithSupportDirectory:[documents_ stringByAppendingPathComponent:@"Alerts/Support"] downloadDirectory:[documents_ stringByAppendingPathComponent:@"Alerts/Downloads"]] autorelease];
       RDLPAppDelegate *presenter=[[RDLPAppDelegate alloc] init];
@@ -502,7 +505,8 @@ static void screenshot(UIWindow *window,NSString *path) {
     require(rdapp_store_finish(store,2,"cancelled","",""),@"Restore stopped quality"); rdapp_store_close(store); [queue refresh:nil];
     require([policy canDownloadAgain:[model currentJob:@"4"]],@"Missing completed file is retryable");
     RDLPAppDelegate *lifecycle=[[[RDLPAppDelegate alloc] init] autorelease]; [lifecycle setValue:library_ forKey:@"library_"];
-    [lifecycle applicationDidEnterBackground:[UIApplication sharedApplication]]; require([library_ isPaused],@"Background pauses transfers");
+    [library_ startDownloads];
+    [lifecycle applicationDidEnterBackground:[UIApplication sharedApplication]]; require(![library_ isPaused],@"Background keeps the queue eligible while time remains");
     [lifecycle applicationWillEnterForeground:[UIApplication sharedApplication]]; require(![library_ isPaused] && [RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"cancelled"],@"Foreground resumes pending work without retrying stopped qualities");
     [lifecycle setValue:nil forKey:@"library_"];
     [queue refresh:nil]; screenshot(window_,[documents_ stringByAppendingPathComponent:@"queue.png"]);

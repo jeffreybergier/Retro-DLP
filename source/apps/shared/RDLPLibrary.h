@@ -24,6 +24,10 @@
 extern NSString * const RDLPLibraryDidChange;
 extern NSString * const RDLPLibraryStatusDidChange;
 extern NSString * const RDLPLibraryErrorDidOccur;
+extern NSString * const RDLPLibraryActivityDidChange;
+/* Posted on the main thread before releasing the operation reference, only
+   for a successful download persisted as complete. userInfo is the final job. */
+extern NSString * const RDLPLibraryDownloadDidComplete;
 /* Main-thread interface. Only this class imports application C headers. */
 @interface RDLPLibrary : NSObject {
 @private
@@ -33,6 +37,8 @@ extern NSString * const RDLPLibraryErrorDidOccur;
   NSDictionary *activeCommand_;
   NSString *support_, *root_, *ca_, *assets_, *cookies_, *status_;
   BOOL busy_, paused_, cancel_, stopping_;
+  BOOL operationsSuspended_;
+  NSUInteger operationCount_;
   long long activeJob_;
   double lastProgress_;
   NSString *lastPhase_, *lastReadError_;
@@ -82,6 +88,12 @@ extern NSString * const RDLPLibraryErrorDidOccur;
 - (NSDictionary *)takeError;
 - (BOOL)hasErrors;
 - (BOOL)isBusy;
+/* Main-thread operation references, including completion and queue handoff.
+   Observers can hold platform background execution while this is nonzero. */
+- (NSUInteger)operationCount;
+/* Stop admitting any worker and cancel active network work without waiting.
+   startDownloads clears suspension when the app returns to the foreground. */
+- (void)suspendOperations;
 /* Item counts for this run only; historical completed jobs are excluded. */
 - (NSDictionary *)queueProgress;
 - (BOOL)isSyncPendingForInput:(NSString *)input;

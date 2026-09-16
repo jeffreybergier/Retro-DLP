@@ -6,6 +6,8 @@
 - (void)progress:(NSString *)phase completed:(uint64_t)completed expected:(uint64_t)expected;
 - (void)finished:(NSDictionary *)result;
 - (BOOL)cancelled;
+- (void)beginOperation;
+- (void)endOperation;
 @end
 @interface RDLPStatusTestLibrary : RDLPLibrary
 @end
@@ -67,9 +69,11 @@ static void testSharedStatus(NSString *base) {
   [library setValue:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",[NSNumber numberWithBool:YES],@"adding",nil] forKey:@"activeCommand_"];
   [library resolverEvent:RDLP_EVENT_FETCHING_BOOTSTRAP]; statusWait(0.01);
   statusRequire([[library status] isEqualToString:@"Adding playlist…"],@"Adding keeps a simple playlist message");
+  [library beginOperation];
   [library finished:[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithInt:RDLP_OK],@"code",@"Internal service text",@"message",nil]];
   statusRequire([[library status] isEqualToString:@"Playlist added"],@"Adding has its own final message");
   [library setValue:[NSDictionary dictionaryWithObject:@"sync" forKey:@"type"] forKey:@"activeCommand_"];
+  [library beginOperation];
   [library finished:[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithInt:RDLP_ERROR_STORAGE_IO],@"code",@"Synthetic database failure",@"message",nil]];
   statusRequire([[library status] isEqualToString:@"Error syncing playlist"] &&
     [[[[library takeError] objectForKey:@"detail"] description] isEqualToString:@"Synthetic database failure"],@"Playlist failure has short status and detailed alert");

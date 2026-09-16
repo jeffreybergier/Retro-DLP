@@ -237,7 +237,8 @@ cancelled and completed downloads removed; removal affects only the local librar
 The Mac app processes queued downloads automatically on launch and when work is
 added. Failed, stopped, and interrupted jobs require an explicit Retry. Stopping
 one quality leaves other queued downloads eligible to run. The shared bridge's
-Pause API remains for iOS foreground/background lifecycle management.
+Pause API remains available; iOS background expiration uses a separate suspension
+gate that also stops playlist sync and discovery workers.
 
 Cookies status indicates only whether the local working file is available, not
 whether its Netscape format or account session is valid. Import/replacement/removal
@@ -420,12 +421,40 @@ and the legacy movie player on older iOS. H.264 profile, level, resolution, and
 frame rate still need to be supported by the device; choosing an MP4 format does
 not transcode it.
 
+On iOS, opening the library marks `Documents/RetroDLP` as excluded from iTunes
+and iCloud backups. The directory-level flag covers existing videos, future
+downloads, exported playlists, and `.staging` partials. The database and working
+cookies remain eligible for backup. iOS 5.1+ uses
+[`NSURLIsExcludedFromBackupKey`](https://developer.apple.com/documentation/foundation/urlresourcekey/isexcludedfrombackupkey);
+the legacy `com.apple.MobileBackup` extended attribute supports iOS 5.0.1.
+iOS 5.0 itself has no supported backup-exclusion flag. Failures setting the flag
+are reported through the app's error queue.
+
 Downloads process automatically on launch and when returning to the foreground.
-Backgrounding pauses the queue and cancels an active transfer; queued work
-continues on return, but interrupted/stopped/failed jobs require an explicit Retry.
-Stopping one quality leaves other queued downloads eligible to run. There is no
-global Pause control or indefinite background downloading, and no background-audio
-mode is used to keep transfers alive.
+Each worker holds a main-thread operation reference through completion. The
+AppDelegate observes this count and requests a UIKit background task before work
+starts, keeping it across consecutive operations and releasing it when the count
+reaches zero. Downloads, playlist sync, account discovery, and startup
+reconciliation share this lifecycle. Backgrounding no longer immediately cancels
+an active transfer.
+
+Each download that completes while the iOS app is in the background sends a
+local alert with sound: `Download Complete 'Video Title'`. It uses the final
+stored title, including titles resolved during Ad-Hoc downloads, and is sent
+before releasing background execution time. Foreground downloads, failures,
+cancellations, and library reconciliation do not send completion alerts.
+Delivery uses `UILocalNotification` on iOS 5+; iOS 8+ requests alert and sound
+permission, and system notification preferences control presentation.
+
+UIKit grants a finite amount of execution time using
+[`beginBackgroundTaskWithExpirationHandler:`](https://developer.apple.com/documentation/uikit/uiapplication/beginbackgroundtask(expirationhandler:)).
+It needs no `UIBackgroundModes` entry or entitlement. When time expires (or a
+background request is denied), the delegate cancels active requests, blocks all
+new workers, and ends the task without waiting for worker completion. Returning
+to the foreground resumes queued work; interrupted/stopped/failed downloads
+still require explicit Retry. Stopping one quality leaves other queued downloads
+eligible to run. There is no global Pause control or indefinite background
+downloading.
 
 ## Shared architecture and invariants
 
@@ -473,7 +502,7 @@ by both applications.
 | Flat queue table with job ID, status, quality, video, playlist columns | Native flat subtitle cells, permanent job IDs, status accessories, and stable-ID job actions |
 | Context commands, quality preferences, confirmations | Video/job dialogs, Settings, and captured/revalidated alert requests |
 | Representative status and app-wide progress | Shared download policy, status icons, fixed status/progress area |
-| Automatic queue processing | Automatic foreground processing; background pause/cancellation |
+| Automatic queue processing | Automatic processing with finite background execution and cancellation on expiration |
 | Class naming and smaller collaborators | RDLP delegate, controller, sections model, actions category, UIKit compatibility wrapper |
 
 `RDLPAppDelegate` owns lifecycle and routes cookie URLs to the visible controller.
@@ -595,7 +624,9 @@ ssh koolphone5 'su mobile -c "uiopen retrodlp-offline-test://run"'
 ```
 
 The test has bundle ID `test.retrodlp.ios` and creates synthetic data only inside
-its own Documents/Fixture directory. Its `RDLPOfflineLibrary` overrides scheduling
+its own Documents fixture directories. Run test builds on `koolphone5`;
+`gomadango` is a production phone and receives only final production IPAs.
+Its `RDLPOfflineLibrary` overrides scheduling
 to never start a worker, and the bundle omits the CA resource. It can exercise
 sync/download actions without contacting YouTube. Native playback uses a bundled,
 FFmpeg-generated local MP4. Result and screenshots are in the test app's Documents
@@ -603,6 +634,33 @@ FFmpeg-generated local MP4. Result and screenshots are in the test app's Documen
 Services to finish registering a newly installed app before opening it. Reinstall
 the IPA for new test builds; overwriting a running signed executable in place can
 leave the kernel's cached signature stale.
+
+The lifecycle fixture verifies the real backup-exclusion flag while preserving
+existing media and keeping library metadata eligible for backup. It also runs
+the real scheduler and AppDelegate with synthetic worker completions and simulated
+OS grants, checking reference balancing, consecutive operations, errors,
+expiration, denied grants, foreground return, and shutdown. It does not measure
+the OS background time allowance or perform live background network transfers.
+
+The notification fixture runs the real scheduler and completion handler with
+synthetic workers and persisted job outcomes. It checks exact alert text,
+resolved Unicode titles, default sound, delivery before the task ends, and
+suppression for foreground work, failures, cancellation, and uncommitted success.
+It captures local notifications at the UIKit delivery boundary; it does not
+verify system banner presentation or notification permission dialogs.
+
+The full native suite, including notification regressions, passed on koolphone5
+(iOS 8.4.1). The universal iOS build, static analysis (zero warnings/errors),
+32 host store tests, service integration, and package validation also passed.
+The final production IPA was installed on gomadango over SSH/SCP. Logs are in
+`build/apps/tests/notification-review/`.
+
+Backup/background lifecycle update (2026-09-16): the full isolated iOS suite
+passed on `koolphone5`, including this fixture. Both iOS slices and all four
+macOS slices built, the iOS static analyzer reported zero warnings/errors,
+all 32 portable store tests and the local HTTPS service suite passed, and both
+platforms passed artifact validation. The production IPA was built but not
+deployed as part of this validation.
 
 
 VLC preference update: all four macOS slices built without warnings, static

@@ -10,10 +10,16 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#include <sys/xattr.h>
+#endif
 
 NSString * const RDLPLibraryDidChange = @"RetroDLPLibraryDidChange";
 NSString * const RDLPLibraryStatusDidChange = @"RetroDLPLibraryStatusDidChange";
 NSString * const RDLPLibraryErrorDidOccur = @"RetroDLPLibraryErrorDidOccur";
+NSString * const RDLPLibraryActivityDidChange = @"RetroDLPLibraryActivityDidChange";
+NSString * const RDLPLibraryDownloadDidComplete = @"RetroDLPLibraryDownloadDidComplete";
 static NSString *string(const char *s) { NSString *v=s?[NSString stringWithUTF8String:s]:nil; return v?v:@""; }
 static long long identifier(NSString *value) { return value?strtoll([value UTF8String],NULL,10):0; }
 static BOOL entry_number(NSDictionary *entry,NSString *key,unsigned long long *value) {
@@ -92,6 +98,8 @@ static int collect(void *context,int count,const char *const *names,const char *
 @end
 @interface RDLPLibrary (Private)
 - (void)startNext;
+- (void)beginOperation;
+- (void)endOperation;
 - (void)work:(NSDictionary *)command;
 - (void)finished:(NSDictionary *)result;
 - (void)changed;
@@ -220,6 +228,24 @@ static void download_callback(const rdlp_download_event *event,void *context) {
     [self release]; return nil;
   }
   chmod([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],0600);
+#if TARGET_OS_IPHONE
+  /* Exclude the stable parent, covering existing media, future downloads and
+     .staging partials without touching the database or working cookies. */
+  NSError *backupError=nil; BOOL excluded=NO;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunguarded-availability"
+  if(kCFCoreFoundationVersionNumber>=kCFCoreFoundationVersionNumber_iOS_5_1)
+    excluded=[[NSURL fileURLWithPath:root isDirectory:YES] setResourceValue:[NSNumber numberWithBool:YES]
+      forKey:NSURLIsExcludedFromBackupKey error:&backupError];
+  else {
+    /* iOS 5.0.1 predates the URL resource key. iOS 5.0 has no exclusion API. */
+    unsigned char value=1;
+    excluded=setxattr([root fileSystemRepresentation],"com.apple.MobileBackup",&value,sizeof(value),0,0)==0;
+    if(!excluded) backupError=[NSError errorWithDomain:NSPOSIXErrorDomain code:errno userInfo:nil];
+  }
+#pragma clang diagnostic pop
+  if(!excluded) [self reportError:@"Couldn’t exclude downloads from backups" detail:[backupError localizedDescription]];
+#endif
   paused_=YES;
   [commands_ addObject:[NSDictionary dictionaryWithObject:@"reconcile" forKey:@"type"]];
   [self performSelector:@selector(startNext) withObject:nil afterDelay:0];
@@ -266,6 +292,25 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 }
 - (BOOL)hasErrors; { return [errors_ count]>0; }
 - (BOOL)isBusy; { return busy_; }
+- (NSUInteger)operationCount; { return operationCount_; }
+- (void)beginOperation;
+{
+  NSAssert([NSThread isMainThread],@"Operation references belong to the main thread");
+  ++operationCount_;
+  [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryActivityDidChange object:self];
+}
+- (void)endOperation;
+{
+  NSAssert([NSThread isMainThread] && operationCount_>0,@"Unbalanced operation reference");
+  --operationCount_;
+  [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryActivityDidChange object:self];
+}
+- (void)suspendOperations;
+{
+  operationsSuspended_=YES;
+  [cancelLock_ lock]; cancel_=YES; [cancelLock_ unlock];
+  [self changed];
+}
 - (NSDictionary *)queueProgress;
 {
   NSUInteger pending=[self queuedCount], running=0;
@@ -303,7 +348,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   return @"Imported";
 }
 - (void)startDownloads;
-{ paused_=NO; [self startNext]; }
+{ operationsSuspended_=NO; paused_=NO; [self startNext]; }
 - (BOOL)isPaused; { return paused_; }
 - (RDLPLibraryRows *)rows:(rdapp_query)query playlist:(NSString *)key video:(NSString *)video format:(NSString *)format;
 {
@@ -555,7 +600,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 }
 - (void)startNext;
 {
-  if(busy_ || stopping_) return;
+  if(busy_ || stopping_ || operationsSuspended_) return;
   NSDictionary *command=nil;
   if([commands_ count]) { command=[[[commands_ objectAtIndex:0] retain] autorelease]; [commands_ removeObjectAtIndex:0]; }
   else if(!paused_) {
@@ -574,6 +619,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   [activeCommand_ release]; activeCommand_=[command retain];
   busy_=YES; [cancelLock_ lock]; cancel_=NO; [cancelLock_ unlock];
   activeJob_=identifier([[command objectForKey:@"job"] objectForKey:@"id"]);
+  [self beginOperation];
   transferCompleted_=0; transferExpected_=0; lastProgress_=0;
   [lastPhase_ release]; lastPhase_=nil;
   NSString *type=[command objectForKey:@"type"];
@@ -588,13 +634,17 @@ static void download_callback(const rdlp_download_event *event,void *context) {
     [activeCommand_ release]; activeCommand_=nil; busy_=NO;
     if([[result objectForKey:@"code"] intValue]!=RDLP_OK)
       [self reportError:@"Couldn’t read library" detail:[result objectForKey:@"message"]];
-    if(!stopping_) { [self changed]; [self performSelector:@selector(startNext) withObject:nil afterDelay:0]; }
+    if(!stopping_) { [self changed]; [self startNext]; }
+    [self endOperation];
     return;
   }
   if([[activeCommand_ objectForKey:@"type"] isEqualToString:@"download"]) {
     ++queueProcessed_;
     NSString *key=[[activeCommand_ objectForKey:@"job"] objectForKey:@"id"];
     NSDictionary *job=[self jobForID:key];
+    if([[result objectForKey:@"code"] intValue]==RDLP_OK &&
+       [[job objectForKey:@"state"] isEqualToString:@"complete"])
+      [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryDownloadDidComplete object:self userInfo:job];
     if([[job objectForKey:@"state"] isEqualToString:@"failed"]) ++queueFailed_;
     if([[job objectForKey:@"state"] isEqualToString:@"cancelled"] ||
        [[job objectForKey:@"state"] isEqualToString:@"interrupted"]) ++queueCancelled_;
@@ -619,7 +669,10 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   busy_=NO; transferCompleted_=0; transferExpected_=0;
   activeJob_=0;
   if(!stopping_) { [self showStatus:status]; [self changed];
-    [self performSelector:@selector(startNext) withObject:nil afterDelay:0.1]; }
+    /* Acquire the next worker's reference before releasing this one so iOS
+       cannot suspend the queue in a gap between consecutive operations. */
+    [self startNext]; }
+  [self endOperation];
 
 }
 - (void)work:(NSDictionary *)command;
