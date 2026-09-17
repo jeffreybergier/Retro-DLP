@@ -47,7 +47,7 @@ cmd = ['/usr/bin/clang', '-target', 'armv7-apple-ios5.0', '-arch', 'armv7',
 cmd += [str(objects / (name + '.o')) for name in
         ['RDLPAppDelegate', 'RDLPLibraryViewController', 'RDLPLibraryActions',
          'RDLPLibrarySections', 'RDLPUIKit', 'RDLPDownloadPolicy', 'RDLPStatusBarView', 'RDLPSettingsViewController', 'RDLPPlaylistsViewController', 'RDLPPlaylistViewController', 'RDLPVideoListViewController', 'RDLPDownloadsViewController', 'RDLPQueueViewController',
-         'RDLPLibrary', 'RDLPVideoRows', 'rdapp_store', 'rdapp_service']]
+         'RDLPLibrary', 'RDLPVideoRows', 'RDLP_Foundation', 'rdapp_store', 'rdapp_service']]
 cmd += [str(root / 'build/iOS/libretrodlp-download.a'),
         str(root / 'build/iOS/libretrodlp.a'),
         '/altivec/libs/core/build-phone/lib/libAltivecCore.a',

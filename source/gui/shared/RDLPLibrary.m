@@ -1,4 +1,5 @@
 #import "RDLPLibrary.h"
+#import "RDLP_Foundation.h"
 #import <CoreFoundation/CoreFoundation.h>
 #include "rdapp_store.h"
 #include "rdapp_service.h"
@@ -295,13 +296,13 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (NSUInteger)operationCount; { return operationCount_; }
 - (void)beginOperation;
 {
-  NSAssert([NSThread isMainThread],@"Operation references belong to the main thread");
+  NSAssert([NSThread RLDP_isMainThread],@"Operation references belong to the main thread");
   ++operationCount_;
   [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryActivityDidChange object:self];
 }
 - (void)endOperation;
 {
-  NSAssert([NSThread isMainThread] && operationCount_>0,@"Unbalanced operation reference");
+  NSAssert([NSThread RLDP_isMainThread] && operationCount_>0,@"Unbalanced operation reference");
   --operationCount_;
   [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryActivityDidChange object:self];
 }

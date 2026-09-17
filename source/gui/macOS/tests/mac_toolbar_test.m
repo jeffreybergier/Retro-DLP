@@ -6,6 +6,7 @@
 #import "../RDLPAppKit.h"
 #import "../RDLPAppDelegate.h"
 #import "../../shared/rdapp_store.h"
+#import "../../shared/RDLP_Foundation.h"
 #import <math.h>
 #include <sys/resource.h>
 #include <stdlib.h>
@@ -41,6 +42,35 @@ static void requireCondition(BOOL condition,NSString *message) {
 @implementation RDLPBackingScaleProbe
 - (CGFloat)backingScaleFactor; { return 2.0; }
 @end
+/* Exercise native-selector dispatch even when the runner is Tiger. */
+@interface RDLPModernThreadProbe : NSThread
+@end
+@implementation RDLPModernThreadProbe
++ (BOOL)isMainThread { return NO; }
+@end
+@interface RDLPThreadProbe : NSObject {
+@public
+  BOOL backgroundIsMain;
+}
+- (void)check:(NSConditionLock *)gate;
+@end
+@implementation RDLPThreadProbe
+- (void)check:(NSConditionLock *)gate {
+  NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+  [gate lock]; backgroundIsMain=[NSThread RLDP_isMainThread]; [gate unlockWithCondition:1];
+  [pool drain];
+}
+@end
+static void testMainThreadCompatibility(void) {
+  requireCondition([NSThread RLDP_isMainThread],@"Main-thread compatibility query recognizes AppKit's main thread");
+  requireCondition(![RDLPModernThreadProbe RLDP_isMainThread],@"Compatibility query uses the native selector when available");
+  RDLPThreadProbe *probe=[[[RDLPThreadProbe alloc] init] autorelease];
+  NSConditionLock *gate=[[[NSConditionLock alloc] initWithCondition:0] autorelease];
+  [NSThread detachNewThreadSelector:@selector(check:) toTarget:probe withObject:gate];
+  requireCondition([gate lockWhenCondition:1 beforeDate:[NSDate dateWithTimeIntervalSinceNow:5]],@"Background thread query completes");
+  BOOL backgroundIsMain=probe->backgroundIsMain; [gate unlock];
+  requireCondition(!backgroundIsMain,@"Main-thread compatibility query rejects a background thread");
+}
 @interface RDLPErrorAlertProbe : NSObject {
 @public
   BOOL appeared;
@@ -211,8 +241,13 @@ static NSArray *titles(NSMenu *menu) {
       [NSApp terminate:nil]; return;
     }
     [[NSUserDefaults standardUserDefaults] setObject:@"18" forKey:@"downloadFormat"];
+    testMainThreadCompatibility();
     library_=[[RDLPLibrary alloc] initWithSupportDirectory:@"/tmp/retrodlp-toolbar-fixture/Support" downloadDirectory:@"/tmp/retrodlp-toolbar-fixture/Downloads"];
     requireCondition(library_!=nil,@"Fixture failed to open");
+    pump();
+    NSDate *startupDeadline=[NSDate dateWithTimeIntervalSinceNow:10];
+    while([library_ isBusy] && [startupDeadline timeIntervalSinceNow]>0) pump();
+    requireCondition(![library_ isBusy] && [library_ operationCount]==0 && ![library_ hasErrors],@"Startup reconciliation completes and releases its operation reference");
     testSharedStatus(@"/tmp/retrodlp-toolbar-fixture/Status");
     requireCondition([[library_ playlists] count]==1 && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Use a fresh fixture");
     testSharedLists(library_);
@@ -246,6 +281,15 @@ static NSArray *titles(NSMenu *menu) {
     requireCondition([policy representativeJobForEntry:entry playlist:@"unrelated" jobs:fixtureJobs]==nil,
       @"Representative jobs must stay within the requested playlist");
     window_=[[RDLPLibraryWindowController alloc] initWithLibrary:library_]; [window_ showWindow:nil]; [NSApp activateIgnoringOtherApps:YES]; pump();
+    NSMenu *cookiesMenu=[window_ menuForMenuBarTitle:@"Cookies"];
+    requireCondition([toolbarButton(window_,@"cookies") isDefaultEnabled] &&
+      [window_ validateMenuItem:choice(cookiesMenu,@"Import Cookies…")],@"Startup leaves cookie import enabled in toolbar and menu");
+    requireCondition([library_ importCookies:@"/tmp/retrodlp-toolbar-fixture/synthetic-cookies.txt"],@"Import isolated synthetic cookies");
+    requireCondition([toolbarButton(window_,@"cookies") isDefaultEnabled] &&
+      ![window_ validateMenuItem:choice(cookiesMenu,@"Import Cookies…")] &&
+      [window_ validateMenuItem:choice(cookiesMenu,@"Replace Cookies…")] &&
+      [window_ validateMenuItem:choice(cookiesMenu,@"Remove Cookies…")],@"Imported cookies enable replacement and removal");
+    [library_ clearCookies];
     if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDScrollTestOnly"]) {
       NSTableView *table=[window_ valueForKey:@"table_"];
       NSScrollView *scroll=[table enclosingScrollView];
@@ -489,11 +533,21 @@ static NSArray *titles(NSMenu *menu) {
     progress=[library_ queueProgress];
     requireCondition(![[progress objectForKey:@"active"] boolValue] && [[progress objectForKey:@"processed"] unsignedLongValue]==attempts && [[progress objectForKey:@"failed"] unsignedLongValue]==attempts,@"Queue must count failed attempts separately and finish the run");
     requireCondition([[window_ valueForKey:@"queueProgress_"] isHidden],@"Drained queue must hide the progress area");
-    [library_ syncPlaylistInput:@"PLfixture"];
+    selectRow(window_,@"sidebar_",1);
+    NSMenuItem *syncItem=[[[NSMenuItem alloc] initWithTitle:@"Sync" action:@selector(sync:) keyEquivalent:@""] autorelease];
+    requireCondition([toolbarButton(window_,@"download") isDefaultEnabled] && [window_ validateMenuItem:syncItem],@"Idle playlist can sync from toolbar and menu");
+    [toolbarButton(window_,@"download") performClick:nil];
     requireCondition([library_ isBusy] && ![[[library_ queueProgress] objectForKey:@"active"] boolValue] && ![[window_ valueForKey:@"queueProgress_"] isHidden],@"Metadata work uses indeterminate activity progress");
+    requireCondition(![toolbarButton(window_,@"download") isDefaultEnabled] && ![window_ validateMenuItem:syncItem],@"Active playlist sync disables duplicate toolbar and menu actions");
+    requireCondition([library_ operationCount]==1 && ![toolbarButton(window_,@"cookies") isDefaultEnabled] &&
+      ![window_ validateMenuItem:choice(cookiesMenu,@"Import Cookies…")],@"Active sync holds one operation reference and disables cookie changes");
     deadline=[NSDate dateWithTimeIntervalSinceNow:20];
     while([library_ isBusy] && [deadline timeIntervalSinceNow]>0) pump();
     requireCondition(![library_ isBusy],@"Local metadata failure did not finish");
+    requireCondition([toolbarButton(window_,@"download") isDefaultEnabled] && [window_ validateMenuItem:syncItem],@"Finished playlist sync restores toolbar and menu actions");
+    requireCondition([library_ operationCount]==0 && ![library_ isSyncPendingForInput:@"PLfixture"] &&
+      [toolbarButton(window_,@"cookies") isDefaultEnabled] &&
+      [window_ validateMenuItem:choice(cookiesMenu,@"Import Cookies…")],@"Finished sync releases its operation and restores cookie controls");
     [library_ setPaused:YES];
     jobEnumerator=[[library_ jobsForPlaylist:nil completedOnly:NO] objectEnumerator];
     while((pendingJob=[jobEnumerator nextObject])) if([[pendingJob objectForKey:@"state"] isEqualToString:@"failed"]) break;

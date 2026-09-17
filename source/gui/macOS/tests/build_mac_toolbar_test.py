@@ -33,7 +33,7 @@ cmd = ['/osxcross/legacy/target/bin/oppc32-gcc', '-arch', 'ppc',
        str(root / 'source/gui/macOS/tests/mac_toolbar_test.m')]
 cmd += [str(objects / (name + '.o')) for name in
         ['RDLPAppDelegate', 'RDLPLibraryWindowController', 'RDLPAppKit', 'RDLPToolbarButton', 'RDLPLibraryViews', 'RDLPDownloadPolicy', 'RDLPLibraryMenus', 'RDLPLibrary',
-         'RDLPVideoRows', 'rdapp_store', 'rdapp_service']]
+         'RDLPVideoRows', 'RDLP_Foundation', 'rdapp_store', 'rdapp_service']]
 cmd += [str(root / 'build/macOS/libretrodlp-download.a'),
         str(root / 'build/macOS/libretrodlp.a'),
         '/altivec/libs/core/build-mac/lib/libAltivecCore.a',
