@@ -119,6 +119,10 @@
 	</array>
 	<key>UIFileSharingEnabled</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<!-- iOS 5/6 use Default.png, Default@2x.png and Default-568h@2x.png.
 	     iOS 7+ use this complete iPhone list, including native 6/6 Plus sizes. -->
 	<key>UILaunchImages~iphone</key>

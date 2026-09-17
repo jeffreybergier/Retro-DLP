@@ -47,7 +47,7 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
     if platform=='iOS':
         assert plist['MinimumOSVersion']=='5.0'
         assert plist['UIFileSharingEnabled']
-        assert not plist.get('UIBackgroundModes')
+        assert plist.get('UIBackgroundModes')==['audio']
         entitlements=subprocess.check_output(['ldid','-e',str(exe)])
         assert b'no-sandbox' not in entitlements and b'platform-application' not in entitlements
     with zipfile.ZipFile(directory/archive_name) as archive:

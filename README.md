@@ -49,6 +49,8 @@ uses the system default player, and exports M3U8 playlists under
 uses the native player. iOS saves playback position every ten seconds and when
 leaving playback or backgrounding the app, then resumes that video automatically.
 Positions are shared across playlists and qualities; finished videos start over.
+Background audio is enabled on iOS. If the video pauses when you leave the app,
+use the system media controls to resume its audio in the background.
 Both apps group playlists and download qualities, confirm
 bulk/destructive actions, and process queued work automatically while active.
 See [app usage, builds, and architecture](docs/cocoa-apps.md).

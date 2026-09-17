@@ -456,6 +456,14 @@ still require explicit Retry. Stopping one quality leaves other queued downloads
 eligible to run. There is no global Pause control or indefinite background
 downloading.
 
+iOS playback declares `UIBackgroundModes = audio` and configures and activates
+`AVAudioSessionCategoryPlayback` when opening a video. This applies to both
+native player paths and uses APIs available on iOS 5. The legacy movie player
+may pause when backgrounded; the user can resume audio with the system media
+controls. The app does not force playback to restart on backgrounding. The audio
+session remains available while backgrounded. This mode is for media playback;
+downloads continue to use the finite task allowance described above.
+
 Legacy playback checkpoints also save on playback-state changes and on entering
 the background, so seeking and immediately force-quitting does not depend on
 the ten-second timer. A system pause can report zero or an earlier keyframe;

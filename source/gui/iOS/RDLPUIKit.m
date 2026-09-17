@@ -293,6 +293,15 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
 + (void)presentPlayer:(UIViewController *)owner library:(RDLPLibrary *)library job:(NSDictionary *)job legacy:(BOOL)legacy; {
   NSString *path=[library fileForJob:job];
   if(!path || ![[NSFileManager defaultManager] fileExistsAtPath:path]) { [self showMessage:@"The downloaded file is missing. Retry its download from Queue."]; return; }
+  /* Activate only when opening a video, so browsing the library does not
+     interrupt other audio. Keep the session available in the background for
+     the native player's system playback controls. Both calls support iOS 5. */
+  AVAudioSession *session=[AVAudioSession sharedInstance]; NSError *error=nil;
+  if(![session setCategory:AVAudioSessionCategoryPlayback error:&error])
+    NSLog(@"Could not configure playback audio session: %@",error);
+  error=nil;
+  if(![session setActive:YES error:&error])
+    NSLog(@"Could not activate playback audio session: %@",error);
   NSURL *url=[NSURL fileURLWithPath:path];
   Class modern=legacy?Nil:NSClassFromString(@"AVPlayerViewController");
   if(modern) {
