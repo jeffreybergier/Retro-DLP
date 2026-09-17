@@ -116,6 +116,8 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
 - (void)removePlaylist:(NSDictionary *)playlist;
 - (BOOL)importCookies:(NSString *)path;
 - (void)clearCookies;
+- (double)playbackSecondsForVideo:(NSString *)video;
+- (void)savePlaybackSeconds:(double)seconds forVideo:(NSString *)video;
 - (NSString *)fileForJob:(NSDictionary *)job;
 - (NSString *)playlistFile:(NSDictionary *)playlist;
 - (void)shutdown;

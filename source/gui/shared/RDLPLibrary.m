@@ -560,6 +560,21 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   if(error) [self reportError:@"Couldn’t stop download" detail:error];
   [error release]; [self changed];
 }
+- (double)playbackSecondsForVideo:(NSString *)video;
+{
+  double seconds=0;
+  [lock_ lock];
+  int ok=rdapp_store_playback_seconds(store_,[video UTF8String],&seconds);
+  if(!ok) NSLog(@"Could not read playback position: %s",rdapp_store_error(store_));
+  [lock_ unlock]; return seconds;
+}
+- (void)savePlaybackSeconds:(double)seconds forVideo:(NSString *)video;
+{
+  [lock_ lock];
+  if(!rdapp_store_save_playback_seconds(store_,[video UTF8String],seconds))
+    NSLog(@"Could not save playback position: %s",rdapp_store_error(store_));
+  [lock_ unlock];
+}
 - (NSString *)fileForJob:(NSDictionary *)job;
 {
   NSString *relative=[job objectForKey:@"path"];

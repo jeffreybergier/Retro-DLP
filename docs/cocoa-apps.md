@@ -456,6 +456,17 @@ still require explicit Retry. Stopping one quality leaves other queued downloads
 eligible to run. There is no global Pause control or indefinite background
 downloading.
 
+Legacy playback checkpoints also save on playback-state changes and on entering
+the background, so seeking and immediately force-quitting does not depend on
+the ten-second timer. A system pause can report zero or an earlier keyframe;
+that reading must not overwrite the last reliable position. Explicit seeks can
+still move the bookmark backwards, including to zero, and resumed background
+audio continues updating it. The focused native regression suite is built with
+`RDLP_TEST_PLAYBACK_ONLY=1 python3 source/gui/iOS/tests/build_ios_ui_test.py`.
+The isolated real-player probe on gomadango (iOS 6.1.3) preserved a 16.84-second
+checkpoint after seeking, immediately backgrounding, and terminating the process
+with SIGKILL; the next launch read that checkpoint and resumed playback.
+
 ## Shared architecture and invariants
 
 - `rdapp_store.{h,c}`: normalized SQLite tables, complete playlist snapshots,

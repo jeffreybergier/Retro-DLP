@@ -172,9 +172,7 @@
     [model_ jobForPlaylist:pid video:[entry objectForKey:@"video_id"] format:format];
   if(selectedJob && !job) { [self refresh:nil]; return; }
   if([policy_ playable:job]) {
-    NSURL *url=[NSURL fileURLWithPath:[library_ fileForJob:job]];
-    MPMoviePlayerViewController *player=[[[MPMoviePlayerViewController alloc] initWithContentURL:url] autorelease];
-    [self presentMoviePlayerViewControllerAnimated:player]; return;
+    [RDLPUIKit presentPlayer:self library:library_ job:job legacy:YES]; return;
   }
   if([policy_ canCancel:job]) return;
   NSString *status=[policy_ statusForJob:job];

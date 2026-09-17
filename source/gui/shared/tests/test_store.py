@@ -30,6 +30,8 @@ ENTRY_FIELDS = {'playlist_id', 'position', 'video_id', 'title', *METADATA_FIELDS
 CB = C.CFUNCTYPE(C.c_int, P, C.c_int, C.POINTER(S), C.POINTER(S))
 for name, args in {
     'open':[S,C.POINTER(P)], 'open_reader':[S,C.POINTER(P)], 'close':[P], 'error':[P],
+    'playback_seconds':[P,S,C.POINTER(C.c_double)],
+    'save_playback_seconds':[P,S,C.c_double],
     'count':[P,C.c_int,I,S,S,C.POINTER(I)],
     'page':[P,C.c_int,I,S,S,I,I,CB,P],
     'after':[P,C.c_int,I,S,S,I,CB,P],
@@ -403,6 +405,7 @@ class StoreTests(unittest.TestCase):
         lib.rdapp_store_close(self.db); self.db=P()
         with sqlite3.connect(self.path/'db.sqlite') as db:
             for field in METADATA_FIELDS: db.execute('ALTER TABLE jobs DROP COLUMN '+field)
+            db.execute('ALTER TABLE videos DROP COLUMN playback_seconds')
             db.execute('PRAGMA user_version=4')
         self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
         self.assertEqual(self.rows(2),jobs)
@@ -521,6 +524,45 @@ class StoreTests(unittest.TestCase):
         self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
         self.assertEqual(self.rows(0)[0]['source'],'account')
 
+    def playback(self, video=b'abcdefghijk'):
+        seconds=C.c_double()
+        self.check(lib.rdapp_store_playback_seconds(self.db,video,C.byref(seconds)))
+        return seconds.value
+
+    def test_playback_persists_through_refresh_qualities_and_reopen(self):
+        self.assertEqual(self.playback(),0)
+        self.check(lib.rdapp_store_save_playback_seconds(self.db,b'abcdefghijk',123.75))
+        self.check(self.snapshot())
+        self.check(lib.rdapp_store_add_adhoc(self.db,b'abcdefghijk',b'Updated title',None))
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'22'))
+        lib.rdapp_store_close(self.db); self.db=P()
+        self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
+        self.assertEqual(self.playback(),123.75)
+        self.assertEqual(self.playback(b'lmnopqrstuv'),0)
+        self.assertEqual(self.playback(b'unknown'),0)
+        self.check(lib.rdapp_store_save_playback_seconds(self.db,b'abcdefghijk',12.5))
+        self.assertEqual(self.playback(),12.5)  # Scrubbing backwards must persist.
+        self.check(lib.rdapp_store_save_playback_seconds(self.db,b'abcdefghijk',0))
+        self.assertEqual(self.playback(),0)
+
+    def test_playback_rejects_invalid_positions(self):
+        self.check(lib.rdapp_store_save_playback_seconds(self.db,b'abcdefghijk',42))
+        for value in [-1, float('nan'), float('inf'), -float('inf')]:
+            self.assertEqual(lib.rdapp_store_save_playback_seconds(self.db,b'abcdefghijk',value),0)
+            self.assertEqual(self.playback(),42)
+
+    def test_version_five_migration_adds_playback_without_losing_library(self):
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,None,b'18'))
+        entries,jobs=self.rows(1),self.rows(2)
+        lib.rdapp_store_close(self.db); self.db=P()
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.executescript('ALTER TABLE videos DROP COLUMN playback_seconds; PRAGMA user_version=5;')
+        self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
+        self.assertEqual(self.rows(1),entries)
+        self.assertEqual(self.rows(2),jobs)
+        self.assertEqual(self.playback(),0)
+
     def test_version_one_migration_preserves_playlist(self):
         path=self.path/'legacy.sqlite'
         with sqlite3.connect(path) as db:
@@ -530,7 +572,7 @@ class StoreTests(unittest.TestCase):
         lib.rdapp_store_close(other)
         with sqlite3.connect(path) as db:
             self.assertEqual(db.execute('SELECT id,service_id,directory,synced_at,source FROM playlists').fetchone(),(7,'PLold','Playlists/Old',42,'added'))
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],5)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],6)
             self.assertEqual(db.execute('SELECT count(*) FROM entry_thumbnails').fetchone()[0],0)
 
     def test_version_two_migration_preserves_entries_and_jobs(self):
@@ -539,7 +581,7 @@ class StoreTests(unittest.TestCase):
         lib.rdapp_store_close(self.db)
         self.db=P()
         with sqlite3.connect(self.path/'db.sqlite') as db:
-            db.executescript('DROP TABLE entry_thumbnails; PRAGMA user_version=2;')
+            db.executescript('DROP TABLE entry_thumbnails; ALTER TABLE videos DROP COLUMN playback_seconds; PRAGMA user_version=2;')
             for field in METADATA_FIELDS:
                 db.execute('ALTER TABLE entries DROP COLUMN '+field)
                 db.execute('ALTER TABLE jobs DROP COLUMN '+field)
@@ -573,6 +615,7 @@ class StoreTests(unittest.TestCase):
             for field in METADATA_FIELDS:
                 db.execute('ALTER TABLE entries DROP COLUMN '+field)
                 db.execute('ALTER TABLE jobs DROP COLUMN '+field)
+            db.execute('ALTER TABLE videos DROP COLUMN playback_seconds')
             db.execute('PRAGMA user_version=3')
         self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
         self.assertEqual(self.thumbnails(),[(0,0,urls[0].decode())])

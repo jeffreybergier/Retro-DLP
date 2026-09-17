@@ -50,6 +50,9 @@ int rdapp_store_add_adhoc(rdapp_store *, const char *video_id, const char *title
    preserves known titles or uses the video ID until download resolution. */
 int rdapp_store_add_adhoc_download(rdapp_store *, const char *video_id,
                                   const char *title, const char *format, int64_t *key);
+/* Seconds are shared by video ID across playlists and downloaded qualities. */
+int rdapp_store_playback_seconds(rdapp_store *, const char *video_id, double *seconds);
+int rdapp_store_save_playback_seconds(rdapp_store *, const char *video_id, double seconds);
 int rdapp_store_enqueue(rdapp_store *, int64_t playlist, const char *video_id,
                         const char *format); /* NULL video means whole playlist */
 int rdapp_store_claim(rdapp_store *, rdapp_row_callback, void *);

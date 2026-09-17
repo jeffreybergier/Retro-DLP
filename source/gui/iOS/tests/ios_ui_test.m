@@ -15,6 +15,7 @@
 #import <MediaPlayer/MediaPlayer.h>
 #import "../../shared/tests/shared_status_test.h"
 #import "ios_lifecycle_test.h"
+#import "ios_playback_progress_test.h"
 #import "../../shared/tests/shared_metadata_test.h"
 #import "../../shared/tests/shared_video_rows_test.h"
 
@@ -158,6 +159,11 @@ static void screenshot(UIWindow *window,NSString *path) {
   [@"RUNNING" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSString *report=@"PASS";
   @try {
+    testIOSPlaybackProgress([documents_ stringByAppendingPathComponent:@"PlaybackFixture"]);
+    if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestPlaybackOnly"] boolValue]) {
+      [@"PASS: playback transition checkpoints, database reopen, backward seeking, background audio, and completion" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      return;
+    }
     testIOSIconScale();
     if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestIconsOnly"] boolValue]) {
       [@"PASS: white icon pixels, screen scale, and compatible template rendering" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
@@ -436,13 +442,17 @@ static void screenshot(UIWindow *window,NSString *path) {
     require([settings enabled:@"import"],@"Removing cookies enables import again");
     RDLPLibraryViewController *detail=[self show:RDLPScreenVideo playlist:playlist video:video];
     require(findRow(detail,@"play")!=nil && findRow(detail,@"delete")!=nil,@"Completed video offers Play and confirmed Delete");
+    [library_ savePlaybackSeconds:1 forVideo:[video objectForKey:@"video_id"]];
     [detail performRow:findRow(detail,@"play")]; pump();
     UIViewController *playerController=detail.presentedViewController;
     require(playerController!=nil,@"Local playback presents native player");
     if([playerController respondsToSelector:@selector(player)]) {
       AVPlayer *player=[playerController valueForKey:@"player"];
       for(NSUInteger wait=0;wait<10 && player.currentItem.status!=AVPlayerItemStatusReadyToPlay;++wait) pump();
-      require(player.currentItem.status==AVPlayerItemStatusReadyToPlay,@"Native player loads synthetic MP4 without network"); [player pause];
+      require(player.currentItem.status==AVPlayerItemStatusReadyToPlay,@"Native player loads synthetic MP4 without network");
+      for(NSUInteger wait=0;wait<10 && player.rate==0;++wait) pump();
+      [player pause];
+      require(CMTimeGetSeconds(player.currentTime)>=1,@"Modern player resumes from the database before playing");
     }
     if([playerController isKindOfClass:[MPMoviePlayerViewController class]]) {
       MPMoviePlayerController *movie=[(MPMoviePlayerViewController *)playerController moviePlayer];
@@ -546,6 +556,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     require([list.title isEqualToString:@"Updated Playlist"],@"Playlist title refreshes from library");
     NSIndexPath *playIndex=videoIndex(list,@"AAAAAAAAAAA",@"18"), *queuedIndex=videoIndex(list,@"BBBBBBBBBBB",@"18"), *newIndex=videoIndex(list,@"DDDDDDDDDDD",nil);
     [RDLPLibrary savePreferredFormat:@"137+140"];
+    [library_ savePlaybackSeconds:1 forVideo:@"AAAAAAAAAAA"];
     [list tableView:list.tableView didSelectRowAtIndexPath:playIndex]; pump(); pump();
     MPMoviePlayerViewController *playlistPlayer=(MPMoviePlayerViewController *)list.presentedViewController;
     require([playlistPlayer isKindOfClass:[MPMoviePlayerViewController class]],@"Playlist tap presents MPMoviePlayerViewController even with another preferred quality");
@@ -553,9 +564,22 @@ static void screenshot(UIWindow *window,NSString *path) {
     [playlistPlayer.moviePlayer play];
     for(NSUInteger wait=0;wait<10 && !(playlistPlayer.moviePlayer.loadState & MPMovieLoadStatePlayable);++wait) pump();
     require((playlistPlayer.moviePlayer.loadState & MPMovieLoadStatePlayable)!=0,@"Playlist movie player loads offline media");
-    [playlistPlayer.moviePlayer pause]; [list dismissMoviePlayerViewControllerAnimated];
+    [playlistPlayer.moviePlayer pause];
+    require(playlistPlayer.moviePlayer.currentPlaybackTime>=1,@"Legacy player resumes from the database timestamp");
+    playlistPlayer.moviePlayer.currentPlaybackTime=0.75; pump();
+    [[NSNotificationCenter defaultCenter] postNotificationName:UIApplicationWillResignActiveNotification object:[UIApplication sharedApplication]];
+    require(fabs([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]-0.75)<0.25,@"Backgrounding saves legacy playback immediately");
+    playlistPlayer.moviePlayer.currentPlaybackTime=0.5; pump();
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:10.2]];
+    require(fabs([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]-0.5)<0.25,@"Ten-second timer saves a backward seek to the database");
+    playlistPlayer.moviePlayer.currentPlaybackTime=1.5; pump();
+    [list dismissMoviePlayerViewControllerAnimated];
     for(NSUInteger wait=0;wait<10 && (list.presentedViewController || navigation_.presentedViewController);++wait) pump();
     require(!list.presentedViewController && navigation_.toolbarHidden,@"Movie dismissal returns to playlist without a toolbar");
+    require(fabs([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]-1.5)<0.25,@"Dismissing the legacy player saves its final position");
+    [library_ savePlaybackSeconds:0.75 forVideo:@"AAAAAAAAAAA"];
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:10.2]];
+    require([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]==0.75,@"Dismissed player cannot overwrite a newer position");
     library_.testStatus=nil;
     NSUInteger beforeTap=[[library_ jobsForPlaylist:nil completedOnly:NO] count];
     require(![list tableView:list.tableView canEditRowAtIndexPath:queuedIndex] && ![list tableView:list.tableView canEditRowAtIndexPath:newIndex],@"Queued and undownloaded playlist rows cannot be swiped to delete");

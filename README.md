@@ -46,7 +46,10 @@ Native macOS and iOS frontends provide a SQLite playlist library, quality-specif
 download queue, and offline playback. macOS prefers VLC when installed, otherwise
 uses the system default player, and exports M3U8 playlists under
 `~/Documents/RetroDLP`; iOS keeps videos inside its own Documents directory and
-uses the native player. Both apps group playlists and download qualities, confirm
+uses the native player. iOS saves playback position every ten seconds and when
+leaving playback or backgrounding the app, then resumes that video automatically.
+Positions are shared across playlists and qualities; finished videos start over.
+Both apps group playlists and download qualities, confirm
 bulk/destructive actions, and process queued work automatically while active.
 See [app usage, builds, and architecture](docs/cocoa-apps.md).
 

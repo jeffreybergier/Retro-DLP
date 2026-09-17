@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <limits.h>
+#include <math.h>
 
 struct rdapp_store { sqlite3 *db; char error[512]; };
 static int failure(rdapp_store *s, const char *message) {
@@ -59,7 +60,7 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
   if (sqlite3_open(path, &s->db) != SQLITE_OK) { rdapp_store_close(s); return 0; }
   sqlite3_busy_timeout(s->db, 5000);
   p = prepare(s, "PRAGMA user_version");
-  if (!p || sqlite3_step(p) != SQLITE_ROW || sqlite3_column_int(p,0) > 5) {
+  if (!p || sqlite3_step(p) != SQLITE_ROW || sqlite3_column_int(p,0) > 6) {
     sqlite3_finalize(p); rdapp_store_close(s); return 0;
   }
   version=sqlite3_column_int(p,0);
@@ -95,6 +96,7 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
         "ALTER TABLE jobs ADD COLUMN description_snippet TEXT;"
         "ALTER TABLE jobs ADD COLUMN duration INTEGER;"
         "ALTER TABLE jobs ADD COLUMN view_count INTEGER;")) ||
+      (version<6 && !sql(s,"ALTER TABLE videos ADD COLUMN playback_seconds REAL NOT NULL DEFAULT 0 CHECK(playback_seconds>=0);")) ||
       !sql(s,"CREATE TABLE IF NOT EXISTS entry_thumbnails (playlist_id INTEGER NOT NULL,"
         " position INTEGER NOT NULL, thumbnail_index INTEGER NOT NULL, url TEXT NOT NULL,"
         " PRIMARY KEY(playlist_id,position,thumbnail_index),"
@@ -106,10 +108,25 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
         "CREATE INDEX IF NOT EXISTS jobs_video_id ON jobs(playlist_id,video_id,id);"
         "CREATE INDEX IF NOT EXISTS jobs_playlist_state ON jobs(playlist_id,state,id);"
         "CREATE INDEX IF NOT EXISTS entries_video_position ON entries(playlist_id,video_id,position);")) { rdapp_store_close(s); return 0; }
-  if((version<5 && !refresh_job_metadata(s,0)) || !sql(s,"PRAGMA user_version=5; COMMIT;")) {
+  if((version<5 && !refresh_job_metadata(s,0)) || !sql(s,"PRAGMA user_version=6; COMMIT;")) {
     rdapp_store_close(s); return 0;
   }
   *out = s; return 1;
+}
+int rdapp_store_playback_seconds(rdapp_store *s,const char *video,double *seconds) {
+  sqlite3_stmt *p; int rc;
+  *seconds=0;
+  p=prepare(s,"SELECT playback_seconds FROM videos WHERE id=?"); if(!p) return 0;
+  bind_text(p,1,video); rc=sqlite3_step(p);
+  if(rc==SQLITE_ROW) *seconds=sqlite3_column_double(p,0);
+  else if(rc!=SQLITE_DONE) failure(s,sqlite3_errmsg(s->db));
+  sqlite3_finalize(p); return rc==SQLITE_ROW || rc==SQLITE_DONE;
+}
+int rdapp_store_save_playback_seconds(rdapp_store *s,const char *video,double seconds) {
+  sqlite3_stmt *p;
+  if(!isfinite(seconds) || seconds<0) return failure(s,"Invalid playback position");
+  p=prepare(s,"UPDATE videos SET playback_seconds=? WHERE id=?"); if(!p) return 0;
+  sqlite3_bind_double(p,1,seconds); bind_text(p,2,video); return done(s,p);
 }
 void rdapp_filename(const char *text, char *out, size_t cap) {
   size_t n = 0, i = 0;
@@ -315,7 +332,7 @@ int rdapp_store_snapshot(rdapp_store *s,const char *id,const char *title,const r
   sqlite3_bind_int64(p,1,k); if(!done(s,p)) goto rollback;
   for(i=0;i<count;++i) {
     if(!entries[i].video_id || strlen(entries[i].video_id)!=11 || strspn(entries[i].video_id,"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")!=11) { failure(s,"Invalid video ID in playlist"); goto rollback; }
-    p=prepare(s,"INSERT OR REPLACE INTO videos(id,title) VALUES(?,?)"); if(!p) goto rollback;
+    p=prepare(s,"INSERT OR REPLACE INTO videos(id,title,playback_seconds) VALUES(?1,?2,coalesce((SELECT playback_seconds FROM videos WHERE id=?1),0))"); if(!p) goto rollback;
     bind_text(p,1,entries[i].video_id); bind_text(p,2,entries[i].title); if(!done(s,p)) goto rollback;
     if((entries[i].has_duration && entries[i].duration>UINT64_C(9007199254740991)) ||
        (entries[i].has_view_count && entries[i].view_count>UINT64_C(9007199254740991))) {
@@ -362,7 +379,7 @@ static int add_adhoc(rdapp_store *s,const char *video_id,const char *title,const
   if(!rdapp_store_playlist(s,RDAPP_ADHOC_PLAYLIST_ID,"Ad-Hoc",&k)) goto rollback;
   p=prepare(s,"UPDATE playlists SET source='system', synced_at=strftime('%s','now') WHERE id=?"); if(!p) goto rollback;
   sqlite3_bind_int64(p,1,k); if(!done(s,p)) goto rollback;
-  p=prepare(s,title?"INSERT OR REPLACE INTO videos(id,title) VALUES(?,?)":"INSERT OR IGNORE INTO videos(id,title) VALUES(?,?)"); if(!p) goto rollback;
+  p=prepare(s,title?"INSERT OR REPLACE INTO videos(id,title,playback_seconds) VALUES(?1,?2,coalesce((SELECT playback_seconds FROM videos WHERE id=?1),0))":"INSERT OR IGNORE INTO videos(id,title) VALUES(?,?)"); if(!p) goto rollback;
   bind_text(p,1,video_id); bind_text(p,2,title?title:video_id); if(!done(s,p)) goto rollback;
   p=prepare(s,"SELECT position FROM entries WHERE playlist_id=? AND video_id=? ORDER BY position LIMIT 1"); if(!p) goto rollback;
   sqlite3_bind_int64(p,1,k); bind_text(p,2,video_id); exists=sqlite3_step(p)==SQLITE_ROW;

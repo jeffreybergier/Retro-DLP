@@ -34,6 +34,8 @@ info.update(CFBundleExecutable='RetroDLPIOSOfflineTest',
                                   CFBundleURLSchemes=['retrodlp-offline-test'])])
 if os.environ.get('RDLP_TEST_ICONS_ONLY') == '1':
     info['RDLPTestIconsOnly'] = True
+if os.environ.get('RDLP_TEST_PLAYBACK_ONLY') == '1':
+    info['RDLPTestPlaybackOnly'] = True
 plist.write_bytes(plistlib.dumps(info))
 objects = root / 'build/apps/iOS/Intermediates'
 cmd = ['/usr/bin/clang', '-target', 'armv7-apple-ios5.0', '-arch', 'armv7',
@@ -55,7 +57,7 @@ cmd += [str(root / 'build/iOS/libretrodlp-download.a'),
         '/altivec/libs/core/build-phone/lib/libcrypto.a']
 for framework in ['UIKit', 'Foundation', 'CoreGraphics', 'CoreText',
                   'CoreFoundation', 'SystemConfiguration', 'Security',
-                  'MediaPlayer', 'AVFoundation']:
+                  'MediaPlayer', 'AVFoundation', 'CoreMedia']:
     cmd += ['-framework', framework]
 cmd += ['-weak_framework', 'AVKit', '-lobjc', '-lpthread', '-o',
         str(app / 'RetroDLPIOSOfflineTest')]
