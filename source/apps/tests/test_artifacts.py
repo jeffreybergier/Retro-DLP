@@ -72,4 +72,40 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
             assert mode & stat.S_IROTH,platform+' resource is unreadable after installation: '+relative
             if filename.startswith('ejs/'):
                 assert hashlib.sha256(data).digest()==hashlib.sha256((ROOT/'build/apps/resources'/filename).read_bytes()).digest()
+        if platform=='iOS':
+            icons=set(plist['CFBundleIconFiles'])
+            source=ROOT/'source/apps/iOS/Resources'
+            assert icons=={p.name for p in source.glob('AppIcon*.png')}
+            assert plist['CFBundleIconFile']=='AppIcon57x57.png'
+            assert plist['UIPrerenderedIcon'] is False
+            for key in ('CFBundleIcons','CFBundleIcons~ipad'):
+                primary=plist[key]['CFBundlePrimaryIcon']
+                assert set(primary['CFBundleIconFiles']) <= icons
+                assert primary['UIPrerenderedIcon'] is False
+            for filename in icons:
+                data=(source/filename).read_bytes()
+                match=re.fullmatch(r'AppIcon([\d.]+)x([\d.]+)(?:@(\d)x)?(?:~ipad)?\.png',filename)
+                assert match and match[1]==match[2],filename
+                size=int(float(match[1])*int(match[3] or 1))
+                assert data[:8]==b'\x89PNG\r\n\x1a\n'
+                assert struct.unpack('>II',data[16:24])==(size,size),filename
+                assert data[25]==2,filename+' must be opaque RGB'
+                assert (bundle/filename).read_bytes()==data
+                assert archive.read(prefix+filename)==data
+        else:
+            filename=plist['CFBundleIconFile']
+            data=(ROOT/'source/apps/macOS/Resources'/filename).read_bytes()
+            assert (bundle/resources/filename).read_bytes()==data
+            assert archive.read(prefix+resources+'/'+filename)==data
+            assert data[:4]==b'icns' and struct.unpack('>I',data[4:8])[0]==len(data)
+            offset=8; elements=set()
+            while offset<len(data):
+                kind,length=struct.unpack('>4sI',data[offset:offset+8])
+                assert 8<length<=300_000,(kind,length,'ICNS slice exceeds 300 KB')
+                assert offset+length<=len(data)
+                assert kind not in elements
+                elements.add(kind); offset+=length
+            assert offset==len(data)
+            assert {b'is32',b's8mk',b'il32',b'l8mk',b'ih32',b'h8mk',b'it32',b't8mk',
+                    b'ic08',b'ic09',b'ic10',b'ic11',b'ic12',b'ic13',b'ic14'} <= elements
     print('PASS:',platform,'architectures, resources, package freshness, and application metadata')

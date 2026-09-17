@@ -8,6 +8,8 @@
 	<string>RetroDLP</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.altivecintelligence.RetroDLP</string>
+	<key>CFBundleIconFile</key>
+	<string>RetroDLP.icns</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

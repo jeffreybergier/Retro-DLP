@@ -6,6 +6,7 @@ vpath %.c $(SHARED_DIR)
 vpath %.m $(SHARED_DIR)
 EXTRA_SOURCES = rdapp_store.c rdapp_service.c RDLPLibrary.m RDLPVideoRows.m
 INFO_PLIST = Info.plist
+MAC_ICON = Resources/RetroDLP.icns
 ALTIVECCORE_REQUIRED = 1
 ALTIVECCORE_LINKAGE = static
 ALTIVECCOCOA_REQUIRED = 1
@@ -22,6 +23,6 @@ EXTRA_BUNDLE_STEPS = @set -e; cp $(ALTIVECCORE_DIR)/lib/cacert.pem $@/Contents/R
 
 .DEFAULT_GOAL := app
 app: validate $(ZIP_FILE)
-$(BUNDLE): Info.plist Makefile $(ALTIVECCORE_DIR)/lib/cacert.pem $(wildcard $(ROOT)/build/apps/resources/ejs/*)
+$(BUNDLE): Info.plist Makefile $(MAC_ICON) $(ALTIVECCORE_DIR)/lib/cacert.pem $(wildcard $(ROOT)/build/apps/resources/ejs/*)
 $(INT_DIR)/ppc.bin $(INT_DIR)/x86.bin $(INT_DIR)/x64.bin $(INT_DIR)/arm.bin: $(ROOT)/build/macOS/libretrodlp-download.a $(ROOT)/build/macOS/libretrodlp.a
 .PHONY: app
