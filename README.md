@@ -2,9 +2,9 @@
 
 The stable reusable C interface is documented in
 [`docs/library-api.md`](docs/library-api.md). Applications should include only
-headers from `include/retrodlp`; concise resolver, authentication, playlist,
-custom-transport, and optional-download programs are in
-[`examples/`](examples/README.md).
+headers from `source/library/shared/include/retrodlp`; concise resolver,
+authentication, playlist, custom-transport, and optional-download programs are in
+[`examples/`](source/library/shared/examples/README.md).
 
 Retro-DLP is a super minimalist/reduced-scope conversion of 
 [yt-dlp](https://github.com/yt-dlp/yt-dlp) from Python into C. I built 
@@ -21,6 +21,24 @@ accomplish a singular goal:
 Implementation research is maintained as a short list of
 [upstream references](docs/upstream-references.md); the repository does not
 vendor yt-dlp as a build or test dependency.
+
+## Source layout
+
+`source/` has four component folders:
+
+- `deps/`: the cJSON, QuickJS, and L-SMASH Git submodules, with upstream layouts preserved.
+- `gui/`: native apps under `iOS/` and `macOS/`; common app code, artwork, scripts,
+  and tests under `shared/`. Native UI tests live with their platform.
+- `cli/`: portable CLI source directly in this folder, integration tests in
+  `tests/`, and helper scripts such as the iOS `find-vlc` script in `scripts/`.
+- `library/`: platform implementations and compatibility code under `iOS/`,
+  `macOS/`, and `linux/`; portable implementation, public `include/retrodlp`
+  headers, examples, and common tests under `shared/`.
+
+Only components with platform-specific source use a `shared/` folder. The CLI
+integration suite also exercises library behavior; library-only tests remain
+under `library/`. Repository-wide build and packaging rules live in `make/`.
+Existing `make` commands and generated paths under `build/` are unchanged.
 
 ## Cocoa applications
 
@@ -140,7 +158,7 @@ ssh mobile@iphone-ip-address \
 Old iPhones may require the legacy SSH options
 `HostKeyAlgorithms=+ssh-rsa` and `PubkeyAcceptedAlgorithms=+ssh-rsa`.
 
-I also include [`find-vlc`](source/iOS/scripts/find-vlc), a small helper script
+I also include [`find-vlc`](source/cli/scripts/find-vlc), a small helper script
 that prints VLC's Documents directory on iOS. Use its output with `cd` to change
 the current shell's working directory. The script requires `ipainstaller` and
 VLC with the `org.videolan.vlc-ios` identifier.
@@ -148,7 +166,7 @@ VLC with the `org.videolan.vlc-ios` identifier.
 #### Install
 
 ```sh
-scp source/iOS/scripts/find-vlc mobile@iphone-ip-address:/var/mobile/bin/
+scp source/cli/scripts/find-vlc mobile@iphone-ip-address:/var/mobile/bin/
 ssh mobile@iphone-ip-address 'chmod 755 /var/mobile/bin/find-vlc'
 ```
 

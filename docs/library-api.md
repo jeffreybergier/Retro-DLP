@@ -1,8 +1,10 @@
 # Retro-DLP C API
 
 The supported library interface is declared by `include/retrodlp/retrodlp.h`,
-`include/retrodlp/assets.h`, and `include/retrodlp/download.h`. Applications
-must not include headers from `source/shared`; those headers and all `yt_*`
+`include/retrodlp/assets.h`, and `include/retrodlp/download.h`. In the repository,
+these public headers live under
+`source/library/shared/include/retrodlp`. Applications must not include the
+private headers directly in `source/library/shared`; those headers and all `yt_*`
 symbols are private and may change without notice.
 
 The API described here is stable beginning with Retro-DLP 1.0.0 and uses
@@ -385,7 +387,7 @@ are either included in the archive or supplied by AltivecCore on Apple; their
 headers are never required by consumers. The default transport uses libcurl,
 and direct OpenSSL SHA functions require the crypto library.
 
-`make examples` compiles all programs in `examples/`; `make
+`make examples` compiles all programs in `source/library/shared/examples/`; `make
 validate-examples` also runs the network-free custom-transport example.
 `make package-libraries` creates one library ZIP per platform containing the
 public headers, both archives, this API guide, examples, and the project
@@ -433,4 +435,5 @@ rdlp_context_destroy(context);
 ```
 
 Complete resolver-only, authenticated, playlist, custom-transport, and optional
-download programs are in [`examples/`](../examples/README.md).
+download programs are in `source/library/shared/examples/` in the repository,
+or `examples/` in a library package.

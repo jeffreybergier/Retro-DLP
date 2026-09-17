@@ -1,7 +1,7 @@
 # RetroDLP Cocoa applications
 
 The macOS and iOS applications consume the public Retro-DLP static libraries.
-Their shared application code lives in `source/apps/shared`. The existing CLI
+Their shared application code lives in `source/gui/shared`. The existing CLI
 and public library API remain independent of the applications.
 
 ## Build
@@ -617,7 +617,7 @@ run on additional devices. The shared policy relocation is byte-for-byte unchang
 Build the isolated native iOS regression app after the normal app build:
 
 ```sh
-python3 source/apps/tests/build_ios_ui_test.py
+python3 source/gui/iOS/tests/build_ios_ui_test.py
 scp build/apps/tests/RetroDLPIOSOfflineTest.ipa koolphone5:/tmp/
 ssh koolphone5 'appinst /tmp/RetroDLPIOSOfflineTest.ipa'
 ssh koolphone5 'su mobile -c "uiopen retrodlp-offline-test://run"'
@@ -704,8 +704,8 @@ HTTP retry, cancellation, export, and cleanup.
 Run the Apple analyzers with:
 
 ```sh
-make -C source/apps/macOS analyze
-make -C source/apps/iOS analyze
+make -C source/gui/macOS analyze
+make -C source/gui/iOS analyze
 ```
 
 Reports remain under `build/apps/<platform>/analyze`. Cross-builds and static
@@ -714,7 +714,7 @@ decoder performance. Native iOS playback should be checked on each device class
 before distributing a release.
 
 For an isolated Mac UI test, generate synthetic media and metadata with
-`python3 source/apps/tests/prepare_native_fixture.py /absolute/test/state`.
+`python3 source/gui/shared/tests/prepare_native_fixture.py /absolute/test/state`.
 Launch the Mac app with `-RetroDLPTestDirectory /absolute/test/state`, or add the
 same `RetroDLPTestDirectory` key to a **test copy** of the app's Info.plist when
 launching through Finder/Launch Services. This places support data and downloads
@@ -757,10 +757,10 @@ transfers were not exercised for this update.
 
 ### Context-sensitive toolbar regression test
 
-After `make app-macOS`, run `python3 source/apps/tests/build_mac_toolbar_test.py`
+After `make app-macOS`, run `python3 source/gui/macOS/tests/build_mac_toolbar_test.py`
 to build `build/apps/tests/RetroDLPToolbarTest.app`. This test-only PowerPC bundle
 omits the CA resource. Prepare a fresh library with
-`python3 source/apps/tests/prepare_native_fixture.py /tmp/retrodlp-toolbar-fixture`,
+`python3 source/gui/shared/tests/prepare_native_fixture.py /tmp/retrodlp-toolbar-fixture`,
 copy the app and fixture to `/tmp` on the Tiger test Mac, and launch the test app.
 It writes `/tmp/retrodlp-toolbar-test.txt` and exits. Recreate/restore the fixture
 before each run; the test deliberately changes only that fixture.

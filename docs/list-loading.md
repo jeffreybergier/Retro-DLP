@@ -55,7 +55,7 @@ should release old sources rather than accumulate them.
 
 ## Validation
 
-`python3 source/apps/tests/test_store.py` exercises counts, paging, indexed seeks,
+`python3 source/gui/shared/tests/test_store.py` exercises counts, paging, indexed seeks,
 duplicate memberships, queue filters, exact lookups, bulk eligibility, selected-job
 recovery, and readers concurrent with committed and uncommitted writes. A 50,000-row
 fixture verifies bounded returned payloads and checks actual SQLite VM work to catch

@@ -2,12 +2,12 @@ app_name: Retro-DLP
 tag_prefix: v
 
 version:
-  source: source/shared/Info.plist
+  source: source/library/shared/Info.plist
   keys:
     - CFBundleShortVersionString
     - CFBundleVersion
   plists:
-    - source/shared/Info.plist
+    - source/library/shared/Info.plist
 
 release:
   commit_message: "Version {version}"
@@ -58,7 +58,7 @@ targets:
     workdir: .
     build:
       - make linux
-      - source/make/package-library.sh linux build
+      - make/package-library.sh linux build
     artifact: build/linux/retro-dlp-library.zip
     asset_name: Retro-DLP-{version}-linux-library.zip
 
@@ -67,7 +67,7 @@ targets:
     build:
       - make macOS
       - make validate-apple-artifacts
-      - source/make/package-library.sh macOS build
+      - make/package-library.sh macOS build
     artifact: build/macOS/retro-dlp-library.zip
     asset_name: Retro-DLP-{version}-macOS-library.zip
 
@@ -76,6 +76,6 @@ targets:
     build:
       - make iOS
       - make validate-apple-artifacts
-      - source/make/package-library.sh iOS build
+      - make/package-library.sh iOS build
     artifact: build/iOS/retro-dlp-library.zip
     asset_name: Retro-DLP-{version}-iOS-library.zip

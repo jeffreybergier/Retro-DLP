@@ -16,17 +16,17 @@ The main problem is that **one mutable string represents activity, results, vali
 
 | Surface | Current behavior | Source |
 | --- | --- | --- |
-| Shared model | `status_` stores only the latest string. `showStatus:` posts `RDLPLibraryDidChange`; it carries no event ID, severity, action, timestamp, or operation identity. | [RDLPLibrary.m](../source/apps/shared/RDLPLibrary.m), `showStatus:` |
-| macOS window footer | One line in a 32-point bottom strip, outside the panes. Tail truncation; full text in a tooltip. No expiry. | [RDLPLibraryWindowController.m](../source/apps/macOS/RDLPLibraryWindowController.m), `loadWindow` / `updateControls` |
+| Shared model | `status_` stores only the latest string. `showStatus:` posts `RDLPLibraryDidChange`; it carries no event ID, severity, action, timestamp, or operation identity. | [RDLPLibrary.m](../source/gui/shared/RDLPLibrary.m), `showStatus:` |
+| macOS window footer | One line in a 32-point bottom strip, outside the panes. Tail truncation; full text in a tooltip. No expiry. | [RDLPLibraryWindowController.m](../source/gui/macOS/RDLPLibraryWindowController.m), `loadWindow` / `updateControls` |
 | macOS progress | Visible only while the queue-run flag is active. Processed attempts / total attempts. Counts are in a tooltip. Metadata work alone has no bar. | Same controller, `updateControls` |
-| macOS item status | Primarily an icon, with spoken status and a tooltip combining status and stored error. The selected queue error can be opened in an alert. | Same controller, table cell / tooltip methods and `showQueueError:`; [RDLPLibraryViews.m](../source/apps/macOS/RDLPLibraryViews.m) |
-| iOS Playlists home | Toolbar always visible with Queue button. Single-line status, width limited to view width minus 80 points. | [RDLPPlaylistsViewController.m](../source/apps/iOS/RDLPPlaylistsViewController.m) |
-| iOS Playlist / All Downloads | Same status view; entire toolbar hides for empty status, exact `Ready`, or an expired label, even if progress is active. | [RDLPVideoListViewController.m](../source/apps/iOS/RDLPVideoListViewController.m), `shouldHideToolbar` |
-| iOS Queue | Same status view, without a Queue button. Toolbar stays visible during busy work or an active queue run even without text. | [RDLPQueueViewController.m](../source/apps/iOS/RDLPQueueViewController.m), `shouldHideToolbar` |
-| iOS status component | Bold 15-point idle / 13-point active label. Active means queue-run flag OR busy. Idle text expires after 10 seconds; active text does not. Track is at most 100 points wide. | [RDLPStatusBarView.m](../source/apps/iOS/RDLPStatusBarView.m) |
-| iOS item status | Icons plus accessibility text in video lists. Queue details show status, quality, and raw stored error. Retry dialogs include a reason, raw error, and restart explanation. | Video-list / queue controllers and [RDLPLibrarySections.m](../source/apps/iOS/RDLPLibrarySections.m) |
-| iOS Settings | No status footer or toolbar. Cookie import shows an alert using the shared status. Cookie removal updates shared status but does not display a result locally. | [RDLPSettingsViewController.m](../source/apps/iOS/RDLPSettingsViewController.m) |
-| Older iOS generic controller | Still compiled: three-line footer, queue fraction, and visible count summary; a separate home-toolbar path also exists. The current app root and primary navigation use the dedicated controllers above. | [RDLPLibraryViewController.m](../source/apps/iOS/RDLPLibraryViewController.m) and [RDLPLibraryActions.m](../source/apps/iOS/RDLPLibraryActions.m) |
+| macOS item status | Primarily an icon, with spoken status and a tooltip combining status and stored error. The selected queue error can be opened in an alert. | Same controller, table cell / tooltip methods and `showQueueError:`; [RDLPLibraryViews.m](../source/gui/macOS/RDLPLibraryViews.m) |
+| iOS Playlists home | Toolbar always visible with Queue button. Single-line status, width limited to view width minus 80 points. | [RDLPPlaylistsViewController.m](../source/gui/iOS/RDLPPlaylistsViewController.m) |
+| iOS Playlist / All Downloads | Same status view; entire toolbar hides for empty status, exact `Ready`, or an expired label, even if progress is active. | [RDLPVideoListViewController.m](../source/gui/iOS/RDLPVideoListViewController.m), `shouldHideToolbar` |
+| iOS Queue | Same status view, without a Queue button. Toolbar stays visible during busy work or an active queue run even without text. | [RDLPQueueViewController.m](../source/gui/iOS/RDLPQueueViewController.m), `shouldHideToolbar` |
+| iOS status component | Bold 15-point idle / 13-point active label. Active means queue-run flag OR busy. Idle text expires after 10 seconds; active text does not. Track is at most 100 points wide. | [RDLPStatusBarView.m](../source/gui/iOS/RDLPStatusBarView.m) |
+| iOS item status | Icons plus accessibility text in video lists. Queue details show status, quality, and raw stored error. Retry dialogs include a reason, raw error, and restart explanation. | Video-list / queue controllers and [RDLPLibrarySections.m](../source/gui/iOS/RDLPLibrarySections.m) |
+| iOS Settings | No status footer or toolbar. Cookie import shows an alert using the shared status. Cookie removal updates shared status but does not display a result locally. | [RDLPSettingsViewController.m](../source/gui/iOS/RDLPSettingsViewController.m) |
+| Older iOS generic controller | Still compiled: three-line footer, queue fraction, and visible count summary; a separate home-toolbar path also exists. The current app root and primary navigation use the dedicated controllers above. | [RDLPLibraryViewController.m](../source/gui/iOS/RDLPLibraryViewController.m) and [RDLPLibraryActions.m](../source/gui/iOS/RDLPLibraryActions.m) |
 
 These are in-app status displays and alerts. The change notifications are internal observer events, not system notification banners.
 
@@ -36,7 +36,7 @@ The following tables cover the app-owned global status literals and formatting t
 
 ### Idle, queue, and input
 
-Source: [RDLPLibrary.m](../source/apps/shared/RDLPLibrary.m).
+Source: [RDLPLibrary.m](../source/gui/shared/RDLPLibrary.m).
 
 | ID | Trigger | Current text | Proposed short text / behavior |
 | --- | --- | --- | --- |
@@ -53,7 +53,7 @@ Source: [RDLPLibrary.m](../source/apps/shared/RDLPLibrary.m).
 
 ### File and playlist removal
 
-Source: [RDLPLibrary.m](../source/apps/shared/RDLPLibrary.m).
+Source: [RDLPLibrary.m](../source/gui/shared/RDLPLibrary.m).
 
 | ID | Trigger | Current text | Proposed short text / behavior |
 | --- | --- | --- | --- |
@@ -64,7 +64,7 @@ Source: [RDLPLibrary.m](../source/apps/shared/RDLPLibrary.m).
 
 ### Cookies and app setup
 
-Source: [RDLPLibrary.m](../source/apps/shared/RDLPLibrary.m).
+Source: [RDLPLibrary.m](../source/gui/shared/RDLPLibrary.m).
 
 | ID | Trigger | Current text | Proposed short text / behavior |
 | --- | --- | --- | --- |
@@ -81,7 +81,7 @@ S16 currently allows exactly 4 × 1024 × 1024 bytes, despite saying “smaller 
 
 ### Activity and byte progress
 
-Source: callbacks and `progress:completed:expected:` in [RDLPLibrary.m](../source/apps/shared/RDLPLibrary.m).
+Source: callbacks and `progress:completed:expected:` in [RDLPLibrary.m](../source/gui/shared/RDLPLibrary.m).
 
 | ID | Current text/template | Proposed short text / behavior |
 | --- | --- | --- |
@@ -98,7 +98,7 @@ Without either byte value, the phase is shown alone. Percent is rounded to a who
 
 ### Service results
 
-Source: [rdapp_service.c](../source/apps/shared/rdapp_service.c).
+Source: [rdapp_service.c](../source/gui/shared/rdapp_service.c).
 
 | ID | Trigger | Current text/template | Proposed short text / behavior |
 | --- | --- | --- | --- |
@@ -113,7 +113,7 @@ R04 and R05 return a successful service code with warning text. A replacement ev
 
 ## 3. Item states and secondary status text
 
-Source: [RDLPDownloadPolicy.m](../source/apps/shared/RDLPDownloadPolicy.m), [RDLPLibrarySections.m](../source/apps/iOS/RDLPLibrarySections.m), and the platform renderers.
+Source: [RDLPDownloadPolicy.m](../source/gui/shared/RDLPDownloadPolicy.m), [RDLPLibrarySections.m](../source/gui/iOS/RDLPLibrarySections.m), and the platform renderers.
 
 | Current | Meaning / surface | Proposed |
 | --- | --- | --- |
@@ -149,7 +149,7 @@ Do not shorten by replacing status names indiscriminately: icons, retry explanat
 
 There is no finite, closed list of all possible rendered status strings. The service copies `rdlp_error.message`, or the literal `RDLP_ERROR_*` name if empty, into status. Storage also passes SQLite messages and `strerror(errno)` through. Titles, counts, paths, and transport diagnostics vary at runtime.
 
-The app-owned store literals below are the complete fixed-text store inventory relevant to status/errors. Some are defensive failures rather than normal user flows. Sources: [rdapp_store.c](../source/apps/shared/rdapp_store.c), [rdapp_service.c](../source/apps/shared/rdapp_service.c).
+The app-owned store literals below are the complete fixed-text store inventory relevant to status/errors. Some are defensive failures rather than normal user flows. Sources: [rdapp_store.c](../source/gui/shared/rdapp_store.c), [rdapp_service.c](../source/gui/shared/rdapp_service.c).
 
 | Current text | Proposed user summary / location |
 | --- | --- |
@@ -188,7 +188,7 @@ These examples illustrate the additional library-owned vocabulary that can escap
 | Cancellation | `operation cancelled` | `Download stopped` or operation-specific cancellation; informational when requested by user |
 | Internal/fallback | `out of memory`, `unknown error`, `RDLP_ERROR_*`, SQLite/system diagnostics | Operation-specific failure with complete diagnostics retained |
 
-Error sources: [yt_resolver.c](../source/shared/yt_resolver.c), `yt_status_string`; [retrodlp.c](../source/shared/retrodlp.c), `finish_session_status` / `rdlp_error_name`; [retrodlp_download.c](../source/shared/retrodlp_download.c), `set_error` callers; [retrodlp_assets.c](../source/shared/retrodlp_assets.c), `asset_status_message` / `publish_error` callers. The cleanup error occurs before the app publishes the final file, so “Download complete” would be misleading for that case.
+Error sources: [yt_resolver.c](../source/library/shared/yt_resolver.c), `yt_status_string`; [retrodlp.c](../source/library/shared/retrodlp.c), `finish_session_status` / `rdlp_error_name`; [retrodlp_download.c](../source/library/shared/retrodlp_download.c), `set_error` callers; [retrodlp_assets.c](../source/library/shared/retrodlp_assets.c), `asset_status_message` / `publish_error` callers. The cleanup error occurs before the app publishes the final file, so “Download complete” would be misleading for that case.
 
 ## 5. Related alerts and recovery instructions
 
@@ -291,7 +291,7 @@ Suggested implementation order:
 
 ## 8. Validation needed for implementation
 
-Existing tests already encode some behaviors this proposal changes: [ios_ui_test.m](../source/apps/tests/ios_ui_test.m) asserts the 50% unknown-progress track, hiding `Ready` even during active work, preserving previous activity on `Ready`, and 10-second expiry. [mac_toolbar_test.m](../source/apps/tests/mac_toolbar_test.m) asserts queue-only progress, visibility while paused, automatic startup, and processed attempt counters. Update these expectations deliberately.
+Existing tests already encode some behaviors this proposal changes: [ios_ui_test.m](../source/gui/iOS/tests/ios_ui_test.m) asserts the 50% unknown-progress track, hiding `Ready` even during active work, preserving previous activity on `Ready`, and 10-second expiry. [mac_toolbar_test.m](../source/gui/macOS/tests/mac_toolbar_test.m) asserts queue-only progress, visibility while paused, automatic startup, and processed attempt counters. Update these expectations deliberately.
 
 Focused scenarios:
 

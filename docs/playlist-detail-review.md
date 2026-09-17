@@ -50,19 +50,19 @@ bytes it displays rounded-up decimal KB; otherwise it displays MB to one decimal
 
 ## Data path and semantics
 
-- [rdapp_service.c](../source/apps/shared/rdapp_service.c), `sync_playlist`, reads
+- [rdapp_service.c](../source/gui/shared/rdapp_service.c), `sync_playlist`, reads
   every optional metadata accessor while the library playlist is alive.
-- [rdapp_store.h](../source/apps/shared/rdapp_store.h), `rdapp_entry`, carries
+- [rdapp_store.h](../source/gui/shared/rdapp_store.h), `rdapp_entry`, carries
   borrowed strings, ordered thumbnail URLs, and explicit numeric presence flags.
-- [rdapp_store.c](../source/apps/shared/rdapp_store.c), `rdapp_store_snapshot`,
+- [rdapp_store.c](../source/gui/shared/rdapp_store.c), `rdapp_store_snapshot`,
   copies strings into SQLite before the playlist is destroyed. Metadata belongs
   to `(playlist_id, position)` so duplicate video IDs remain independent.
-- [RDLPLibrary.m](../source/apps/shared/RDLPLibrary.m) loads row dictionaries on
+- [RDLPLibrary.m](../source/gui/shared/RDLPLibrary.m) loads row dictionaries on
   demand and provides shared duration, accessibility, summary, and tooltip formatters.
-- [RDLPVideoRows.m](../source/apps/shared/RDLPVideoRows.m) builds the shared
+- [RDLPVideoRows.m](../source/gui/shared/RDLPVideoRows.m) builds the shared
   presentation for both platforms and sources. iOS sections choose the source;
   its shared list controller renders the native subtitle cell.
-- [RDLPLibraryWindowController.m](../source/apps/macOS/RDLPLibraryWindowController.m)
+- [RDLPLibraryWindowController.m](../source/gui/macOS/RDLPLibraryWindowController.m)
   manages macOS columns and tooltips.
 
 Duration and exact view count use nullable 64-bit SQLite integers. Zero is present

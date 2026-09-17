@@ -1,6 +1,6 @@
 # Status bar messages
 
-macOS and iOS use the same messages and timer in `source/apps/shared/RDLPLibrary.m`.
+macOS and iOS use the same messages and timer in `source/gui/shared/RDLPLibrary.m`.
 Active operations keep their current phase and progress visible until completion.
 Once idle, each new message resets the ten-second expiry timer, including identical
 text. Ten idle seconds without another message clears the text and progress.
