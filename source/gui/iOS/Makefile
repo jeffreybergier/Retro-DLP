@@ -1,5 +1,5 @@
 APP_NAME = RetroDLP
-SOURCES = main.m RDLPAppDelegate.m RDLPLibraryViewController.m RDLPLibraryActions.m RDLPLibrarySections.m RDLPUIKit.m RDLPDownloadPolicy.m RDLPStatusBarView.m RDLPSettingsViewController.m RDLPPlaylistsViewController.m RDLPPlaylistViewController.m RDLPVideoListViewController.m RDLPDownloadsViewController.m RDLPQueueViewController.m
+SOURCES = main.m RDLPLibrary+iOS.m RDLPAppDelegate.m RDLPLibraryViewController.m RDLPLibraryActions.m RDLPLibrarySections.m RDLPUIKit.m RDLPDownloadPolicy.m RDLPStatusBarView.m RDLPSettingsViewController.m RDLPPlaylistsViewController.m RDLPPlaylistViewController.m RDLPVideoListViewController.m RDLPDownloadsViewController.m RDLPQueueViewController.m
 SHARED_DIR = ../shared
 SOURCE_DIRS = $(SHARED_DIR)
 vpath %.c $(SHARED_DIR)
@@ -16,7 +16,7 @@ EXTRA_FLAGS = -I$(SHARED_DIR) -I$(ROOT)/source/library/shared/include
 # The IPA has app-owned storage and no private filesystem entitlements.
 PHONE_LDID_SIGN ?= 1
 include /altivec/altivec_common_phone.mk
-IOS_FRAMEWORKS := $(ROOT)/build/iOS/libretrodlp-download.a $(ROOT)/build/iOS/libretrodlp.a $(IOS_FRAMEWORKS) $(ALTIVECCORE_DIR)/lib/libcrypto.a -framework CoreFoundation -framework SystemConfiguration -framework Security -framework MediaPlayer -framework AVFoundation -framework CoreMedia -weak_framework AVKit
+IOS_FRAMEWORKS := $(ROOT)/build/iOS/libretrodlp-download.a $(ROOT)/build/iOS/libretrodlp.a $(IOS_FRAMEWORKS) $(ALTIVECCORE_DIR)/lib/libcrypto.a -framework CoreFoundation -framework SystemConfiguration -framework Security -framework MediaPlayer -framework AVFoundation
 EXTRA_BUNDLE_STEPS = @set -e; cp $(ALTIVECCORE_DIR)/lib/cacert.pem $@/cacert.pem; cp -R $(ROOT)/build/apps/resources/ejs $@/; chmod 755 $@/ejs; chmod 644 $@/ejs/*; touch "$@"
 
 .DEFAULT_GOAL := app

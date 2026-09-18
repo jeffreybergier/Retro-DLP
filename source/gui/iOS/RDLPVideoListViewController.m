@@ -52,6 +52,8 @@
 - (BOOL)showsQueueButton; { return YES; }
 - (NSArray *)listSections; { return [NSArray array]; }
 - (BOOL)containsEntryForRetry:(NSDictionary *)entry; { (void)entry; return YES; }
+- (NSString *)downloadFormatForJob:(NSDictionary *)job;
+{ return job?[job objectForKey:@"format"]:[RDLPLibrary preferredFormat]; }
 - (BOOL)shouldHideToolbar;
 {
   NSString *status=[library_ status];
@@ -82,6 +84,21 @@
   RDLPQueueViewController *queue=[[[RDLPQueueViewController alloc] initWithLibrary:library_] autorelease];
   UINavigationController *modal=[[[UINavigationController alloc] initWithRootViewController:queue] autorelease];
   [self.navigationController presentViewController:modal animated:YES completion:nil];
+}
+- (void)configureAddVideoButton;
+{
+  self.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit plusIcon] style:UIBarButtonItemStylePlain target:self action:@selector(addVideo:)] autorelease];
+  self.navigationItem.rightBarButtonItem.accessibilityLabel=@"Add Video";
+}
+- (void)addVideo:(id)sender;
+{
+  (void)sender; if(alert_ || self.presentedViewController || self.navigationController.presentedViewController) return;
+  alert_=[[UIAlertView alloc] initWithTitle:@"Add Video" message:@"YouTube video URL or ID" delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Add",nil];
+  alert_.alertViewStyle=UIAlertViewStylePlainTextInput;
+  UITextField *field=[alert_ textFieldAtIndex:0];
+  field.autocapitalizationType=UITextAutocapitalizationTypeNone;
+  field.autocorrectionType=UITextAutocorrectionTypeNo;
+  [alert_ show];
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table;
 { (void)table; return (NSInteger)[sections_ count]; }
@@ -171,8 +188,11 @@
   NSDictionary *job=selectedJob?[model_ currentJob:[selectedJob objectForKey:@"id"]]:
     [model_ jobForPlaylist:pid video:[entry objectForKey:@"video_id"] format:format];
   if(selectedJob && !job) { [self refresh:nil]; return; }
+  format=[self downloadFormatForJob:job];
+  if(job && ![format isEqualToString:[job objectForKey:@"format"]])
+    job=[model_ jobForPlaylist:pid video:[entry objectForKey:@"video_id"] format:format];
   if([policy_ playable:job]) {
-    [RDLPUIKit presentPlayer:self library:library_ job:job legacy:YES]; return;
+    [RDLPUIKit presentPlayer:self library:library_ job:job]; return;
   }
   if([policy_ canCancel:job]) return;
   NSString *status=[policy_ statusForJob:job];
@@ -191,9 +211,14 @@
 - (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)index;
 {
   if(alert!=alert_) return;
+  BOOL adding=alert.alertViewStyle==UIAlertViewStylePlainTextInput;
+  NSString *input=adding?[[[alert textFieldAtIndex:0].text copy] autorelease]:nil;
   NSDictionary *request=[[retryRequest_ retain] autorelease]; BOOL retry=index!=alert.cancelButtonIndex;
   alert_.delegate=nil; [alert_ release]; alert_=nil; [retryRequest_ release]; retryRequest_=nil;
   if(!retry) return;
+  if(adding) {
+    [library_ addVideoInput:input]; [self refresh:nil]; return;
+  }
   /* A sync or another download can finish while the confirmation is open. */
   BOOL eligible=[self containsEntryForRetry:[request objectForKey:@"entry"]];
   NSDictionary *job=[model_ currentJob:[request objectForKey:@"job"]];

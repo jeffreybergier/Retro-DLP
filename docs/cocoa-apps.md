@@ -289,6 +289,8 @@ top-right Font Awesome **+** opens an action sheet with **Add Video…**,
 **Add Playlist…**, **Sync All Playlists…**, and **Load My Playlists…**.
 These commands reuse the existing input and confirmation dialogs. Download
 quality is available in Settings. Cancel does nothing.
+On All Downloads and Ad-Hoc, the top-right **+** opens the **Add Video**
+URL/ID prompt directly, without an action sheet. Other playlists retain Sync.
 The home screen uses ENIL's status-toolbar layout: a content-sized center view
 between flexible spaces, with a Font Awesome Queue button on the right. UIKit
 provides the native iOS 5/6 gloss and bordered button, or iOS 7+ flat chrome and
@@ -360,7 +362,9 @@ share the Mac formatter: `Low (18)`, `Med (136+140)`, `High (137+140)`, and
 `Custom (expression)`, without resolution claims.
 Tapping plays that row's local file, ignores pending work, or offers an exact-quality
 retry for failed/missing downloads. An undownloaded playlist entry queues the
-preferred quality. All Downloads retains each job's playlist identity internally.
+preferred quality, including after deliberately deleting its previous download.
+Changing Low to Med after deletion therefore queues Med; the old Low job stays
+removed. All Downloads retains each job's playlist identity internally.
 
 Swipe a completed, failed, interrupted, or stopped video row to reveal **Delete**.
 Tapping Delete removes that row's quality and any staged audio/video fragments;
@@ -416,9 +420,11 @@ working copy; the original document remains where it was supplied.
 
 Media lives in the app's `Documents/RetroDLP`; the database and working cookies
 live in its `Library/Application Support/RetroDLP`. No VLC-container access or
-private sandbox entitlements are used. Native playback uses AVKit where available
-and the legacy movie player on older iOS. H.264 profile, level, resolution, and
-frame rate still need to be supported by the device; choosing an MP4 format does
+private sandbox entitlements are used. Native playback always uses
+`MPMoviePlayerViewController`. Opening a video restores its saved position and
+waits for the user to tap the native Play button; the app does not start playback
+automatically. H.264 profile, level, resolution, and frame rate still need to be
+supported by the device; choosing an MP4 format does
 not transcode it.
 
 On iOS, opening the library marks `Documents/RetroDLP` as excluded from iTunes
@@ -457,23 +463,58 @@ eligible to run. There is no global Pause control or indefinite background
 downloading.
 
 iOS playback declares `UIBackgroundModes = audio` and configures and activates
-`AVAudioSessionCategoryPlayback` when opening a video. This applies to both
-native player paths and uses APIs available on iOS 5. The legacy movie player
+`AVAudioSessionCategoryPlayback` when opening a video. This uses APIs available
+on iOS 5. The legacy movie player
 may pause when backgrounded; the user can resume audio with the system media
 controls. The app does not force playback to restart on backgrounding. The audio
 session remains available while backgrounded. This mode is for media playback;
 downloads continue to use the finite task allowance described above.
 
-Legacy playback checkpoints also save on playback-state changes and on entering
-the background, so seeking and immediately force-quitting does not depend on
-the ten-second timer. A system pause can report zero or an earlier keyframe;
-that reading must not overwrite the last reliable position. Explicit seeks can
-still move the bookmark backwards, including to zero, and resumed background
-audio continues updating it. The focused native regression suite is built with
+The app supplies video title (`MPMediaItemPropertyTitle`), channel
+(`MPMediaItemPropertyArtist`), actual movie duration, elapsed time, and playback
+rate through `MPNowPlayingInfoCenter`. These APIs and keys are available in iOS 5.
+The native movie controller still handles system transport controls; it cannot
+derive the library's video/channel labels from the local download filename.
+Apple documents that [elapsed time is extrapolated from the supplied position and rate](https://developer.apple.com/documentation/mediaplayer/mpnowplayinginfopropertyelapsedplaybacktime).
+The app refreshes metadata on load, duration, playback-state, and app lifecycle
+notifications, including in the background. A one-second timer detects seeks
+(including paused scrubs, for which the legacy player has no public completion
+notification) and rate changes; ordinary ticks do not republish an advancing
+position. This timer is independent of bookmark persistence. Completion, errors,
+and dismissal clear metadata, and teardown of an old player cannot clear its
+replacement. Missing titles fall back to the video ID; missing channels omit the
+artist.
+
+Legacy playback saves a checkpoint every ten seconds during normal foreground
+playback, and when leaving a still-playing foreground player. The timer uses the
+default run-loop mode so it pauses during touch tracking. It also checks native
+controls for active touches using the public
+[`UIControl.isTracking`](https://developer.apple.com/documentation/uikit/uicontrol/istracking)
+property, without installing control handlers. Seeking and paused states are ignored. Saving stops at `UIApplicationWillResignActiveNotification`
+and resumes after `UIApplicationDidBecomeActiveNotification`; background audio
+does not advance the bookmark. Playback-state changes do not trigger saves.
+This avoids interpreting unreliable positions reported during scrubbing and app
+transitions. Leaving the app can lose progress since the last timer tick.
+
+At ninety percent of the duration or later, a checkpoint saves zero so the next
+viewing starts over. Natural completion in the foreground also saves zero.
+Existing checkpoints in the final ten percent restart from the beginning.
+iOS captures accepted positions in memory and writes them on a serial background
+queue, so player callbacks do not wait for SQLite or a download worker's database
+lock. Reads see pending checkpoints. Writes already accepted hold the existing
+finite background-operation allowance until they finish; an abrupt process kill
+can still interrupt a pending write.
+
+Build the focused native player and checkpoint regression suite with
 `RDLP_TEST_PLAYBACK_ONLY=1 python3 source/gui/iOS/tests/build_ios_ui_test.py`.
-The isolated real-player probe on gomadango (iOS 6.1.3) preserved a 16.84-second
-checkpoint after seeking, immediately backgrounding, and terminating the process
-with SIGKILL; the next launch read that checkpoint and resumed playback.
+Use `RDLP_TEST_INTERACTION_ONLY=1` instead to include the Low/delete/Medium
+redownload regression.
+
+The shared library uses platform categories from `iOS/RDLPLibrary+iOS.m` and
+`macOS/RDLPLibrary+macOS.m`. iOS owns its backup-exclusion setup, checkpoint
+cache, and serial writer; shared code owns the SQLite primitives and operation
+references. No platform-selection macros are needed in the shared Objective-C
+library.
 
 ## Shared architecture and invariants
 
@@ -653,6 +694,23 @@ FFmpeg-generated local MP4. Result and screenshots are in the test app's Documen
 Services to finish registering a newly installed app before opening it. Reinstall
 the IPA for new test builds; overwriting a running signed executable in place can
 leave the kernel's cached signature stale.
+
+The playback tests cover Now Playing title/channel, duration, resume position,
+play/pause, paused seeks, simulated background updates, completion/error cleanup,
+and replacement-player ownership. They allow legacy MediaPlayer's metadata
+updates to settle before reading back the dictionary. For an interactive lock
+screen check, build with `RDLP_TEST_PLAYBACK_ONLY=1 RDLP_TEST_NOW_PLAYING_HOLD=1`
+prefixed to the Python command above. The native-player test then plays a local
+60-second video with silent AAC audio and holds for about 35 seconds. Lock the
+device and use its system media controls to resume/pause; `NativePlayback/controls.txt`
+records the movie state and published metadata during that interval.
+
+Now Playing validation passed on `koolphone5` (iOS 8.4.1): the complete offline
+suite, plus an actual lock-screen check showing video title, channel, elapsed
+time, and working system pause/resume. Captures are under
+`build/apps/tests/now-playing/`. The armv7/iOS 5 and arm64 builds, static analysis
+(zero warnings/errors), and app artifact validation passed. iOS 6 was checked
+for API compatibility against the SDK declarations, but was not run on a device.
 
 The lifecycle fixture verifies the real backup-exclusion flag while preserving
 existing media and keeping library metadata eligible for backup. It also runs

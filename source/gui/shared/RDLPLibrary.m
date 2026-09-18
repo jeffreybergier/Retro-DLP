@@ -1,4 +1,5 @@
 #import "RDLPLibrary.h"
+#import "RDLPLibrary+Platform.h"
 #import "RDLP_Foundation.h"
 #import <CoreFoundation/CoreFoundation.h>
 #include "rdapp_store.h"
@@ -11,10 +12,6 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdlib.h>
-#include <TargetConditionals.h>
-#if TARGET_OS_IPHONE
-#include <sys/xattr.h>
-#endif
 
 NSString * const RDLPLibraryDidChange = @"RetroDLPLibraryDidChange";
 NSString * const RDLPLibraryStatusDidChange = @"RetroDLPLibraryStatusDidChange";
@@ -229,24 +226,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
     [self release]; return nil;
   }
   chmod([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],0600);
-#if TARGET_OS_IPHONE
-  /* Exclude the stable parent, covering existing media, future downloads and
-     .staging partials without touching the database or working cookies. */
-  NSError *backupError=nil; BOOL excluded=NO;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunguarded-availability"
-  if(kCFCoreFoundationVersionNumber>=kCFCoreFoundationVersionNumber_iOS_5_1)
-    excluded=[[NSURL fileURLWithPath:root isDirectory:YES] setResourceValue:[NSNumber numberWithBool:YES]
-      forKey:NSURLIsExcludedFromBackupKey error:&backupError];
-  else {
-    /* iOS 5.0.1 predates the URL resource key. iOS 5.0 has no exclusion API. */
-    unsigned char value=1;
-    excluded=setxattr([root fileSystemRepresentation],"com.apple.MobileBackup",&value,sizeof(value),0,0)==0;
-    if(!excluded) backupError=[NSError errorWithDomain:NSPOSIXErrorDomain code:errno userInfo:nil];
-  }
-#pragma clang diagnostic pop
-  if(!excluded) [self reportError:@"Couldn’t exclude downloads from backups" detail:[backupError localizedDescription]];
-#endif
+  [self configurePlatformStorage];
   paused_=YES;
   [commands_ addObject:[NSDictionary dictionaryWithObject:@"reconcile" forKey:@"type"]];
   [self performSelector:@selector(startNext) withObject:nil afterDelay:0];
@@ -256,6 +236,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 {
   [NSObject cancelPreviousPerformRequestsWithTarget:self];
   [lastPhase_ release]; [lastReadError_ release]; [errors_ release];
+  [platformStorage_ release];
   rdapp_store_close(store_); [lock_ release]; [cancelLock_ release]; [commands_ release]; [activeCommand_ release]; [support_ release]; [root_ release];
   [ca_ release]; [assets_ release]; [cookies_ release]; [status_ release]; [super dealloc];
 }
@@ -560,7 +541,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   if(error) [self reportError:@"Couldn’t stop download" detail:error];
   [error release]; [self changed];
 }
-- (double)playbackSecondsForVideo:(NSString *)video;
+- (double)storedPlaybackSecondsForVideo:(NSString *)video;
 {
   double seconds=0;
   [lock_ lock];
@@ -568,7 +549,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   if(!ok) NSLog(@"Could not read playback position: %s",rdapp_store_error(store_));
   [lock_ unlock]; return seconds;
 }
-- (void)savePlaybackSeconds:(double)seconds forVideo:(NSString *)video;
+- (void)storePlaybackSeconds:(double)seconds forVideo:(NSString *)video;
 {
   [lock_ lock];
   if(!rdapp_store_save_playback_seconds(store_,[video UTF8String],seconds))

@@ -9,11 +9,22 @@
 { return [model_ sectionsForScreen:RDLPScreenPlaylist playlist:playlist_ video:nil collapsed:nil]; }
 - (BOOL)containsEntryForRetry:(NSDictionary *)entry;
 { return [library_ playlist:[playlist_ objectForKey:@"id"] containsVideo:[entry objectForKey:@"video_id"]]; }
+- (NSString *)downloadFormatForJob:(NSDictionary *)job;
+{
+  /* A deliberately deleted download is a new request from the playlist.
+     Missing files and failed attempts still retry their exact quality. */
+  if([RDLPDownloadPolicy job:job hasState:@"removed"] && ![[job objectForKey:@"error"] length])
+    return [RDLPLibrary preferredFormat];
+  return [super downloadFormatForJob:job];
+}
 - (void)viewDidLoad;
 {
   [super viewDidLoad];
-  self.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit syncIcon] style:UIBarButtonItemStylePlain target:self action:@selector(sync:)] autorelease];
-  self.navigationItem.rightBarButtonItem.accessibilityLabel=@"Sync";
+  if([[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID]) [self configureAddVideoButton];
+  else {
+    self.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit syncIcon] style:UIBarButtonItemStylePlain target:self action:@selector(sync:)] autorelease];
+    self.navigationItem.rightBarButtonItem.accessibilityLabel=@"Sync";
+  }
   [self refresh:nil];
 }
 - (void)refresh:(id)sender;
@@ -23,7 +34,7 @@
   if(playlist) {
     [playlist retain]; [playlist_ release]; playlist_=playlist; self.title=[playlist objectForKey:@"title"];
   }
-  self.navigationItem.rightBarButtonItem.enabled=![[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![library_ isSyncPendingForInput:[playlist_ objectForKey:@"service_id"]];
+  self.navigationItem.rightBarButtonItem.enabled=[[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] || ![library_ isSyncPendingForInput:[playlist_ objectForKey:@"service_id"]];
   [super refresh:sender];
 }
 - (void)sync:(id)sender;

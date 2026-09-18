@@ -33,6 +33,7 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
 @private
   void *store_;
   NSLock *lock_, *cancelLock_;
+  id platformStorage_;
   NSMutableArray *commands_;
   NSDictionary *activeCommand_;
   NSString *support_, *root_, *ca_, *assets_, *cookies_, *status_;
@@ -116,9 +117,13 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
 - (void)removePlaylist:(NSDictionary *)playlist;
 - (BOOL)importCookies:(NSString *)path;
 - (void)clearCookies;
-- (double)playbackSecondsForVideo:(NSString *)video;
-- (void)savePlaybackSeconds:(double)seconds forVideo:(NSString *)video;
 - (NSString *)fileForJob:(NSDictionary *)job;
 - (NSString *)playlistFile:(NSDictionary *)playlist;
 - (void)shutdown;
+@end
+
+/* Implemented by the platform category linked into each application. */
+@interface RDLPLibrary (Playback)
+- (double)playbackSecondsForVideo:(NSString *)video;
+- (void)savePlaybackSeconds:(double)seconds forVideo:(NSString *)video;
 @end

@@ -126,6 +126,132 @@ static void screenshot(UIWindow *window,NSString *path) {
   [window.layer renderInContext:UIGraphicsGetCurrentContext()];
   [UIImagePNGRepresentation(UIGraphicsGetImageFromCurrentImageContext()) writeToFile:path atomically:YES]; UIGraphicsEndImageContext();
 }
+static UIControl *movieControl(UIView *view,BOOL slider) {
+  if(slider && [NSStringFromClass([view class]) rangeOfString:@"DetailSlider"].location!=NSNotFound && [view isKindOfClass:[UISlider class]]) return (UIControl *)view;
+  if(!slider && [view isKindOfClass:[UIControl class]]) {
+    UIControl *control=(UIControl *)view;
+    for(id target in control.allTargets) for(NSString *action in [control actionsForTarget:target forControlEvent:UIControlEventTouchUpInside])
+      if([action rangeOfString:@"playPause" options:NSCaseInsensitiveSearch].location!=NSNotFound) return control;
+  }
+  for(UIView *child in view.subviews) { UIControl *found=movieControl(child,slider); if(found) return found; }
+  return nil;
+}
+static NSData *controlImage(UIControl *control) {
+  UIGraphicsBeginImageContextWithOptions(control.bounds.size,NO,0);
+  [control.layer renderInContext:UIGraphicsGetCurrentContext()];
+  NSData *data=UIImagePNGRepresentation(UIGraphicsGetImageFromCurrentImageContext());
+  UIGraphicsEndImageContext(); return data;
+}
+static void testNativePlayback(UIWindow *window,NSString *directory) {
+  [[NSFileManager defaultManager] removeItemAtPath:directory error:NULL];
+  NSString *support=[directory stringByAppendingPathComponent:@"Support"], *downloads=[directory stringByAppendingPathComponent:@"Downloads"];
+  RDLPLibrary *library=[[RDLPOfflineLibrary alloc] initWithSupportDirectory:support downloadDirectory:downloads];
+  rdapp_store *store=NULL;
+  require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store) &&
+    rdapp_store_add_adhoc(store,"AAAAAAAAAAA","Native playback",NULL),@"Create real-player fixture");
+  rdapp_store_close(store);
+  require([[NSFileManager defaultManager] copyItemAtPath:[[NSBundle mainBundle] pathForResource:@"playback-fixture" ofType:@"mp4"]
+    toPath:[downloads stringByAppendingPathComponent:@"fixture.mp4"] error:NULL],@"Copy long playback fixture");
+  [library savePlaybackSeconds:10 forVideo:@"AAAAAAAAAAA"];
+  NSDictionary *job=[NSDictionary dictionaryWithObjectsAndKeys:@"fixture.mp4",@"path",@"AAAAAAAAAAA",@"video_id",
+    @"Native playback",@"title",@"Example Channel",@"channel",nil];
+  UIViewController *owner=window.rootViewController;
+  [RDLPUIKit presentPlayer:owner library:library job:job];
+  pump(); pump();
+  MPMoviePlayerViewController *controller=(MPMoviePlayerViewController *)owner.presentedViewController;
+  require([controller isKindOfClass:[MPMoviePlayerViewController class]],@"All iOS versions use the movie player");
+  MPMoviePlayerController *movie=controller.moviePlayer;
+  NSMutableString *report=[NSMutableString string];
+  for(NSUInteger i=0;i<5;++i) {
+    [report appendFormat:@"tick %lu state=%ld time=%.3f initial=%.3f load=%lu\n",(unsigned long)i,(long)movie.playbackState,movie.currentPlaybackTime,movie.initialPlaybackTime,(unsigned long)movie.loadState];
+    pump();
+  }
+  require(!movie.shouldAutoplay && movie.playbackState!=MPMoviePlaybackStatePlaying,@"Opening the native player waits for a Play tap");
+  double restingPosition=movie.currentPlaybackTime; pump();
+  require(fabs(movie.currentPlaybackTime-restingPosition)<0.1,@"The restored playhead stays still before Play is tapped");
+  [report appendFormat:@"before Play state=%ld time=%.3f\n",(long)movie.playbackState,movie.currentPlaybackTime];
+  [report writeToFile:[directory stringByAppendingPathComponent:@"controls.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+  screenshot(window,[directory stringByAppendingPathComponent:@"paused.png"]);
+  require(movie.currentPlaybackTime>=9 && movie.currentPlaybackTime<14,@"Real movie player resumes near the saved checkpoint");
+  NSDictionary *info=[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo;
+  require([[info objectForKey:MPMediaItemPropertyTitle] isEqualToString:@"Native playback"] &&
+    [[info objectForKey:MPMediaItemPropertyArtist] isEqualToString:@"Example Channel"],@"Native player publishes video title and channel");
+  require(fabs([[info objectForKey:MPNowPlayingInfoPropertyElapsedPlaybackTime] doubleValue]-movie.currentPlaybackTime)<1 &&
+    [[info objectForKey:MPNowPlayingInfoPropertyPlaybackRate] doubleValue]==0 &&
+    fabs([[info objectForKey:MPMediaItemPropertyPlaybackDuration] doubleValue]-movie.duration)<1,@"Now Playing reports restored position, duration and paused rate");
+  UIControl *button=movieControl(controller.view,NO);
+  UISlider *slider=(UISlider *)movieControl(controller.view,YES);
+  require(button!=nil && slider!=nil,@"Find the system play/pause button and scrubber");
+  NSData *pausedImage=controlImage(button);
+  [button sendActionsForControlEvents:UIControlEventTouchUpInside]; pump();
+  require(movie.playbackState==MPMoviePlaybackStatePlaying,@"System Play button starts playback");
+  pump(); pump(); pump();
+  [report appendFormat:@"native rate=%f load=%lu info=%@\n",movie.currentPlaybackRate,(unsigned long)movie.loadState,[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo];
+  [report writeToFile:[directory stringByAppendingPathComponent:@"controls.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+  require([[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyPlaybackRate] doubleValue]==1,@"Native Play advances Now Playing time");
+  require(![controlImage(button) isEqualToData:pausedImage],@"Play button visibly changes to Pause");
+  screenshot(window,[directory stringByAppendingPathComponent:@"playing.png"]);
+  [button sendActionsForControlEvents:UIControlEventTouchUpInside]; pump();
+  require(movie.playbackState==MPMoviePlaybackStatePaused,@"System Pause button pauses playback");
+  require([[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyPlaybackRate] doubleValue]==0,@"Native Pause freezes Now Playing time");
+  require([controlImage(button) isEqualToData:pausedImage],@"Pause button visibly changes back to Play");
+  [report appendFormat:@"slider range %.3f ... %.3f\n",slider.minimumValue,slider.maximumValue];
+  /* MPDetailSlider uses a private tracking delegate, not UIControl actions.
+     Seek through the public player API and verify its native visual update. */
+  movie.currentPlaybackTime=20; pump(); pump();
+  NSDate *seekDeadline=[NSDate dateWithTimeIntervalSinceNow:3];
+  while(fabs((slider.value-slider.minimumValue)/(slider.maximumValue-slider.minimumValue)*movie.duration-movie.currentPlaybackTime)>=2 && [seekDeadline timeIntervalSinceNow]>0) pump();
+  double displayed=(slider.value-slider.minimumValue)/(slider.maximumValue-slider.minimumValue)*movie.duration;
+  [report appendFormat:@"after seek state=%ld time=%.3f displayed=%.3f\n",(long)movie.playbackState,movie.currentPlaybackTime,displayed];
+  [report writeToFile:[directory stringByAppendingPathComponent:@"controls.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+  require(movie.currentPlaybackTime>=18 && movie.currentPlaybackTime<=21,@"Movie player applies the requested seek");
+  require(fabs(displayed-movie.currentPlaybackTime)<2,@"Native scrubber visually reflects the seek");
+  pump(); pump();
+  require(fabs([[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyElapsedPlaybackTime] doubleValue]-movie.currentPlaybackTime)<1,@"Paused native seeks update Now Playing time");
+  screenshot(window,[directory stringByAppendingPathComponent:@"scrubbed.png"]);
+  if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestNowPlayingHold"] boolValue]) {
+    /* Allow SSH/Activator or a person to lock, resume, pause and inspect the
+       actual system UI. The silent AAC track exercises background audio. */
+    movie.currentPlaybackTime=5; [movie play];
+    for(NSUInteger i=0;i<100;++i) {
+      [report appendFormat:@"background-check state=%ld time=%.3f info=%@\n",(long)movie.playbackState,movie.currentPlaybackTime,[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo];
+      [report writeToFile:[directory stringByAppendingPathComponent:@"controls.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      pump();
+    }
+  }
+  [owner dismissMoviePlayerViewControllerAnimated]; pump(); pump();
+  require(![playbackNowPlayingInfo() count],@"Dismissing the native player clears Now Playing metadata");
+  [library shutdown]; [library release];
+}
+static void testDeletedDownloadQuality(NSString *directory) {
+  [[NSFileManager defaultManager] removeItemAtPath:directory error:NULL];
+  NSString *support=[directory stringByAppendingPathComponent:@"Support"], *downloads=[directory stringByAppendingPathComponent:@"Downloads"];
+  NSString *preference=[[RDLPLibrary preferredFormat] copy];
+  RDLPLibrary *library=[[RDLPOfflineLibrary alloc] initWithSupportDirectory:support downloadDirectory:downloads];
+  [RDLPLibrary savePreferredFormat:@"18"]; [library addVideoInput:@"AAAAAAAAAAA"];
+  NSDictionary *playlist=[library adhocPlaylist], *low=[library jobForPlaylist:[playlist objectForKey:@"id"] video:@"AAAAAAAAAAA" format:@"18"];
+  rdapp_store *store=NULL;
+  require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store) &&
+    rdapp_store_claim(store,ignoreRow,NULL),@"Claim Low download and assign its file path");
+  low=[library jobForID:[low objectForKey:@"id"]];
+  NSString *path=[library fileForJob:low];
+  require([[NSFileManager defaultManager] createDirectoryAtPath:[path stringByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:NULL] &&
+    [@"completed low media" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:NULL],@"Create completed Low download");
+  require(rdapp_store_finish(store,[[low objectForKey:@"id"] longLongValue],"complete","18",""),@"Record completed Low download");
+  rdapp_store_close(store);
+  [library removeDownload:[library jobForID:[low objectForKey:@"id"]]];
+  require(![[NSFileManager defaultManager] fileExistsAtPath:path],@"Deleting Low removes its saved file");
+  [RDLPLibrary savePreferredFormat:@"136+140"];
+  RDLPPlaylistViewController *list=[[RDLPPlaylistViewController alloc] initWithLibrary:library playlist:playlist]; [list view];
+  NSIndexPath *index=videoIndex(list,@"AAAAAAAAAAA",nil);
+  [list tableView:list.tableView didSelectRowAtIndexPath:index];
+  require([[[library jobForPlaylist:[playlist objectForKey:@"id"] video:@"AAAAAAAAAAA" format:@"136+140"] objectForKey:@"state"] isEqualToString:@"queued"] &&
+    [[[library jobForID:[low objectForKey:@"id"]] objectForKey:@"state"] isEqualToString:@"removed"],@"Low, delete, Medium, tap queues Medium and leaves Low removed");
+  [list tableView:list.tableView didSelectRowAtIndexPath:index];
+  require([[library jobsForPlaylist:nil completedOnly:NO] count]==2,@"Repeated tap does not duplicate the replacement download");
+  [list release]; [library shutdown]; [library release];
+  [RDLPLibrary savePreferredFormat:preference]; [preference release];
+}
 @interface RDLPIOSOfflineTest : UIResponder <UIApplicationDelegate> {
   UIWindow *window_;
   RDLPOfflineLibrary *library_;
@@ -156,12 +282,26 @@ static void screenshot(UIWindow *window,NSString *path) {
 }
 - (void)run;
 {
+  if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive) {
+    [self performSelector:@selector(run) withObject:nil afterDelay:0.5]; return;
+  }
+  /* Long timer checks must remain in the foreground on unattended devices. */
+  BOOL idleTimerDisabled=[UIApplication sharedApplication].idleTimerDisabled;
+  [UIApplication sharedApplication].idleTimerDisabled=YES;
   [@"RUNNING" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSString *report=@"PASS";
   @try {
+    testIOSPlaybackWrites([documents_ stringByAppendingPathComponent:@"PlaybackWrites"]);
     testIOSPlaybackProgress([documents_ stringByAppendingPathComponent:@"PlaybackFixture"]);
+    testIOSNowPlaying([documents_ stringByAppendingPathComponent:@"NowPlaying"]);
+    testNativePlayback(window_,[documents_ stringByAppendingPathComponent:@"NativePlayback"]);
     if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestPlaybackOnly"] boolValue]) {
-      [@"PASS: playback transition checkpoints, database reopen, backward seeking, background audio, and completion" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [@"PASS: Now Playing title/channel, duration, position, transport, seeks and cleanup; nonblocking ordered checkpoint writes, native play/pause images and seek display, foreground checkpoints, scrub/background suppression, database reopen, and ninety-percent reset" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      return;
+    }
+    testDeletedDownloadQuality([documents_ stringByAppendingPathComponent:@"DeletedQuality"]);
+    if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestInteractionOnly"] boolValue]) {
+      [@"PASS: native play/pause button images, seek display, nonblocking ordered foreground checkpoints, scrub/background suppression, ninety-percent reset, resume, and Low/delete/Medium redownload" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
       return;
     }
     testIOSIconScale();
@@ -445,23 +585,18 @@ static void screenshot(UIWindow *window,NSString *path) {
     [library_ savePlaybackSeconds:1 forVideo:[video objectForKey:@"video_id"]];
     [detail performRow:findRow(detail,@"play")]; pump();
     UIViewController *playerController=detail.presentedViewController;
-    require(playerController!=nil,@"Local playback presents native player");
-    if([playerController respondsToSelector:@selector(player)]) {
-      AVPlayer *player=[playerController valueForKey:@"player"];
-      for(NSUInteger wait=0;wait<10 && player.currentItem.status!=AVPlayerItemStatusReadyToPlay;++wait) pump();
-      require(player.currentItem.status==AVPlayerItemStatusReadyToPlay,@"Native player loads synthetic MP4 without network");
-      for(NSUInteger wait=0;wait<10 && player.rate==0;++wait) pump();
-      [player pause];
-      require(CMTimeGetSeconds(player.currentTime)>=1,@"Modern player resumes from the database before playing");
-    }
-    if([playerController isKindOfClass:[MPMoviePlayerViewController class]]) {
-      MPMoviePlayerController *movie=[(MPMoviePlayerViewController *)playerController moviePlayer];
-      [movie play];
-      for(NSUInteger wait=0;wait<10 && !(movie.loadState & MPMovieLoadStatePlayable);++wait) pump();
-      require((movie.loadState & MPMovieLoadStatePlayable)!=0,@"Legacy player loads synthetic MP4 without network");
-      [movie pause]; screenshot(window_,[documents_ stringByAppendingPathComponent:@"player.png"]);
-      [detail dismissMoviePlayerViewControllerAnimated];
-    } else [detail dismissViewControllerAnimated:NO completion:nil];
+    require([playerController isKindOfClass:[MPMoviePlayerViewController class]],@"Video details always present MPMoviePlayerViewController");
+    /* Dismissal during the native presentation animation can be ignored. */
+    for(NSUInteger wait=0;wait<10 && playerController.isBeingPresented;++wait) pump();
+    require(!playerController.isBeingPresented,@"Native player presentation finishes before transport and dismissal");
+    MPMoviePlayerController *movie=[(MPMoviePlayerViewController *)playerController moviePlayer];
+    [movie play];
+    for(NSUInteger wait=0;wait<10 && !(movie.loadState & MPMovieLoadStatePlayable);++wait) pump();
+    require((movie.loadState & MPMovieLoadStatePlayable)!=0,@"Movie player loads synthetic MP4 without network");
+    [movie pause];
+    require(movie.initialPlaybackTime==1 && movie.currentPlaybackTime>=0,@"Movie player receives the saved initial position");
+    screenshot(window_,[documents_ stringByAppendingPathComponent:@"player.png"]);
+    [detail dismissMoviePlayerViewControllerAnimated];
     for(NSUInteger wait=0;wait<10 && (detail.presentedViewController || navigation_.presentedViewController);++wait) pump();
     require(!detail.presentedViewController && !navigation_.presentedViewController,@"Native player dismissal returns to library");
     [detail performRow:findRow(detail,@"delete")]; confirm(detail,NO); require([[NSFileManager defaultManager] fileExistsAtPath:file],@"Cancelled delete retains file");
@@ -565,18 +700,19 @@ static void screenshot(UIWindow *window,NSString *path) {
     for(NSUInteger wait=0;wait<10 && !(playlistPlayer.moviePlayer.loadState & MPMovieLoadStatePlayable);++wait) pump();
     require((playlistPlayer.moviePlayer.loadState & MPMovieLoadStatePlayable)!=0,@"Playlist movie player loads offline media");
     [playlistPlayer.moviePlayer pause];
-    require(playlistPlayer.moviePlayer.currentPlaybackTime>=1,@"Legacy player resumes from the database timestamp");
+    require(playlistPlayer.moviePlayer.initialPlaybackTime==1 && playlistPlayer.moviePlayer.currentPlaybackTime>=0,@"Playlist player receives the database timestamp (seek may land on an earlier keyframe)");
     playlistPlayer.moviePlayer.currentPlaybackTime=0.75; pump();
     [[NSNotificationCenter defaultCenter] postNotificationName:UIApplicationWillResignActiveNotification object:[UIApplication sharedApplication]];
-    require(fabs([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]-0.75)<0.25,@"Backgrounding saves legacy playback immediately");
+    require([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]==1,@"Backgrounding preserves the last foreground checkpoint");
     playlistPlayer.moviePlayer.currentPlaybackTime=0.5; pump();
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:10.2]];
-    require(fabs([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]-0.5)<0.25,@"Ten-second timer saves a backward seek to the database");
+    require([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]==1,@"Ten-second timer cannot save while inactive");
     playlistPlayer.moviePlayer.currentPlaybackTime=1.5; pump();
     [list dismissMoviePlayerViewControllerAnimated];
     for(NSUInteger wait=0;wait<10 && (list.presentedViewController || navigation_.presentedViewController);++wait) pump();
     require(!list.presentedViewController && navigation_.toolbarHidden,@"Movie dismissal returns to playlist without a toolbar");
-    require(fabs([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]-1.5)<0.25,@"Dismissing the legacy player saves its final position");
+    require([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]==1,@"Dismissing an inactive player preserves the last checkpoint");
+    [[NSNotificationCenter defaultCenter] postNotificationName:UIApplicationDidBecomeActiveNotification object:[UIApplication sharedApplication]];
     [library_ savePlaybackSeconds:0.75 forVideo:@"AAAAAAAAAAA"];
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:10.2]];
     require([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]==0.75,@"Dismissed player cannot overwrite a newer position");
@@ -617,7 +753,9 @@ static void screenshot(UIWindow *window,NSString *path) {
     [library_ cancelJob:[newJob objectForKey:@"id"]]; [library_ removeDownload:[model currentJob:[newJob objectForKey:@"id"]]];
     [RDLPLibrary savePreferredFormat:@"18"];
     [list tableView:list.tableView didSelectRowAtIndexPath:newIndex];
-    require([RDLPDownloadPolicy job:[model currentJob:[newJob objectForKey:@"id"]] hasState:@"queued"] && [list valueForKey:@"alert_"]==nil && [model jobForPlaylist:[playlist objectForKey:@"id"] video:@"DDDDDDDDDDD" format:@"18"]==nil,@"Removed quality downloads again at its own quality, ignoring preference");
+    NSDictionary *replacementJob=[model jobForPlaylist:[playlist objectForKey:@"id"] video:@"DDDDDDDDDDD" format:@"18"];
+    require([RDLPDownloadPolicy job:[model currentJob:[newJob objectForKey:@"id"]] hasState:@"removed"] && [list valueForKey:@"alert_"]==nil && [RDLPDownloadPolicy job:replacementJob hasState:@"queued"],@"Deleted playlist download uses the current quality and leaves its old job removed");
+    [library_ cancelJob:[replacementJob objectForKey:@"id"]]; [library_ removeDownload:[model currentJob:[replacementJob objectForKey:@"id"]]];
     /* All Downloads shares playlist presentation but keeps every completed quality. */
     NSDictionary *highJob=[model currentJob:@"4"];
     NSString *highFile=[library_ fileForJob:highJob];
@@ -629,7 +767,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     [root performRow:findRow(root,@"downloads")]; pump(); pump();
     RDLPDownloadsViewController *all=(RDLPDownloadsViewController *)navigation_.topViewController;
     require([all isKindOfClass:[RDLPDownloadsViewController class]] && [all isKindOfClass:[UITableViewController class]] && all.view==all.tableView && all.tableView.style==UITableViewStylePlain,@"All Downloads navigation opens a native plain table controller");
-    require([all.title isEqualToString:@"All Downloads"] && !all.navigationItem.rightBarButtonItem && navigation_.toolbarHidden && !all.tableView.tableFooterView,@"All Downloads has no Sync button or separate status footer and hides idle toolbar");
+    require([all.title isEqualToString:@"All Downloads"] && all.navigationItem.rightBarButtonItem.image!=nil && all.navigationItem.rightBarButtonItem.action==@selector(addVideo:) && navigation_.toolbarHidden && !all.tableView.tableFooterView,@"All Downloads has an Add Video plus button, no separate status footer, and hides idle toolbar");
     NSArray *downloadRows=[[sections(all) objectAtIndex:0] objectForKey:@"rows"];
     require([downloadRows count]==2,@"All Downloads keeps both completed qualities and excludes pending/failed jobs");
     NSIndexPath *lowIndex=videoIndex(all,@"AAAAAAAAAAA",@"18"), *highIndex=videoIndex(all,@"AAAAAAAAAAA",@"137+140");
@@ -746,7 +884,7 @@ static void screenshot(UIWindow *window,NSString *path) {
     require([systemRows count]==2 && [[[systemRows objectAtIndex:1] objectForKey:@"title"] isEqualToString:@"Ad-Hoc"],@"Ad-Hoc appears under System");
     NSDictionary *adhoc=[library_ adhocPlaylist];
     RDLPPlaylistViewController *adhocView=[self show:RDLPScreenPlaylist playlist:adhoc video:nil];
-    require(!adhocView.navigationItem.rightBarButtonItem.enabled,@"Ad-Hoc Sync is disabled");
+    require(adhocView.navigationItem.rightBarButtonItem.enabled && adhocView.navigationItem.rightBarButtonItem.image!=nil && adhocView.navigationItem.rightBarButtonItem.action==@selector(addVideo:),@"Ad-Hoc has an enabled Add Video plus button");
     NSUInteger commands=[[library_ valueForKey:@"commands_"] count];
     [adhocView sync:nil];
     require([[library_ valueForKey:@"commands_"] count]==commands,@"Ad-Hoc cannot enqueue sync");
@@ -755,13 +893,15 @@ static void screenshot(UIWindow *window,NSString *path) {
     require(![inputs containsObject:@RDAPP_ADHOC_PLAYLIST_ID],@"Sync All excludes Ad-Hoc");
     if([root valueForKey:@"alert_"]) confirm(root,NO);
     require([RDLPLibrary savePreferredFormat:@"137+140"],@"Select Add Video quality");
-    [library_ addVideoInput:@"  YE7VzlLtp-4  "];
+    [adhocView addVideo:nil];
+    [[adhocView valueForKey:@"alert_"] textFieldAtIndex:0].text=@"  YE7VzlLtp-4  "; confirm(adhocView,YES);
     NSDictionary *addedJob=[library_ jobForPlaylist:[[library_ adhocPlaylist] objectForKey:@"id"] video:@"YE7VzlLtp-4" format:@"137+140"];
     require([RDLPLibrary savePreferredFormat:@"18"],@"Change quality after adding");
     require([[addedJob objectForKey:@"state"] isEqualToString:@"queued"] &&
       [[addedJob objectForKey:@"video_id"] isEqualToString:@"YE7VzlLtp-4"] &&
       [[addedJob objectForKey:@"format"] isEqualToString:@"137+140"],@"Add Video immediately queues the selected download quality without a worker");
   } @catch(NSException *exception) { report=[NSString stringWithFormat:@"FAIL: %@\n%@",exception,[exception callStackSymbols]]; }
+  @finally { [UIApplication sharedApplication].idleTimerDisabled=idleTimerDisabled; }
   [report writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSLog(@"%@",report);
 }

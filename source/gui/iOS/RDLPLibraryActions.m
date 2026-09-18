@@ -49,7 +49,7 @@
   else if([action isEqualToString:@"custom"]) [self showAlert:@"Custom Format" detail:@"Example: 18 or 136+140" request:[NSDictionary dictionaryWithObject:@"quality" forKey:@"operation"] buttons:[NSArray arrayWithObject:@"Save"] input:[RDLPLibrary preferredFormat]];
   else if([action isEqualToString:@"download"]) {
     [self showJobInQueue:[self enqueue:[NSDictionary dictionaryWithObjectsAndKeys:[playlist_ objectForKey:@"id"],@"playlist",[video_ objectForKey:@"video_id"],@"video",[RDLPLibrary preferredFormat],@"format",nil] allowRetry:YES]];
-  } else if([action isEqualToString:@"play"]) { if([policy_ playable:job]) [RDLPUIKit presentPlayer:self library:library_ job:job legacy:NO]; }
+  } else if([action isEqualToString:@"play"]) { if([policy_ playable:job]) [RDLPUIKit presentPlayer:self library:library_ job:job]; }
   else if([action isEqualToString:@"delete"]) [self confirmJob:job operation:@"delete"];
   else if([action isEqualToString:@"showQueue"]) [self showJobInQueue:job];
   else if([action isEqualToString:@"job"] && job) [self showAlert:[job objectForKey:@"title"] detail:[NSString stringWithFormat:@"%@ · %@\n%@",[policy_ statusForJob:job],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")] request:[NSDictionary dictionaryWithObjectsAndKeys:@"jobActions",@"operation",[job objectForKey:@"id"],@"job",nil] buttons:[model_ actionsForJob:job] input:nil];
@@ -72,7 +72,7 @@
   } else if([op isEqualToString:@"jobActions"]) {
     NSDictionary *job=[model_ currentJob:[request objectForKey:@"job"]]; if(!job) return;
     NSString *action=[actions objectAtIndex:(NSUInteger)index-1];
-    if([action isEqualToString:@"Play"] && [policy_ playable:job]) [RDLPUIKit presentPlayer:self library:library_ job:job legacy:NO];
+    if([action isEqualToString:@"Play"] && [policy_ playable:job]) [RDLPUIKit presentPlayer:self library:library_ job:job];
     else if([action isEqualToString:@"Download Video"] && ([policy_ canRetry:job] || [policy_ canDownloadAgain:job])) { [library_ retryJob:[job objectForKey:@"id"]]; [self showJobInQueue:job]; }
     else if([action isEqualToString:@"Stop Download…"]) [self confirmJob:job operation:@"stop"];
     else if([action isEqualToString:@"Delete Download…"]) [self confirmJob:job operation:@"delete"];

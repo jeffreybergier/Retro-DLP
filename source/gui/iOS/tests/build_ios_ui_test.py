@@ -24,6 +24,12 @@ if not fixture.exists():
                     '-c:v', 'libx264', '-profile:v', 'baseline', '-level', '3.0',
                     '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(fixture)], check=True)
 shutil.copyfile(fixture, app / 'fixture.mp4')
+playback_fixture = root / 'build/apps/tests/ios-playback-audio-fixture.mp4'
+if not playback_fixture.exists():
+    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-stream_loop', '19',
+                    '-i', str(fixture), '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono',
+                    '-c:v', 'copy', '-c:a', 'aac', '-t', '60', str(playback_fixture)], check=True)
+shutil.copyfile(playback_fixture, app / 'playback-fixture.mp4')
 plist = app / 'Info.plist'
 info = plistlib.loads(plist.read_bytes())
 info.update(CFBundleExecutable='RetroDLPIOSOfflineTest',
@@ -36,6 +42,10 @@ if os.environ.get('RDLP_TEST_ICONS_ONLY') == '1':
     info['RDLPTestIconsOnly'] = True
 if os.environ.get('RDLP_TEST_PLAYBACK_ONLY') == '1':
     info['RDLPTestPlaybackOnly'] = True
+if os.environ.get('RDLP_TEST_NOW_PLAYING_HOLD') == '1':
+    info['RDLPTestNowPlayingHold'] = True
+if os.environ.get('RDLP_TEST_INTERACTION_ONLY') == '1':
+    info['RDLPTestInteractionOnly'] = True
 plist.write_bytes(plistlib.dumps(info))
 objects = root / 'build/apps/iOS/Intermediates'
 cmd = ['/usr/bin/clang', '-target', 'armv7-apple-ios5.0', '-arch', 'armv7',
@@ -49,7 +59,7 @@ cmd = ['/usr/bin/clang', '-target', 'armv7-apple-ios5.0', '-arch', 'armv7',
 cmd += [str(objects / (name + '.o')) for name in
         ['RDLPAppDelegate', 'RDLPLibraryViewController', 'RDLPLibraryActions',
          'RDLPLibrarySections', 'RDLPUIKit', 'RDLPDownloadPolicy', 'RDLPStatusBarView', 'RDLPSettingsViewController', 'RDLPPlaylistsViewController', 'RDLPPlaylistViewController', 'RDLPVideoListViewController', 'RDLPDownloadsViewController', 'RDLPQueueViewController',
-         'RDLPLibrary', 'RDLPVideoRows', 'RDLP_Foundation', 'rdapp_store', 'rdapp_service']]
+         'RDLPLibrary', 'RDLPLibrary+iOS', 'RDLPVideoRows', 'RDLP_Foundation', 'rdapp_store', 'rdapp_service']]
 cmd += [str(root / 'build/iOS/libretrodlp-download.a'),
         str(root / 'build/iOS/libretrodlp.a'),
         '/altivec/libs/core/build-phone/lib/libAltivecCore.a',
@@ -57,9 +67,9 @@ cmd += [str(root / 'build/iOS/libretrodlp-download.a'),
         '/altivec/libs/core/build-phone/lib/libcrypto.a']
 for framework in ['UIKit', 'Foundation', 'CoreGraphics', 'CoreText',
                   'CoreFoundation', 'SystemConfiguration', 'Security',
-                  'MediaPlayer', 'AVFoundation', 'CoreMedia']:
+                  'MediaPlayer', 'AVFoundation']:
     cmd += ['-framework', framework]
-cmd += ['-weak_framework', 'AVKit', '-lobjc', '-lpthread', '-o',
+cmd += ['-lobjc', '-lpthread', '-o',
         str(app / 'RetroDLPIOSOfflineTest')]
 subprocess.run(cmd, env=dict(os.environ, PATH='/osxcross/modern/bin:' + os.environ['PATH']), check=True)
 subprocess.run(['ldid', '-S', str(app / 'RetroDLPIOSOfflineTest')], check=True)

@@ -16,8 +16,11 @@
 - (id)initWithLibrary:(RDLPLibrary *)library title:(NSString *)title;
 - (NSArray *)listSections;
 - (BOOL)containsEntryForRetry:(NSDictionary *)entry;
+- (NSString *)downloadFormatForJob:(NSDictionary *)job;
 - (void)refresh:(id)sender;
 - (void)queue:(id)sender;
+- (void)configureAddVideoButton;
+- (void)addVideo:(id)sender;
 /* Shared native list presentation hooks. */
 - (BOOL)showsQueueButton;
 - (BOOL)shouldHideToolbar;

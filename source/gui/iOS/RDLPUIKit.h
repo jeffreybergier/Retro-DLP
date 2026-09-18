@@ -10,6 +10,6 @@
 + (UIImage *)queueToolbarIcon;
 + (NSArray *)statusToolbarItems:(RDLPStatusBarView *)status target:(id)target queueAction:(SEL)action;
 + (void)showMessage:(NSString *)message;
-+ (void)presentPlayer:(UIViewController *)owner library:(RDLPLibrary *)library job:(NSDictionary *)job legacy:(BOOL)legacy;
++ (void)presentPlayer:(UIViewController *)owner library:(RDLPLibrary *)library job:(NSDictionary *)job;
 + (UIBarButtonItem *)item:(NSString *)title target:(id)target action:(SEL)action;
 @end

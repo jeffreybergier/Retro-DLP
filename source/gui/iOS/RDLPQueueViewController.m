@@ -90,7 +90,7 @@
   if(!action) return;
   NSDictionary *job=[model_ currentJob:[request objectForKey:@"job"]]; if(!job) return;
   if([[request objectForKey:@"operation"] isEqualToString:@"actions"]) {
-    if([action isEqualToString:@"Play"] && [policy_ playable:job]) [RDLPUIKit presentPlayer:self library:library_ job:job legacy:NO];
+    if([action isEqualToString:@"Play"] && [policy_ playable:job]) [RDLPUIKit presentPlayer:self library:library_ job:job];
     else if([action isEqualToString:@"Retry Download"] && ([policy_ canRetry:job] || [policy_ canDownloadAgain:job])) [library_ retryJob:[job objectForKey:@"id"]];
     else if([action isEqualToString:@"Stop Download…"]) [self showJobAlert:job operation:@"stop"];
     else if([action isEqualToString:@"Delete Download…"]) [self showJobAlert:job operation:@"delete"];

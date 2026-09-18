@@ -57,6 +57,7 @@ static NSDictionary *activityResult(rdlp_error_code code) {
   return [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithInt:code],@"code",@"Synthetic result",@"message",nil];
 }
 static void testIOSLifecycle(NSString *base) {
+  [[NSFileManager defaultManager] removeItemAtPath:base error:NULL];
   NSString *downloads=[base stringByAppendingPathComponent:@"Downloads"];
   NSString *support=[base stringByAppendingPathComponent:@"Support"];
   [[NSFileManager defaultManager] createDirectoryAtPath:downloads withIntermediateDirectories:YES attributes:nil error:NULL];
@@ -128,6 +129,7 @@ static void testIOSLifecycle(NSString *base) {
 }
 
 static void testIOSDownloadNotifications(NSString *base) {
+  [[NSFileManager defaultManager] removeItemAtPath:base error:NULL];
   NSString *support=[base stringByAppendingPathComponent:@"Support"];
   RDLPActivityTestLibrary *library=[[RDLPActivityTestLibrary alloc] initWithSupportDirectory:support downloadDirectory:[base stringByAppendingPathComponent:@"Downloads"]];
   statusRequire(library!=nil,@"Open notification fixture");

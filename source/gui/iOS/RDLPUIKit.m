@@ -7,23 +7,36 @@
 #import <math.h>
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+/* Check public control state without attaching handlers to native controls. */
+static BOOL RDLPPlayerIsTracking(UIView *view) {
+  if([view isKindOfClass:[UIControl class]] && [(UIControl *)view isTracking]) return YES;
+  for(UIView *child in view.subviews) if(RDLPPlayerIsTracking(child)) return YES;
+  return NO;
+}
 /* A child receives the native player's appearance lifecycle on iOS 5 and up.
-   It owns progress tracking without changing either player's controls. */
+   It owns progress tracking without changing the player's controls. */
 @interface RDLPPlaybackProgress : UIViewController {
   RDLPLibrary *library_;
   NSString *video_;
-  AVPlayer *player_;
   MPMoviePlayerController *movie_;
   NSTimer *timer_;
-  MPMoviePlaybackState lastMovieState_;
-  double resume_, lastPosition_;
-  BOOL ready_, preparing_, stopped_, ended_, preservePausedPosition_;
+  NSTimer *nowPlayingTimer_;
+  NSDictionary *metadata_;
+  double publishedTime_, publishedRate_, publishedDuration_;
+  NSTimeInterval publishedAt_;
+  BOOL published_, finished_;
+  double resume_;
+  BOOL ready_, preparing_, stopped_, foregroundActive_;
 }
-- (id)initWithLibrary:(RDLPLibrary *)library video:(NSString *)video player:(AVPlayer *)player movie:(MPMoviePlayerController *)movie;
+- (id)initWithLibrary:(RDLPLibrary *)library video:(NSString *)video movie:(MPMoviePlayerController *)movie;
 - (void)preparePlayback;
-- (void)seekFinished:(NSNumber *)finished;
 - (void)saveProgress:(id)sender;
+- (void)configureNowPlayingWithJob:(NSDictionary *)job;
+- (void)updateNowPlaying:(id)sender;
+- (void)clearNowPlaying;
 @end
+/* Nonretained: an older player's teardown must not erase its replacement. */
+static RDLPPlaybackProgress *RDLPNowPlayingOwner=nil;
 /* NSTimer retains its target; this forwarding target avoids retaining the
    child controller after its native player has been released. */
 @interface RDLPPlaybackTimerTarget : NSObject {
@@ -31,37 +44,38 @@
   RDLPPlaybackProgress *progress;
 }
 - (void)tick:(NSTimer *)timer;
+- (void)nowPlayingTick:(NSTimer *)timer;
 @end
 @implementation RDLPPlaybackTimerTarget
 - (void)tick:(NSTimer *)timer; { [progress saveProgress:timer]; }
+- (void)nowPlayingTick:(NSTimer *)timer; { [progress updateNowPlaying:timer]; }
 @end
 @implementation RDLPPlaybackProgress
-- (id)initWithLibrary:(RDLPLibrary *)library video:(NSString *)video player:(AVPlayer *)player movie:(MPMoviePlayerController *)movie;
+- (id)initWithLibrary:(RDLPLibrary *)library video:(NSString *)video movie:(MPMoviePlayerController *)movie;
 {
   self=[super initWithNibName:nil bundle:nil]; if(!self) return nil;
-  library_=[library retain]; video_=[video copy]; player_=[player retain]; movie_=[movie retain];
-  resume_=lastPosition_=[library playbackSecondsForVideo:video];
+  library_=[library retain]; video_=[video copy]; movie_=[movie retain];
+  resume_=[library playbackSecondsForVideo:video];
+  foregroundActive_=([UIApplication sharedApplication].applicationState==UIApplicationStateActive);
   NSNotificationCenter *center=[NSNotificationCenter defaultCenter];
   [center addObserver:self selector:@selector(willResignActive:) name:UIApplicationWillResignActiveNotification object:nil];
-  [center addObserver:self selector:@selector(saveProgress:) name:UIApplicationDidEnterBackgroundNotification object:nil];
-  if(movie_) {
-    movie_.shouldAutoplay=NO;
-    movie_.initialPlaybackTime=resume_;
-    [center addObserver:self selector:@selector(movieLoaded:) name:MPMoviePlayerLoadStateDidChangeNotification object:movie_];
-    [center addObserver:self selector:@selector(movieFinished:) name:MPMoviePlayerPlaybackDidFinishNotification object:movie_];
-    [center addObserver:self selector:@selector(movieStateChanged:) name:MPMoviePlayerPlaybackStateDidChangeNotification object:movie_];
-  } else {
-    [player_.currentItem addObserver:self forKeyPath:@"status" options:0 context:NULL];
-    [center addObserver:self selector:@selector(playbackEnded:) name:AVPlayerItemDidPlayToEndTimeNotification object:player_.currentItem];
-  }
+  [center addObserver:self selector:@selector(didBecomeActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
+  movie_.shouldAutoplay=NO;
+  movie_.initialPlaybackTime=resume_;
+  [center addObserver:self selector:@selector(movieLoaded:) name:MPMoviePlayerLoadStateDidChangeNotification object:movie_];
+  [center addObserver:self selector:@selector(movieFinished:) name:MPMoviePlayerPlaybackDidFinishNotification object:movie_];
+  [center addObserver:self selector:@selector(movieStateChanged:) name:MPMoviePlayerPlaybackStateDidChangeNotification object:movie_];
+  [center addObserver:self selector:@selector(updateNowPlaying:) name:MPMovieDurationAvailableNotification object:movie_];
+  [center addObserver:self selector:@selector(updateNowPlaying:) name:UIApplicationDidEnterBackgroundNotification object:nil];
   return self;
 }
 - (void)dealloc;
 {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
-  if(player_) [player_.currentItem removeObserver:self forKeyPath:@"status"];
   [timer_ invalidate]; [timer_ release];
-  [library_ release]; [video_ release]; [player_ release]; [movie_ release];
+  [nowPlayingTimer_ invalidate]; [nowPlayingTimer_ release];
+  [self clearNowPlaying]; [metadata_ release];
+  [library_ release]; [video_ release]; [movie_ release];
   [super dealloc];
 }
 - (void)loadView;
@@ -76,8 +90,18 @@
     RDLPPlaybackTimerTarget *target=[[[RDLPPlaybackTimerTarget alloc] init] autorelease];
     target->progress=self;
     timer_=[[NSTimer timerWithTimeInterval:10 target:target selector:@selector(tick:) userInfo:nil repeats:YES] retain];
-    [[NSRunLoop mainRunLoop] addTimer:timer_ forMode:NSRunLoopCommonModes];
+    /* Also suspend timer delivery whenever UIKit uses touch-tracking mode. */
+    [[NSRunLoop mainRunLoop] addTimer:timer_ forMode:NSDefaultRunLoopMode];
   }
+  if(metadata_ && !nowPlayingTimer_ && !stopped_) {
+    RDLPPlaybackTimerTarget *target=[[[RDLPPlaybackTimerTarget alloc] init] autorelease];
+    target->progress=self;
+    /* MPMoviePlayer has no public seek-completed notification. Check for
+       discontinuities, including paused scrubs, without republishing each tick. */
+    nowPlayingTimer_=[[NSTimer timerWithTimeInterval:1 target:target selector:@selector(nowPlayingTick:) userInfo:nil repeats:YES] retain];
+    [[NSRunLoop mainRunLoop] addTimer:nowPlayingTimer_ forMode:NSRunLoopCommonModes];
+  }
+  [self updateNowPlaying:nil];
 }
 - (void)viewWillDisappear:(BOOL)animated;
 {
@@ -88,106 +112,121 @@
 {
   stopped_=YES;
   [timer_ invalidate]; [timer_ release]; timer_=nil;
+  [nowPlayingTimer_ invalidate]; [nowPlayingTimer_ release]; nowPlayingTimer_=nil;
+  [self clearNowPlaying];
   [super viewDidDisappear:animated];
 }
-- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context;
-{
-  (void)keyPath; (void)object; (void)change; (void)context;
-  [self performSelectorOnMainThread:@selector(preparePlayback) withObject:nil waitUntilDone:NO];
-}
 - (void)movieLoaded:(NSNotification *)notification;
-{ (void)notification; [self preparePlayback]; }
+{ [self preparePlayback]; [self updateNowPlaying:notification]; }
 - (void)preparePlayback;
 {
   if(stopped_ || ready_ || preparing_) return;
-  if(movie_) {
-    if(!(movie_.loadState & MPMovieLoadStatePlayable)) return;
-    double duration=movie_.duration;
-    if(isfinite(duration) && duration>0 && resume_>=duration) resume_=0;
-    movie_.initialPlaybackTime=resume_;
-    movie_.currentPlaybackTime=resume_;
-    ready_=YES; [movie_ play];
-  } else {
-    if(player_.currentItem.status!=AVPlayerItemStatusReadyToPlay) return;
-    double duration=CMTimeGetSeconds(player_.currentItem.duration);
-    if(isfinite(duration) && duration>0 && resume_>=duration) resume_=0;
-    /* Mark the seek in flight, but do not persist the initial zero position. */
-    preparing_=YES;
-    [player_ seekToTime:CMTimeMakeWithSeconds(resume_,600) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero completionHandler:^(BOOL finished) {
-      [self performSelectorOnMainThread:@selector(seekFinished:) withObject:[NSNumber numberWithBool:finished] waitUntilDone:NO];
-    }];
+  if(!(movie_.loadState & MPMovieLoadStatePlayable)) return;
+  double duration=movie_.duration;
+  preparing_=YES;
+  if(isfinite(duration) && duration>0 && resume_>=duration*0.9) {
+    resume_=0; movie_.initialPlaybackTime=0;
   }
-}
-- (void)seekFinished:(NSNumber *)finished;
-{
-  preparing_=NO;
-  if(stopped_ || ![finished boolValue]) return;
-  ready_=YES; [player_ play];
+  /* The controller can start loading before initialPlaybackTime is set.
+     Apply one seek when playable; preparing_ prevents load-event reentry
+     without saving a transient position from its synchronous notifications. */
+  movie_.currentPlaybackTime=resume_;
+  ready_=YES; preparing_=NO;
+  /* The native Play button starts playback after the resume position is ready. */
+  [self updateNowPlaying:nil];
 }
 - (void)willResignActive:(NSNotification *)notification;
 {
-  /* The legacy player can report an earlier keyframe (including zero) while
-     pausing/backgrounding or returning to the foreground. Keep its checkpoint
-     until playback or an explicit seek makes its position reliable again. */
-  preservePausedPosition_=YES;
-  [self saveProgress:notification];
+  (void)notification; foregroundActive_=NO;
+  [self updateNowPlaying:nil];
+}
+- (void)didBecomeActive:(NSNotification *)notification;
+{
+  (void)notification; foregroundActive_=YES;
+  [self updateNowPlaying:nil];
+}
+- (void)configureNowPlayingWithJob:(NSDictionary *)job;
+{
+  NSString *title=[job objectForKey:@"title"], *channel=[job objectForKey:@"channel"];
+  if(![title length]) title=[video_ length]?video_:@"Video";
+  NSMutableDictionary *info=[NSMutableDictionary dictionaryWithObject:title forKey:MPMediaItemPropertyTitle];
+  if([channel length]) [info setObject:channel forKey:MPMediaItemPropertyArtist];
+  [metadata_ release]; metadata_=[info copy];
+  RDLPNowPlayingOwner=self;
+  [self updateNowPlaying:nil];
+}
+- (void)clearNowPlaying;
+{
+  if(RDLPNowPlayingOwner==self) {
+    [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo=nil;
+    RDLPNowPlayingOwner=nil;
+  }
+  published_=NO;
 }
 - (void)movieStateChanged:(NSNotification *)notification;
 {
-  MPMoviePlaybackState state=movie_.playbackState;
-  if(state==MPMoviePlaybackStateSeekingForward || state==MPMoviePlaybackStateSeekingBackward) {
-    /* The initial seeking notification still contains the old position. */
-    preservePausedPosition_=NO; lastMovieState_=state; return;
+  if(movie_.playbackState==MPMoviePlaybackStatePlaying) {
+    if(finished_ && !stopped_ && !RDLPNowPlayingOwner) RDLPNowPlayingOwner=self;
+    finished_=NO;
   }
-  if(state==MPMoviePlaybackStatePlaying)
-    preservePausedPosition_=NO;
-  else if(lastMovieState_!=MPMoviePlaybackStateSeekingForward && lastMovieState_!=MPMoviePlaybackStateSeekingBackward &&
-          (!isfinite(movie_.currentPlaybackTime) || movie_.currentPlaybackTime<lastPosition_))
-    /* iOS 6 may deliver its pause before WillResignActive. Only a seek should
-       move a paused checkpoint backwards; a system pause must not do so. */
-    preservePausedPosition_=YES;
-  /* Checkpoint seek completion and pause immediately: the user can background
-     and force-quit before the next ten-second timer fires. */
-  [self saveProgress:notification];
-  lastMovieState_=state;
+  [self updateNowPlaying:notification];
+}
+- (void)updateNowPlaying:(id)sender;
+{
+  if(stopped_ || preparing_ || finished_ || !metadata_ || RDLPNowPlayingOwner!=self) return;
+  double seconds=ready_?movie_.currentPlaybackTime:resume_, duration=movie_.duration;
+  if(!isfinite(seconds) || seconds<0) seconds=published_?publishedTime_:resume_;
+  if(!isfinite(duration) || duration<=0) duration=0;
+  if(duration>0) seconds=MIN(seconds,duration);
+  double rate=0;
+  if(movie_.playbackState==MPMoviePlaybackStatePlaying && !(movie_.loadState & MPMovieLoadStateStalled)) {
+    rate=movie_.currentPlaybackRate;
+    if(!isfinite(rate)) rate=0;
+  }
+  NSTimeInterval now=[NSProcessInfo processInfo].systemUptime;
+  double expected=publishedTime_+(now-publishedAt_)*publishedRate_;
+  if([sender isKindOfClass:[NSTimer class]] && published_ && rate==publishedRate_ &&
+     duration==publishedDuration_ && fabs(seconds-expected)<0.75) return;
+  NSMutableDictionary *info=[[metadata_ mutableCopy] autorelease];
+  [info setObject:[NSNumber numberWithDouble:seconds] forKey:MPNowPlayingInfoPropertyElapsedPlaybackTime];
+  [info setObject:[NSNumber numberWithDouble:rate] forKey:MPNowPlayingInfoPropertyPlaybackRate];
+  if(duration>0) [info setObject:[NSNumber numberWithDouble:duration] forKey:MPMediaItemPropertyPlaybackDuration];
+  [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo=info;
+  published_=YES; publishedTime_=seconds; publishedRate_=rate; publishedDuration_=duration; publishedAt_=now;
 }
 - (void)saveProgress:(id)sender;
 {
   (void)sender;
-  if(stopped_ || !ready_) return;
-  double seconds=movie_?movie_.currentPlaybackTime:CMTimeGetSeconds(player_.currentTime);
-  double duration=movie_?movie_.duration:CMTimeGetSeconds(player_.currentItem.duration);
-  if(movie_ && movie_.playbackState!=MPMoviePlaybackStatePlaying &&
-     movie_.playbackState!=MPMoviePlaybackStateSeekingForward && movie_.playbackState!=MPMoviePlaybackStateSeekingBackward &&
-     lastMovieState_!=MPMoviePlaybackStateSeekingForward && lastMovieState_!=MPMoviePlaybackStateSeekingBackward &&
-     (preservePausedPosition_ || [UIApplication sharedApplication].applicationState!=UIApplicationStateActive)) {
-    if(!isfinite(seconds) || seconds<lastPosition_) seconds=lastPosition_;
-  }
+  if(stopped_ || !ready_ || !foregroundActive_ ||
+     [UIApplication sharedApplication].applicationState!=UIApplicationStateActive ||
+     movie_.playbackState!=MPMoviePlaybackStatePlaying || RDLPPlayerIsTracking(movie_.view)) return;
+  double seconds=movie_.currentPlaybackTime;
+  double duration=movie_.duration;
   if(!isfinite(seconds) || seconds<0) return;
-  if(ended_) {
-    BOOL playing=movie_?movie_.playbackState==MPMoviePlaybackStatePlaying:player_.rate>0;
-    if(!playing || seconds>=duration) return;
-    ended_=NO;
-  }
-  /* Keep a resume point when stopped early; a completed video starts over. */
-  lastPosition_=(isfinite(duration) && duration>0 && seconds>=duration)?0:seconds;
-  [library_ savePlaybackSeconds:lastPosition_ forVideo:video_];
+  /* Treat the final ten percent as watched, including credits. */
+  if(isfinite(duration) && duration>0 && seconds>=duration*0.9) seconds=0;
+  [library_ savePlaybackSeconds:seconds forVideo:video_];
 }
 - (void)playbackEnded:(NSNotification *)notification;
 {
-  (void)notification; if(stopped_) return;
-  ended_=YES; lastPosition_=0; movie_.initialPlaybackTime=0; [library_ savePlaybackSeconds:0 forVideo:video_];
+  (void)notification;
+  if(stopped_ || !ready_ || !foregroundActive_ ||
+     [UIApplication sharedApplication].applicationState!=UIApplicationStateActive || RDLPPlayerIsTracking(movie_.view)) return;
+  movie_.initialPlaybackTime=0; [library_ savePlaybackSeconds:0 forVideo:video_];
 }
 - (void)movieFinished:(NSNotification *)notification;
 {
   NSNumber *reason=[[notification userInfo] objectForKey:MPMoviePlayerPlaybackDidFinishReasonUserInfoKey];
   if(reason && [reason integerValue]==MPMovieFinishReasonPlaybackEnded)
     [self playbackEnded:notification];
-  else [self saveProgress:nil];
+  finished_=YES;
+  [self clearNowPlaying];
 }
 @end
-static void RDLPTrackPlayback(UIViewController *controller,RDLPLibrary *library,NSString *video,AVPlayer *player,MPMoviePlayerController *movie) {
-  RDLPPlaybackProgress *progress=[[RDLPPlaybackProgress alloc] initWithLibrary:library video:video player:player movie:movie];
+static void RDLPTrackPlayback(MPMoviePlayerViewController *controller,RDLPLibrary *library,NSDictionary *job) {
+  MPMoviePlayerController *movie=controller.moviePlayer;
+  RDLPPlaybackProgress *progress=[[RDLPPlaybackProgress alloc] initWithLibrary:library video:[job objectForKey:@"video_id"] movie:movie];
+  [progress configureNowPlayingWithJob:job];
   [controller addChildViewController:progress];
   [controller.view addSubview:progress.view];
   [progress didMoveToParentViewController:controller];
@@ -290,7 +329,7 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   UIAlertView *alert=[[UIAlertView alloc] initWithTitle:@"RetroDLP" message:message delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
   [alert show]; [alert release];
 }
-+ (void)presentPlayer:(UIViewController *)owner library:(RDLPLibrary *)library job:(NSDictionary *)job legacy:(BOOL)legacy; {
++ (void)presentPlayer:(UIViewController *)owner library:(RDLPLibrary *)library job:(NSDictionary *)job; {
   NSString *path=[library fileForJob:job];
   if(!path || ![[NSFileManager defaultManager] fileExistsAtPath:path]) { [self showMessage:@"The downloaded file is missing. Retry its download from Queue."]; return; }
   /* Activate only when opening a video, so browsing the library does not
@@ -303,17 +342,9 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   if(![session setActive:YES error:&error])
     NSLog(@"Could not activate playback audio session: %@",error);
   NSURL *url=[NSURL fileURLWithPath:path];
-  Class modern=legacy?Nil:NSClassFromString(@"AVPlayerViewController");
-  if(modern) {
-    UIViewController *controller=[[modern alloc] init]; AVPlayer *player=[AVPlayer playerWithURL:url];
-    [controller performSelector:@selector(setPlayer:) withObject:player];
-    RDLPTrackPlayback(controller,library,[job objectForKey:@"video_id"],player,nil);
-    [owner presentModalViewController:controller animated:YES]; [controller release];
-  } else {
-    MPMoviePlayerViewController *controller=[[MPMoviePlayerViewController alloc] initWithContentURL:url];
-    RDLPTrackPlayback(controller,library,[job objectForKey:@"video_id"],nil,controller.moviePlayer);
-    [owner presentMoviePlayerViewControllerAnimated:controller]; [controller release];
-  }
+  MPMoviePlayerViewController *controller=[[MPMoviePlayerViewController alloc] initWithContentURL:url];
+  RDLPTrackPlayback(controller,library,job);
+  [owner presentMoviePlayerViewControllerAnimated:controller]; [controller release];
 }
 + (UIBarButtonItem *)item:(NSString *)title target:(id)target action:(SEL)action;
 { return [[[UIBarButtonItem alloc] initWithTitle:title style:UIBarButtonItemStyleBordered target:target action:action] autorelease]; }

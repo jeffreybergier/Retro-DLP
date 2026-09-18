@@ -39,7 +39,7 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
             assert '$UNIX2003' not in undefined,(architecture,'Tiger-incompatible libc symbols')
         if platform=='iOS':
             avkit=[block for block in commands if 'AVKit.framework/AVKit' in block]
-            assert len(avkit)==1 and 'cmd LC_LOAD_WEAK_DYLIB' in avkit[0],'AVKit must be weak-linked'
+            assert not avkit,'Legacy-only playback must not link AVKit'
 
     plist=plistlib.loads((bundle/plist_relative).read_bytes())
     assert 'RetroDLPTestDirectory' not in plist,'Test directory leaked into release'
