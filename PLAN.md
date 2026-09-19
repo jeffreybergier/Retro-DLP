@@ -10,7 +10,7 @@ application or optional-library responsibilities.
 
 The refactor must continue to support the project's current platform targets:
 
-- macOS PowerPC, i386, x86_64, and arm64
+- macOS PowerPC and i386
 - iOS armv7 and arm64
 - Native Linux builds and tests
 
@@ -50,7 +50,6 @@ build/macOS/libretrodlp.a
 build/iOS/libretrodlp.a
 build/linux/retro-dlp
 build/macOS/ppc-i386/retro-dlp
-build/macOS/x86_64-arm64/retro-dlp
 build/iOS/retro-dlp
 ```
 
@@ -494,7 +493,7 @@ Every phase should run the smallest relevant subset. Before completion, run:
 - Native Linux warning-clean build and tests
 - Linux ASan/UBSan build and tests
 - macOS PowerPC and i386 legacy validation
-- macOS x86_64 and arm64 validation
+- macOS Clang static analysis (x86_64 analysis target only)
 - iOS armv7 and arm64 validation
 - Architecture and minimum-deployment-target inspection of Apple artifacts
 

@@ -102,7 +102,7 @@ $(I386_BINARY): $(I386_OBJECTS) $(I386_DOWNLOAD_LIBRARY) $(I386_LIBRARY) \
 	fi
 
 $(MACOS_INT_DIR)/ppc/%.o: %.c
-	@echo " [1/5] Compiling ppc: $<"
+	@echo " [1/3] Compiling ppc: $<"
 	@mkdir -p $(dir $@)
 	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_PPC) \
 		$(LEGACY_MACOS_CPPFLAGS) $(LEGACY_MACOS_CFLAGS) -arch ppc \
@@ -110,7 +110,7 @@ $(MACOS_INT_DIR)/ppc/%.o: %.c
 		-MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 $(MACOS_INT_DIR)/i386/%.o: %.c
-	@echo " [2/5] Compiling i386: $<"
+	@echo " [2/3] Compiling i386: $<"
 	@mkdir -p $(dir $@)
 	@MACOSX_DEPLOYMENT_TARGET=$(MAC_MIN_OLD) $(COMPILER_X86) \
 		$(LEGACY_MACOS_CPPFLAGS) $(LEGACY_MACOS_CFLAGS) -arch i386 \

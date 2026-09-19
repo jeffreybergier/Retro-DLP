@@ -24,14 +24,10 @@
 	<string>10.4</string>
 	<key>LSMinimumSystemVersionByArchitecture</key>
 	<dict>
-		<key>arm64</key>
-		<string>11.0</string>
 		<key>i386</key>
 		<string>10.4</string>
 		<key>ppc</key>
 		<string>10.4</string>
-		<key>x86_64</key>
-		<string>10.9</string>
 	</dict>
 	<key>ATSApplicationFontsPath</key>
 	<string>Fonts</string>

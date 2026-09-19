@@ -144,7 +144,7 @@ jobs:
       - name: Validate staged release assets
         run: |
           set -euo pipefail
-          for package in macOS-ppc-i386 macOS-x86_64-arm64 iOS; do
+          for package in macOS-ppc-i386 iOS; do
             asset="dist/Retro-DLP-${RELEASE_VERSION}-${package}.zip"
             test -s "$asset"
             unzip -t "$asset" >/dev/null

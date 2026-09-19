@@ -1,7 +1,14 @@
 # Universal armv7 and arm64 rules for Clang and the iPhoneOS 8.4 SDK.
-# Like the modern macOS profile, this compiles the pristine QuickJS submodule.
+# This compiles the pristine QuickJS submodule with iOS compatibility helpers.
 # Clang emits both architectures in one compile and link invocation, matching
 # the Altivec phone build convention.
+
+IOS_BASE_QUICKJS_CPPFLAGS := -I$(QUICKJS_DIR) -D_GNU_SOURCE \
+	-DCONFIG_VERSION=\"$(QUICKJS_VERSION)\"
+IOS_BASE_QUICKJS_CFLAGS := $(CFLAGS) -std=gnu11 -Wall -Wextra \
+	-funsigned-char -fwrapv -Wno-sign-compare \
+	-Wno-missing-field-initializers -Wno-unused-parameter
+IOS_BASE_QUICKJS_LIBRARIES := -lm -lpthread
 
 IOS_EXTRA_SOURCES ?=
 IOS_SOURCES := $(IOS_COMMON_SOURCES) $(IOS_EXTRA_SOURCES)
@@ -26,10 +33,10 @@ IOS_TOOLCHAIN_FLAGS := -isysroot $(SDK_IOS_PATH) -B$(MODERN_BIN)
 IOS_QUICKJS_COMPAT_DIR := source/library/iOS/clang/QuickJS
 IOS_QUICKJS_CPPFLAGS := -I$(IOS_QUICKJS_COMPAT_DIR) \
 	-include $(IOS_QUICKJS_COMPAT_DIR)/quickjs_compat.h \
-	$(MODERN_QUICKJS_CPPFLAGS)
-IOS_QUICKJS_CFLAGS := $(MODERN_QUICKJS_CFLAGS) \
+	$(IOS_BASE_QUICKJS_CPPFLAGS)
+IOS_QUICKJS_CFLAGS := $(IOS_BASE_QUICKJS_CFLAGS) \
 	-Wno-unused-command-line-argument
-IOS_QUICKJS_LIBRARIES := $(MODERN_QUICKJS_LIBRARIES)
+IOS_QUICKJS_LIBRARIES := $(IOS_BASE_QUICKJS_LIBRARIES)
 IOS_QUICKJS_SOURCE_NAMES := $(filter-out quickjs-libc.c, \
 	$(QUICKJS_SOURCE_NAMES))
 

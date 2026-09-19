@@ -18,7 +18,7 @@ IPHONE_LAUNCH_IMAGES={
     'Default-Landscape-736h@3x.png': (2208,1242),
 }
 for platform,archive_name,exe_relative,plist_relative,resources,architectures in [
-    ('macOS','RetroDLP.zip','Contents/MacOS/RetroDLP','Contents/Info.plist','Contents/Resources',{'ppc','i386','x86_64','arm64'}),
+    ('macOS','RetroDLP.zip','Contents/MacOS/RetroDLP','Contents/Info.plist','Contents/Resources',{'ppc','i386'}),
     ('iOS','RetroDLP.ipa','RetroDLP','Info.plist','',{'armv7','arm64'}),
 ]:
     directory=ROOT/'build/apps'/platform
@@ -26,7 +26,7 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
     exe=bundle/exe_relative
     found=set(subprocess.check_output(['/osxcross/modern/bin/lipo','-archs',str(exe)],text=True).split())
     assert found==architectures,(platform,found)
-    minimums={'ppc':'10.4','i386':'10.4','x86_64':'10.9','arm64':'11.0'} if platform=='macOS' else {'armv7':'5.0','arm64':'7.0'}
+    minimums={'ppc':'10.4','i386':'10.4'} if platform=='macOS' else {'armv7':'5.0','arm64':'7.0'}
     for architecture,minimum in minimums.items():
         load_commands=subprocess.check_output(['/osxcross/modern/bin/otool','-arch',architecture,'-l',str(exe)],text=True)
         commands=re.split(r'Load command \d+',load_commands)
@@ -44,6 +44,8 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
     plist=plistlib.loads((bundle/plist_relative).read_bytes())
     assert 'RetroDLPTestDirectory' not in plist,'Test directory leaked into release'
     assert plist['CFBundleIdentifier']=='com.altivecintelligence.RetroDLP'
+    if platform=='macOS':
+        assert plist['LSMinimumSystemVersionByArchitecture']==minimums
     if platform=='iOS':
         assert plist['MinimumOSVersion']=='5.0'
         assert plist['UIFileSharingEnabled']

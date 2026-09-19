@@ -27,18 +27,26 @@ validate_minimum() {
     grep -Eq "(version|minos)[[:space:]]+$validation_minimum([[:space:]]|$)"
 }
 
-for artifact in libretrodlp.a libretrodlp-download.a; do
-  "$legacy_lipo" "$build_root/macOS/$artifact" \
-    -verify_arch ppc i386 x86_64 arm64
+# Require exactly the supported slices; -verify_arch alone permits extras.
+validate_architectures() {
+  validation_lipo=$1
+  validation_artifact=$2
+  validation_expected=$3
+  validation_actual=$("$validation_lipo" -archs "$validation_artifact" | \
+    tr ' ' '\n' | sed '/^$/d' | LC_ALL=C sort | tr '\n' ' ')
+  if [ "$validation_actual" != "$validation_expected" ]; then
+    echo "Unexpected architectures in $validation_artifact: $validation_actual" >&2
+    exit 1
+  fi
+}
+
+for artifact in ppc-i386/retro-dlp libretrodlp.a libretrodlp-download.a; do
+  # The legacy lipo can assemble/thin PowerPC slices but lacks -archs.
+  validate_architectures "$modern_lipo" "$build_root/macOS/$artifact" "i386 ppc "
 done
 
-"$legacy_lipo" "$build_root/macOS/ppc-i386/retro-dlp" \
-  -verify_arch ppc i386
-"$legacy_lipo" "$build_root/macOS/x86_64-arm64/retro-dlp" \
-  -verify_arch x86_64 arm64
-
 for artifact in retro-dlp libretrodlp.a libretrodlp-download.a; do
-  "$modern_lipo" "$build_root/iOS/$artifact" -verify_arch armv7 arm64
+  validate_architectures "$modern_lipo" "$build_root/iOS/$artifact" "arm64 armv7 "
 done
 
 # Deployment load commands are properties of linked Mach-O images. Validate
@@ -48,10 +56,6 @@ validate_minimum "$legacy_lipo" "$build_root/macOS/ppc-i386/retro-dlp" \
   ppc 10.4
 validate_minimum "$legacy_lipo" "$build_root/macOS/ppc-i386/retro-dlp" \
   i386 10.4
-validate_minimum "$legacy_lipo" \
-  "$build_root/macOS/x86_64-arm64/retro-dlp" x86_64 10.9
-validate_minimum "$legacy_lipo" \
-  "$build_root/macOS/x86_64-arm64/retro-dlp" arm64 11.0
 validate_minimum "$modern_lipo" "$build_root/iOS/retro-dlp" armv7 5.0
 validate_minimum "$modern_lipo" "$build_root/iOS/retro-dlp" arm64 7.0
 

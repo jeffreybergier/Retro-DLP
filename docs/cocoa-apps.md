@@ -10,7 +10,7 @@ Use the same Altivec environment and SDKs as the library:
 
 ```sh
 make apps          # builds both apps and their library dependencies
-make app-macOS     # PowerPC, i386, x86_64, arm64
+make app-macOS     # PowerPC, i386 (Apple GCC 4.2.1)
 make app-iOS       # armv7 (iOS 5+), arm64 (iOS 7+)
 make app-test      # portable store and application integration tests on Linux
 make app-validate  # inspect already-built app bundles and ZIP/IPA artifacts
@@ -788,6 +788,10 @@ Run the Apple analyzers with:
 make -C source/gui/macOS analyze
 make -C source/gui/iOS analyze
 ```
+
+The macOS analyzer retains Clang, the macOS 11.3 SDK, and an x86_64 analysis
+target even though the shipped app contains only GCC-built `ppc` and `i386`
+slices. Analysis does not build or link a modern macOS executable.
 
 Reports remain under `build/apps/<platform>/analyze`. Cross-builds and static
 analysis establish compilation and API/link compatibility, not device launch or

@@ -5,7 +5,6 @@ BUILD_DIR := build
 INTERMEDIATE_DIR := $(BUILD_DIR)/intermediates
 MACOS_BUILD_DIR := $(BUILD_DIR)/macOS
 MACOS_LEGACY_BUILD_DIR := $(MACOS_BUILD_DIR)/ppc-i386
-MACOS_MODERN_BUILD_DIR := $(MACOS_BUILD_DIR)/x86_64-arm64
 IOS_BUILD_DIR := $(BUILD_DIR)/iOS
 LINUX_BUILD_DIR := $(BUILD_DIR)/linux
 
@@ -64,7 +63,6 @@ LINUX_DOWNLOAD_LIBRARY := $(LINUX_BUILD_DIR)/libretrodlp-download.a
 MACOS_LIBRARY := $(MACOS_BUILD_DIR)/libretrodlp.a
 MACOS_DOWNLOAD_LIBRARY := $(MACOS_BUILD_DIR)/libretrodlp-download.a
 MACOS_LEGACY_PROGRAM := $(MACOS_LEGACY_BUILD_DIR)/$(PROGRAM)
-MACOS_MODERN_PROGRAM := $(MACOS_MODERN_BUILD_DIR)/$(PROGRAM)
 IOS_LIBRARY := $(IOS_BUILD_DIR)/libretrodlp.a
 IOS_DOWNLOAD_LIBRARY := $(IOS_BUILD_DIR)/libretrodlp-download.a
 LINUX_CONSUMER_TEST_SOURCE := source/library/linux/tests/public_consumer.c
@@ -97,10 +95,7 @@ IOS_CA_SOURCE := $(IOS_ALTIVECCORE_DIR)/lib/cacert.pem
 IOS_CA_BUNDLE := $(IOS_BUILD_DIR)/cacert.pem
 
 SDK_MAC_OLD := 10.5
-SDK_MAC_NEW := 11.3
 MAC_MIN_OLD := 10.4
-MAC_MIN_X64 := 10.9
-MAC_MIN_ARM64 := 11.0
 IOS_MIN_ARMV7 := 5.0
 IOS_MIN_ARM64 := 7.0
 
@@ -156,7 +151,6 @@ LINUX_DOWNLOAD_CONSUMER_TEST_OBJECT := \
 	$(LINUX_INT_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_SOURCE:.c=.o)
 
 include make/apple-gcc4.mk
-include make/clang.mk
 include make/ios-clang.mk
 
 OTOOL_MODERN ?= $(MODERN_BIN)/otool
@@ -167,10 +161,9 @@ APPLICATION_DEPENDENCIES := $(LINUX_OBJECTS:.o=.d) \
 	$(LINUX_DOWNLOAD_CONSUMER_TEST_OBJECT:.o=.d) \
 	$(LINUX_EXAMPLE_OBJECTS:.o=.d) \
 	$(LINUX_LSMASH_OBJECTS:.o=.d) \
-	$(I386_OBJECTS:.o=.d) $(X86_64_OBJECTS:.o=.d) $(ARM64_OBJECTS:.o=.d) \
+	$(I386_OBJECTS:.o=.d) \
 	$(IOS_OBJECTS:.o=.d) $(PPC_LSMASH_OBJECTS:.o=.d) \
-	$(I386_LSMASH_OBJECTS:.o=.d) $(X86_64_LSMASH_OBJECTS:.o=.d) \
-	$(ARM64_LSMASH_OBJECTS:.o=.d) $(IOS_ARMV7_LSMASH_OBJECTS:.o=.d) \
+	$(I386_LSMASH_OBJECTS:.o=.d) $(IOS_ARMV7_LSMASH_OBJECTS:.o=.d) \
 	$(IOS_ARM64_LSMASH_OBJECTS:.o=.d)
 -include $(APPLICATION_DEPENDENCIES)
 
@@ -178,10 +171,6 @@ $(LINUX_INT_DIR)/source/library/shared/yt_ejs.o \
 $(MACOS_INT_DIR)/ppc/source/library/shared/yt_ejs.o \
 $(MACOS_INT_DIR)/i386/source/library/shared/yt_ejs.o: \
 	SOURCE_WARNING_FLAGS := -Wno-unused-parameter
-
-$(MACOS_INT_DIR)/x86_64/source/library/shared/yt_ejs.o \
-$(MACOS_INT_DIR)/arm64/source/library/shared/yt_ejs.o: \
-	SOURCE_WARNING_FLAGS := -Wno-unused-parameter -Wno-sign-conversion
 
 $(IOS_INT_DIR)/source/library/shared/yt_ejs.o: \
 	SOURCE_WARNING_FLAGS := -Wno-unused-parameter -Wno-sign-conversion
@@ -191,10 +180,6 @@ $(MACOS_INT_DIR)/ppc/source/cli/tests/self_test.o \
 $(MACOS_INT_DIR)/i386/source/cli/tests/self_test.o: \
 	SOURCE_WARNING_FLAGS := -Wno-unused-parameter
 
-$(MACOS_INT_DIR)/x86_64/source/cli/tests/self_test.o \
-$(MACOS_INT_DIR)/arm64/source/cli/tests/self_test.o: \
-	SOURCE_WARNING_FLAGS := -Wno-unused-parameter -Wno-sign-conversion
-
 $(IOS_INT_DIR)/source/cli/tests/self_test.o: \
 	SOURCE_WARNING_FLAGS := -Wno-unused-parameter -Wno-sign-conversion
 
@@ -202,8 +187,7 @@ $(IOS_INT_DIR)/source/cli/tests/self_test.o: \
 
 release: macOS iOS
 
-macOS: validate $(MACOS_LEGACY_PROGRAM) $(MACOS_MODERN_PROGRAM) \
-	$(MACOS_LIBRARY) \
+macOS: validate $(MACOS_LEGACY_PROGRAM) $(MACOS_LIBRARY) \
 	$(MACOS_DOWNLOAD_LIBRARY) $(MACOS_CA_BUNDLE)
 
 iOS: validate-iOS $(IOS_BUILD_DIR)/$(PROGRAM) $(IOS_LIBRARY) \
@@ -263,29 +247,22 @@ sanitize:
 		LDFLAGS="-fsanitize=address,undefined" test
 
 $(MACOS_LEGACY_PROGRAM): $(PPC_BINARY) $(I386_BINARY)
-	@echo " [5/5] Merging legacy binary (ppc, i386)..."
+	@echo " [3/3] Merging legacy binary (ppc, i386)..."
 	@mkdir -p $(dir $@)
 	@$(LIPO) -create $^ -output $@
 	@echo "  > $@"
 
-$(MACOS_MODERN_PROGRAM): $(X86_64_BINARY) $(ARM64_BINARY)
-	@echo " [5/5] Merging modern binary (x86_64, arm64)..."
+# Re-merge when the architecture configuration changes, including existing builds.
+$(MACOS_LIBRARY): $(PPC_LIBRARY) $(I386_LIBRARY) make/Makefile
+	@echo "  > merging ppc/i386 resolver library"
 	@mkdir -p $(dir $@)
-	@$(LIPO) -create $^ -output $@
-	@echo "  > $@"
-
-$(MACOS_LIBRARY): $(PPC_LIBRARY) $(I386_LIBRARY) $(X86_64_LIBRARY) \
-		$(ARM64_LIBRARY)
-	@echo "  > merging quad-fat resolver library"
-	@mkdir -p $(dir $@)
-	@$(LIPO) -create $^ -output $@
+	@$(LIPO) -create $(filter %.a,$^) -output $@
 
 $(MACOS_DOWNLOAD_LIBRARY): $(PPC_DOWNLOAD_LIBRARY) \
-		$(I386_DOWNLOAD_LIBRARY) $(X86_64_DOWNLOAD_LIBRARY) \
-		$(ARM64_DOWNLOAD_LIBRARY)
-	@echo "  > merging quad-fat optional download library"
+		$(I386_DOWNLOAD_LIBRARY) make/Makefile
+	@echo "  > merging ppc/i386 optional download library"
 	@mkdir -p $(dir $@)
-	@$(LIPO) -create $^ -output $@
+	@$(LIPO) -create $(filter %.a,$^) -output $@
 
 $(MACOS_CA_BUNDLE): $(MACOS_CA_SOURCE)
 	@echo "  > copying macOS CA certificate bundle"
@@ -387,14 +364,10 @@ validate:
 		{ echo "Missing SDK: $(SDK_PPC_PATH)" >&2; exit 1; }
 	@test -d "$(SDK_X86_PATH)" || \
 		{ echo "Missing SDK: $(SDK_X86_PATH)" >&2; exit 1; }
-	@test -d "$(SDK_X64_PATH)" || \
-		{ echo "Missing SDK: $(SDK_X64_PATH)" >&2; exit 1; }
-	@test -d "$(SDK_ARM64_PATH)" || \
-		{ echo "Missing SDK: $(SDK_ARM64_PATH)" >&2; exit 1; }
-	@test -n "$(COMPILER_X64)" -a -x "$(COMPILER_X64)" || \
-		{ echo "Missing x86_64 compiler" >&2; exit 1; }
-	@test -n "$(COMPILER_ARM64)" -a -x "$(COMPILER_ARM64)" || \
-		{ echo "Missing arm64 compiler" >&2; exit 1; }
+	@test -n "$(COMPILER_PPC)" -a -x "$(COMPILER_PPC)" || \
+		{ echo "Missing PowerPC compiler" >&2; exit 1; }
+	@test -n "$(COMPILER_X86)" -a -x "$(COMPILER_X86)" || \
+		{ echo "Missing i386 compiler" >&2; exit 1; }
 	@test -f "$(ALTIVECCORE)" || \
 		{ echo "Missing AltivecCore: $(ALTIVECCORE)" >&2; exit 1; }
 	@test -f "$(ALTIVEC_CRYPTO)" || \

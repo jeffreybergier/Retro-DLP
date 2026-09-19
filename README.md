@@ -119,13 +119,12 @@ is unchanged; individual videos are never resolved for these fields.
 
 | Platform | Architectures | Minimum OS | Tested |
 |---|---|---|---|
-| macOS legacy | PowerPC, i386 | Mac OS X 10.4+ | 10.4 (PPC), 10.5 (PPC) |
-| macOS modern | x86_64, arm64 | OS X 10.9+ (Intel), macOS 11+ (Apple Silicon) | macOS 15 (arm64) |
+| macOS | PowerPC, i386 | Mac OS X 10.4+ | 10.4 (PPC), 10.5 (PPC) |
 | iOS | armv7, arm64 | iOS 5+ | iPhone 5 iOS 6 |
 
-The macOS release provides separate `ppc-i386` and `x86_64-arm64` archives so
-each OS selects from compatible executable slices. The iOS release contains one
-universal armv7/arm64 executable and requires a jailbroken device.
+The macOS CLI, application, and static libraries contain only `ppc` and `i386`
+slices built with Apple GCC 4.2.1. The iOS release contains one universal
+armv7/arm64 executable and requires a jailbroken device.
 
 ## Install
 
@@ -136,14 +135,12 @@ bundle for HTTPS.
 
 ### Mac
 
-Download the `ppc-i386` archive for PowerPC Macs or Intel Macs running OS X
-10.4 through 10.8. Download the `x86_64-arm64` archive for Intel Macs running
-OS X 10.9 or newer and for Apple Silicon Macs. Unzip it and put both files
-wherever you want. For example:
+Download the `ppc-i386` archive for PowerPC Macs or Intel Macs with support
+for 32-bit applications. Unzip it and put both files wherever you want. For
+example:
 
 ```sh
 unzip Retro-DLP-X.Y.Z-macOS-ppc-i386.zip
-# Or: unzip Retro-DLP-X.Y.Z-macOS-x86_64-arm64.zip
 mkdir -p ~/bin
 mv retro-dlp cacert.pem ~/bin/
 chmod +x ~/bin/retro-dlp
@@ -290,9 +287,13 @@ docker compose run --rm altivec-sdk install
 docker compose run --rm altivec "make clean release"
 ```
 
-The builds land in `build/macOS` and `build/iOS`. Each directory contains the
-executable, its matching `cacert.pem`, `libretrodlp.a`, and the optional
-`libretrodlp-download.a`.
+The CLI executables land in `build/macOS/ppc-i386/retro-dlp` and
+`build/iOS/retro-dlp`. Each platform directory contains `cacert.pem`,
+`libretrodlp.a`, and the optional `libretrodlp-download.a`.
+
+The macOS app retains Clang static analysis via
+`make -C source/gui/macOS analyze`. This uses the modern macOS SDK and an
+x86_64 analysis target, without compiling or linking a modern macOS executable.
 
 Optional: build the native Linux executable or run the offline test suite:
 
