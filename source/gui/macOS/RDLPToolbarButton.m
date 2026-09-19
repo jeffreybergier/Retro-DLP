@@ -57,9 +57,11 @@
       if(![view isKindOfClass:[RDLPToolbarButton class]] || ![view menu]) continue;
       NSPoint point=[view convertPoint:[event locationInWindow] fromView:nil];
       NSRect hit=[view bounds];
-      /* Include the native label immediately below this icon. */
-      if(![view isFlipped]) hit.origin.y-=20;
-      hit.size.height+=20;
+      /* Icon-only customization removes the label's hit area. */
+      if([[window toolbar] displayMode]!=NSToolbarDisplayModeIconOnly) {
+        if(![view isFlipped]) hit.origin.y-=20;
+        hit.size.height+=20;
+      }
       if(NSPointInRect(point,hit)) {
         if([event type]==NSLeftMouseDown) pendingMenuButton_=[(RDLPToolbarButton *)view retain];
         else [view rightMouseDown:event];

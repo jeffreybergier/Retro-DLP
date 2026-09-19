@@ -22,15 +22,15 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (NSArray *)toolbarDefaultItemIdentifiers:(NSToolbar *)toolbar;
 - (NSArray *)toolbarAllowedItemIdentifiers:(NSToolbar *)toolbar;
 - (NSToolbarItem *)toolbar:(NSToolbar *)toolbar itemForItemIdentifier:(NSString *)identifier willBeInsertedIntoToolbar:(BOOL)insert;
+- (void)toolbarWillAddItem:(NSNotification *)notification;
+- (void)toolbarDidRemoveItem:(NSNotification *)notification;
+- (void)customizeToolbar:(id)sender;
 - (NSMenu *)menuForToolbarIdentifier:(NSString *)identifier;
-- (void)playVideoInVLC:(id)sender;
-- (void)playPlaylistInVLC:(id)sender;
 - (void)menuNeedsUpdate:(NSMenu *)menu;
 - (NSDictionary *)contextPlaylist;
 - (NSString *)selectionPlayFile;
 - (void)playSelection:(id)sender;
-- (void)playSelectionInDefaultApplication:(id)sender;
-- (void)playSelectionInVLC:(id)sender;
+- (void)chooseVideoPlayer:(NSMenuItem *)sender;
 - (void)revealSelection:(id)sender;
 - (void)toolbarDefault:(id)sender;
 - (void)chooseDownload:(NSMenuItem *)sender;
@@ -86,7 +86,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)retryAndRevealJob:(NSDictionary *)job;
 - (void)enqueueSingle:(NSDictionary *)request allowRetry:(BOOL)allowRetry;
 - (void)enqueueRequest:(NSDictionary *)request;
-- (void)downloadDefault:(id)sender;
+- (void)downloadSelectedVideo:(id)sender;
 - (void)sync:(id)sender;
 - (void)syncAll:(id)sender;
 - (void)discover:(id)sender;
@@ -294,24 +294,25 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSToolbar *toolbar=[[[NSToolbar alloc] initWithIdentifier:@"RetroDLPLibraryToolbar"] autorelease];
   [toolbar setDelegate:(id)self]; [toolbar setDisplayMode:NSToolbarDisplayModeIconAndLabel];
   [toolbar setSizeMode:NSToolbarSizeModeRegular];
+  [toolbar setAllowsUserCustomization:YES]; [toolbar setAutosavesConfiguration:YES];
   [[self window] setToolbar:toolbar]; [RDLPAppKit useExpandedToolbar:[self window]];
   /* Toolbar installation changes frame constraints on Tiger. Keep outer sizes. */
   [window setMinSize:NSMakeSize(640,480)];
   [window setFrame:frame display:NO];
 }
 - (NSArray *)toolbarDefaultItemIdentifiers:(NSToolbar *)toolbar;
-{ (void)toolbar; return [NSArray arrayWithObjects:@"download",@"play",NSToolbarFlexibleSpaceItemIdentifier,@"cookies",@"downloads",nil]; }
+{ (void)toolbar; return [NSArray arrayWithObjects:@"library",@"download",@"play",@"remove",NSToolbarFlexibleSpaceItemIdentifier,@"cookies",@"downloads",nil]; }
 - (NSArray *)toolbarAllowedItemIdentifiers:(NSToolbar *)toolbar;
-{ (void)toolbar; return [NSArray arrayWithObjects:@"download",@"play",@"cookies",@"downloads",NSToolbarFlexibleSpaceItemIdentifier,nil]; }
+{ (void)toolbar; return [NSArray arrayWithObjects:@"library",@"download",@"play",@"remove",@"cookies",@"downloads",NSToolbarSpaceItemIdentifier,NSToolbarFlexibleSpaceItemIdentifier,NSToolbarSeparatorItemIdentifier,nil]; }
 - (NSToolbarItem *)toolbar:(NSToolbar *)toolbar itemForItemIdentifier:(NSString *)identifier willBeInsertedIntoToolbar:(BOOL)insert;
 {
-  (void)toolbar;
-  NSArray *ids=[NSArray arrayWithObjects:@"download",@"play",@"cookies",@"downloads",nil];
+  (void)toolbar; (void)insert;
+  NSArray *ids=[NSArray arrayWithObjects:@"library",@"play",@"cookies",@"downloads",@"download",@"remove",nil];
   NSUInteger index=[ids indexOfObject:identifier]; if(index==NSNotFound) return nil;
-  NSArray *labels=[NSArray arrayWithObjects:@"Download",@"Play",@"Cookies",@"Queue",nil];
-  NSArray *icons=[NSArray arrayWithObjects:[NSNumber numberWithInt:AIFADownload],
-    [NSNumber numberWithInt:AIFAPlay],[NSNumber numberWithInt:AIFACookieBite],
-    [NSNumber numberWithInt:AIFAListCheck],nil];
+  NSArray *labels=[NSArray arrayWithObjects:@"Library",@"Play",@"Cookies",@"Queue",@"Download",@"Remove",nil];
+  NSArray *icons=[NSArray arrayWithObjects:[NSNumber numberWithInt:0x2b],
+    [NSNumber numberWithInt:AIFAPlay],[NSNumber numberWithInt:AIFACookie],
+    [NSNumber numberWithInt:AIFAListCheck],[NSNumber numberWithInt:AIFADownload],[NSNumber numberWithInt:AIFATrash],nil];
   NSToolbarItem *item=[[[NSToolbarItem alloc] initWithItemIdentifier:identifier] autorelease];
   RDLPToolbarButton *view=[[[RDLPToolbarButton alloc] initWithFrame:NSMakeRect(0,0,40,32)] autorelease];
   [view setTitle:[labels objectAtIndex:index]]; [view setTag:(NSInteger)index];
@@ -322,12 +323,37 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [item setLabel:[labels objectAtIndex:index]]; [item setPaletteLabel:[labels objectAtIndex:index]];
   [item setView:view]; [item setMinSize:NSMakeSize(40,32)]; [item setMaxSize:NSMakeSize(40,32)];
   [item setTarget:self]; [item setAction:@selector(toolbarDefault:)]; [item setTag:(NSInteger)index];
-  [item setAutovalidates:NO];
-  if(insert) {
-    if(!toolbarItems_) toolbarItems_=[[NSMutableDictionary alloc] init];
-    [toolbarItems_ setObject:item forKey:identifier];
+  if([identifier isEqualToString:@"library"] || [identifier isEqualToString:@"cookies"]) {
+    [view setTarget:view]; [view setAction:@selector(showOptions:)];
+    [item setTarget:view]; [item setAction:@selector(showOptions:)];
   }
+  [item setAutovalidates:NO];
   return item;
+}
+- (void)toolbarWillAddItem:(NSNotification *)notification;
+{
+  NSToolbarItem *item=[[notification userInfo] objectForKey:@"item"];
+  if(![[item view] isKindOfClass:[RDLPToolbarButton class]]) return;
+  RDLPToolbarButton *view=(RDLPToolbarButton *)[item view];
+  if([view action]==@selector(showOptions:)) {
+    /* A customization-palette copy must open the installed view's menu. */
+    [view setTarget:view]; [item setTarget:view];
+  }
+  if(!toolbarItems_) toolbarItems_=[[NSMutableDictionary alloc] init];
+  [toolbarItems_ setObject:item forKey:[item itemIdentifier]];
+  [self updateToolbar];
+}
+- (void)toolbarDidRemoveItem:(NSNotification *)notification;
+{
+  NSToolbarItem *item=[[notification userInfo] objectForKey:@"item"];
+  if([toolbarItems_ objectForKey:[item itemIdentifier]]==item)
+    [toolbarItems_ removeObjectForKey:[item itemIdentifier]];
+}
+- (void)customizeToolbar:(id)sender;
+{
+  if([self hasAttachedSheet]) return;
+  [[self window] makeKeyAndOrderFront:sender];
+  [[[self window] toolbar] runCustomizationPalette:sender];
 }
 /* Menu-bar commands keep stable positions; toolbar menus remain task-oriented. */
 - (NSMenu *)menuForMenuBarTitle:(NSString *)title;
@@ -355,12 +381,15 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)playSelection:(id)sender;
 {
   NSString *path=[self selectionPlayFile]; if(!path) return;
-  if([RDLPAppKit preferredPlaybackApplication:path]) [RDLPAppKit openPreferredPlayback:path]; else [self revealSelection:sender];
+  (void)sender;
+  if([RDLPAppKit preferredPlaybackApplication:path]) [RDLPAppKit openPreferredPlayback:path];
 }
-- (void)playSelectionInDefaultApplication:(id)sender;
-{ (void)sender; NSString *path=[self selectionPlayFile]; if(path) [RDLPAppKit openDefaultApplication:path]; }
-- (void)playSelectionInVLC:(id)sender;
-{ (void)sender; NSString *path=[self selectionPlayFile]; if(path) [RDLPAppKit openInVLC:path]; }
+- (void)chooseVideoPlayer:(NSMenuItem *)sender;
+{
+  if(![self validateMenuItem:sender]) return;
+  [RDLPAppKit saveVideoPlayer:[sender representedObject]];
+  [self updateControls];
+}
 - (void)revealSelection:(id)sender;
 { if([self hasTargetVideo]) [self revealTarget:sender]; else if([self contextPlaylist]) [self revealPlaylistFolder:sender]; }
 - (void)toolbarDefault:(id)sender;
@@ -369,10 +398,10 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if([sender isKindOfClass:[NSToolbarItem class]] && ![(RDLPToolbarButton *)[(NSToolbarItem *)sender view] isDefaultEnabled]) return;
   [[self window] makeKeyAndOrderFront:sender]; context_=libraryContext_;
   switch([sender tag]) {
-    case 0: [self downloadDefault:sender]; break;
     case 1: [self playSelection:sender]; break;
-    case 2: if([[library_ cookieStatus] isEqualToString:@"Not Imported"]) [self importCookies:sender]; else [self replaceCookies:sender]; break;
     case 3: [self showQueue:sender]; break;
+    case 4: [self downloadSelectedVideo:sender]; break;
+    case 5: if([self hasTargetVideo]) [self removeTarget:sender]; else [self removePlaylist:sender]; break;
   }
 }
 - (void)chooseDownload:(NSMenuItem *)sender;
@@ -567,29 +596,21 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   /* The menu bar follows the active window; this toolbar always describes
      the library's own selection. Queue focus must not change its buttons. */
   NSDictionary *row=[self selectedRow];
-  BOOL video=libraryContext_==1 && row!=nil, enabled=YES;
+  BOOL video=libraryContext_==1 && row!=nil;
   NSDictionary *job=video?(mode_==0?[self jobForEntry:row]:row):nil;
   NSDictionary *playlist=job?[library_ playlistForID:[job objectForKey:@"playlist_id"]]:[self selectedPlaylist];
-  NSString *format=job?[job objectForKey:@"format"]:downloadFormat_;
-  BOOL delete=video && [self playable:job];
-  AIFontAwesomeIcon icon=AIFADownload; NSString *tip=nil;
-  if(video) {
-    icon=delete?AIFATrash:([self canCancel:job]?AIFAHourglass:AIFADownload);
-    if(delete) enabled=[self canRemove:job];
-    tip=[NSString stringWithFormat:@"%@ — %@ · %@",delete?@"Delete downloaded video…":([self canCancel:job]?@"Show in Queue":@"Download video"),job?[job objectForKey:@"title"]:[row objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:format]];
-  } else if(playlist) {
-    icon=AIFAArrowsRotate;
-    enabled=![[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
-    tip=[NSString stringWithFormat:@"Sync ‘%@’",[playlist objectForKey:@"title"]];
-  } else { icon=(AIFontAwesomeIcon)0x2b; tip=@"Add a video…"; }
-  [self setToolbarItem:@"download" title:video?(delete?@"Delete":@"Download"):(playlist?@"Sync":@"Add Video") tip:tip icon:[RDLPLibraryViews toolbarIcon:icon window:[self window]] enabled:enabled];
+  [self setToolbarItem:@"library" title:@"Library" tip:@"Add videos and playlists, or sync your library" icon:[RDLPLibraryViews toolbarIcon:(AIFontAwesomeIcon)0x2b window:[self window]] enabled:YES];
+  BOOL cancellable=video && [self canCancel:job];
+  BOOL retry=video && ([self canRetry:job] || [self canDownloadAgain:job]);
+  NSDictionary *matching=video?[self jobForPlaylist:[playlist objectForKey:@"id"] video:[row objectForKey:@"video_id"] format:downloadFormat_]:nil;
+  BOOL canDownload=video && (!matching || [self canRetry:matching] || [self canDownloadAgain:matching]);
+  NSString *quality=[RDLPLibrary qualityLabelForFormat:retry?[job objectForKey:@"format"]:downloadFormat_];
+  NSString *downloadTip=cancellable?@"Cancel the selected download…":[NSString stringWithFormat:@"%@ — %@",retry?@"Retry the selected download":@"Download the selected video",quality];
+  [self setToolbarItem:@"download" title:@"Download" tip:downloadTip icon:[RDLPLibraryViews toolbarIcon:cancellable?AIFAOctagon:AIFADownload window:[self window]] enabled:cancellable || retry || canDownload];
+  [self setToolbarItem:@"remove" title:@"Remove" tip:@"Delete the selected download or remove the selected playlist…" icon:[RDLPLibraryViews toolbarIcon:AIFATrash window:[self window]] enabled:video?[self canRemove:job]:[self canRemovePlaylist:playlist]];
   NSString *path=video?([self playable:job]?[library_ fileForJob:job]:nil):[self playFileForPlaylist:playlist];
-  NSString *application=[RDLPAppKit preferredPlaybackApplication:path];
-  NSString *object=video?@"video":@"playlist";
-  NSString *playTip=path?(application?[NSString stringWithFormat:@"Play %@ in %@",object,[[[NSFileManager defaultManager] displayNameAtPath:application] stringByDeletingPathExtension]]:[NSString stringWithFormat:@"Reveal %@ in Finder",object]):@"Select a downloaded video or playlist to play";
-  [self setToolbarItem:@"play" title:@"Play" tip:playTip icon:[RDLPAppKit youTubeIconForScale:[RDLPAppKit backingScaleForWindow:[self window]]] enabled:path!=nil];
-  BOOL cookies=[[library_ cookieStatus] isEqualToString:@"Imported"];
-  [self setToolbarItem:@"cookies" title:@"Cookies" tip:[[library_ cookieStatus] isEqualToString:@"Not Imported"]?@"Import cookies…":@"Replace cookies…" icon:[RDLPLibraryViews toolbarIcon:cookies?AIFACookie:AIFACookieBite window:[self window]] enabled:![library_ isBusy]];
+  [self setToolbarItem:@"play" title:@"Play" tip:@"Play the selected video or playlist" icon:[RDLPAppKit youTubeIconForScale:[RDLPAppKit backingScaleForWindow:[self window]]] enabled:[RDLPAppKit preferredPlaybackApplication:path]!=nil];
+  [self setToolbarItem:@"cookies" title:@"Cookies" tip:@"Manage cookies and view the export guide" icon:[RDLPLibraryViews toolbarIcon:AIFACookie window:[self window]] enabled:YES];
   [self setToolbarItem:@"downloads" title:@"Queue" tip:@"Show Download Queue" icon:[RDLPLibraryViews toolbarIcon:AIFAListCheck window:[self window]] enabled:YES];
 }
 - (void)updateControls;
@@ -716,8 +737,12 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(visibilityAction==@selector(togglePlaylists:)) [item setTitle:[self isSidebarCollapsed]?@"Show Playlists":@"Hide Playlists"];
   if([[item menu] title] && [[[item menu] title] isEqualToString:@"File"]) {
     NSString *object=[self hasTargetVideo]?@"Video":@"Playlist";
-    if(visibilityAction==@selector(playSelectionInDefaultApplication:)) [item setTitle:[NSString stringWithFormat:@"Play %@ in Default App",object]];
-    if(visibilityAction==@selector(playSelectionInVLC:)) [item setTitle:[NSString stringWithFormat:@"Play %@ in VLC",object]];
+    if(visibilityAction==@selector(playSelection:)) [item setTitle:[NSString stringWithFormat:@"Play %@",object]];
+  }
+  if(visibilityAction==@selector(chooseVideoPlayer:)) {
+    NSString *player=[item representedObject];
+    [item setState:[[RDLPAppKit videoPlayer] isEqualToString:player]?NSOnState:NSOffState];
+    return ![self hasAttachedSheet] && [RDLPAppKit videoPlayerAvailable:player];
   }
   if([self hasAttachedSheet]) return NO;
   if(visibilityAction==@selector(downloadFromMenu:)) {
@@ -754,13 +779,9 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(action==@selector(removeTarget:)) return [self canRemove:job];
   if(action==@selector(showTargetInQueue:)) return job!=nil;
   if(action==@selector(playSelection:)) return [RDLPAppKit preferredPlaybackApplication:[self selectionPlayFile]]!=nil;
-  if(action==@selector(playSelectionInDefaultApplication:)) return [RDLPAppKit defaultApplication:[self selectionPlayFile]]!=nil;
-  if(action==@selector(playSelectionInVLC:)) return [self selectionPlayFile]!=nil && [RDLPAppKit VLCApplication]!=nil;
   if(action==@selector(revealSelection:)) return [self hasTargetVideo]?[self playable:job]:([self contextPlaylist]!=nil && [self targetPlaylistFolder]!=nil);
-  if(action==@selector(playVideoInVLC:)) return [self playable:job] && [RDLPAppKit VLCApplication]!=nil;
-  if(action==@selector(playPlaylistInVLC:)) return [self playFileForPlaylist:[self contextPlaylist]]!=nil && [RDLPAppKit VLCApplication]!=nil;
-  if(action==@selector(playTargetVideo:)) return [self playable:job] && [RDLPAppKit defaultApplication:[library_ fileForJob:job]]!=nil;
-  if(action==@selector(playTargetPlaylist:)) return [RDLPAppKit defaultApplication:[self playFileForPlaylist:[self contextPlaylist]]]!=nil;
+  if(action==@selector(playTargetVideo:)) return [self playable:job] && [RDLPAppKit preferredPlaybackApplication:[library_ fileForJob:job]]!=nil;
+  if(action==@selector(playTargetPlaylist:)) return [RDLPAppKit preferredPlaybackApplication:[self playFileForPlaylist:[self contextPlaylist]]]!=nil;
   if(action==@selector(revealTarget:)) return [self playable:job];
   if(action==@selector(revealPlaylistFolder:)) return [self targetPlaylistFolder]!=nil;
   if(action==@selector(openDownloadsFolder:)) return [[NSFileManager defaultManager] fileExistsAtPath:[library_ downloadsDirectory]];
@@ -893,18 +914,16 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [self enqueueSingle:request allowRetry:YES];
   [self refresh:nil];
 }
-- (void)downloadDefault:(id)sender;
+- (void)downloadSelectedVideo:(id)sender;
 {
-  if([self hasAttachedSheet]) return;
-  NSDictionary *playlist=[self contextPlaylist], *job=[self targetJob];
-  if([self hasTargetVideo]) {
-    if([self playable:job]) { [self removeTarget:sender]; return; }
-    if([self canRetry:job] || [self canDownloadAgain:job]) { [self retryAndRevealJob:job]; return; }
-    if(job) { [self showTargetInQueue:sender]; return; }
-    if(playlist) [self enqueueRequest:[NSDictionary dictionaryWithObjectsAndKeys:[playlist objectForKey:@"id"],@"playlist",[self targetVideoID],@"video",[self targetFormat],@"format",nil]];
-  } else if(playlist) {
-    [self sync:sender];
-  } else [self addVideo:sender];
+  if([self hasAttachedSheet] || ![self hasTargetVideo]) return;
+  NSDictionary *job=[self targetJob], *playlist=[self contextPlaylist];
+  if([self canCancel:job]) [self cancelTarget:sender];
+  else if([self canRetry:job] || [self canDownloadAgain:job]) [self retryAndRevealJob:job];
+  else if(playlist) {
+    NSMenuItem *command=[[[NSMenuItem alloc] initWithTitle:@"" action:@selector(chooseDownload:) keyEquivalent:@""] autorelease];
+    [self chooseDownload:command];
+  }
 }
 - (void)sync:(id)sender;
 { (void)sender; NSDictionary *playlist=[self contextPlaylist]; if(playlist && ![[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID]) [library_ syncPlaylistInput:[playlist objectForKey:@"service_id"]]; }
@@ -989,13 +1008,9 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"removePlaylist",@"operation",playlist,@"playlist",nil] title:[NSString stringWithFormat:@"Remove ‘%@’ from the library?",[playlist objectForKey:@"title"]] detail:@"Remove local playlist metadata and remaining partial files. This does not delete the playlist from YouTube." action:@"Remove Playlist"];
 }
 - (void)playTargetVideo:(id)sender;
-{ (void)sender; NSDictionary *job=[self targetJob]; if([self playable:job]) [RDLPAppKit openDefaultApplication:[library_ fileForJob:job]]; }
+{ (void)sender; NSDictionary *job=[self targetJob]; if([self playable:job]) [RDLPAppKit openPreferredPlayback:[library_ fileForJob:job]]; }
 - (void)playTargetPlaylist:(id)sender;
-{ (void)sender; NSString *path=[self playFileForPlaylist:[self contextPlaylist]]; if(path) [RDLPAppKit openDefaultApplication:path]; }
-- (void)playVideoInVLC:(id)sender;
-{ (void)sender; NSDictionary *job=[self targetJob]; if([self playable:job]) [RDLPAppKit openInVLC:[library_ fileForJob:job]]; }
-- (void)playPlaylistInVLC:(id)sender;
-{ (void)sender; [RDLPAppKit openInVLC:[self playFileForPlaylist:[self contextPlaylist]]]; }
+{ (void)sender; NSString *path=[self playFileForPlaylist:[self contextPlaylist]]; if(path) [RDLPAppKit openPreferredPlayback:path]; }
 - (void)revealTarget:(id)sender;
 { (void)sender; NSDictionary *job=[self targetJob]; if([self playable:job]) [RDLPAppKit revealInFinder:[library_ fileForJob:job]]; }
 - (void)revealPlaylistFolder:(id)sender;

@@ -45,7 +45,7 @@ tell application "System Events"
     delay 0.5
     click menu bar item "File" of menu bar 1
     delay 0.5
-    if enabled of menu item "Play Playlist in Default App" of menu 1 of menu bar item "File" of menu bar 1 then error "No selection must disable video playback"
+    if enabled of menu item "Play Playlist" of menu 1 of menu bar item "File" of menu bar 1 then error "No selection must disable video playback"
     key code 53
   end tell
 end tell

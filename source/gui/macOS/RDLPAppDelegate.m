@@ -24,6 +24,8 @@
   [app addItem:[NSMenuItem separatorItem]];
   NSMenu *qualities=[window_ menuForMenuBarTitle:@"Download Quality"];
   item=[app addItemWithTitle:@"Download Quality" action:NULL keyEquivalent:@""]; [app setSubmenu:qualities forItem:item];
+  NSMenu *players=[window_ menuForMenuBarTitle:@"Video Player"];
+  item=[app addItemWithTitle:@"Video Player" action:NULL keyEquivalent:@""]; [app setSubmenu:players forItem:item];
   NSMenu *cookies=[window_ menuForMenuBarTitle:@"Cookies"];
   item=[app addItemWithTitle:@"Cookies" action:NULL keyEquivalent:@""]; [app setSubmenu:cookies forItem:item];
   [app addItem:[NSMenuItem separatorItem]];

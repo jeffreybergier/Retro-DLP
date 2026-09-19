@@ -5,6 +5,7 @@
 #import "../RDLPToolbarButton.h"
 #import "../RDLPQueueWindowController.h"
 #import "../RDLPAppKit.h"
+#import "../RDLPLibraryViews.h"
 #import "../RDLPAppDelegate.h"
 #import "../../shared/rdapp_store.h"
 #import "../../shared/RDLP_Foundation.h"
@@ -101,18 +102,23 @@ static void testMacErrorAlert(RDLPLibraryWindowController *window) {
   [NSObject cancelPreviousPerformRequestsWithTarget:presenter]; [presenter release];
 }
 /* Exercise VLC-present/absent branches without changing installed applications. */
-static BOOL probeVLC, probeDefault;
+static BOOL probeVLC, probeQuickTime, probeDefault;
 static NSString *probeOpened;
 @interface RDLPPlaybackProbe : RDLPAppKit
 + (void)checkFile:(NSString *)path;
 @end
 @implementation RDLPPlaybackProbe
 + (NSString *)VLCApplication { return probeVLC?@"/Applications/VLC.app":nil; }
++ (NSString *)QuickTimeApplication { return probeQuickTime?@"/Applications/QuickTime Player.app":nil; }
 + (NSString *)defaultApplication:(NSString *)path { (void)path; return probeDefault?@"/Applications/QuickTime Player.app":nil; }
 + (void)openInVLC:(NSString *)path { (void)path; probeOpened=@"VLC"; }
++ (void)openInQuickTime:(NSString *)path { (void)path; probeOpened=@"QuickTime"; }
 + (void)openDefaultApplication:(NSString *)path { (void)path; probeOpened=@"Default"; }
 + (void)checkFile:(NSString *)path {
-  probeVLC=YES; probeDefault=YES;
+  NSUserDefaults *defaults=[NSUserDefaults standardUserDefaults];
+  NSString *saved=[[defaults stringForKey:@"RetroDLPVideoPlayer"] copy];
+  [defaults removeObjectForKey:@"RetroDLPVideoPlayer"];
+  probeVLC=YES; probeQuickTime=YES; probeDefault=YES;
   requireCondition([[self preferredPlaybackApplication:path] isEqual:[self VLCApplication]],@"Installed VLC must take priority over the system association");
   probeOpened=nil; [self openPreferredPlayback:path];
   requireCondition([probeOpened isEqual:@"VLC"],@"Automatic playback must dispatch to VLC only");
@@ -122,12 +128,30 @@ static NSString *probeOpened;
   requireCondition([[self preferredPlaybackApplication:path] isEqual:[self defaultApplication:path]],@"Absent VLC must select the system default");
   probeOpened=nil; [self openPreferredPlayback:path];
   requireCondition([probeOpened isEqual:@"Default"],@"Absent VLC must dispatch to the system default");
+  probeVLC=YES;
+  [self saveVideoPlayer:@"Default App"]; probeOpened=nil; [self openPreferredPlayback:path];
+  requireCondition([probeOpened isEqual:@"Default"] && [[self videoPlayer] isEqual:@"Default App"],@"Explicit Default App overrides installed VLC");
+  [self saveVideoPlayer:@"QuickTime"]; probeOpened=nil; [self openPreferredPlayback:path];
+  requireCondition([probeOpened isEqual:@"QuickTime"] && [[self preferredPlaybackApplication:path] isEqual:[self QuickTimeApplication]],@"QuickTime choice controls application resolution and dispatch");
+  [defaults synchronize];
+  requireCondition([[defaults stringForKey:@"RetroDLPVideoPlayer"] isEqual:@"QuickTime"],@"Player choice is persisted");
+  probeQuickTime=NO; probeOpened=nil; [self openPreferredPlayback:path];
+  requireCondition([probeOpened isEqual:@"Default"] && [[self videoPlayer] isEqual:@"Default App"],@"Removed QuickTime falls back to Default App");
+  [self saveVideoPlayer:@"VLC"]; probeOpened=nil; [self openPreferredPlayback:path];
+  requireCondition([probeOpened isEqual:@"VLC"],@"Explicit VLC choice overrides earlier preference");
+  probeVLC=NO; probeOpened=nil; [self openPreferredPlayback:path];
+  requireCondition([probeOpened isEqual:@"Default"],@"Removed VLC falls back to Default App");
+  [self saveVideoPlayer:@"QuickTime"];
+  requireCondition([[defaults stringForKey:@"RetroDLPVideoPlayer"] isEqual:@"VLC"],@"Unavailable player cannot overwrite saved choice");
   probeDefault=NO;
   requireCondition([self preferredPlaybackApplication:path]==nil,@"No installed handler must preserve Finder fallback");
   probeVLC=YES; probeOpened=nil;
   [self openPreferredPlayback:nil]; [self openPreferredPlayback:[path stringByAppendingString:@".missing"]];
   requireCondition(probeOpened==nil && [self preferredPlaybackApplication:nil]==nil &&
     [self preferredPlaybackApplication:[path stringByAppendingString:@".missing"]]==nil,@"Missing media must not launch a player");
+  if(saved) [defaults setObject:saved forKey:@"RetroDLPVideoPlayer"];
+  else [defaults removeObjectForKey:@"RetroDLPVideoPlayer"];
+  [defaults synchronize]; [saved release];
 }
 @end
 static void pump(void) { [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.3]]; }
@@ -150,18 +174,34 @@ static void selectRow(RDLPLibraryWindowController *window,NSString *key,NSUInteg
   [[window window] makeKeyAndOrderFront:nil];
   [window tableWasUsed:table]; [table selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO]; [window tableWasUsed:table];
 }
+static NSMenuItem *menuChoice(NSMenu *menu,NSString *title) {
+  NSMenuItem *item=[menu itemWithTitle:title];
+  if(item) return item;
+  NSString *base=[title hasSuffix:@"…"]?[title substringToIndex:[title length]-1]:title;
+  NSString *prefix=[base stringByAppendingString:@" — "];
+  NSEnumerator *e=[[menu itemArray] objectEnumerator];
+  while((item=[e nextObject])) if([[item title] hasPrefix:prefix]) return item;
+  return nil;
+}
 static NSMenuItem *choice(NSMenu *menu,NSString *title) {
-  NSMenuItem *item=[menu itemWithTitle:title]; requireCondition(item!=nil,[NSString stringWithFormat:@"Missing fixed menu item %@",title]); return item;
+  NSMenuItem *item=menuChoice(menu,title); requireCondition(item!=nil,[NSString stringWithFormat:@"Missing fixed menu item %@",title]); return item;
 }
 static void invoke(RDLPLibraryWindowController *window,NSMenuItem *item) {
-  requireCondition([window validateMenuItem:item],[NSString stringWithFormat:@"Unexpected disabled action %@",[item title]]);
+  requireCondition([window validateMenuItem:item],[NSString stringWithFormat:@"Unexpected disabled action %@ (context=%@, queue job=%@)",[item title],[window valueForKey:@"context_"],[window selectedJob]]);
   [[item target] performSelector:[item action] withObject:item]; pump();
 }
 static void confirm(RDLPLibraryWindowController *window,BOOL accept) {
   NSAlert *alert=[window valueForKey:@"confirmation_"];
   requireCondition(alert!=nil && [window hasAttachedSheet],@"Expected attached confirmation sheet");
+  NSDictionary *request=[[[window valueForKey:@"confirmationRequest_"] copy] autorelease];
   [[[alert buttons] objectAtIndex:accept?1:0] performClick:nil]; pump();
   requireCondition([window valueForKey:@"confirmation_"]==nil,@"Sheet did not dismiss");
+  if(accept && [[request objectForKey:@"operation"] isEqual:@"cancel"]) {
+    /* The confirmed mutation is deferred until after AppKit closes the sheet. */
+    RDLPLibrary *library=[window valueForKey:@"library_"];
+    NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:5];
+    while([[[library jobForID:[request objectForKey:@"job"]] objectForKey:@"state"] isEqual:@"queued"] && [deadline timeIntervalSinceNow]>0) pump();
+  }
 }
 static NSArray *titles(NSMenu *menu) {
   NSMutableArray *result=[NSMutableArray array]; NSEnumerator *e=[[menu itemArray] objectEnumerator]; NSMenuItem *item;
@@ -173,13 +213,173 @@ static RDLPToolbarButton *queueButton(RDLPQueueWindowController *queue,NSString 
 }
 static NSArray *libraryToolbarState(RDLPLibraryWindowController *owner) {
   NSMutableArray *state=[NSMutableArray array];
-  NSEnumerator *identifiers=[[NSArray arrayWithObjects:@"download",@"play",nil] objectEnumerator]; NSString *identifier;
+  NSEnumerator *identifiers=[[NSArray arrayWithObjects:@"library",@"download",@"play",@"remove",@"cookies",@"downloads",nil] objectEnumerator]; NSString *identifier;
   while((identifier=[identifiers nextObject])) {
     RDLPToolbarButton *button=toolbarButton(owner,identifier);
     [state addObject:[NSArray arrayWithObjects:[button title],[button toolTip],
       [NSNumber numberWithBool:[button isDefaultEnabled]],[[button image] TIFFRepresentation],nil]];
   }
   return state;
+}
+static NSArray *libraryToolbarAppearance(RDLPLibraryWindowController *owner) {
+  NSMutableArray *appearance=[NSMutableArray array];
+  NSEnumerator *e=[libraryToolbarState(owner) objectEnumerator]; NSArray *item;
+  while((item=[e nextObject])) {
+    /* Download's label stays fixed; its icon and tooltip describe the action. */
+    [appearance addObject:[[item objectAtIndex:0] isEqualToString:@"Download"]?[item objectAtIndex:0]:
+      [NSArray arrayWithObjects:[item objectAtIndex:0],[item objectAtIndex:1],[item objectAtIndex:3],nil]];
+  }
+  return appearance;
+}
+static void testToolbarCustomization(RDLPLibrary *library,BOOL restoring) {
+  RDLPLibraryWindowController *owner=[[RDLPLibraryWindowController alloc] initWithLibrary:library];
+  [owner showWindow:nil]; pump();
+  NSToolbar *toolbar=[[owner window] toolbar];
+  NSArray *custom=[NSArray arrayWithObjects:@"download",@"cookies",@"library",NSToolbarSpaceItemIdentifier,NSToolbarSeparatorItemIdentifier,@"remove",NSToolbarFlexibleSpaceItemIdentifier,@"downloads",nil];
+  requireCondition([toolbar allowsUserCustomization] && [toolbar autosavesConfiguration],@"Main toolbar enables native customization and autosaving");
+  requireCondition(![[[[owner valueForKey:@"queueWindow_"] window] toolbar] allowsUserCustomization],@"Queue toolbar keeps its existing behavior");
+  if(!restoring) {
+    selectRow(owner,@"sidebar_",1); selectRow(owner,@"table_",1);
+    [toolbar removeItemAtIndex:1];
+    requireCondition(toolbarButton(owner,@"download")==nil,@"Removing an item clears its cached view");
+    [toolbar insertItemWithItemIdentifier:@"download" atIndex:0];
+    requireCondition([toolbarButton(owner,@"download") isDefaultEnabled] &&
+      [[toolbarButton(owner,@"download") image] isEqual:[RDLPLibraryViews toolbarIcon:AIFAOctagon window:[owner window]]],@"Reinserted Download immediately reflects the queued selection");
+    [toolbarButton(owner,@"download") performClick:nil]; pump(); confirm(owner,NO);
+    [toolbar removeItemAtIndex:2];
+    [toolbar insertItemWithItemIdentifier:NSToolbarSpaceItemIdentifier atIndex:2];
+    [toolbar insertItemWithItemIdentifier:NSToolbarSeparatorItemIdentifier atIndex:3];
+    [toolbar removeItemAtIndex:6];
+    [toolbar insertItemWithItemIdentifier:@"cookies" atIndex:1];
+    RDLPToolbarButton *cookies=toolbarButton(owner,@"cookies");
+    requireCondition([cookies target]==cookies && [cookies action]==@selector(showOptions:),@"Reinserted Cookies opens its own menu");
+    [toolbar setDisplayMode:NSToolbarDisplayModeIconOnly];
+    [toolbar setSizeMode:NSToolbarSizeModeSmall];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+  }
+  requireCondition([[[toolbar items] valueForKey:@"itemIdentifier"] isEqual:custom],@"Custom item order, removals, spacing and separators survive relaunch");
+  requireCondition([toolbar displayMode]==NSToolbarDisplayModeIconOnly && [toolbar sizeMode]==NSToolbarSizeModeSmall,@"Toolbar display settings survive relaunch");
+  requireCondition([[[owner valueForKey:@"toolbarItems_"] allKeys] count]==5 && toolbarButton(owner,@"play")==nil,@"Only installed app items are cached");
+  if(restoring) {
+    NSMenuItem *customize=choice([owner menuForMenuBarTitle:@"View"],@"Customize Toolbar…");
+    invoke(owner,customize);
+    requireCondition([toolbar customizationPaletteIsRunning],@"View command opens the native customization palette");
+    NSWindow *sheet=[[owner window] attachedSheet];
+    requireCondition(sheet!=nil && [sheet defaultButtonCell]!=nil,@"Native palette has a Done button");
+    [[sheet defaultButtonCell] performClick:nil]; pump();
+    requireCondition(![toolbar customizationPaletteIsRunning],@"Done closes the customization palette");
+    requireCondition([toolbarButton(owner,@"library") isDefaultEnabled],@"Toolbar buttons remain usable after customization");
+    [toolbar setAutosavesConfiguration:NO];
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"NSToolbar Configuration RetroDLPLibraryToolbar"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+  }
+  [owner close]; [owner release];
+}
+static void testFixedToolbar(RDLPLibraryWindowController *owner,RDLPLibrary *library) {
+  /* Release this batch's read snapshots before the rest of the synchronous
+     suite; real AppKit events drain their pools between user actions. */
+  NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+  NSArray *appearance=[[libraryToolbarAppearance(owner) copy] autorelease];
+  NSEnumerator *menuButtons=[[NSArray arrayWithObjects:@"library",@"cookies",nil] objectEnumerator]; NSString *identifier;
+  while((identifier=[menuButtons nextObject])) {
+    RDLPToolbarButton *button=toolbarButton(owner,identifier);
+    requireCondition([button target]==button && [button action]==@selector(showOptions:),@"Library and Cookies primary clicks open their menus");
+  }
+  requireCondition([toolbarButton(owner,@"downloads") menu]==nil,@"Queue is a navigation button without a menu");
+  requireCondition([[toolbarButton(owner,@"remove") image] isEqual:[RDLPLibraryViews toolbarIcon:AIFATrash window:[owner window]]],@"Remove owns the fixed trash icon");
+  NSUInteger scope;
+  for(scope=0;scope<4;++scope) {
+    selectRow(owner,@"sidebar_",scope==0?0:1);
+    if(scope>=2) selectRow(owner,@"table_",scope-2);
+    requireCondition([appearance isEqual:libraryToolbarAppearance(owner)],@"All labels and all other toolbar appearances stay fixed");
+    requireCondition([toolbarButton(owner,@"library") isDefaultEnabled],@"Library remains available in every selection");
+    BOOL cancellable=scope==3;
+    NSData *expectedIcon=[[RDLPLibraryViews toolbarIcon:cancellable?AIFAOctagon:AIFADownload window:[owner window]] TIFFRepresentation];
+    requireCondition([expectedIcon isEqual:[[toolbarButton(owner,@"download") image] TIFFRepresentation]],@"Download uses a stop sign for queued work and an arrow otherwise; deletion has its own button");
+    requireCondition([toolbarButton(owner,@"download") isDefaultEnabled]==cancellable,@"Download disables completed preferred-quality videos and enables cancellation for queued jobs");
+    NSMenu *libraryMenu=[toolbarButton(owner,@"library") menu];
+    [owner performSelector:@selector(menuNeedsUpdate:) withObject:libraryMenu];
+    requireCondition([libraryMenu numberOfItems]==6 && ![libraryMenu itemWithTitle:@"Show Download Queue"],@"Library contains only add, discovery and sync commands");
+    requireCondition([toolbarButton(owner,@"remove") isDefaultEnabled]==(scope>=2),@"Remove follows the video or removable playlist and never All Downloads");
+    invoke(owner,choice(libraryMenu,@"Add Video…"));
+    requireCondition([[[owner valueForKey:@"addSheet_"] title] isEqualToString:@"Add Video"],@"Library’s Add Video command opens its sheet in every selection");
+    [NSApp endSheet:[owner valueForKey:@"addSheet_"] returnCode:0]; pump();
+  }
+  requireCondition([[library jobsForPlaylist:nil completedOnly:NO] count]==3,@"Cancelling Add leaves existing downloads untouched");
+  rdapp_store *store=NULL; int64_t pid=0;
+  rdapp_entry entry; memset(&entry,0,sizeof(entry)); entry.video_id="CCCCCCCCCCC"; entry.title="New toolbar video";
+  requireCondition(rdapp_store_open("/tmp/retrodlp-toolbar-fixture/Support/retrodlp.sqlite",&store) &&
+    rdapp_store_snapshot(store,"PLdelete","Disposable playlist",&entry,1,&pid),@"Create removable local playlist");
+  rdapp_store_close(store); [owner refresh:nil];
+  NSString *key=[NSString stringWithFormat:@"%lld",(long long)pid];
+  NSOutlineView *outline=[owner valueForKey:@"sidebar_"];
+  id item=[[owner valueForKey:@"sidebarItems_"] objectForKey:key];
+  [outline selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)[outline rowForItem:item]] byExtendingSelection:NO];
+  [owner tableWasUsed:outline];
+  requireCondition(![toolbarButton(owner,@"download") isDefaultEnabled] && [appearance isEqual:libraryToolbarAppearance(owner)],@"Download stays disabled when only a playlist is selected");
+  selectRow(owner,@"table_",0);
+  requireCondition([toolbarButton(owner,@"download") isDefaultEnabled],@"An undownloaded video enables Download");
+  NSString *format=[[RDLPLibrary preferredFormat] copy];
+  [toolbarButton(owner,@"download") performClick:nil]; pump();
+  NSDictionary *job=[library jobForPlaylist:key video:@"CCCCCCCCCCC" format:format];
+  requireCondition([[job objectForKey:@"state"] isEqual:@"queued"],@"Download enqueues a new video at the preferred quality");
+  NSString *jobID=[[job objectForKey:@"id"] copy];
+  NSMenu *quality=[owner menuForMenuBarTitle:@"Download Quality"];
+  invoke(owner,choice(quality,@"High (137+140)"));
+  requireCondition(rdapp_store_open("/tmp/retrodlp-toolbar-fixture/Support/retrodlp.sqlite",&store),@"Open retry fixture");
+  NSArray *retryStates=[NSArray arrayWithObjects:@"failed",@"interrupted",@"cancelled",@"removed",@"complete",nil];
+  NSEnumerator *states=[retryStates objectEnumerator]; NSString *state;
+  while((state=[states nextObject])) {
+    requireCondition(rdapp_store_finish(store,strtoll([jobID UTF8String],NULL,10),[state UTF8String],[format UTF8String],""),@"Set retry or missing-file state");
+    [owner refresh:nil]; selectRow(owner,@"table_",0);
+    NSMenu *downloads=[owner menuForToolbarIdentifier:@"download"];
+    requireCondition([[choice(downloads,@"Download Video") title] isEqualToString:@"Download Video"] &&
+      [[choice(downloads,@"Retry Download") title] isEqualToString:@"Retry Download — Low (18)"],@"Download Video keeps its short title while retry names the original quality");
+    requireCondition([toolbarButton(owner,@"download") isDefaultEnabled] &&
+      [[toolbarButton(owner,@"download") image] isEqual:[RDLPLibraryViews toolbarIcon:AIFADownload window:[owner window]]],@"Failed, stopped, removed and missing-file videos offer the download arrow");
+    [toolbarButton(owner,@"download") performClick:nil]; pump();
+    requireCondition([[[library jobForID:jobID] objectForKey:@"state"] isEqual:@"queued"] && [[library jobsForPlaylist:key completedOnly:NO] count]==1,@"Toolbar retry preserves exact job identity without duplicate downloads");
+  }
+  NSArray *cancelStates=[NSArray arrayWithObjects:@"queued",@"running",nil];
+  states=[cancelStates objectEnumerator];
+  while((state=[states nextObject])) {
+    requireCondition(rdapp_store_finish(store,strtoll([jobID UTF8String],NULL,10),[state UTF8String],[format UTF8String],""),@"Set cancellable state");
+    [owner refresh:nil]; selectRow(owner,@"table_",0);
+    RDLPToolbarButton *button=toolbarButton(owner,@"download");
+    requireCondition([button isDefaultEnabled] && [[button image] isEqual:[RDLPLibraryViews toolbarIcon:AIFAOctagon window:[owner window]]] &&
+      [[button toolTip] isEqualToString:@"Cancel the selected download…"],@"Queued and running downloads offer an enabled stop sign and cancellation tooltip");
+    [button performClick:nil]; pump();
+    NSDictionary *request=[owner valueForKey:@"confirmationRequest_"];
+    requireCondition([[request objectForKey:@"operation"] isEqual:@"cancel"] && [[request objectForKey:@"job"] isEqual:jobID],@"Stop sign confirms cancellation of the selected job");
+    confirm(owner,NO);
+    requireCondition([[[library jobForID:jobID] objectForKey:@"state"] isEqual:state],@"Dismissing toolbar cancellation preserves the job");
+    if([state isEqual:@"queued"]) {
+      [button performClick:nil]; pump(); confirm(owner,YES);
+      /* Confirmation dispatches the action on the next AppKit event turn. */
+      NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:5];
+      while(![[[library jobForID:jobID] objectForKey:@"state"] isEqual:@"cancelled"] && [deadline timeIntervalSinceNow]>0) pump();
+      NSDictionary *cancelledJob=[library jobForID:jobID];
+      requireCondition([[cancelledJob objectForKey:@"state"] isEqual:@"cancelled"],
+        [NSString stringWithFormat:@"Stop-sign toolbar action cancels the selected job (job=%@, active=%@, errors=%@)",cancelledJob,[library valueForKey:@"activeJob_"],[library valueForKey:@"errors_"]]);
+      requireCondition([[button image] isEqual:[RDLPLibraryViews toolbarIcon:AIFADownload window:[owner window]]],@"Cancelled download returns to the download arrow");
+    }
+  }
+  /* The synthetic running row has no worker to acknowledge cancellation. */
+  requireCondition(rdapp_store_finish(store,strtoll([jobID UTF8String],NULL,10),"cancelled",[format UTF8String],""),@"Finish synthetic running job");
+  rdapp_store_close(store); [library removeDownload:[library jobForID:jobID]];
+  invoke(owner,choice(quality,@"Low (18)"));
+  [jobID release]; [format release]; [owner hideQueue:nil];
+  [outline selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)[outline rowForItem:item]] byExtendingSelection:NO]; [owner tableWasUsed:outline];
+  NSMenu *deletion=[toolbarButton(owner,@"remove") menu];
+  [owner performSelector:@selector(menuNeedsUpdate:) withObject:deletion];
+  requireCondition(menuChoice(deletion,@"Remove Playlist…")!=nil,@"Remove menu names the selected local playlist");
+  requireCondition([toolbarButton(owner,@"remove") isDefaultEnabled],@"An empty local playlist enables Remove");
+  [toolbarButton(owner,@"remove") performClick:nil]; pump(); confirm(owner,NO);
+  requireCondition([library playlistForID:key]!=nil,@"Cancelling Delete preserves the playlist");
+  invoke(owner,choice(deletion,@"Remove Playlist…")); confirm(owner,YES);
+  requireCondition([library playlistForID:key]==nil,@"Delete removes the selected local playlist");
+  selectRow(owner,@"sidebar_",0);
+  [pool drain];
 }
 static void testQueueWindow(RDLPLibrary *library) {
   RDLPLibraryWindowController *owner=[[RDLPLibraryWindowController alloc] initWithLibrary:library];
@@ -206,11 +406,11 @@ static void testQueueWindow(RDLPLibrary *library) {
   selectRow(owner,@"queue_",1);
   NSMenu *fileMenu=[owner menuForMenuBarTitle:@"File"];
   requireCondition([owner validateMenuItem:choice(fileMenu,@"Download Video")],@"Menu-bar actions still target the active queue's failed job");
-  NSMenu *mainDownloadMenu=[toolbarButton(owner,@"download") menu];
+  NSMenu *mainDownloadMenu=[toolbarButton(owner,@"remove") menu];
   [owner performSelector:@selector(menuNeedsUpdate:) withObject:mainDownloadMenu];
-  requireCondition([owner actionWindow]==[owner window] && [mainDownloadMenu itemWithTitle:@"Delete Download…"]!=nil,@"Library toolbar menu restores the library video target when opened from Queue");
+  requireCondition([owner actionWindow]==[owner window] && menuChoice(mainDownloadMenu,@"Delete Download")!=nil,@"Library toolbar menu restores the library video target when opened from Queue");
   selectRow(owner,@"queue_",1);
-  [toolbarButton(owner,@"download") performClick:nil]; pump();
+  [toolbarButton(owner,@"remove") performClick:nil]; pump();
   requireCondition([[owner window] attachedSheet]!=nil && [window attachedSheet]==nil,@"Library toolbar click targets its downloaded video while Queue was key");
   confirm(owner,NO);
   if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDQueueWindowScreenshot"])
@@ -264,6 +464,9 @@ static void testQueueWindow(RDLPLibrary *library) {
   (void)sender; NSString *report=@"PASS";
   @try {
     requireCondition([[NSBundle mainBundle] pathForResource:@"cacert" ofType:@"pem"]==nil,@"Test bundle must have no network CA resource");
+    NSString *customization=[[[NSProcessInfo processInfo] environment] objectForKey:@"RDToolbarCustomizationTest"];
+    if(![customization isEqualToString:@"restore"])
+      [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"NSToolbar Configuration RetroDLPLibraryToolbar"];
     if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDIconTestOnly"]) {
       RDLPBackingScaleProbe *scaleProbe=[[[RDLPBackingScaleProbe alloc] init] autorelease];
       requireCondition([RDLPAppKit backingScaleForWindow:(NSWindow *)scaleProbe]==2.0,
@@ -327,6 +530,7 @@ static void testQueueWindow(RDLPLibrary *library) {
       [NSApp terminate:nil]; return;
     }
     [[NSUserDefaults standardUserDefaults] setObject:@"18" forKey:@"downloadFormat"];
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"RetroDLPVideoPlayer"];
     testMainThreadCompatibility();
     library_=[[RDLPLibrary alloc] initWithSupportDirectory:@"/tmp/retrodlp-toolbar-fixture/Support" downloadDirectory:@"/tmp/retrodlp-toolbar-fixture/Downloads"];
     requireCondition(library_!=nil,@"Fixture failed to open");
@@ -334,6 +538,16 @@ static void testQueueWindow(RDLPLibrary *library) {
     NSDate *startupDeadline=[NSDate dateWithTimeIntervalSinceNow:10];
     while([library_ isBusy] && [startupDeadline timeIntervalSinceNow]>0) pump();
     requireCondition(![library_ isBusy] && [library_ operationCount]==0 && ![library_ hasErrors],@"Startup reconciliation completes and releases its operation reference");
+    if(customization) {
+      testToolbarCustomization(library_,[customization isEqualToString:@"restore"]);
+      [@"PASS: native toolbar customization, reinserted actions, saved ordering and display settings" writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [library_ shutdown]; [NSApp terminate:nil]; return;
+    }
+    if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDToolbarPreview"]) {
+      window_=[[RDLPLibraryWindowController alloc] initWithLibrary:library_];
+      [window_ showWindow:nil]; [NSApp activateIgnoringOtherApps:YES];
+      return; /* Keep the paused offline fixture available for accessibility tests. */
+    }
     if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDQueueWindowTestOnly"]) {
       testQueueWindow(library_);
       [@"PASS: two-pane library, brushed-metal queue window, queue toolbar actions and sheets, exact-job targeting, independent close/reopen, continued queue management with library closed, and frame persistence" writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
@@ -373,9 +587,11 @@ static void testQueueWindow(RDLPLibrary *library) {
       @"Representative jobs must stay within the requested playlist");
     window_=[[RDLPLibraryWindowController alloc] initWithLibrary:library_]; [window_ showWindow:nil]; [NSApp activateIgnoringOtherApps:YES]; pump();
     NSMenu *cookiesMenu=[window_ menuForMenuBarTitle:@"Cookies"];
+    NSData *cookieIcon=[[[toolbarButton(window_,@"cookies") image] TIFFRepresentation] retain];
     requireCondition([toolbarButton(window_,@"cookies") isDefaultEnabled] &&
       [window_ validateMenuItem:choice(cookiesMenu,@"Import Cookies…")],@"Startup leaves cookie import enabled in toolbar and menu");
     requireCondition([library_ importCookies:@"/tmp/retrodlp-toolbar-fixture/synthetic-cookies.txt"],@"Import isolated synthetic cookies");
+    requireCondition([cookieIcon isEqual:[[toolbarButton(window_,@"cookies") image] TIFFRepresentation]],@"Cookie import does not change the toolbar icon"); [cookieIcon release];
     requireCondition([toolbarButton(window_,@"cookies") isDefaultEnabled] &&
       ![window_ validateMenuItem:choice(cookiesMenu,@"Import Cookies…")] &&
       [window_ validateMenuItem:choice(cookiesMenu,@"Replace Cookies…")] &&
@@ -463,39 +679,40 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition(![outline isItemExpanded:@"Added Playlists"],@"Refresh must retain collapsed group");
     [outline expandItem:@"Added Playlists"];
     NSDictionary *items=[window_ valueForKey:@"toolbarItems_"];
-    requireCondition([items count]==4 && [items objectForKey:@"download"] && [items objectForKey:@"play"],@"Expected Download and Play toolbar items");
+    requireCondition([items count]==6 && [items objectForKey:@"library"] && [items objectForKey:@"download"] && [items objectForKey:@"remove"] && [items objectForKey:@"play"],@"Expected Library, Download, Play, Remove, Cookies and Queue toolbar items");
     requireCondition(![toolbarButton(window_,@"play") isDefaultEnabled],@"No selection must disable Play");
-    requireCondition([[[items objectForKey:@"download"] label] isEqualToString:@"Add Video"],@"No target toolbar label is Add Video");
-    [toolbarButton(window_,@"download") performClick:nil]; pump();
-    requireCondition([[[window_ valueForKey:@"addSheet_"] title] isEqualToString:@"Add Video"],@"No target toolbar opens Add Video");
+    requireCondition([[[items objectForKey:@"library"] label] isEqualToString:@"Library"],@"Toolbar label is always Library");
+    invoke(window_,choice([toolbarButton(window_,@"library") menu],@"Add Video…"));
+    requireCondition([[[window_ valueForKey:@"addSheet_"] title] isEqualToString:@"Add Video"],@"Library menu opens Add Video without a selection");
     [NSApp endSheet:[window_ valueForKey:@"addSheet_"] returnCode:0]; pump();
+    testFixedToolbar(window_,library_);
     NSMenu *fileMenu=[window_ menuForMenuBarTitle:@"File"];
     requireCondition([[fileMenu itemAtIndex:0] action]==@selector(addVideo:) && [[fileMenu itemAtIndex:1] action]==@selector(addPlaylist:),@"File menu puts Add Video before Add Playlist");
     NSMenu *editMenu=[window_ menuForMenuBarTitle:@"Edit"];
     NSMenu *viewMenu=[window_ menuForMenuBarTitle:@"View"];
-    requireCondition([fileMenu itemWithTitle:@"Delete Download…"]==nil && [editMenu itemWithTitle:@"Delete Download…"]!=nil,@"Deletion belongs in Edit");
-    requireCondition([viewMenu numberOfItems]==2 && [viewMenu itemWithTitle:@"Show Download Queue"]!=nil && [viewMenu itemWithTitle:@"Show in Queue"]==nil,@"View contains only playlist and queue visibility commands");
-    requireCondition(![window_ validateMenuItem:choice(fileMenu,@"Play Playlist in Default App")],@"File playback is disabled without a selection");
+    requireCondition(menuChoice(fileMenu,@"Delete Download…")==nil && menuChoice(editMenu,@"Delete Download…")!=nil,@"Deletion belongs in Edit");
+    requireCondition([viewMenu numberOfItems]==4 && [viewMenu itemWithTitle:@"Show Download Queue"]!=nil && [viewMenu itemWithTitle:@"Customize Toolbar…"]!=nil && [viewMenu itemWithTitle:@"Show in Queue"]==nil,@"View contains visibility commands and toolbar customization");
+    requireCondition(![window_ validateMenuItem:choice(fileMenu,@"Play Playlist")],@"File playback is disabled without a selection");
     [fileMenu update];
     NSArray *fileTitles=[[titles(fileMenu) copy] autorelease];
     [fileMenu update];
     requireCondition([fileTitles isEqual:titles(fileMenu)],@"Unavailable File commands retain their positions");
     requireCondition([RDLPAppKit youTubeIconForScale:1]!=nil,@"YouTube Brands icon missing");
-    NSMenu *download=[window_ menuForToolbarIdentifier:@"download"];
+    NSMenu *download=[window_ menuForToolbarIdentifier:@"library"];
     NSMenu *play=[window_ menuForToolbarIdentifier:@"play"];
     requireCondition([download itemWithTitle:@"Add Playlist…"]!=nil && [download itemWithTitle:@"Add Video…"]!=nil,@"Global Add commands must remain available");
-    requireCondition([download indexOfItemWithTitle:@"Add Video…"]<[download indexOfItemWithTitle:@"Add Playlist…"],@"Download menu puts Add Video before Add Playlist");
+    requireCondition([download indexOfItemWithTitle:@"Add Video…"]<[download indexOfItemWithTitle:@"Add Playlist…"],@"Library menu puts Add Video before Add Playlist");
     requireCondition([download itemWithTitle:@"Download Missing Videos"]==nil && ![window_ validateMenuItem:choice(fileMenu,@"Download Video")],@"No selection must expose no bulk download and disable File download");
     requireCondition([play itemWithTitle:@"Open With…"]==nil,@"Open With must remain absent");
     selectRow(window_,@"sidebar_",1);
-    download=[window_ menuForToolbarIdentifier:@"download"]; play=[window_ menuForToolbarIdentifier:@"play"];
+    download=[window_ menuForToolbarIdentifier:@"library"]; play=[window_ menuForToolbarIdentifier:@"play"];
     NSArray *playlistTitles=[[titles(download) copy] autorelease];
-    requireCondition([download itemWithTitle:@"Remove Playlist…"]!=nil && ![download itemWithTitle:@"Delete Download…"],@"Sidebar must expose playlist operations");
-    requireCondition([download itemWithTitle:@"Download Missing Videos"]==nil && [download itemWithTitle:@"Download Video"]==nil,@"Playlist menu must not offer downloads");
+    requireCondition([download itemWithTitle:@"Sync Current Playlist"]!=nil && !menuChoice(download,@"Delete Download") && !menuChoice(download,@"Remove Playlist…"),@"Library owns sync and excludes destructive commands");
+    requireCondition([download itemWithTitle:@"Download Missing Videos"]==nil && menuChoice(download,@"Download Video")==nil,@"Playlist menu must not offer downloads");
     NSMenuItem *fileDownload=choice(fileMenu,@"Download Video");
     requireCondition(![window_ validateMenuItem:fileDownload] && [[fileDownload title] isEqualToString:@"Download Video"],@"Playlist selection keeps File download disabled with a stable title");
     requireCondition([window_ validateMenuItem:choice(play,@"Reveal Playlist in Finder")],@"Playlist folder must reveal");
-    requireCondition([window_ validateMenuItem:choice(play,@"Play Playlist in Default App")]==([RDLPAppKit defaultApplication:[library_ playlistFile:[[library_ playlists] objectAtIndex:0]]]!=nil),@"Playlist playback must use its exported file");
+    requireCondition([window_ validateMenuItem:choice(play,@"Play Playlist")]==([RDLPAppKit preferredPlaybackApplication:[library_ playlistFile:[[library_ playlists] objectAtIndex:0]]]!=nil),@"Playlist playback must use its exported file");
     NSTableView *videosTable=[window_ valueForKey:@"table_"];
     NSArray *videoColumnIDs=[NSArray arrayWithObjects:@"state",@"size",@"quality",@"title",@"channel",nil];
     requireCondition([[[videosTable tableColumns] valueForKey:@"identifier"] isEqual:videoColumnIDs],@"Playlist columns follow Status, Size, Quality, Video, Channel order");
@@ -513,13 +730,28 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([[available objectForKey:@"format"] isEqualToString:@"18"],@"High preference must still target the existing Low download");
     requireCondition([[window_ performSelector:@selector(statusForJob:) withObject:available] isEqualToString:@"Downloaded"],@"Any existing quality must show Downloaded");
     requireCondition([window_ performSelector:@selector(selectionPlayFile)]!=nil,@"Any existing quality must remain playable");
+    requireCondition([toolbarButton(window_,@"download") isDefaultEnabled] &&
+      [[choice([window_ menuForToolbarIdentifier:@"download"],@"Download Video") title] isEqualToString:@"Download Video"],@"A completed Low copy still allows an explicit High download");
     NSString *preferred=[RDLPAppKit preferredPlaybackApplication:[library_ fileForJob:complete]];
     if([RDLPAppKit VLCApplication]) requireCondition([preferred isEqual:[RDLPAppKit VLCApplication]],@"Real installed VLC must be the preferred player");
-    if(preferred) requireCondition([[toolbarButton(window_,@"play") toolTip] rangeOfString:
-      [[[NSFileManager defaultManager] displayNameAtPath:preferred] stringByDeletingPathExtension]].location!=NSNotFound,
-      @"Play tooltip must name the application that automatic playback will open");
-    requireCondition([choice([window_ menuForToolbarIdentifier:@"play"],@"Play Video in Default App") action]==@selector(playSelectionInDefaultApplication:),
-      @"Explicit Default App must remain separate from automatic Play");
+    requireCondition([[toolbarButton(window_,@"play") toolTip] isEqualToString:@"Play the selected video or playlist"],@"Play tooltip stays fixed across selection changes");
+    NSMenu *players=[window_ menuForMenuBarTitle:@"Video Player"];
+    requireCondition([titles(players) isEqual:[NSArray arrayWithObjects:@"VLC",@"QuickTime",@"Default App",nil]],@"Video Player menu contains exactly three choices");
+    requireCondition([window_ validateMenuItem:choice(players,@"VLC")]==([RDLPAppKit VLCApplication]!=nil) &&
+      [window_ validateMenuItem:choice(players,@"QuickTime")]==([RDLPAppKit QuickTimeApplication]!=nil),@"Uninstalled players are disabled");
+    invoke(window_,choice(players,@"Default App")); [players update];
+    requireCondition([choice(players,@"Default App") state]==NSOnState && [choice(players,@"VLC") state]==NSOffState &&
+      [[RDLPAppKit videoPlayer] isEqual:@"Default App"],@"Player menu saves and checks the selected preference");
+    if([RDLPAppKit QuickTimeApplication]) {
+      invoke(window_,choice(players,@"QuickTime")); [players update];
+      requireCondition([choice(players,@"QuickTime") state]==NSOnState && [choice(players,@"Default App") state]==NSOffState &&
+        [[RDLPAppKit preferredPlaybackApplication:[library_ fileForJob:complete]] isEqual:[RDLPAppKit QuickTimeApplication]],@"Selecting QuickTime updates checkmarks and playback routing immediately");
+    }
+    if([RDLPAppKit VLCApplication]) invoke(window_,choice(players,@"VLC"));
+    else invoke(window_,choice(players,@"Default App"));
+    requireCondition([choice([window_ menuForToolbarIdentifier:@"play"],@"Play Video") action]==@selector(playSelection:) &&
+      ![[window_ menuForToolbarIdentifier:@"play"] itemWithTitle:@"Play Video in VLC"] &&
+      ![[window_ menuForToolbarIdentifier:@"play"] itemWithTitle:@"Play Video in Default App"],@"Toolbar playback uses the preference without player-specific commands");
     if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDPlaybackHandoffTest"]) {
       requireCondition([RDLPAppKit VLCApplication]!=nil,@"Handoff test requires installed VLC");
       [toolbarButton(window_,@"play") performClick:nil]; pump();
@@ -537,24 +769,29 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition(![[window_ window] attachedSheet] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3 && [library_ isPaused],@"Playlist selection cannot start downloads or a bulk confirmation");
     selectRow(window_,@"table_",0);
     download=[window_ menuForToolbarIdentifier:@"download"]; play=[window_ menuForToolbarIdentifier:@"play"];
-    requireCondition(![playlistTitles isEqual:titles(download)],@"Download menu must adapt to video selection");
+    requireCondition([playlistTitles isEqual:titles([window_ menuForToolbarIdentifier:@"library"])],@"Library menu keeps its commands across selections");
     requireCondition([choice(download,@"Download Video") submenu]==nil && [choice(download,@"Download Video") action]!=NULL,@"Download Video must be a direct command");
-    requireCondition([download itemWithTitle:@"Download Quality"]==nil && [download itemWithTitle:@"Show in Queue"]==nil,@"Video toolbar menu omits quality and Show in Queue");
+    requireCondition([choice(download,@"Download Quality") submenu]!=nil && [download itemWithTitle:@"Show in Queue"]==nil,@"Download owns its quality submenu");
     requireCondition([quality numberOfItems]==4 && ![quality itemWithTitle:@"Last Used Quality"],@"Application quality submenu must contain only presets and custom");
-    requireCondition([download itemWithTitle:@"Delete Download…"]!=nil && ![download itemWithTitle:@"Remove Playlist…"],@"Video operations must replace playlist operations");
+    NSMenu *deletion=[window_ menuForToolbarIdentifier:@"remove"];
+    NSMenu *add=[window_ menuForToolbarIdentifier:@"library"];
+    requireCondition(!menuChoice(add,@"Download Video") && !menuChoice(add,@"Delete Download") && ![add itemWithTitle:@"Cancel Download…"] &&
+      menuChoice(download,@"Download Video") && [download itemWithTitle:@"Cancel Download…"] && !menuChoice(download,@"Delete Download") &&
+      menuChoice(deletion,@"Delete Download") && !menuChoice(deletion,@"Download Video") && ![deletion itemWithTitle:@"Cancel Download…"],@"Library, Download and Remove have separate responsibilities");
     requireCondition([window_ validateMenuItem:choice(play,@"Reveal Video in Finder")],@"Completed video must reveal");
-    requireCondition([play itemWithTitle:@"Play Playlist in Default App"]!=nil && [play itemWithTitle:@"Play Playlist in VLC"]!=nil,@"Video selection must retain containing-playlist playback");
-    [toolbarButton(window_,@"download") performClick:nil]; pump();
-    requireCondition([[toolbarButton(window_,@"download") title] isEqualToString:@"Delete"],@"Completed selection must show Delete");
+    requireCondition([play itemWithTitle:@"Play Playlist"]!=nil && [choice(play,@"Play Playlist") action]==@selector(playTargetPlaylist:),@"Video selection must retain containing-playlist playback");
+    requireCondition(![toolbarButton(window_,@"download") isDefaultEnabled],@"A completed preferred-quality video disables Download");
+    [toolbarButton(window_,@"remove") performClick:nil]; pump();
+    requireCondition([[toolbarButton(window_,@"library") title] isEqualToString:@"Library"] && [[toolbarButton(window_,@"download") title] isEqualToString:@"Download"],@"Completed selection keeps the Library and Download labels");
     confirm(window_,NO);
     requireCondition([[library_ jobsForPlaylist:nil completedOnly:YES] count]==1,@"Cancelling default deletion must preserve the file");
     selectRow(window_,@"table_",1);
     requireCondition(![toolbarButton(window_,@"play") isDefaultEnabled],@"Queued video must not play the whole playlist");
-    [toolbarButton(window_,@"download") performClick:nil]; pump();
+    [toolbarButton(window_,@"downloads") performClick:nil]; pump();
     selectRow(window_,@"queue_",1);
     download=[window_ menuForToolbarIdentifier:@"download"];
-    requireCondition(![download itemWithTitle:@"Retry Download"] && ![download itemWithTitle:@"Download Again"],@"Redundant retry entries must be removed");
-    requireCondition([download itemWithTitle:@"Download Quality"]==nil,@"Queue toolbar menu leaves quality in the application menu");
+    requireCondition([[choice(download,@"Retry Download") title] isEqualToString:@"Retry Download — Med (136+140)"],@"Retry explicitly names the original job quality");
+    requireCondition([choice(download,@"Download Quality") submenu]!=nil,@"Download quality is accessible in the toolbar menu");
     invoke(window_,choice(quality,@"Med (136+140)"));
     requireCondition([window_ validateMenuItem:choice(download,@"Download Video")],@"Download Video must allow failed jobs at the selected quality");
     invoke(window_,choice([queueTable menu],@"Retry"));
@@ -570,21 +807,21 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([[[window_ valueForKey:@"queueWindow_"] window] isVisible] && [library_ isPaused],@"Explicit retry must reopen hidden Queue and preserve Pause");
     selectRow(window_,@"sidebar_",0); selectRow(window_,@"queue_",1);
     download=[window_ menuForToolbarIdentifier:@"download"];
-    requireCondition([download itemWithTitle:@"Download Video"]!=nil && [download itemWithTitle:@"Download Missing Videos"]==nil,@"Queue must retain video scope with All Downloads selected");
+    requireCondition(menuChoice(download,@"Download Video")!=nil && [download itemWithTitle:@"Download Missing Videos"]==nil,@"Queue must retain video scope with All Downloads selected");
     play=[window_ menuForToolbarIdentifier:@"play"];
-    requireCondition([play itemWithTitle:@"Play Playlist in VLC"]!=nil,@"Queue video must retain containing-playlist options without sidebar selection");
-    requireCondition([window_ validateMenuItem:choice(play,@"Play Playlist in Default App")]==([RDLPAppKit defaultApplication:[library_ playlistFile:[[library_ playlists] objectAtIndex:0]]]!=nil),@"Playlist playback must use the Queue video’s playlist rather than sidebar");
-    requireCondition([[toolbarButton(window_,@"download") title] isEqualToString:@"Add Video"],@"Queue selection must not replace the library toolbar's All Downloads context");
+    requireCondition([play itemWithTitle:@"Play Playlist"]!=nil,@"Queue video must retain containing-playlist options without sidebar selection");
+    requireCondition([window_ validateMenuItem:choice(play,@"Play Playlist")]==([RDLPAppKit preferredPlaybackApplication:[library_ playlistFile:[[library_ playlists] objectAtIndex:0]]]!=nil),@"Playlist playback must use the Queue video’s playlist rather than sidebar");
+    requireCondition([[toolbarButton(window_,@"library") title] isEqualToString:@"Library"],@"Queue selection must not change the Library label");
     [window_ hideQueue:nil];
     requireCondition(![toolbarButton(window_,@"play") isDefaultEnabled],@"Hidden Queue must not remain the playback target");
     selectRow(window_,@"sidebar_",1);
-    download=[window_ menuForToolbarIdentifier:@"download"];
+    download=[window_ menuForToolbarIdentifier:@"library"];
     requireCondition([playlistTitles isEqual:titles(download)],@"Returning to sidebar must restore playlist menu");
-    NSMenu *toolbarMenu=[toolbarButton(window_,@"download") menu];
+    NSMenu *toolbarMenu=[toolbarButton(window_,@"library") menu];
     [window_ performSelector:@selector(menuNeedsUpdate:) withObject:toolbarMenu];
     requireCondition([titles(toolbarMenu) isEqual:titles(download)],@"Toolbar caret and context menu must share the context menu definition");
     selectRow(window_,@"table_",1);
-    download=[window_ menuForToolbarIdentifier:@"download"];
+    download=[window_ menuForToolbarIdentifier:@"library"];
     invoke(window_,choice(quality,@"High (137+140)"));
     requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Quality selection started a download");
     invoke(window_,choice(quality,@"Custom Format…"));
@@ -600,8 +837,8 @@ static void testQueueWindow(RDLPLibrary *library) {
     invoke(window_,choice(quality,@"High (137+140)"));
     selectRow(window_,@"table_",0);
     download=[window_ menuForToolbarIdentifier:@"download"];
-    invoke(window_,choice(download,@"Download Video"));
-    requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==4 && [[RDLPLibrary preferredFormat] isEqualToString:@"137+140"] && [library_ isPaused],@"Direct Download Video must reuse last selected High quality and preserve Pause");
+    [toolbarButton(window_,@"download") performClick:nil]; pump();
+    requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==4 && [[RDLPLibrary preferredFormat] isEqualToString:@"137+140"] && [library_ isPaused],@"Download primary click adds the preferred High quality without deleting the existing Low file");
     selectRow(window_,@"sidebar_",1);
     NSString *selectedKey=[[[window_ valueForKey:@"selectedPlaylist_"] copy] autorelease];
     [outline collapseItem:@"My Playlists"];
@@ -631,16 +868,22 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([[window_ valueForKey:@"queueProgress_"] isHidden],@"Drained queue must hide the progress area");
     selectRow(window_,@"sidebar_",1);
     NSMenuItem *syncItem=[[[NSMenuItem alloc] initWithTitle:@"Sync" action:@selector(sync:) keyEquivalent:@""] autorelease];
-    requireCondition([toolbarButton(window_,@"download") isDefaultEnabled] && [window_ validateMenuItem:syncItem],@"Idle playlist can sync from toolbar and menu");
-    [toolbarButton(window_,@"download") performClick:nil];
+    requireCondition([toolbarButton(window_,@"library") isDefaultEnabled] && [window_ validateMenuItem:syncItem],
+      [NSString stringWithFormat:@"Idle playlist can sync from toolbar and menu (Add=%d, Sync=%d, sheet=%d, context=%@, playlist=%@, pending=%d)",
+        [toolbarButton(window_,@"library") isDefaultEnabled], [window_ validateMenuItem:syncItem], [window_ hasAttachedSheet],
+        [window_ valueForKey:@"context_"], [window_ valueForKey:@"selectedPlaylist_"], [library_ isSyncPendingForInput:@"PLfixture"]]);
+    /* Sync lives in Library’s menu; dispatch without click animation so the
+       local worker cannot finish before inspecting its in-flight state. */
+    NSMenuItem *toolbarSync=choice([window_ menuForToolbarIdentifier:@"library"],@"Sync Current Playlist");
+    [NSApp sendAction:[toolbarSync action] to:[toolbarSync target] from:toolbarSync];
     requireCondition([library_ isBusy] && ![[[library_ queueProgress] objectForKey:@"active"] boolValue] && ![[window_ valueForKey:@"queueProgress_"] isHidden],@"Metadata work uses indeterminate activity progress");
-    requireCondition(![toolbarButton(window_,@"download") isDefaultEnabled] && ![window_ validateMenuItem:syncItem],@"Active playlist sync disables duplicate toolbar and menu actions");
-    requireCondition([library_ operationCount]==1 && ![toolbarButton(window_,@"cookies") isDefaultEnabled] &&
-      ![window_ validateMenuItem:choice(cookiesMenu,@"Import Cookies…")],@"Active sync holds one operation reference and disables cookie changes");
+    requireCondition([toolbarButton(window_,@"library") isDefaultEnabled] && ![window_ validateMenuItem:syncItem] && ![toolbarButton(window_,@"remove") isDefaultEnabled],@"Active sync disables duplicate sync and deletion while Library remains available");
+    requireCondition([library_ operationCount]==1 && [toolbarButton(window_,@"cookies") isDefaultEnabled] &&
+      ![window_ validateMenuItem:choice(cookiesMenu,@"Import Cookies…")],@"Active sync disables cookie changes while its menu and export guide remain available");
     deadline=[NSDate dateWithTimeIntervalSinceNow:20];
     while([library_ isBusy] && [deadline timeIntervalSinceNow]>0) pump();
     requireCondition(![library_ isBusy],@"Local metadata failure did not finish");
-    requireCondition([toolbarButton(window_,@"download") isDefaultEnabled] && [window_ validateMenuItem:syncItem],@"Finished playlist sync restores toolbar and menu actions");
+    requireCondition([toolbarButton(window_,@"library") isDefaultEnabled] && [window_ validateMenuItem:syncItem],@"Finished playlist sync restores toolbar and menu actions");
     requireCondition([library_ operationCount]==0 && ![library_ isSyncPendingForInput:@"PLfixture"] &&
       [toolbarButton(window_,@"cookies") isDefaultEnabled] &&
       [window_ validateMenuItem:choice(cookiesMenu,@"Import Cookies…")],@"Finished sync releases its operation and restores cookie controls");
@@ -663,7 +906,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     id adhocItem=[[window_ valueForKey:@"sidebarItems_"] objectForKey:[adhoc objectForKey:@"id"]];
     [outline selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)[outline rowForItem:adhocItem]] byExtendingSelection:NO];
     [window_ tableWasUsed:outline];
-    requireCondition(![toolbarButton(window_,@"download") isDefaultEnabled],@"Ad-Hoc toolbar sync is disabled");
+    requireCondition([toolbarButton(window_,@"library") isDefaultEnabled] && ![toolbarButton(window_,@"remove") isDefaultEnabled],@"Ad-Hoc keeps Library available and cannot be deleted");
     requireCondition(![window_ validateMenuItem:[[[NSMenuItem alloc] initWithTitle:@"Sync" action:@selector(sync:) keyEquivalent:@""] autorelease]],@"Ad-Hoc menu sync is disabled");
     [window_ addVideo:nil]; pump();
     requireCondition([[[window_ valueForKey:@"addSheet_"] title] isEqualToString:@"Add Video"],@"Mac Add Video sheet opens");
@@ -673,7 +916,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     NSDictionary *addedJob=[library_ jobForPlaylist:[adhoc objectForKey:@"id"] video:@"LMNOPQRSTUV" format:[RDLPLibrary preferredFormat]];
     requireCondition([[addedJob objectForKey:@"state"] isEqualToString:@"queued"] && [[addedJob objectForKey:@"title"] isEqualToString:@"LMNOPQRSTUV"],@"Mac Add Video sheet queues immediately without network access");
     testMacErrorAlert(window_);
-    report=@"PASS: Ad-Hoc grouping and disabled sync, Add Video sheet, shared status expiry, native error alerts, VLC preference and system fallback, download policy, textured window, flat five-column queue, exact-quality menu actions, selection stability, transfer progress, queue accounting and local failures, sidebar outline groups, discovery promotion, Download/Play targeting, adaptive menus, cancellation and retry; no network requests.";
+    report=@"PASS: Ad-Hoc grouping and disabled sync, Add Video sheet, shared status expiry, native error alerts, saved VLC/QuickTime/Default App preference and unavailable-player fallback, download policy, textured window, flat five-column queue, exact-quality menu actions, selection stability, transfer progress, queue accounting and local failures, sidebar outline groups, discovery promotion, fixed toolbar labels, six toolbar responsibilities, download/stop states and separate removal, contextual menus, cancellation and retry; no network requests.";
 
   } @catch(NSException *exception) { report=[NSString stringWithFormat:@"FAIL: %@",exception]; }
   [report writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];

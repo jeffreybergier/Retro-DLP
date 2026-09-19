@@ -3,6 +3,9 @@
 @protocol RDLPLibraryMenuContext
 - (BOOL)hasTargetVideo;
 - (NSDictionary *)contextPlaylist;
+- (NSDictionary *)targetJob;
+- (BOOL)canRetry:(NSDictionary *)job;
+- (BOOL)canDownloadAgain:(NSDictionary *)job;
 @end
 
 /* Builds menus with controller action targets; does not execute commands. */

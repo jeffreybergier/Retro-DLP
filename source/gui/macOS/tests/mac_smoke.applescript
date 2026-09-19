@@ -13,7 +13,19 @@ on run argv
         if value of text field 1 of row 4 of outline 1 of scroll area 1 does not start with "Offline test playlist" then error "Wrong fixture playlist"
         select row 4 of outline 1 of scroll area 1
       end tell
-      click button "Queue" of group 4 of tool bar 1 of window "RetroDLP"
+      click button "Library" of group 1 of tool bar 1 of window "RetroDLP"
+      delay 0.5
+      keystroke "Add Video"
+      keystroke return
+      delay 0.5
+      if not (exists sheet 1 of window "RetroDLP") then error "Library primary click must open its menu"
+      click button "Cancel" of sheet 1 of window "RetroDLP"
+      delay 0.5
+      click button "Cookies" of group 5 of tool bar 1 of window "RetroDLP"
+      delay 0.5
+      key code 53
+      delay 0.5
+      click button "Queue" of group 6 of tool bar 1 of window "RetroDLP"
       delay 1
       if not (exists window "Download Queue") then error "Separate Queue window missing"
       tell window "Download Queue"
@@ -32,7 +44,7 @@ on run argv
       delay 0.5
       if exists window "Download Queue" then error "Queue did not close"
       if not (exists window "RetroDLP") then error "Closing Queue closed Library"
-      click button "Queue" of group 4 of tool bar 1 of window "RetroDLP"
+      click button "Queue" of group 6 of tool bar 1 of window "RetroDLP"
       delay 0.5
       if (count of rows of table 1 of scroll area 1 of window "Download Queue") is not 3 then error "Reopening Queue changed jobs"
       keystroke "w" using command down

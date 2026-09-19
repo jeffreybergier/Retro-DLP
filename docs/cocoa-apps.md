@@ -69,8 +69,9 @@ The menu bar uses File, Edit, View, Window, and Help. File groups playlist
 addition/discovery, synchronization, downloading, playback, Finder reveal, and
 Close Window. Edit contains standard text commands plus separate Remove Playlist
 and Delete Download commands. View contains Show/Hide Playlists and Show Download
-Queue. Window provides Download Queue, Minimize, Zoom, and Bring All to Front. Download Quality sits directly above Cookies
-inside the application menu, with Cookie Export Guide in Help.
+Queue. Window provides Download Queue, Minimize, Zoom, and Bring All to Front.
+Download Quality, Video Player, and Cookies sit inside the application menu,
+with Cookie Export Guide in Help.
 The middle table shows a narrow, untitled status icon column before Video.
 Playlist rows summarize all qualities: an existing playable file takes priority,
 then downloading, queued, failed/interrupted/missing, cancelled, and not downloaded.
@@ -172,58 +173,68 @@ ordinary playlist sync does not change its group; clearing cookies does not
 change stored provenance. Both app platforms can read the upgraded database.
 
 
-The toolbar is arranged as Download, Play, flexible space, Cookies, and Queue.
-Queue opens the independent queue window; its job controls live in that window.
-The application menu contains About RetroDLP, Download Quality, and Cookies.
+The main toolbar contains Library, Download, Play, Remove, flexible space,
+Cookies, and Queue. Labels stay fixed, and each button has one responsibility.
+Choose View > Customize Toolbar… (or right-click an empty toolbar area) to add,
+remove, or rearrange the main-window buttons, insert spaces or separators, or
+restore the default set. AppKit saves the arrangement and display settings for
+future launches. The Queue window keeps its existing toolbar.
 
-Library Download and Play follow the last-used sidebar or video row. Their icons,
-labels, tooltips, and enabled state remain tied to that library selection while
-Queue is active. Clicking a library toolbar button or opening its menu restores
-the library as the action target. Bringing
-Queue forward makes menu-bar actions target its selected job at the exact quality.
-Returning to the library restores the library selection as the action target.
-Closing Queue also restores library targeting. An unplayable video never falls
-back to playing its playlist.
-
-Download and Play menus rebuild when opened to show the current scope. Playlist
-Download options include sync, removal, and Queue;
-video options include Download Video, cancellation, and deletion.
-Add Video, Add Playlist, Sync All, and Load My Playlists remain
-available under Download in every context. Add Video precedes Add Playlist in
-both the File and Download menus. Play contains default-app playback, explicit
-VLC playback, and Reveal in Finder for the current video or playlist. A selected
-video also retains default-app and VLC playback options for its containing
-playlist, including Queue selections whose playlist is not selected in the sidebar.
-
-| Button / context | Default action | Icon |
+| Button | Main click | Menu |
 | --- | --- | --- |
-| Download / new video | Enqueue the current quality | Solid download |
-| Download / existing downloaded video | Confirm deletion; toolbar label becomes Delete | Solid trash |
-| Download / queued or running job | Show the job in Queue | Solid hourglass |
-| Download / failed, cancelled, interrupted, removed, or missing-file job | Restart download and reveal/select it in Queue | Solid download |
-| Download / selected playlist | Sync metadata, disabled if already syncing | Solid arrows-rotate |
-| Download / no target | Add Video sheet; toolbar label becomes Add Video | Solid plus |
-| Play / playable video or exported playlist | Open in VLC when installed, otherwise the system default app; Reveal in Finder if neither is available | YouTube Brands |
-| Play / no playable target | Disabled | Dimmed YouTube Brands |
+| Library | Open menu (plus icon) | Add Video, Add Playlist, Load My Playlists; then Sync Current Playlist and Sync All Playlists |
+| Download | Download/retry the selected video, or confirm cancellation of queued/running work (arrow/stop sign) | Download Video, Retry Download with original quality when applicable, Cancel Download, Download Quality submenu |
+| Play | Play the selected video or playlist in the selected player (YouTube icon) | Play Video or Play Playlist for the selection, Play Playlist for a selected video, Reveal in Finder |
+| Remove | Confirm deletion of the selected download or removal of the selected sidebar playlist (fixed trash icon) | Delete Download for a selected video, or Remove Playlist naming the selected playlist |
+| Cookies | Open menu (fixed cookie icon) | Import, Replace, Remove; then Export Guide |
+| Queue | Show Download Queue (list-check icon) | None |
 
-Starting or retrying any download reveals Queue, selects the job, and scrolls
-it into view, even if the queue window was closed. The selected quality is retained.
+Library groups adding/discovering content separately from refreshing playlist
+metadata. Its commands remain in stable positions across selection changes.
+Queue navigation appears only on the Queue button, rather than in Library's menu.
+Cookies remains available while busy so its guide is accessible; cookie mutations
+are disabled until the library is idle.
 
-Labels are Download and Play; Download becomes Delete for an existing downloaded
-video, Sync for a playlist, and Add Video when there is no target.
-The caret opens the same menu as right-click,
-Control-click, or Accessibility Show Menu. Open With is absent. Explicit VLC
-commands require VLC. The main Play button and video/queue double-clicks prefer
-VLC when installed, falling back to the system default only when VLC is absent.
-The Play tooltip names the selected player. Explicit “Default App” menu commands
-continue to use the system association. Tiger uses a named Brands glyph outline to avoid ATSUI’s
-missing Unicode mapping. Destructive actions retain their confirmation sheets, including the default Delete
-action for a downloaded video. Cookies and Queue toolbar behavior is unchanged.
+Download never deletes files. It shows a stop sign for the selected queued/running
+job and confirms cancellation. Failed, cancelled, interrupted, removed, or
+missing-file jobs retry at their original quality. Otherwise it downloads at the
+preferred quality, disabling duplicate downloads at that quality. A completed Low
+copy can therefore remain playable while High is selected for a new download.
+Download Video keeps a short menu title; Retry Download names the original quality.
+Removal confirmations continue to identify the video and quality.
+Changing Download Quality only saves the preference; it never starts a transfer.
+
+Remove always uses a trash icon. A selected video targets its representative job;
+a sidebar selection targets the playlist. All Downloads and Ad-Hoc cannot be
+removed. Removal keeps the existing eligibility checks and confirmation sheets.
+Play is disabled when no playback application is available; Reveal in Finder
+remains an explicit menu command.
+
+Main-window toolbar actions follow the library's own selection even when Queue
+is active. Opening a contextual toolbar menu restores the library as the action
+target. Menu-bar commands continue to follow the active window, including the
+Queue's exact selected quality. Returning to the library or closing Queue restores
+library targeting. An unplayable video never falls back to playing its playlist.
+
+Starting or retrying a download reveals Queue, selects the job, and
+scrolls it into view, even if the queue window was closed. The selected quality
+is retained. The caret opens the same menu as right-click, Control-click, or
+Accessibility Show Menu, including when the button's default action is disabled.
+Open With is absent.
+The application menu's Video Player submenu contains VLC, QuickTime, and Default
+App, with a checkmark for the current choice. Uninstalled players are disabled.
+The choice is saved for future launches; without a saved choice VLC is used when
+installed, otherwise Default App. A saved player that is no longer installed
+falls back to Default App. Default App follows the system file association.
+Toolbar, File, queue, double-click, and whole-playlist playback all use this
+preference; player-specific playback commands have been removed. Tiger uses a
+named Brands glyph outline to avoid ATSUI’s
+missing Unicode mapping. Destructive actions retain their confirmation sheets,
+including the Remove button's action for a downloaded video.
 
 Download Video is a direct command using the last selected quality. In File it
-is disabled until a video is selected; the toolbar menu includes it only for a
-video selection. There is no playlist-wide download command. The Download Quality
-submenu appears only in the RetroDLP application menu, and contains
+is disabled until a video is selected; the toolbar menu disables it without a video selection. There is no playlist-wide download command. The Download Quality
+submenu appears in the Download toolbar menu and the RetroDLP application menu, and contains
 Low (18), Med (136+140), High (137+140), and Custom Format…. Choosing a quality
 only saves the preference; it never queues work.
 Custom Format validates input and has Save/Cancel buttons. Saving changes only
@@ -855,6 +866,17 @@ omits the CA resource. Prepare a fresh library with
 copy the app and fixture to `/tmp` on the Tiger test Mac, and launch the test app.
 It writes `/tmp/retrodlp-toolbar-test.txt` and exits. Recreate/restore the fixture
 before each run; the test deliberately changes only that fixture.
+
+For toolbar persistence coverage, launch with `RDToolbarCustomizationTest=save`
+in the test bundle's `LSEnvironment`, then relaunch with that value set to
+`restore`. These checks remove/reinsert buttons, save a custom layout and display
+settings, verify them in the new process, and open/close the native customization
+palette. The restore pass clears the test bundle's saved toolbar configuration.
+
+Set `RDToolbarPreview=1` in the test bundle's `LSEnvironment` to keep the paused
+offline library open for `mac_toolbar_menus.applescript`. This accessibility test
+checks the six-button order, Library and Cookies primary menus, Add Video dispatch,
+and the separate Remove confirmation without approving any work.
 
 Set `RDQueueWindowTestOnly=1` in the test bundle's `LSEnvironment` to run the
 focused queue-window regression using the same fresh fixture. It checks the

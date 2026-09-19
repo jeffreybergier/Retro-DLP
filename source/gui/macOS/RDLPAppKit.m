@@ -117,19 +117,47 @@
 + (NSString *)VLCApplication {
   return [[NSWorkspace sharedWorkspace] fullPathForApplication:@"VLC"];
 }
++ (NSString *)QuickTimeApplication {
+  return [[NSWorkspace sharedWorkspace] fullPathForApplication:@"QuickTime Player"];
+}
++ (BOOL)videoPlayerAvailable:(NSString *)player {
+  if([player isEqualToString:@"VLC"]) return [self VLCApplication]!=nil;
+  if([player isEqualToString:@"QuickTime"]) return [self QuickTimeApplication]!=nil;
+  return [player isEqualToString:@"Default App"];
+}
++ (NSString *)videoPlayer {
+  NSString *saved=[[NSUserDefaults standardUserDefaults] stringForKey:@"RetroDLPVideoPlayer"];
+  if([saved isEqualToString:@"VLC"] || [saved isEqualToString:@"QuickTime"] || [saved isEqualToString:@"Default App"])
+    return [self videoPlayerAvailable:saved]?saved:@"Default App";
+  return [self VLCApplication]?@"VLC":@"Default App";
+}
++ (void)saveVideoPlayer:(NSString *)player {
+  if([self videoPlayerAvailable:player]) {
+    [[NSUserDefaults standardUserDefaults] setObject:player forKey:@"RetroDLPVideoPlayer"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+  }
+}
 + (NSString *)preferredPlaybackApplication:(NSString *)path {
   if(![path length] || ![[NSFileManager defaultManager] fileExistsAtPath:path]) return nil;
-  NSString *vlc=[self VLCApplication];
-  return vlc?vlc:[self defaultApplication:path];
+  NSString *player=[self videoPlayer];
+  if([player isEqualToString:@"VLC"]) return [self VLCApplication];
+  if([player isEqualToString:@"QuickTime"]) return [self QuickTimeApplication];
+  return [self defaultApplication:path];
 }
 + (void)openPreferredPlayback:(NSString *)path {
   if(![path length] || ![[NSFileManager defaultManager] fileExistsAtPath:path]) return;
-  if([self VLCApplication]) [self openInVLC:path];
+  NSString *player=[self videoPlayer];
+  if([player isEqualToString:@"VLC"]) [self openInVLC:path];
+  else if([player isEqualToString:@"QuickTime"]) [self openInQuickTime:path];
   else [self openDefaultApplication:path];
 }
 + (void)openInVLC:(NSString *)path {
   NSString *application=[self VLCApplication];
   if(path && application && ![[NSWorkspace sharedWorkspace] openFile:path withApplication:application]) [RDLPAppKit showAlert:@"Could not open this file in VLC."];
+}
++ (void)openInQuickTime:(NSString *)path {
+  NSString *application=[self QuickTimeApplication];
+  if(path && application && ![[NSWorkspace sharedWorkspace] openFile:path withApplication:application]) [self showAlert:@"Could not open this file in QuickTime Player."];
 }
 + (void)openDefaultApplication:(NSString *)path {
   if(!path || ![[NSWorkspace sharedWorkspace] openFile:path])

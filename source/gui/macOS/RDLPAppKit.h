@@ -14,11 +14,16 @@
 + (NSImage *)youTubeIconForScale:(CGFloat)scale;
 + (NSString *)chooseCookieFile;
 + (void)revealInFinder:(NSString *)path;
-/* Automatic playback prefers VLC; explicit Default App commands remain separate. */
+/* Saved player choice; unavailable players fall back to the system default. */
 + (NSString *)VLCApplication;
++ (NSString *)QuickTimeApplication;
++ (NSString *)videoPlayer;
++ (BOOL)videoPlayerAvailable:(NSString *)player;
++ (void)saveVideoPlayer:(NSString *)player;
 + (NSString *)preferredPlaybackApplication:(NSString *)path;
 + (void)openPreferredPlayback:(NSString *)path;
 + (NSString *)defaultApplication:(NSString *)path;
 + (void)openInVLC:(NSString *)path;
++ (void)openInQuickTime:(NSString *)path;
 + (void)openDefaultApplication:(NSString *)path;
 @end
