@@ -2,7 +2,13 @@
 #import "RDLPLibrary.h"
 #import "RDLPDownloadPolicy.h"
 #import "RDLPLibraryMenus.h"
-@interface RDLPLibraryWindowController : AICookieCutterWindowController <RDLPLibraryMenuContext> {
+@class RDLPQueueWindowController;
+@interface RDLPLibraryWindowController : NSWindowController <RDLPLibraryMenuContext, AISplitViewDelegate> {
+  NSSplitView *split_;
+  CGFloat sidebarWidth_;
+  BOOL sidebarCollapsed_;
+  int libraryContext_;
+  RDLPQueueWindowController *queueWindow_;
   RDLPLibrary *library_;
   RDLPDownloadPolicy *downloadPolicy_;
   NSOutlineView *sidebar_;
@@ -29,4 +35,9 @@
 - (NSMenu *)menuForMenuBarTitle:(NSString *)title;
 - (void)importCookies:(id)sender;
 - (void)clearCookies:(id)sender;
+- (NSSplitView *)AI_splitView;
+- (void)toggleSidebar:(id)sender;
+- (BOOL)isSidebarCollapsed;
+- (NSWindow *)actionWindow;
+- (BOOL)hasAttachedSheet;
 @end

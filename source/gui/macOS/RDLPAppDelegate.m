@@ -34,6 +34,8 @@
     NSString *title=[titles objectAtIndex:index];
     NSMenu *menu=[window_ menuForMenuBarTitle:title];
     if([title isEqualToString:@"Window"]) {
+      [[menu addItemWithTitle:@"Download Queue" action:@selector(showQueue:) keyEquivalent:@""] setTarget:window_];
+      [menu addItem:[NSMenuItem separatorItem]];
       [menu addItemWithTitle:@"Minimize" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
       [menu addItemWithTitle:@"Zoom" action:@selector(performZoom:) keyEquivalent:@""];
       [menu addItem:[NSMenuItem separatorItem]];
@@ -59,7 +61,7 @@
 - (void)showNextError;
 {
   if(showingError_ || ![library_ hasErrors]) return;
-  if([[window_ window] attachedSheet] || [NSApp modalWindow]) { [self errorsChanged:nil]; return; }
+  if([window_ hasAttachedSheet] || [NSApp modalWindow]) { [self errorsChanged:nil]; return; }
   NSDictionary *error=[library_ takeError]; if(!error) return;
   showingError_=YES;
   NSAlert *alert=[[[NSAlert alloc] init] autorelease];

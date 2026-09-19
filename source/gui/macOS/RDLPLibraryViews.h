@@ -11,6 +11,8 @@
 @end
 @interface RDLPOutlineView : NSOutlineView
 @end
+@interface RDLPLibrarySplitView : NSSplitView
+@end
 
 @interface RDLPLibraryViews : NSObject
 + (BOOL)isSidebarGroup:(id)item;

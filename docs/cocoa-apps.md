@@ -58,18 +58,18 @@ iOS 8.4 SDK build. Verify cold launches on devices separately from packaging.
 ## Mac workflow
 
 The window uses the textured style, including brushed metal on Tiger. A full-width
-status bar below all three panes displays shared library activity even when a pane
+status bar below the playlist sidebar and video table displays shared library activity even when a pane
 is empty or hidden. Leopard and later draw its background using the native window
 content border. Long messages truncate with the full text available in a tooltip;
-selected download errors remain in the queue pane. The main video table fills its
+selected download errors remain in the separate Download Queue window. The main video table fills its
 pane edge to edge, with no surrounding labels or buttons. Video and playlist
 actions are available through the toolbar and menu bar.
 
 The menu bar uses File, Edit, View, Window, and Help. File groups playlist
 addition/discovery, synchronization, downloading, playback, Finder reveal, and
 Close Window. Edit contains standard text commands plus separate Remove Playlist
-and Delete Download commands. View contains only pane visibility and Show in
-Queue; Window provides Minimize, Zoom, and Bring All to Front. Download Quality sits directly above Cookies
+and Delete Download commands. View contains Show/Hide Playlists and Show Download
+Queue. Window provides Download Queue, Minimize, Zoom, and Bring All to Front. Download Quality sits directly above Cookies
 inside the application menu, with Cookie Export Guide in Help.
 The middle table shows a narrow, untitled status icon column before Video.
 Playlist rows summarize all qualities: an existing playable file takes priority,
@@ -89,6 +89,14 @@ Menu-bar commands retain their positions and disable when unavailable; download
 and playback labels follow the active video or playlist selection. File's Download
 command retries a selected queue quality using that job's exact format. Toolbar
 menus retain their task-specific grouping.
+
+Download Queue is a separate resizable window with the textured window style
+(brushed metal on Tiger). The library has two panes and no inspector. The Queue
+button, View > Show Download Queue, and Window > Download Queue open or focus this
+window. It starts closed and remembers its own size and position. Closing either
+window leaves the other usable and does not stop downloads. Its toolbar provides
+Retry, Stop, Error, and Delete for the selected job. Queue confirmations
+attach to the queue window. A bottom status bar mirrors shared library activity.
 
 The queue is a flat, cell-based NSTableView, compatible with Tiger. Its columns
 are number (blank header), status (blank header), Quality, Video, and Playlist.
@@ -111,7 +119,7 @@ failure details. Play, Retry, Stop Download, and Delete Download remain availabl
 through the context menu; double-click plays a downloaded video. Each row retains
 its exact job and containing playlist for toolbar/menu targeting. Selection
 survives refresh and status changes without regrouping or automatic scrolling.
-There is no queue footer or global Pause control.
+The queue status bar shows transfer progress; there is no global Pause control.
 
 During processing, the app-wide status bar follows the same resolver and download
 steps as the CLI: reading cookies, configuring the client, loading the mobile
@@ -165,22 +173,22 @@ change stored provenance. Both app platforms can read the upgraded database.
 
 
 The toolbar is arranged as Download, Play, flexible space, Cookies, and Queue.
-Download and Play precede Edit in the menu bar and share their toolbar menu
-builders and validation. The application menu uses `setAppleMenu:` and contains
-About RetroDLP and Cookies. View provides Show/Hide Playlists, Show/Hide Download
-Queue, and a Download Queue submenu for queue operations.
+Queue opens the independent queue window; its job controls live in that window.
+The application menu contains About RetroDLP, Download Quality, and Cookies.
 
-Both Download and Play follow the last-used pane. A sidebar selection targets
-that playlist; a video row targets that video; Queue and All Downloads rows use
-the selected job’s exact quality. A playlist video uses the remembered quality.
-Clicking a toolbar button or opening a menu preserves the target. Hiding Queue
-returns targeting to the center. An unplayable video never falls back to playing
-its playlist.
+Library Download and Play follow the last-used sidebar or video row. Their icons,
+labels, tooltips, and enabled state remain tied to that library selection while
+Queue is active. Clicking a library toolbar button or opening its menu restores
+the library as the action target. Bringing
+Queue forward makes menu-bar actions target its selected job at the exact quality.
+Returning to the library restores the library selection as the action target.
+Closing Queue also restores library targeting. An unplayable video never falls
+back to playing its playlist.
 
 Download and Play menus rebuild when opened to show the current scope. Playlist
-Download options include missing-video qualities, sync, removal, and Queue;
-video options include quality selection, Download Video, cancellation, deletion,
-and Show in Queue. Add Video, Add Playlist, Sync All, and Load My Playlists remain
+Download options include sync, removal, and Queue;
+video options include Download Video, cancellation, and deletion.
+Add Video, Add Playlist, Sync All, and Load My Playlists remain
 available under Download in every context. Add Video precedes Add Playlist in
 both the File and Download menus. Play contains default-app playback, explicit
 VLC playback, and Reveal in Finder for the current video or playlist. A selected
@@ -199,7 +207,7 @@ playlist, including Queue selections whose playlist is not selected in the sideb
 | Play / no playable target | Disabled | Dimmed YouTube Brands |
 
 Starting or retrying any download reveals Queue, selects the job, and scrolls
-it into view, even if Queue was manually hidden. The selected quality is retained.
+it into view, even if the queue window was closed. The selected quality is retained.
 
 Labels are Download and Play; Download becomes Delete for an existing downloaded
 video, Sync for a playlist, and Add Video when there is no target.
@@ -212,23 +220,19 @@ continue to use the system association. Tiger uses a named Brands glyph outline 
 missing Unicode mapping. Destructive actions retain their confirmation sheets, including the default Delete
 action for a downloaded video. Cookies and Queue toolbar behavior is unchanged.
 
-Download Video (or Download Missing Videos for a playlist) is a direct command
-using the last selected quality. The separate Download Quality submenu contains
+Download Video is a direct command using the last selected quality. In File it
+is disabled until a video is selected; the toolbar menu includes it only for a
+video selection. There is no playlist-wide download command. The Download Quality
+submenu appears only in the RetroDLP application menu, and contains
 Low (18), Med (136+140), High (137+140), and Custom Format…. Choosing a quality
-only saves the preference; it never queues work or opens a bulk confirmation.
+only saves the preference; it never queues work.
 Custom Format validates input and has Save/Cancel buttons. Saving changes only
 the quality, and cancelling leaves it unchanged. Quality choices remain available
-even if that quality already has a download. Use Download Video or Download
-Missing Videos to start work; playlist downloads still require confirmation.
-
-Bulk download includes videos with no job at the requested quality and jobs whose
-files were removed or are missing. It does not restart failed, interrupted, or
-cancelled jobs. The confirmation captures its exact plan and rechecks eligibility
-before acting. Duplicate playlist entries do not create duplicate jobs.
+even if that quality already has a download. Use Download Video to start work.
 
 Destructive and bulk actions use attached confirmation sheets: removal of files,
-playlists, and cookies; cookie replacement; download cancellation; bulk video
-download; Sync All; and account playlist discovery.
+playlists, and cookies; cookie replacement; download cancellation; Sync All;
+and account playlist discovery.
 Cancelling a sheet performs no operation. Single-video enqueue/retry and
 single-playlist metadata sync are immediate. Duplicate pending/running syncs are
 not added again. Playlist removal remains unavailable until queued jobs are
@@ -842,8 +846,15 @@ copy the app and fixture to `/tmp` on the Tiger test Mac, and launch the test ap
 It writes `/tmp/retrodlp-toolbar-test.txt` and exits. Recreate/restore the fixture
 before each run; the test deliberately changes only that fixture.
 
+Set `RDQueueWindowTestOnly=1` in the test bundle's `LSEnvironment` to run the
+focused queue-window regression using the same fresh fixture. It checks the
+two-pane library, textured queue window, toolbar actions and attached sheets,
+exact-job selection, independent window closure, continued queue management with
+the library closed, and saved window geometry. `RDQueueWindowScreenshot=1` also
+captures `/tmp/retrodlp-queue-window.png` before exercising destructive controls.
+
 The native test exercises real toolbar controls, pane targeting, fixed menu
-structure, removal/cancellation sheets, bulk confirmation and removed-file
+structure, removal/cancellation sheets, absence of playlist downloads and removed-file
 requeue, custom-format cancellation/validation, cookie removal, and exact-quality
 queue/retry behavior. It also checks the textured window style and that the shared
 status stays outside the split panes when resizing and toggling panels.

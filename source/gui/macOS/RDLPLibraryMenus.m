@@ -4,12 +4,6 @@
 @implementation RDLPLibraryMenus
 + (void)addItemToMenu:(NSMenu *)menu title:(NSString *)title action:(SEL)action target:(id)target;
 { [[menu addItemWithTitle:title action:action keyEquivalent:@""] setTarget:target]; }
-+ (void)addQueueActionsToMenu:(NSMenu *)menu target:(id)target;
-{
-    [self addItemToMenu:menu title:@"Download Selected Queue Video" action:@selector(retryQueueJob:) target:target];
-    [self addItemToMenu:menu title:@"Cancel Selected Queue Job…" action:@selector(cancelQueueJob:) target:target];
-    [self addItemToMenu:menu title:@"Delete Selected Queue Download…" action:@selector(removeJob:) target:target];
-}
 
 + (NSMenu *)menuForMenuBarTitle:(NSString *)title target:(id<RDLPLibraryMenuContext>)target;
 {
@@ -44,9 +38,7 @@
     [self addItemToMenu:menu title:@"Delete Download…" action:@selector(removeTarget:) target:target];
   } else if([title isEqualToString:@"View"]) {
     [self addItemToMenu:menu title:@"Hide Playlists" action:@selector(togglePlaylists:) target:target];
-    [self addItemToMenu:menu title:@"Show Download Queue" action:@selector(toggleDownloads:) target:target];
-    [menu addItem:[NSMenuItem separatorItem]];
-    [self addItemToMenu:menu title:@"Show in Queue" action:@selector(showTargetInQueue:) target:target];
+    [self addItemToMenu:menu title:@"Show Download Queue" action:@selector(showQueue:) target:target];
   } else if([title isEqualToString:@"Download Quality"]) {
     NSArray *names=[NSArray arrayWithObjects:[RDLPLibrary qualityLabelForFormat:@"18"],[RDLPLibrary qualityLabelForFormat:@"136+140"],[RDLPLibrary qualityLabelForFormat:@"137+140"],@"Custom Format…",nil];
     unsigned int index;
@@ -71,12 +63,7 @@
     [menu setDelegate:(id)target]; [self updateMenu:menu target:target];
   } else if([identifier isEqualToString:@"view"]) {
     [self addItemToMenu:menu title:@"Hide Playlists" action:@selector(togglePlaylists:) target:target];
-    [self addItemToMenu:menu title:@"Show Download Queue" action:@selector(toggleDownloads:) target:target];
-    [menu addItem:[NSMenuItem separatorItem]];
-    NSMenu *queue=[[[NSMenu alloc] initWithTitle:@"Download Queue"] autorelease];
-    [self addQueueActionsToMenu:queue target:target];
-    NSMenuItem *parent=[menu addItemWithTitle:@"Download Queue" action:NULL keyEquivalent:@""];
-    [parent setSubmenu:queue];
+    [self addItemToMenu:menu title:@"Show Download Queue" action:@selector(showQueue:) target:target];
   } else if([identifier isEqualToString:@"cookies"]) {
     [self addItemToMenu:menu title:@"Import Cookies…" action:@selector(importCookies:) target:target];
     [self addItemToMenu:menu title:@"Replace Cookies…" action:@selector(replaceCookies:) target:target];
@@ -84,10 +71,7 @@
     [menu addItem:[NSMenuItem separatorItem]];
     [self addItemToMenu:menu title:@"Export Guide" action:@selector(openCookieExportGuide:) target:target];
   } else {
-    [self addItemToMenu:menu title:@"Show Queue" action:@selector(showQueue:) target:target];
-    [self addItemToMenu:menu title:@"Hide Queue" action:@selector(hideQueue:) target:target];
-    [menu addItem:[NSMenuItem separatorItem]];
-    [self addQueueActionsToMenu:menu target:target];
+    [self addItemToMenu:menu title:@"Show Download Queue" action:@selector(showQueue:) target:target];
   }
   return menu;
 }
@@ -99,28 +83,17 @@
   while([menu numberOfItems]) [menu removeItemAtIndex:0];
   BOOL video=[target hasTargetVideo];
   if(download) {
-    NSString *title=video?@"Download Video":@"Download Missing Videos";
-    NSMenuItem *command=[menu addItemWithTitle:title action:@selector(chooseDownload:) keyEquivalent:@""];
-    [command setTarget:target]; [command setTag:video?0:5];
-    NSMenuItem *parent=[menu addItemWithTitle:@"Download Quality" action:NULL keyEquivalent:@""];
-    NSMenu *qualities=[[[NSMenu alloc] initWithTitle:@"Download Quality"] autorelease];
-    NSArray *titles=[NSArray arrayWithObjects:@"Last Used Quality",[RDLPLibrary qualityLabelForFormat:@"18"],[RDLPLibrary qualityLabelForFormat:@"136+140"],[RDLPLibrary qualityLabelForFormat:@"137+140"],@"Custom Format…",nil];
-    unsigned int index;
-    for(index=1;index<5;++index) {
-      NSMenuItem *choice=[qualities addItemWithTitle:[titles objectAtIndex:index] action:@selector(chooseDownload:) keyEquivalent:@""];
-      [choice setTarget:target]; [choice setTag:(NSInteger)((video?0:5)+index)];
-    }
-    [parent setSubmenu:qualities];
     if(video) {
+      NSMenuItem *command=[menu addItemWithTitle:@"Download Video" action:@selector(chooseDownload:) keyEquivalent:@""];
+      [command setTarget:target]; [command setTag:0];
       [self addItemToMenu:menu title:@"Cancel Download…" action:@selector(cancelTarget:) target:target];
       [self addItemToMenu:menu title:@"Delete Download…" action:@selector(removeTarget:) target:target];
-      [self addItemToMenu:menu title:@"Show in Queue" action:@selector(showTargetInQueue:) target:target];
     } else if([target contextPlaylist]) {
       [self addItemToMenu:menu title:@"Sync Current Playlist" action:@selector(sync:) target:target];
       [self addItemToMenu:menu title:@"Remove Playlist…" action:@selector(removePlaylist:) target:target];
       [self addItemToMenu:menu title:@"Show Download Queue" action:@selector(showQueue:) target:target];
     }
-    [menu addItem:[NSMenuItem separatorItem]];
+    if([menu numberOfItems]) [menu addItem:[NSMenuItem separatorItem]];
     [self addItemToMenu:menu title:@"Add Video…" action:@selector(addVideo:) target:target];
     [self addItemToMenu:menu title:@"Add Playlist…" action:@selector(addPlaylist:) target:target];
     [self addItemToMenu:menu title:@"Sync All Playlists…" action:@selector(syncAll:) target:target];

@@ -1,4 +1,5 @@
 #import "RDLPLibraryWindowController.h"
+#import "RDLPQueueWindowController.h"
 #import "RDLPAppKit.h"
 #import "RDLPToolbarButton.h"
 #import <AIFontAwesome.h>
@@ -61,7 +62,6 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (NSDictionary *)currentJob:(NSString *)key;
 - (NSString *)playFileForPlaylist:(NSDictionary *)playlist;
 - (NSString *)targetPlaylistFolder;
-- (NSArray *)missingPlanForPlaylist:(NSString *)playlist format:(NSString *)format;
 - (NSArray *)syncPlan;
 - (NSUInteger)queuedCount;
 - (void)setToolbarItem:(NSString *)key title:(NSString *)title tip:(NSString *)tip icon:(NSImage *)icon enabled:(BOOL)enabled;
@@ -86,7 +86,6 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)retryAndRevealJob:(NSDictionary *)job;
 - (void)enqueueSingle:(NSDictionary *)request allowRetry:(BOOL)allowRetry;
 - (void)enqueueRequest:(NSDictionary *)request;
-- (void)requestBulk:(NSDictionary *)request;
 - (void)downloadDefault:(id)sender;
 - (void)sync:(id)sender;
 - (void)syncAll:(id)sender;
@@ -95,7 +94,6 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)importCookies:(id)sender;
 - (void)replaceCookies:(id)sender;
 - (void)clearCookies:(id)sender;
-- (void)toggleDownloads:(id)sender;
 - (void)togglePlaylists:(id)sender;
 - (void)showQueue:(id)sender;
 - (void)hideQueue:(id)sender;
@@ -125,14 +123,16 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 @implementation RDLPLibraryWindowController
 - (id)initWithLibrary:(RDLPLibrary *)library;
 {
-  self=[super initWithTitle:@"RetroDLP" autosaveName:@"RetroDLPLibraryWindow"]; if(!self) return nil;
+  self=[super initWithWindowNibName:@"RetroDLPLibraryWindow"]; if(!self) return nil;
   library_=[library retain]; downloadPolicy_=[[RDLPDownloadPolicy alloc] initWithLibrary:library]; mode_=1;
-  AIViewController *left=[[[AIViewController alloc] init] autorelease];
+  split_=[[RDLPLibrarySplitView alloc] initWithFrame:NSMakeRect(0,0,800,600)];
+  [split_ setVertical:YES]; [split_ setDelegate:(id)self];
+  sidebarWidth_=[[NSUserDefaults standardUserDefaults] floatForKey:@"RetroDLPLibrarySidebarWidth"];
+  if(sidebarWidth_<150 || sidebarWidth_>260) sidebarWidth_=200;
   NSView *sidebar=[[[RDLPLayoutView alloc] initWithFrame:NSMakeRect(0,0,200,600)] autorelease];
   sidebarItems_=[[NSMutableDictionary alloc] init];
   sidebar_=[RDLPLibraryViews sidebarInView:sidebar owner:self];
-  [left setView:sidebar]; [self setSidebarViewController:left];
-  AIViewController *middle=[[[AIViewController alloc] init] autorelease];
+  [split_ addSubview:sidebar];
   NSView *detail=[[[RDLPLayoutView alloc] initWithFrame:NSMakeRect(0,0,540,600)] autorelease];
   table_=[RDLPLibraryViews tableInView:detail frame:[detail bounds] owner:self
     names:[NSArray arrayWithObjects:@"state",@"size",@"quality",@"title",@"channel",nil]
@@ -166,53 +166,58 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [[table_ enclosingScrollView] setBorderType:NSNoBorder];
   [table_ setTarget:self]; [table_ setDoubleAction:@selector(openVideo:)];
   downloadFormat_=[[RDLPLibrary preferredFormat] copy];
-  [middle setView:detail]; [self setDetailViewController:middle];
-  AIViewController *inspector=[[[AIViewController alloc] init] autorelease];
-  NSView *queue=[[[RDLPLayoutView alloc] initWithFrame:NSMakeRect(0,0,300,600)] autorelease];
-  queue_=[RDLPLibraryViews tableInView:queue frame:[queue bounds] owner:self
-    names:[NSArray arrayWithObjects:@"number",@"state",@"quality",@"title",@"playlist_title",nil]
-    labels:[NSArray arrayWithObjects:@"",@"",@"Quality",@"Video",@"Playlist",nil]];
-  NSTableColumn *numberColumn=[queue_ tableColumnWithIdentifier:@"number"];
-  [numberColumn setMinWidth:36]; [numberColumn setMaxWidth:36]; [numberColumn setWidth:36];
-  [numberColumn setResizingMask:NSTableColumnNoResizing];
-#if MAC_OS_X_VERSION_MAX_ALLOWED >= 101200
-  [[numberColumn dataCell] setAlignment:NSTextAlignmentRight];
-#else
-  [[numberColumn dataCell] setAlignment:NSRightTextAlignment];
-#endif
-  NSTableColumn *queueState=[queue_ tableColumnWithIdentifier:@"state"];
-  [queueState setMinWidth:24]; [queueState setMaxWidth:24]; [queueState setWidth:24];
-  [queueState setResizingMask:NSTableColumnNoResizing];
-  [queueState setDataCell:[[[RDLPStatusCell alloc] initImageCell:nil] autorelease]];
-  NSArray *textColumns=[NSArray arrayWithObjects:@"quality",@"title",@"playlist_title",nil];
-  NSEnumerator *columns=[textColumns objectEnumerator]; NSString *identifier;
-  while((identifier=[columns nextObject])) {
-    NSTableColumn *column=[queue_ tableColumnWithIdentifier:identifier];
-    [column setWidth:[identifier isEqualToString:@"title"]?180:140]; [column setMinWidth:60];
-    [column setResizingMask:NSTableColumnUserResizingMask];
-    [[column dataCell] setLineBreakMode:NSLineBreakByTruncatingTail];
-  }
-  [queue_ setAllowsColumnReordering:NO];
-  [queue_ setColumnAutoresizingStyle:NSTableViewNoColumnAutoresizing];
-  NSScrollView *queueScroll=[queue_ enclosingScrollView];
-  [queueScroll setBorderType:NSNoBorder]; [queueScroll setAutohidesScrollers:YES];
-  NSMenu *jobMenu=[[[NSMenu alloc] initWithTitle:@"Queue Actions"] autorelease];
-  [RDLPLibraryMenus addItemToMenu:jobMenu title:@"Play" action:@selector(openJob:) target:self];
-  [RDLPLibraryMenus addItemToMenu:jobMenu title:@"Retry" action:@selector(retryQueueJob:) target:self];
-  [RDLPLibraryMenus addItemToMenu:jobMenu title:@"Stop Download…" action:@selector(cancelQueueJob:) target:self];
-  [RDLPLibraryMenus addItemToMenu:jobMenu title:@"Show Error…" action:@selector(showQueueError:) target:self];
-  [RDLPLibraryMenus addItemToMenu:jobMenu title:@"Delete Download…" action:@selector(removeJob:) target:self];
-  [queue_ setMenu:jobMenu]; [queue_ setTarget:self]; [queue_ setDoubleAction:@selector(openJob:)];
-  [inspector setView:queue]; [self setInspectorViewController:inspector];
-  [self setSidebarWidthLimits:AIMinMidMaxMake(150,200,260)];
-  [self setInspectorWidthLimits:AIMinMidMaxMake(300,520,900)];
-  [self setSplitViewAutosaveName:@"RetroDLPThreePaneDividers"];
+  [split_ addSubview:detail];
+  queueWindow_=[[RDLPQueueWindowController alloc] initWithLibrary:library_ owner:self];
+  queue_=[queueWindow_ tableView];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(queueWindowClosed:)
+    name:NSWindowWillCloseNotification object:[queueWindow_ window]];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(windowBecameKey:)
+    name:NSWindowDidBecomeKeyNotification object:[queueWindow_ window]];
 
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library_];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPLibraryStatusDidChange object:library_];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:NSApplicationDidBecomeActiveNotification object:NSApp];
   [self refresh:nil]; return self;
 }
+- (NSSplitView *)AI_splitView; { return split_; }
+- (BOOL)isSidebarCollapsed; { return sidebarCollapsed_; }
+- (void)toggleSidebar:(id)sender;
+{
+  (void)sender; sidebarCollapsed_=!sidebarCollapsed_;
+  [[[split_ subviews] objectAtIndex:0] setHidden:sidebarCollapsed_];
+  [self splitView:split_ resizeSubviewsWithOldSize:[split_ bounds].size];
+}
+- (void)splitView:(NSSplitView *)split resizeSubviewsWithOldSize:(NSSize)oldSize;
+{
+  (void)oldSize; if([[split subviews] count]!=2) return;
+  NSRect bounds=[split bounds]; CGFloat width=sidebarCollapsed_?0:MIN(sidebarWidth_,MAX(0,bounds.size.width-320));
+  CGFloat divider=sidebarCollapsed_?0:[split dividerThickness];
+  [[[split subviews] objectAtIndex:0] setFrame:NSMakeRect(0,0,width,bounds.size.height)];
+  [[[split subviews] objectAtIndex:1] setFrame:NSMakeRect(width+divider,0,MAX(0,bounds.size.width-width-divider),bounds.size.height)];
+}
+- (CGFloat)splitView:(NSSplitView *)split constrainMinCoordinate:(CGFloat)proposed ofSubviewAt:(NSInteger)index;
+{ (void)split; (void)proposed; (void)index; return 150; }
+- (CGFloat)splitView:(NSSplitView *)split constrainMaxCoordinate:(CGFloat)proposed ofSubviewAt:(NSInteger)index;
+{ (void)proposed; (void)index; return MIN(260,NSWidth([split bounds])-320); }
+- (void)splitViewDidResizeSubviews:(NSNotification *)notification;
+{
+  (void)notification; if(sidebarCollapsed_ || ![[split_ subviews] count]) return;
+  CGFloat width=NSWidth([[[split_ subviews] objectAtIndex:0] frame]);
+  if(width>=150 && width<=260) {
+    sidebarWidth_=width; [[NSUserDefaults standardUserDefaults] setFloat:width forKey:@"RetroDLPLibrarySidebarWidth"];
+  }
+}
+- (BOOL)hasAttachedSheet;
+{ return [[self window] attachedSheet]!=nil || [[queueWindow_ window] attachedSheet]!=nil; }
+- (NSWindow *)actionWindow;
+{ return context_==2 && [[queueWindow_ window] isVisible]?[queueWindow_ window]:[self window]; }
+- (void)windowBecameKey:(NSNotification *)notification;
+{
+  context_=[notification object]==[queueWindow_ window]?2:libraryContext_;
+  [self updateControls];
+}
+- (void)queueWindowClosed:(NSNotification *)notification;
+{ (void)notification; context_=libraryContext_; [self updateControls]; }
 - (void)showWindow:(id)sender;
 {
   [super showWindow:sender];
@@ -243,7 +248,6 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 #else
   mask|=NSTexturedBackgroundWindowMask;
 #endif
-  if(AICCCurrentTier()>=AICCTierMiddle) mask|=AIWindowStyleMaskFullSizeContentView;
   NSWindow *window=[[[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,800,600)
     styleMask:mask backing:NSBackingStoreBuffered defer:NO] autorelease];
   [window setTitle:@"RetroDLP"]; [window setReleasedWhenClosed:NO];
@@ -268,23 +272,14 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSRect bounds=[[window contentView] bounds];
   NSView *root=[[[RDLPLayoutView alloc] initWithFrame:bounds] autorelease];
   [root setAutoresizingMask:NSViewWidthSizable|NSViewHeightSizable];
-  /* Preserve the modern split controller's containment and responder chain. */
-  if(AICCCurrentTier()>=AICCTierMiddle) {
-    id splitController=[[window performSelector:@selector(contentViewController)] retain];
-    id container=[[NSClassFromString(@"NSViewController") alloc] init];
-    [window performSelector:@selector(setContentViewController:) withObject:nil];
-    [container performSelector:@selector(setView:) withObject:root];
-    [container performSelector:@selector(addChildViewController:) withObject:splitController];
-    [window performSelector:@selector(setContentViewController:) withObject:container];
-    [splitController release]; [container release];
-  } else {
-    [window setContentView:root];
-  }
+  [window setContentView:root];
   [split removeFromSuperview];
   [split setFrame:NSMakeRect(0,RDLPStatusBarHeight,bounds.size.width,
                             MAX(0,bounds.size.height-RDLPStatusBarHeight))];
   [split setAutoresizingMask:NSViewWidthSizable|NSViewHeightSizable];
-  [root addSubview:split];
+  [root addSubview:split]; [self splitView:split resizeSubviewsWithOldSize:NSZeroSize];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(windowBecameKey:)
+    name:NSWindowDidBecomeKeyNotification object:window];
   status_=[RDLPLibraryViews fieldInView:root frame:NSMakeRect(12,7,MAX(0,bounds.size.width-190),18) editable:NO];
   [status_ setAutoresizingMask:NSViewWidthSizable];
   queueProgress_=[[[NSProgressIndicator alloc] initWithFrame:NSMakeRect(bounds.size.width-160,10,140,12)] autorelease];
@@ -323,7 +318,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [view setImage:[RDLPLibraryViews toolbarIcon:(AIFontAwesomeIcon)[[icons objectAtIndex:index] intValue] window:[self window]]];
   [view setCaretImage:[RDLPAppKit controlIcon:AIFACaretDown style:AIFontAwesomeStyleSolid iconSize:8 canvasSize:10 scale:[RDLPAppKit backingScaleForWindow:[self window]]]];
   [view setTarget:self]; [view setAction:@selector(toolbarDefault:)];
-  [view setMenu:[self menuForToolbarIdentifier:identifier]];
+  if(![identifier isEqualToString:@"downloads"]) [view setMenu:[self menuForToolbarIdentifier:identifier]];
   [item setLabel:[labels objectAtIndex:index]]; [item setPaletteLabel:[labels objectAtIndex:index]];
   [item setView:view]; [item setMinSize:NSMakeSize(40,32)]; [item setMaxSize:NSMakeSize(40,32)];
   [item setTarget:self]; [item setAction:@selector(toolbarDefault:)]; [item setTag:(NSInteger)index];
@@ -342,12 +337,17 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(![self validateMenuItem:sender]) return;
   if(context_==2 && [self selectedJob]) { [self retryQueueJob:sender]; return; }
   NSMenuItem *command=[[[NSMenuItem alloc] initWithTitle:@"" action:@selector(chooseDownload:) keyEquivalent:@""] autorelease];
-  [command setTag:[self hasTargetVideo]?0:5]; [self chooseDownload:command];
+  [command setTag:0]; [self chooseDownload:command];
 }
 - (NSMenu *)menuForToolbarIdentifier:(NSString *)identifier;
 { return [RDLPLibraryMenus menuForToolbarIdentifier:identifier target:self]; }
 - (void)menuNeedsUpdate:(NSMenu *)menu;
-{ [RDLPLibraryMenus updateMenu:menu target:self]; }
+{
+  /* These menus belong to the library toolbar, even when opened by a
+     secondary click while the queue window is key. */
+  [[self window] makeKeyAndOrderFront:nil]; context_=libraryContext_;
+  [RDLPLibraryMenus updateMenu:menu target:self];
+}
 - (NSDictionary *)contextPlaylist;
 { return [self hasTargetVideo]?[self targetPlaylist]:(context_==2?[self targetPlaylist]:[self selectedPlaylist]); }
 - (NSString *)selectionPlayFile;
@@ -365,25 +365,26 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 { if([self hasTargetVideo]) [self revealTarget:sender]; else if([self contextPlaylist]) [self revealPlaylistFolder:sender]; }
 - (void)toolbarDefault:(id)sender;
 {
-  if([[self window] attachedSheet]) return;
+  if([self hasAttachedSheet]) return;
   if([sender isKindOfClass:[NSToolbarItem class]] && ![(RDLPToolbarButton *)[(NSToolbarItem *)sender view] isDefaultEnabled]) return;
+  [[self window] makeKeyAndOrderFront:sender]; context_=libraryContext_;
   switch([sender tag]) {
     case 0: [self downloadDefault:sender]; break;
     case 1: [self playSelection:sender]; break;
     case 2: if([[library_ cookieStatus] isEqualToString:@"Not Imported"]) [self importCookies:sender]; else [self replaceCookies:sender]; break;
-    case 3: [self toggleDownloads:sender]; break;
+    case 3: [self showQueue:sender]; break;
   }
 }
 - (void)chooseDownload:(NSMenuItem *)sender;
 {
   if(![self validateMenuItem:sender] || downloadSheet_) return;
-  BOOL all=[sender tag]>=5; NSUInteger index=(NSUInteger)[sender tag]%5;
+  NSUInteger index=(NSUInteger)[sender tag];
   if(index>0 && index<4) { [self saveDownloadQuality:[[RDLPLibrary qualityFormats] objectAtIndex:index-1]]; return; }
   if(index==0) {
     NSDictionary *playlist=[self contextPlaylist];
     NSMutableDictionary *request=[NSMutableDictionary dictionaryWithObjectsAndKeys:[playlist objectForKey:@"id"],@"playlist",[playlist objectForKey:@"title"],@"title",downloadFormat_,@"format",nil];
-    if(!all) [request setObject:[self targetVideoID] forKey:@"video"];
-    if(all) [self requestBulk:request]; else [self enqueueRequest:request]; return;
+    [request setObject:[self targetVideoID] forKey:@"video"];
+    [self enqueueRequest:request]; return;
   }
   downloadSheet_=[[NSPanel alloc] initWithContentRect:NSMakeRect(0,0,500,220) styleMask:AIWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
   [downloadSheet_ setTitle:@"Custom Download Quality"];
@@ -396,7 +397,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSButton *cancel=[RDLPLibraryViews buttonInView:view title:@"Cancel" action:@selector(dismissDownload:) target:self frame:NSMakeRect(240,10,105,28)]; [cancel setTag:0]; [cancel setKeyEquivalent:@"\033"];
   NSButton *download=[RDLPLibraryViews buttonInView:view title:@"Save" action:@selector(dismissDownload:) target:self frame:NSMakeRect(350,10,130,28)]; [download setTag:1]; [download setKeyEquivalent:@"\r"];
   [self updateCustomSummary];
-  [RDLPAppKit beginSheet:downloadSheet_ forWindow:[self window] delegate:self didEnd:@selector(downloadSheetDidEnd:returnCode:contextInfo:)];
+  [RDLPAppKit beginSheet:downloadSheet_ forWindow:[self actionWindow] delegate:self didEnd:@selector(downloadSheetDidEnd:returnCode:contextInfo:)];
   [downloadSheet_ makeFirstResponder:customFormat_];
 }
 - (void)saveDownloadQuality:(NSString *)format;
@@ -430,6 +431,9 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)dealloc;
 {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
+  [sidebar_ setDelegate:nil]; [sidebar_ setDataSource:nil];
+  [table_ setDelegate:nil]; [table_ setDataSource:nil];
+  [split_ setDelegate:nil]; [split_ release]; [queueWindow_ close]; [queueWindow_ release];
   [sidebarItems_ release]; [downloadPolicy_ release]; [library_ release]; [playlists_ release]; [rows_ release]; [videoRows_ release]; [addedPlaylists_ release]; [accountPlaylists_ release]; [adhocPlaylist_ release]; [selectedPlaylist_ release];
   [addSheet_ release]; [downloadSheet_ release]; [downloadRequest_ release]; [downloadFormat_ release]; [queueRows_ release]; [toolbarItems_ release]; [confirmation_ release]; [confirmationRequest_ release]; [super dealloc];
 }
@@ -479,7 +483,9 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)tableWasUsed:(NSTableView *)view;
 {
   if(refreshing_) return;
-  context_=view==sidebar_?0:(view==queue_?2:1); [self updateControls];
+  context_=view==sidebar_?0:(view==queue_?2:1);
+  if(context_!=2) libraryContext_=context_;
+  [self updateControls];
 }
 - (BOOL)hasTargetVideo;
 { return context_==2?[self selectedJob]!=nil:(context_==1 && [self selectedRow]!=nil); }
@@ -528,9 +534,6 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   BOOL directory=NO;
   return path && [[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&directory] && directory?path:nil;
 }
-- (NSArray *)missingPlanForPlaylist:(NSString *)playlist format:(NSString *)format;
-{ return [library_ missingPlanForPlaylist:playlist format:format];
-}
 - (NSArray *)syncPlan;
 {
   NSMutableArray *inputs=[NSMutableArray array]; NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
@@ -546,7 +549,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSToolbarItem *item=[toolbarItems_ objectForKey:key]; RDLPToolbarButton *view=(RDLPToolbarButton *)[item view];
   [item setLabel:title]; [item setToolTip:tip]; [view setTitle:title]; [view setToolTip:tip];
   if(icon) [view setImage:icon];
-  [view setDefaultEnabled:enabled && ![[self window] attachedSheet]];
+  [view setDefaultEnabled:enabled && ![self hasAttachedSheet]];
 }
 - (void)refreshIconScale:(NSNotification *)notification;
 {
@@ -561,30 +564,36 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (void)updateToolbar;
 {
-  NSDictionary *playlist=[self contextPlaylist], *job=[self targetJob];
-  BOOL video=[self hasTargetVideo], enabled=YES;
+  /* The menu bar follows the active window; this toolbar always describes
+     the library's own selection. Queue focus must not change its buttons. */
+  NSDictionary *row=[self selectedRow];
+  BOOL video=libraryContext_==1 && row!=nil, enabled=YES;
+  NSDictionary *job=video?(mode_==0?[self jobForEntry:row]:row):nil;
+  NSDictionary *playlist=job?[library_ playlistForID:[job objectForKey:@"playlist_id"]]:[self selectedPlaylist];
+  NSString *format=job?[job objectForKey:@"format"]:downloadFormat_;
   BOOL delete=video && [self playable:job];
   AIFontAwesomeIcon icon=AIFADownload; NSString *tip=nil;
   if(video) {
     icon=delete?AIFATrash:([self canCancel:job]?AIFAHourglass:AIFADownload);
     if(delete) enabled=[self canRemove:job];
-    tip=[NSString stringWithFormat:@"%@ — %@ · %@",delete?@"Delete downloaded video…":([self canCancel:job]?@"Show in Queue":@"Download video"),job?[job objectForKey:@"title"]:[[self selectedRow] objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:job?[job objectForKey:@"format"]:[self targetFormat]]];
+    tip=[NSString stringWithFormat:@"%@ — %@ · %@",delete?@"Delete downloaded video…":([self canCancel:job]?@"Show in Queue":@"Download video"),job?[job objectForKey:@"title"]:[row objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:format]];
   } else if(playlist) {
     icon=AIFAArrowsRotate;
     enabled=![[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
     tip=[NSString stringWithFormat:@"Sync ‘%@’",[playlist objectForKey:@"title"]];
   } else { icon=(AIFontAwesomeIcon)0x2b; tip=@"Add a video…"; }
   [self setToolbarItem:@"download" title:video?(delete?@"Delete":@"Download"):(playlist?@"Sync":@"Add Video") tip:tip icon:[RDLPLibraryViews toolbarIcon:icon window:[self window]] enabled:enabled];
-  NSString *path=[self selectionPlayFile], *application=[RDLPAppKit preferredPlaybackApplication:path];
+  NSString *path=video?([self playable:job]?[library_ fileForJob:job]:nil):[self playFileForPlaylist:playlist];
+  NSString *application=[RDLPAppKit preferredPlaybackApplication:path];
   NSString *object=video?@"video":@"playlist";
   NSString *playTip=path?(application?[NSString stringWithFormat:@"Play %@ in %@",object,[[[NSFileManager defaultManager] displayNameAtPath:application] stringByDeletingPathExtension]]:[NSString stringWithFormat:@"Reveal %@ in Finder",object]):@"Select a downloaded video or playlist to play";
   [self setToolbarItem:@"play" title:@"Play" tip:playTip icon:[RDLPAppKit youTubeIconForScale:[RDLPAppKit backingScaleForWindow:[self window]]] enabled:path!=nil];
   BOOL cookies=[[library_ cookieStatus] isEqualToString:@"Imported"];
   [self setToolbarItem:@"cookies" title:@"Cookies" tip:[[library_ cookieStatus] isEqualToString:@"Not Imported"]?@"Import cookies…":@"Replace cookies…" icon:[RDLPLibraryViews toolbarIcon:cookies?AIFACookie:AIFACookieBite window:[self window]] enabled:![library_ isBusy]];
-  [self setToolbarItem:@"downloads" title:@"Queue" tip:[self isInspectorCollapsed]?@"Show Queue. Right-click for queue actions.":@"Hide Queue. Right-click for queue actions." icon:[RDLPLibraryViews toolbarIcon:AIFAListCheck window:[self window]] enabled:YES];
+  [self setToolbarItem:@"downloads" title:@"Queue" tip:@"Show Download Queue" icon:[RDLPLibraryViews toolbarIcon:AIFAListCheck window:[self window]] enabled:YES];
 }
 - (void)updateControls;
-{ [self updateToolbar]; [self refreshStatus:nil]; }
+{ [self updateToolbar]; [queueWindow_ updateControls]; [self refreshStatus:nil]; }
 - (void)refreshStatus:(id)sender;
 {
   (void)sender;
@@ -599,6 +608,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [queueProgress_ setMaxValue:MAX(expected,1)];
   [queueProgress_ setDoubleValue:MIN(expected,[[progress objectForKey:@"completed"] doubleValue])];
   [queueProgress_ setToolTip:[library_ status]];
+  [queueWindow_ refreshStatus];
 }
 
 - (NSInteger)outlineView:(NSOutlineView *)outline numberOfChildrenOfItem:(id)item;
@@ -660,7 +670,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     else if([status isEqualToString:@"Queued"]) icon=AIFAClock;
     else if([status isEqualToString:@"Cancelled"]) icon=AIFACirclePause;
     else if(![status isEqualToString:@"Not downloaded"]) icon=AIFATriangleExclamation;
-    return icon?[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid iconSize:12 canvasSize:16 scale:[RDLPAppKit backingScaleForWindow:[self window]]]:nil;
+    return icon?[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid iconSize:12 canvasSize:16 scale:[RDLPAppKit backingScaleForWindow:[view window]]]:nil;
   }
   return [entry objectForKey:key];
 }
@@ -688,6 +698,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   if(refreshing_) return;
   context_=[notification object]==sidebar_?0:([notification object]==queue_?2:1);
+  if(context_!=2) libraryContext_=context_;
   if([notification object]==sidebar_) {
     NSInteger row=[sidebar_ selectedRow]; if(row<0) return;
     refreshing_=YES; [table_ deselectAll:nil]; refreshing_=NO;
@@ -703,18 +714,16 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   SEL visibilityAction=[item action];
   if(visibilityAction==@selector(togglePlaylists:)) [item setTitle:[self isSidebarCollapsed]?@"Show Playlists":@"Hide Playlists"];
-  if(visibilityAction==@selector(toggleDownloads:)) [item setTitle:[self isInspectorCollapsed]?@"Show Download Queue":@"Hide Download Queue"];
   if([[item menu] title] && [[[item menu] title] isEqualToString:@"File"]) {
     NSString *object=[self hasTargetVideo]?@"Video":@"Playlist";
     if(visibilityAction==@selector(playSelectionInDefaultApplication:)) [item setTitle:[NSString stringWithFormat:@"Play %@ in Default App",object]];
     if(visibilityAction==@selector(playSelectionInVLC:)) [item setTitle:[NSString stringWithFormat:@"Play %@ in VLC",object]];
-    if(visibilityAction==@selector(downloadFromMenu:)) [item setTitle:[self hasTargetVideo]?@"Download Video":@"Download Missing Videos"];
   }
-  if([[self window] attachedSheet]) return NO;
+  if([self hasAttachedSheet]) return NO;
   if(visibilityAction==@selector(downloadFromMenu:)) {
     if(context_==2 && [self selectedJob]) return [self canRetry:[self selectedJob]] || [self canDownloadAgain:[self selectedJob]];
     NSMenuItem *command=[[[NSMenuItem alloc] initWithTitle:@"" action:@selector(chooseDownload:) keyEquivalent:@""] autorelease];
-    [command setTag:[self hasTargetVideo]?0:5]; return [self validateMenuItem:command];
+    [command setTag:0]; return [self validateMenuItem:command];
   }
   SEL action=[item action]; NSDictionary *job=[self targetJob], *playlist=[self contextPlaylist], *queued=[self selectedJob];
   BOOL noCookies=[[library_ cookieStatus] isEqualToString:@"Not Imported"];
@@ -724,7 +733,8 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(action==@selector(sync:)) return playlist && ![[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
   if(action==@selector(syncAll:)) return [library_ hasPlaylistsToSync];
   if(action==@selector(chooseDownload:)) {
-    BOOL all=[item tag]>=5; NSUInteger index=(NSUInteger)[item tag]%5;
+    NSUInteger index=(NSUInteger)[item tag];
+    if(index>4) return NO;
     if(index>0) {
       NSString *format=index<4?[[RDLPLibrary qualityFormats] objectAtIndex:index-1]:nil;
       BOOL custom=![[RDLPLibrary qualityFormats] containsObject:downloadFormat_];
@@ -733,9 +743,8 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     }
     [item setState:NSOffState];
     playlist=[self contextPlaylist];
-    if(!playlist || (!all && ![self hasTargetVideo])) return NO;
+    if(!playlist || ![self hasTargetVideo]) return NO;
     NSString *format=downloadFormat_;
-    if(all) return [library_ hasMissingEntriesForPlaylist:[playlist objectForKey:@"id"] format:format];
     NSDictionary *matching=[self jobForPlaylist:[playlist objectForKey:@"id"] video:[self targetVideoID] format:format];
     return !matching || [self canRetry:matching] || [self canDownloadAgain:matching];
   }
@@ -755,8 +764,8 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(action==@selector(revealTarget:)) return [self playable:job];
   if(action==@selector(revealPlaylistFolder:)) return [self targetPlaylistFolder]!=nil;
   if(action==@selector(openDownloadsFolder:)) return [[NSFileManager defaultManager] fileExistsAtPath:[library_ downloadsDirectory]];
-  if(action==@selector(showQueue:)) return [self isInspectorCollapsed];
-  if(action==@selector(hideQueue:)) return ![self isInspectorCollapsed];
+  if(action==@selector(showQueue:)) return YES;
+  if(action==@selector(hideQueue:)) return [[queueWindow_ window] isVisible];
   if(action==@selector(showQueueError:)) return [[queued objectForKey:@"error"] length]>0;
   if(action==@selector(retryQueueJob:)) return [self canRetry:queued] || [self canDownloadAgain:queued];
   if(action==@selector(againQueueJob:)) return [self canDownloadAgain:queued];
@@ -770,7 +779,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (void)addPlaylist:(id)sender;
 {
-  (void)sender; if(addSheet_ || [[self window] attachedSheet]) return;
+  (void)sender; if(addSheet_ || [self hasAttachedSheet]) return;
   addingVideo_=NO;
   addSheet_=[[NSPanel alloc] initWithContentRect:NSMakeRect(0,0,460,135) styleMask:AIWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
   [addSheet_ setTitle:@"Add Playlist"];
@@ -778,20 +787,20 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   input_=[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,62,420,24) editable:YES];
   NSButton *cancel=[RDLPLibraryViews buttonInView:view title:@"Cancel" action:@selector(dismissAdd:) target:self frame:NSMakeRect(230,15,100,28)]; [cancel setTag:0]; [cancel setKeyEquivalent:@"\033"];
   NSButton *add=[RDLPLibraryViews buttonInView:view title:@"Add Playlist" action:@selector(dismissAdd:) target:self frame:NSMakeRect(335,15,110,28)]; [add setTag:1]; [add setKeyEquivalent:@"\r"];
-  [RDLPAppKit beginSheet:addSheet_ forWindow:[self window] delegate:self didEnd:@selector(addSheetDidEnd:returnCode:contextInfo:)];
+  [RDLPAppKit beginSheet:addSheet_ forWindow:[self actionWindow] delegate:self didEnd:@selector(addSheetDidEnd:returnCode:contextInfo:)];
   [addSheet_ makeFirstResponder:input_];
 }
 - (void)addVideo:(id)sender;
 {
   (void)sender;
-  if([[self window] attachedSheet] || addSheet_) return;
+  if([self hasAttachedSheet] || addSheet_) return;
   addSheet_=[[NSPanel alloc] initWithContentRect:NSMakeRect(0,0,460,135) styleMask:AIWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
   [addSheet_ setTitle:@"Add Video"];
   NSView *view=[addSheet_ contentView]; [[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,95,420,24) editable:NO] setStringValue:@"YouTube video URL or ID"];
   addingVideo_=YES; input_=[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,62,420,24) editable:YES];
   NSButton *cancel=[RDLPLibraryViews buttonInView:view title:@"Cancel" action:@selector(dismissAdd:) target:self frame:NSMakeRect(230,15,100,28)]; [cancel setTag:0]; [cancel setKeyEquivalent:@"\033"];
   NSButton *add=[RDLPLibraryViews buttonInView:view title:@"Add Video" action:@selector(dismissAdd:) target:self frame:NSMakeRect(335,15,110,28)]; [add setTag:1]; [add setKeyEquivalent:@"\r"];
-  [RDLPAppKit beginSheet:addSheet_ forWindow:[self window] delegate:self didEnd:@selector(addSheetDidEnd:returnCode:contextInfo:)]; [addSheet_ makeFirstResponder:input_];
+  [RDLPAppKit beginSheet:addSheet_ forWindow:[self actionWindow] delegate:self didEnd:@selector(addSheetDidEnd:returnCode:contextInfo:)]; [addSheet_ makeFirstResponder:input_];
 }
 - (void)dismissAdd:(id)sender;
 { [NSApp endSheet:addSheet_ returnCode:[sender tag]]; }
@@ -803,11 +812,11 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (void)confirmRequest:(NSDictionary *)request title:(NSString *)title detail:(NSString *)detail action:(NSString *)action;
 {
-  if([[self window] attachedSheet] || confirmation_) return;
+  if([self hasAttachedSheet] || confirmation_) return;
   confirmationRequest_=[request copy]; confirmation_=[[NSAlert alloc] init];
   [confirmation_ setMessageText:title]; [confirmation_ setInformativeText:detail];
   [confirmation_ addButtonWithTitle:@"Cancel"]; [confirmation_ addButtonWithTitle:action];
-  [RDLPAppKit beginAlertSheet:confirmation_ forWindow:[self window] delegate:self didEnd:@selector(confirmationDidEnd:returnCode:contextInfo:)];
+  [RDLPAppKit beginAlertSheet:confirmation_ forWindow:[self actionWindow] delegate:self didEnd:@selector(confirmationDidEnd:returnCode:contextInfo:)];
   [self updateControls];
 }
 - (void)confirmationDidEnd:(NSAlert *)alert returnCode:(NSInteger)code contextInfo:(void *)context;
@@ -821,12 +830,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)performConfirmed:(NSDictionary *)request;
 {
   NSString *op=[request objectForKey:@"operation"];
-  if([op isEqualToString:@"bulkDownload"]) { [self enqueueRequest:request]; return; }
-  if([op isEqualToString:@"bulk"]) {
-    /* The sheet captures its exact plan; revalidate each job before acting. */
-    NSEnumerator *e=[[request objectForKey:@"plan"] objectEnumerator]; NSDictionary *item;
-    while((item=[e nextObject])) [self enqueueSingle:item allowRetry:NO];
-  } else if([op isEqualToString:@"syncAll"]) {
+  if([op isEqualToString:@"syncAll"]) {
     NSEnumerator *e=[[request objectForKey:@"inputs"] objectEnumerator]; NSString *input;
     while((input=[e nextObject])) [library_ syncPlaylistInput:input];
   } else if([op isEqualToString:@"discover"]) {
@@ -881,27 +885,17 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (void)enqueueRequest:(NSDictionary *)request;
 {
+  if(![request objectForKey:@"video"]) return;
   NSString *format=[request objectForKey:@"format"];
   if(![RDLPLibrary savePreferredFormat:format]) return;
   [downloadFormat_ release]; downloadFormat_=[format copy];
   [self revealDownloads];
-  if([request objectForKey:@"video"]) [self enqueueSingle:request allowRetry:YES];
-  else [self performConfirmed:[NSDictionary dictionaryWithObjectsAndKeys:@"bulk",@"operation",[request objectForKey:@"plan"],@"plan",nil]];
+  [self enqueueSingle:request allowRetry:YES];
   [self refresh:nil];
-}
-- (void)requestBulk:(NSDictionary *)request;
-{
-  NSString *playlist=[request objectForKey:@"playlist"], *format=[request objectForKey:@"format"];
-  NSArray *plan=[self missingPlanForPlaylist:playlist format:format]; if(![plan count]) return;
-  NSMutableDictionary *captured=[NSMutableDictionary dictionaryWithDictionary:request];
-  [captured setObject:plan forKey:@"plan"]; [captured setObject:@"bulkDownload" forKey:@"operation"];
-  NSString *title=[NSString stringWithFormat:@"Download %lu missing videos?",(unsigned long)[plan count]];
-  NSString *detail=[NSString stringWithFormat:@"Playlist: %@\nQuality: %@\nExisting failed or cancelled jobs will not be retried.",[request objectForKey:@"title"]?:playlist,[RDLPLibrary qualityLabelForFormat:format]];
-  [self confirmRequest:captured title:title detail:detail action:[NSString stringWithFormat:@"Download %lu Videos",(unsigned long)[plan count]]];
 }
 - (void)downloadDefault:(id)sender;
 {
-  if([[self window] attachedSheet]) return;
+  if([self hasAttachedSheet]) return;
   NSDictionary *playlist=[self contextPlaylist], *job=[self targetJob];
   if([self hasTargetVideo]) {
     if([self playable:job]) { [self removeTarget:sender]; return; }
@@ -931,13 +925,13 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (void)importCookies:(id)sender;
 {
-  (void)sender; if([library_ isBusy] || [[self window] attachedSheet]) return;
+  (void)sender; if([library_ isBusy] || [self hasAttachedSheet]) return;
   if(![[library_ cookieStatus] isEqualToString:@"Not Imported"]) { [self replaceCookies:nil]; return; }
   NSString *path=[RDLPAppKit chooseCookieFile]; if(path) [library_ importCookies:path];
 }
 - (void)replaceCookies:(id)sender;
 {
-  (void)sender; if([library_ isBusy] || [[self window] attachedSheet]) return;
+  (void)sender; if([library_ isBusy] || [self hasAttachedSheet]) return;
   NSString *path=[RDLPAppKit chooseCookieFile]; if(!path) return;
   [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"import",@"operation",path,@"path",nil] title:@"Replace imported cookies?" detail:@"Replace the app’s working cookie copy with the selected file. The original exported files are retained." action:@"Replace"];
 }
@@ -949,15 +943,13 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)showQueueError:(id)sender;
 { (void)sender; NSString *error=[[self selectedJob] objectForKey:@"error"]; if([error length]) [RDLPAppKit showAlert:error]; }
 - (void)togglePlaylists:(id)sender;
-{ if([[self window] attachedSheet]) return; [self toggleSidebar:sender]; [self updateControls]; }
-- (void)toggleDownloads:(id)sender;
-{ if([self isInspectorCollapsed]) [self showQueue:sender]; else [self hideQueue:sender]; }
+{ if([self hasAttachedSheet]) return; [self toggleSidebar:sender]; [self updateControls]; }
 - (void)showQueue:(id)sender;
-{ if([self isInspectorCollapsed]) [self toggleInspector:sender]; [self updateControls]; }
+{ [queueWindow_ showWindow:sender]; context_=2; [self updateControls]; }
 - (void)hideQueue:(id)sender;
 {
-  if(![self isInspectorCollapsed]) [self toggleInspector:sender];
-  if(context_==2) context_=[self selectedRow]?1:0; [self updateControls];
+  (void)sender; if([[queueWindow_ window] attachedSheet]) return;
+  [queueWindow_ close]; context_=libraryContext_; [self updateControls];
 }
 - (void)revealDownloads; { [self showQueue:nil]; }
 - (void)showJobInQueue:(NSDictionary *)job;

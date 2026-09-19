@@ -1,6 +1,12 @@
 #import "RDLPLibraryViews.h"
 #import "RDLPLibrary.h"
 
+@implementation RDLPLibrarySplitView
+- (CGFloat)dividerThickness; { return 1; }
+- (void)drawDividerInRect:(NSRect)rect;
+{ [[NSColor grayColor] set]; NSRectFill(rect); }
+@end
+
 /* Preserve spoken status text even though the visible cell contains only an icon. */
 
 @implementation RDLPStatusCell

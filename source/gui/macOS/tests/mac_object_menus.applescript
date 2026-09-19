@@ -33,9 +33,8 @@ tell application "System Events"
     delay 0.5
     click menu item "Show Download Queue" of menu 1 of menu bar item "View" of menu bar 1
     delay 1
-    click menu bar item "View" of menu bar 1
-    delay 0.5
-    click menu item "Hide Download Queue" of menu 1 of menu bar item "View" of menu bar 1
+    if not (exists window "Download Queue") then error "Queue window did not open"
+    keystroke "w" using command down
     delay 1
     click menu bar item "File" of menu bar 1
     delay 0.5
@@ -50,5 +49,5 @@ tell application "System Events"
     key code 53
   end tell
 end tell
-return "PASS: application menu registration, menu order, nested Cookies, both View visibility toggles, Add sheet, disabled playback"
+return "PASS: application menu registration, menu order, nested Cookies, sidebar toggle and independent Queue window, Add sheet, disabled playback"
 end run
