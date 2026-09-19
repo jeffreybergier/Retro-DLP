@@ -283,7 +283,13 @@ The fresh-launch root is `RDLPPlaylistsViewController`, a `UITableViewController
 with a plain table titled **Playlists**, containing System
 (All Downloads and Ad-Hoc after adding a video), Added Playlists, and My Playlists. These section
 headers use UIKit's default sizing and do not collapse. Empty sections have
-zero rows and no placeholder footer. The top-left Font Awesome gear opens Settings
+zero rows and no placeholder footer. Swipe an Added Playlists or My Playlists row
+to reveal **Delete**. Tapping Delete removes only its local library entry; the
+YouTube playlist is unchanged. All Downloads and Ad-Hoc cannot be deleted.
+Removal is unavailable while the library is busy or the playlist has pending or
+completed downloads. The swiped playlist stays fixed across refreshes, and these
+restrictions are checked again when Delete is tapped. Dismissing the swipe does
+nothing. The top-left Font Awesome gear opens Settings
 modally with a Done button. Settings is a dedicated `UITableViewController`
 with no bottom status area and no explanatory section footers. Its
 **Import Cookies...** row has no subtitle and is disabled while cookies are

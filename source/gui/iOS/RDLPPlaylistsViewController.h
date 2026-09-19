@@ -11,6 +11,7 @@
   UIActionSheet *playlistActions_;
   NSDictionary *request_;
   NSArray *alertActions_;
+  NSString *swipePlaylistID_;
 }
 - (id)initWithLibrary:(RDLPLibrary *)library;
 - (void)refresh:(id)sender;

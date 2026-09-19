@@ -95,7 +95,7 @@ static UIControl *editingControl(UIView *view,NSString *classPart) {
   for(UIView *child in view.subviews) { UIControl *found=editingControl(child,classPart); if(found) return found; }
   return nil;
 }
-static void nativeDelete(RDLPVideoListViewController *controller,NSIndexPath *index) {
+static void nativeDelete(UITableViewController *controller,NSIndexPath *index) {
   UITableView *table=controller.tableView;
   [table setEditing:YES animated:NO]; pump();
   [table scrollToRowAtIndexPath:index atScrollPosition:UITableViewScrollPositionNone animated:NO];
@@ -252,6 +252,76 @@ static void testDeletedDownloadQuality(NSString *directory) {
   [list release]; [library shutdown]; [library release];
   [RDLPLibrary savePreferredFormat:preference]; [preference release];
 }
+static NSIndexPath *playlistIndex(RDLPPlaylistsViewController *controller,NSString *key) {
+  NSArray *groups=sections(controller);
+  for(NSUInteger section=0;section<[groups count];++section) {
+    NSArray *rows=[[groups objectAtIndex:section] objectForKey:@"rows"];
+    for(NSUInteger row=0;row<[rows count];++row)
+      if([[[[rows objectAtIndex:row] objectForKey:@"playlist"] objectForKey:@"id"] isEqualToString:key])
+        return [NSIndexPath indexPathForRow:(NSInteger)row inSection:(NSInteger)section];
+  }
+  require(NO,@"Find playlist for swipe deletion"); return nil;
+}
+static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
+  [[NSFileManager defaultManager] removeItemAtPath:directory error:NULL];
+  NSString *support=[directory stringByAppendingPathComponent:@"Support"], *downloads=[directory stringByAppendingPathComponent:@"Downloads"];
+  RDLPOfflineLibrary *library=[[RDLPOfflineLibrary alloc] initWithSupportDirectory:support downloadDirectory:downloads];
+  rdapp_store *store=NULL; int64_t added=0,other=0,account=0,adhoc=0;
+  require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open playlist deletion fixture");
+  rdapp_entry entry={0}; entry.video_id="AAAAAAAAAAA"; entry.title="Offline video";
+  require(rdapp_store_snapshot(store,"PLswipe","Swipe target",&entry,1,&added) &&
+    rdapp_store_snapshot(store,"PLother","Other playlist",NULL,0,&other) &&
+    rdapp_store_snapshot(store,"PLaccount","Account playlist",NULL,0,&account) &&
+    rdapp_store_discovered_playlist(store,"PLaccount","Account playlist") &&
+    rdapp_store_add_adhoc(store,"BBBBBBBBBBB","Ad-Hoc video",&adhoc),@"Create added, account and protected system playlists");
+  NSString *key=[NSString stringWithFormat:@"%lld",(long long)added];
+  NSString *otherKey=[NSString stringWithFormat:@"%lld",(long long)other];
+  NSString *accountKey=[NSString stringWithFormat:@"%lld",(long long)account];
+  RDLPPlaylistsViewController *root=[[RDLPPlaylistsViewController alloc] initWithLibrary:library];
+  UIViewController *previous=[window.rootViewController retain];
+  UINavigationController *navigation=[[UINavigationController alloc] initWithRootViewController:root];
+  window.rootViewController=navigation; [root view]; [root refresh:nil]; pump();
+  NSIndexPath *index=playlistIndex(root,key);
+  require([root tableView:root.tableView canEditRowAtIndexPath:index] &&
+    [root tableView:root.tableView editingStyleForRowAtIndexPath:index]==UITableViewCellEditingStyleDelete,@"Added playlists expose swipe Delete");
+  require(![root tableView:root.tableView canEditRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]] &&
+    ![root tableView:root.tableView canEditRowAtIndexPath:playlistIndex(root,[NSString stringWithFormat:@"%lld",(long long)adhoc])],@"All Downloads and Ad-Hoc cannot be deleted");
+  [root tableView:root.tableView willBeginEditingRowAtIndexPath:index];
+  [root tableView:root.tableView didEndEditingRowAtIndexPath:index]; pump();
+  require([library playlistForID:key]!=nil,@"Dismissing the swipe preserves the playlist");
+  index=playlistIndex(root,key);
+  [root tableView:root.tableView willBeginEditingRowAtIndexPath:index];
+  library.testBusy=YES;
+  require(![root tableView:root.tableView canEditRowAtIndexPath:index],@"Busy library disables playlist deletion");
+  [root tableView:root.tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:index]; pump();
+  require([library playlistForID:key]!=nil,@"Work beginning during swipe blocks removal");
+  library.testBusy=NO; index=playlistIndex(root,key);
+  [root tableView:root.tableView willBeginEditingRowAtIndexPath:index];
+  [library enqueuePlaylist:key video:@"AAAAAAAAAAA" format:@"18"];
+  [root tableView:root.tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:index]; pump();
+  require([library playlistForID:key]!=nil && ![root tableView:root.tableView canEditRowAtIndexPath:playlistIndex(root,key)],@"A download queued during swipe blocks removal");
+  NSDictionary *job=[library jobForPlaylist:key video:@"AAAAAAAAAAA" format:@"18"];
+  require(rdapp_store_finish(store,[[job objectForKey:@"id"] longLongValue],"complete","18",""),@"Record completed blocker");
+  require(![root tableView:root.tableView canEditRowAtIndexPath:playlistIndex(root,key)],@"Completed downloads block playlist deletion");
+  [library removeDownload:job];
+  index=playlistIndex(root,key);
+  [root tableView:root.tableView willBeginEditingRowAtIndexPath:index];
+  NSArray *snapshot=sections(root);
+  require(rdapp_store_discovered_playlist(store,"PLswipe","Promoted target"),@"Move swiped playlist to another section");
+  [root refresh:nil];
+  require(sections(root)==snapshot,@"Refresh preserves the swiped section and row");
+  [root tableView:root.tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:index];
+  require([library playlistForID:key]!=nil,@"Deletion waits until UIKit's commit callback returns");
+  pump();
+  require(![library playlistForID:key] && [library playlistForID:otherKey] && [library playlistForID:accountKey],@"Delete uses playlist identity after discovery promotion");
+  nativeDelete(root,playlistIndex(root,otherKey));
+  require(![library playlistForID:otherKey] && [root tableView:root.tableView numberOfRowsInSection:1]==0,@"Native Delete removes the last Added Playlists row without recursive reload");
+  nativeDelete(root,playlistIndex(root,accountKey));
+  require(![library playlistForID:accountKey] && [root tableView:root.tableView numberOfRowsInSection:2]==0 && [library adhocPlaylist],@"Native Delete removes the last My Playlists row and retains Ad-Hoc");
+  rdapp_store_close(store);
+  window.rootViewController=previous; [previous release]; pump();
+  [navigation release]; [root release]; [library shutdown]; [library release];
+}
 @interface RDLPIOSOfflineTest : UIResponder <UIApplicationDelegate> {
   UIWindow *window_;
   RDLPOfflineLibrary *library_;
@@ -300,6 +370,7 @@ static void testDeletedDownloadQuality(NSString *directory) {
       return;
     }
     testDeletedDownloadQuality([documents_ stringByAppendingPathComponent:@"DeletedQuality"]);
+    testPlaylistSwipeDeletion(window_,[documents_ stringByAppendingPathComponent:@"PlaylistDeletion"]);
     if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestInteractionOnly"] boolValue]) {
       [@"PASS: native play/pause button images, seek display, nonblocking ordered foreground checkpoints, scrub/background suppression, ninety-percent reset, resume, and Low/delete/Medium redownload" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
       return;
@@ -469,7 +540,7 @@ static void testDeletedDownloadQuality(NSString *directory) {
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open native-delete fixture");
     require(rdapp_store_finish(store,1,"complete","18",""),@"Restore native-delete job"); rdapp_store_close(store);
     root=[self show:RDLPScreenLibrary playlist:nil video:nil];
-    require(![root enabled:@"removePlaylist"],@"No playlist removal at root");
+    require(![root enabled:@"removePlaylist"],@"No untargeted playlist removal command at root");
     [root discover:nil]; confirm(root,NO); require(![library_ isDiscoveryPending],@"Cancelled discovery does nothing");
     [root syncAll:nil]; confirm(root,NO); require(![library_ isSyncPendingForInput:@"PLfixture"],@"Cancelled Sync All does nothing");
     [root add:nil]; confirm(root,NO); require(![library_ isSyncPendingForInput:@""],@"Cancelled Add does nothing");

@@ -18,11 +18,12 @@
 }
 - (void)dealloc;
 {
+  [NSObject cancelPreviousPerformRequestsWithTarget:self];
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   alert_.delegate=nil; [alert_ dismissWithClickedButtonIndex:0 animated:NO];
   playlistActions_.delegate=nil; [playlistActions_ dismissWithClickedButtonIndex:playlistActions_.cancelButtonIndex animated:NO];
   [alert_ release]; [playlistActions_ release]; [request_ release]; [alertActions_ release];
-  [sections_ release]; [statusBar_ release]; [model_ release]; [library_ release]; [super dealloc];
+  [swipePlaylistID_ release]; [sections_ release]; [statusBar_ release]; [model_ release]; [library_ release]; [super dealloc];
 }
 - (void)viewDidLoad;
 {
@@ -38,15 +39,23 @@
 }
 - (void)viewWillAppear:(BOOL)animated;
 { [super viewWillAppear:animated]; [self.navigationController setToolbarHidden:NO animated:animated]; [self refresh:nil]; }
+- (void)viewWillDisappear:(BOOL)animated;
+{
+  [self.tableView setEditing:NO animated:NO];
+  [swipePlaylistID_ release]; swipePlaylistID_=nil; [super viewWillDisappear:animated];
+}
 - (void)viewDidLayoutSubviews;
 { [super viewDidLayoutSubviews]; statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-112); }
 - (void)refresh:(id)sender;
 {
   (void)sender; if(![self isViewLoaded]) return;
-  NSArray *sections=[model_ sectionsForScreen:RDLPScreenLibrary playlist:nil video:nil collapsed:nil];
-  [sections_ release]; sections_=[sections copy];
+  /* Keep the row under UIKit's Delete confirmation stable during refreshes. */
+  if(!swipePlaylistID_) {
+    NSArray *sections=[model_ sectionsForScreen:RDLPScreenLibrary playlist:nil video:nil collapsed:nil];
+    [sections_ release]; sections_=[sections copy];
+  }
   [self refreshStatus:nil];
-  [self.tableView reloadData];
+  if(!swipePlaylistID_) [self.tableView reloadData];
 }
 - (void)refreshStatus:(id)sender;
 {
@@ -61,6 +70,50 @@
 { (void)table; return [[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"title"]; }
 - (NSDictionary *)rowAtIndex:(NSIndexPath *)index;
 { return [[[sections_ objectAtIndex:(NSUInteger)index.section] objectForKey:@"rows"] objectAtIndex:(NSUInteger)index.row]; }
+- (BOOL)canDeletePlaylist:(NSDictionary *)playlist;
+{
+  return !alert_ && !playlistActions_ && !self.presentedViewController &&
+    !self.navigationController.presentedViewController && [model_ canRemovePlaylist:playlist];
+}
+- (BOOL)tableView:(UITableView *)table canEditRowAtIndexPath:(NSIndexPath *)index;
+{
+  (void)table;
+  NSArray *rows=[[sections_ objectAtIndex:(NSUInteger)index.section] objectForKey:@"rows"];
+  /* Avoid materializing every offscreen row when UIKit asks for editability. */
+  NSDictionary *row=[rows respondsToSelector:@selector(cachedObjectAtIndex:)]?
+    [(RDLPLibraryRows *)rows cachedObjectAtIndex:(NSUInteger)index.row]:[rows objectAtIndex:(NSUInteger)index.row];
+  return [self canDeletePlaylist:[row objectForKey:@"playlist"]];
+}
+- (UITableViewCellEditingStyle)tableView:(UITableView *)table editingStyleForRowAtIndexPath:(NSIndexPath *)index;
+{ return [self tableView:table canEditRowAtIndexPath:index]?UITableViewCellEditingStyleDelete:UITableViewCellEditingStyleNone; }
+- (void)tableView:(UITableView *)table willBeginEditingRowAtIndexPath:(NSIndexPath *)index;
+{
+  (void)table; [swipePlaylistID_ release];
+  swipePlaylistID_=[[[[self rowAtIndex:index] objectForKey:@"playlist"] objectForKey:@"id"] copy];
+}
+- (void)tableView:(UITableView *)table didEndEditingRowAtIndexPath:(NSIndexPath *)index;
+{
+  (void)table; (void)index;
+  [swipePlaylistID_ release]; swipePlaylistID_=nil;
+  /* Reload after UIKit finishes dismissing its confirmation controls (iOS 8). */
+  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(refresh:) object:nil];
+  [self performSelector:@selector(refresh:) withObject:nil afterDelay:0];
+}
+- (void)tableView:(UITableView *)table commitEditingStyle:(UITableViewCellEditingStyle)style forRowAtIndexPath:(NSIndexPath *)index;
+{
+  (void)table; if(style!=UITableViewCellEditingStyleDelete) return;
+  NSString *key=[(swipePlaylistID_?swipePlaylistID_:[[[self rowAtIndex:index] objectForKey:@"playlist"] objectForKey:@"id"]) copy];
+  [self performSelector:@selector(deletePlaylist:) withObject:key afterDelay:0]; [key release];
+}
+- (void)deletePlaylist:(NSString *)key;
+{
+  [self.tableView setEditing:NO animated:YES];
+  [swipePlaylistID_ release]; swipePlaylistID_=nil;
+  /* Delete confirms local removal; recheck the captured identity and blockers. */
+  NSDictionary *playlist=[library_ playlistForID:key];
+  if([self canDeletePlaylist:playlist]) [library_ removePlaylist:playlist];
+  [self refresh:nil];
+}
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index;
 {
   UITableViewCell *cell=[table dequeueReusableCellWithIdentifier:@"playlist"];
