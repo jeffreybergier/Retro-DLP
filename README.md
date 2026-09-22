@@ -319,6 +319,16 @@ private SDK archives. The pinned build image's `altivec-sdk preflight` and
 `altivec-sdk install` commands verify each archive's byte size, SHA-256 digest,
 format, and paths against the image's embedded catalog before extraction.
 
+To release from a clean, committed checkout, run
+`docker compose run --rm altivec "altivec-release bump patch"` (or `minor` / `major`).
+The tool updates both version keys in the library, macOS app, and iOS app plists,
+commits them, then pushes the branch and a `v` tag. Use `--dry-run` to preview it.
+The tag triggers **Build Release**, which checks out that exact tag and builds
+seven GitHub Release assets: the macOS app ZIP, iOS app IPA, macOS PowerPC/i386
+CLI ZIP, iOS CLI ZIP, and Linux/macOS/iOS static-library ZIPs. The workflow
+validates the packages before uploading them to the release with `gh`.
+Ordinary branch pushes run **Check**; they do not publish release assets.
+
 ## License
 
 I release Retro-DLP under the [MIT License](LICENSE). Third-party components,

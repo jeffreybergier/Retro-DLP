@@ -8,7 +8,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
+#include <utime.h>
 
 #include "yt_cache.h"
 #include "yt_challenges.h"
@@ -30,6 +32,58 @@ static int test_sha256(void) {
     return 1;
   }
   printf("PASS: OpenSSL SHA-256\n");
+  return 0;
+}
+
+static int test_write_survives_pruning(const char *root) {
+  struct utimbuf timestamp;
+  char key[32], path[4096];
+  char *loaded = NULL;
+  size_t length = 0;
+  int index, retained = 0;
+
+  /* Make the new entry the oldest regardless of filesystem iteration order.
+   * This also covers clock rollback, without sleeping or racing the clock. */
+  timestamp.actime = timestamp.modtime = time(NULL) + 60;
+  for (index = 0; index < 4; ++index) {
+    snprintf(key, sizeof(key), "clock-%d", index);
+    if (snprintf(path, sizeof(path), "%s/v1/preprocessed-player/%s.entry",
+                  root, key) >= (int)sizeof(path))
+      return 1;
+    if (yt_cache_put_at(root, YT_CACHE_PREPROCESSED_PLAYER, key, "old", 3, 0) !=
+            YT_CACHE_OK || utime(path, &timestamp) != 0)
+      return 1;
+  }
+  if (yt_cache_put_at(root, YT_CACHE_PREPROCESSED_PLAYER, "new", "new", 3,
+                      2000) != YT_CACHE_OK ||
+      yt_cache_get_at(root, YT_CACHE_PREPROCESSED_PLAYER, "new", 1999,
+                      &loaded, &length) != YT_CACHE_OK ||
+      length != 3 || memcmp(loaded, "new", 3) != 0) {
+    free(loaded);
+    fprintf(stderr, "FAIL: pruning evicted the newly written cache entry\n");
+    return 1;
+  }
+  free(loaded);
+  for (index = 0; index < 4; ++index) {
+    snprintf(key, sizeof(key), "clock-%d", index);
+    loaded = NULL;
+    if (yt_cache_get_at(root, YT_CACHE_PREPROCESSED_PLAYER, key, 0,
+                        &loaded, &length) == YT_CACHE_OK)
+      ++retained;
+    free(loaded);
+    yt_cache_remove_at(root, YT_CACHE_PREPROCESSED_PLAYER, key);
+  }
+  loaded = NULL;
+  if (retained != 3 ||
+      yt_cache_get_at(root, YT_CACHE_PREPROCESSED_PLAYER, "new", 2000,
+                      &loaded, &length) != YT_CACHE_EXPIRED ||
+      yt_cache_get_at(root, YT_CACHE_PREPROCESSED_PLAYER, "new", 2001,
+                      &loaded, &length) != YT_CACHE_MISSING) {
+    free(loaded);
+    fprintf(stderr, "FAIL: bounded cache retention and expiry boundary\n");
+    return 1;
+  }
+  printf("PASS: cache write survives pruning and expires at its deadline\n");
   return 0;
 }
 
@@ -180,6 +234,7 @@ static int exercise_cache(const char *temporary_home) {
     ++failures;
   }
   free(loaded);
+  failures += test_write_survives_pruning(root);
   yt_http_session_destroy(session);
   if (failures == 0)
     printf("PASS: ~/.retro-dlp/cache atomic, versioned, bounded entries\n");
@@ -189,6 +244,7 @@ static int exercise_cache(const char *temporary_home) {
 static void cleanup_cache_test(const char *temporary_home) {
   static const char *const suffixes[] = {
       "/.retro-dlp/cache/v1/player-javascript",
+      "/.retro-dlp/cache/v1/preprocessed-player",
       "/.retro-dlp/cache/v1/failures",
       "/.retro-dlp/cache/v1",
       "/.retro-dlp/cache",

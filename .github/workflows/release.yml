@@ -191,7 +191,7 @@ jobs:
             fi
           done
 
-          sha256sum dist/*.zip
+          sha256sum dist/*.zip dist/*.ipa
 
       - name: Create or update GitHub release
         env:

@@ -9,6 +9,7 @@ import subprocess
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[4]
+VERSION=plistlib.loads((ROOT/'source/library/shared/Info.plist').read_bytes())['CFBundleShortVersionString']
 IPHONE_LAUNCH_IMAGES={
     'Default.png': (320,480),
     'Default@2x.png': (640,960),
@@ -44,6 +45,8 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
     plist=plistlib.loads((bundle/plist_relative).read_bytes())
     assert 'RetroDLPTestDirectory' not in plist,'Test directory leaked into release'
     assert plist['CFBundleIdentifier']=='com.altivecintelligence.RetroDLP'
+    for key in ('CFBundleShortVersionString','CFBundleVersion'):
+        assert plist[key]==VERSION,(platform,key,plist[key],VERSION)
     if platform=='macOS':
         assert plist['LSMinimumSystemVersionByArchitecture']==minimums
     if platform=='iOS':

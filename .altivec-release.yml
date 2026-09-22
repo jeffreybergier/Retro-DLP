@@ -8,6 +8,8 @@ version:
     - CFBundleVersion
   plists:
     - source/library/shared/Info.plist
+    - source/gui/macOS/Info.plist
+    - source/gui/iOS/Info.plist
 
 release:
   commit_message: "Version {version}"

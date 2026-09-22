@@ -325,7 +325,8 @@ static YTCacheStatus entry_path(YTCacheKind kind, const char *key, char *path,
   return YT_CACHE_OK;
 }
 
-static YTCacheStatus prune_kind(const char *root, YTCacheKind kind) {
+static YTCacheStatus prune_kind(const char *root, YTCacheKind kind,
+                                const char *written_name) {
   const YTCachePolicy *policy;
   char relative[PATH_MAX];
   char directory_path[PATH_MAX];
@@ -378,7 +379,10 @@ static YTCacheStatus prune_kind(const char *root, YTCacheKind kind) {
       ++total_entries;
       if (information.st_size > 0)
         total_size += (size_t)information.st_size;
-      if (!have_oldest || information.st_mtime < oldest_time) {
+      /* A successful write must survive its own pruning pass, even when
+       * timestamps tie or the system clock has moved backwards. */
+      if (strcmp(entry->d_name, written_name) != 0 &&
+          (!have_oldest || information.st_mtime < oldest_time)) {
         memcpy(oldest_path, candidate, strlen(candidate) + 1);
         oldest_time = information.st_mtime;
         have_oldest = 1;
@@ -431,7 +435,7 @@ YTCacheStatus yt_cache_put_at(const char *root, YTCacheKind kind,
   free(entry);
   if (status != YT_CACHE_OK)
     return status;
-  return prune_kind(root, kind);
+  return prune_kind(root, kind, strrchr(relative, '/') + 1);
 }
 
 YTCacheStatus yt_cache_get_at(const char *root, YTCacheKind kind,
