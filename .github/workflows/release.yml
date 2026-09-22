@@ -144,7 +144,7 @@ jobs:
       - name: Validate staged release assets
         run: |
           set -euo pipefail
-          for package in macOS-ppc-i386 iOS; do
+          for package in macOS-cli iOS-cli; do
             asset="dist/Retro-DLP-${RELEASE_VERSION}-${package}.zip"
             test -s "$asset"
             unzip -t "$asset" >/dev/null
@@ -165,19 +165,19 @@ jobs:
             rm -rf -- "$unpacked"
           done
 
-          macos_app="dist/Retro-DLP-${RELEASE_VERSION}-macOS.zip"
+          macos_app="dist/Retro-DLP-${RELEASE_VERSION}-macOS-gui.zip"
           test -s "$macos_app"
           unzip -t "$macos_app" >/dev/null
           unzip -Z1 "$macos_app" | grep -Fx 'RetroDLP.app/Contents/MacOS/RetroDLP' >/dev/null
           unzip -Z1 "$macos_app" | grep -Fx 'RetroDLP.app/Contents/Info.plist' >/dev/null
 
-          ios_app="dist/Retro-DLP-${RELEASE_VERSION}-iOS.ipa"
+          ios_app="dist/Retro-DLP-${RELEASE_VERSION}-iOS-gui.ipa"
           test -s "$ios_app"
           unzip -t "$ios_app" >/dev/null
           unzip -Z1 "$ios_app" | grep -Fx 'Payload/RetroDLP.app/RetroDLP' >/dev/null
           unzip -Z1 "$ios_app" | grep -Fx 'Payload/RetroDLP.app/Info.plist' >/dev/null
 
-          for platform in linux macOS iOS; do
+          for platform in macOS iOS; do
             asset="dist/Retro-DLP-${RELEASE_VERSION}-${platform}-library.zip"
             test -s "$asset"
             unzip -t "$asset" >/dev/null

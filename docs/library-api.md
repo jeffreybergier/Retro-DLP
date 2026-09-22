@@ -391,8 +391,9 @@ and direct OpenSSL SHA functions require the crypto library.
 validate-examples` also runs the network-free custom-transport example.
 `make package-libraries` creates one library ZIP per platform containing the
 public headers, both archives, this API guide, examples, and the project
-license. Release automation publishes these alongside the unchanged CLI-only
-ZIPs.
+license. Release automation publishes the macOS and iOS library ZIPs alongside
+the CLI ZIPs and graphical applications. Build the Linux libraries from source
+using `make linux`.
 
 ## Custom transport
 

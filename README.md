@@ -129,19 +129,19 @@ armv7/arm64 executable and requires a jailbroken device.
 
 ## Install
 
-Download the macOS or iOS ZIP from
+Download the macOS or iOS `-cli.zip` from
 [GitHub Releases](https://github.com/jeffreybergier/Retro-DLP/releases). Keep
 `retro-dlp` and `cacert.pem` together because Retro-DLP uses that certificate
 bundle for HTTPS.
 
 ### Mac
 
-Download the `ppc-i386` archive for PowerPC Macs or Intel Macs with support
+Download the `macOS-cli.zip` archive for PowerPC Macs or Intel Macs with support
 for 32-bit applications. Unzip it and put both files wherever you want. For
 example:
 
 ```sh
-unzip Retro-DLP-X.Y.Z-macOS-ppc-i386.zip
+unzip Retro-DLP-X.Y.Z-macOS-cli.zip
 mkdir -p ~/bin
 mv retro-dlp cacert.pem ~/bin/
 chmod +x ~/bin/retro-dlp
@@ -152,7 +152,7 @@ Add `~/bin` to your `PATH` if your shell does not already include it.
 
 ### Jailbroken iPhone
 
-Install OpenSSH on the iPhone, unzip the iOS release on your computer, and copy
+Install OpenSSH on the iPhone, unzip the `iOS-cli.zip` release on your computer, and copy
 both files to the device:
 
 ```sh
@@ -324,8 +324,10 @@ To release from a clean, committed checkout, run
 The tool updates both version keys in the library, macOS app, and iOS app plists,
 commits them, then pushes the branch and a `v` tag. Use `--dry-run` to preview it.
 The tag triggers **Build Release**, which checks out that exact tag and builds
-seven GitHub Release assets: the macOS app ZIP, iOS app IPA, macOS PowerPC/i386
-CLI ZIP, iOS CLI ZIP, and Linux/macOS/iOS static-library ZIPs. The workflow
+six GitHub Release assets: the macOS app ZIP (`macOS-gui.zip`), iOS app IPA
+(`iOS-gui.ipa`), macOS CLI ZIP
+(`macOS-cli.zip`, PowerPC/i386), iOS CLI ZIP (`iOS-cli.zip`), and macOS/iOS
+static-library ZIPs. Linux users should build from source. The workflow
 validates the packages before uploading them to the release with `gh`.
 Ordinary branch pushes run **Check**; they do not publish release assets.
 

@@ -15,30 +15,30 @@ release:
   commit_message: "Version {version}"
 
 targets:
-  - name: macOS ppc-i386
+  - name: macOS CLI
     workdir: .
     build:
       - make clean-macOS
       - make macOS
-      - cd build/macOS && zip -9 -j retro-dlp-ppc-i386.zip ppc-i386/retro-dlp cacert.pem
-    artifact: build/macOS/retro-dlp-ppc-i386.zip
-    asset_name: Retro-DLP-{version}-macOS-ppc-i386.zip
+      - cd build/macOS && zip -9 -j retro-dlp-macOS-cli.zip ppc-i386/retro-dlp cacert.pem
+    artifact: build/macOS/retro-dlp-macOS-cli.zip
+    asset_name: Retro-DLP-{version}-macOS-cli.zip
 
-  - name: iOS
+  - name: iOS CLI
     workdir: .
     build:
       - make clean-iOS
       - make iOS
-      - cd build/iOS && zip -9 retro-dlp-iOS.zip retro-dlp cacert.pem
-    artifact: build/iOS/retro-dlp-iOS.zip
-    asset_name: Retro-DLP-{version}-iOS.zip
+      - cd build/iOS && zip -9 retro-dlp-iOS-cli.zip retro-dlp cacert.pem
+    artifact: build/iOS/retro-dlp-iOS-cli.zip
+    asset_name: Retro-DLP-{version}-iOS-cli.zip
 
   - name: macOS application
     workdir: .
     build:
       - make app-macOS
     artifact: build/apps/macOS/RetroDLP.zip
-    asset_name: Retro-DLP-{version}-macOS.zip
+    asset_name: Retro-DLP-{version}-macOS-gui.zip
 
   - name: iOS application
     workdir: .
@@ -46,15 +46,7 @@ targets:
       - make app-iOS
       - make app-validate
     artifact: build/apps/iOS/RetroDLP.ipa
-    asset_name: Retro-DLP-{version}-iOS.ipa
-
-  - name: Linux Library
-    workdir: .
-    build:
-      - make linux
-      - make/package-library.sh linux build
-    artifact: build/linux/retro-dlp-library.zip
-    asset_name: Retro-DLP-{version}-linux-library.zip
+    asset_name: Retro-DLP-{version}-iOS-gui.ipa
 
   - name: macOS Library
     workdir: .
