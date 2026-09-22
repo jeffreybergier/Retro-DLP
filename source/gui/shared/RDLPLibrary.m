@@ -62,7 +62,7 @@ static int collect(void *context,int count,const char *const *names,const char *
   if(!row) {
     NSMutableArray *rows=[NSMutableArray array];
     BOOL seek=lastIndex_!=NSNotFound && index==lastIndex_+1 &&
-      query_!=RDAPP_PLAYLISTS && query_!=RDAPP_ADDED_PLAYLISTS && query_!=RDAPP_ACCOUNT_PLAYLISTS && query_!=RDAPP_PLAYLIST && query_!=RDAPP_PLAYLIST_INPUT && query_!=RDAPP_ADDED_IDS && query_!=RDAPP_ACCOUNT_IDS;
+      query_!=RDAPP_PLAYLISTS && query_!=RDAPP_ADDED_PLAYLISTS && query_!=RDAPP_ACCOUNT_PLAYLISTS && query_!=RDAPP_PLAYLIST && query_!=RDAPP_PLAYLIST_INPUT && query_!=RDAPP_ADDED_IDS && query_!=RDAPP_ACCOUNT_IDS && query_!=RDAPP_UNSUPPORTED_IDS && query_!=RDAPP_UNSUPPORTED_PLAYLISTS;
     int ok=seek?rdapp_store_after(reader_,(rdapp_query)query_,key_,[video_ UTF8String],[format_ UTF8String],lastIdentity_,collect,rows):
       rdapp_store_page(reader_,(rdapp_query)query_,key_,[video_ UTF8String],[format_ UTF8String],(int64_t)index,1,collect,rows);
     if(!ok && !readFailed_) {
@@ -343,6 +343,12 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 }
 - (NSArray *)rows:(rdapp_query)query playlist:(NSString *)key;
 { return [self rows:query playlist:key video:nil format:nil]; }
++ (BOOL)canSyncPlaylist:(NSDictionary *)playlist;
+{ return rdapp_playlist_can_sync([[playlist objectForKey:@"service_id"] UTF8String])!=0; }
+- (NSArray *)unsupportedPlaylists;
+{ return [self rows:RDAPP_UNSUPPORTED_PLAYLISTS playlist:nil]; }
+- (NSArray *)unsupportedPlaylistIDs;
+{ return [self rows:RDAPP_UNSUPPORTED_IDS playlist:nil]; }
 - (NSArray *)playlists; { return [self rows:RDAPP_PLAYLISTS playlist:nil]; }
 - (NSArray *)playlistsFromAccount:(BOOL)account;
 { return [self rows:account?RDAPP_ACCOUNT_PLAYLISTS:RDAPP_ADDED_PLAYLISTS playlist:nil]; }
@@ -383,7 +389,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
     [pending addObject:[command objectForKey:@"input"]];
   if(total>[pending count]) return YES;
   NSUInteger matched=0; e=[pending objectEnumerator]; NSString *input;
-  while((input=[e nextObject]))
+  while((input=[e nextObject])) if(rdapp_playlist_can_sync([input UTF8String]))
     matched+=[[self rows:RDAPP_PLAYLIST_INPUT playlist:nil video:input format:nil] count];
   return total>matched;
 }
@@ -479,6 +485,10 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 {
   input=[input stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
   if(![input length]) { [self reportError:@"Enter a playlist" detail:@"Enter a playlist URL or ID."]; return; }
+  if(!rdapp_playlist_can_sync([input UTF8String])) {
+    if(adding) [self reportError:@"Unsupported playlist" detail:@"This playlist type cannot be synced by RetroDLP."];
+    return;
+  }
   if([self isSyncPendingForInput:input]) return;
   [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",input,@"input",
     [NSNumber numberWithBool:adding],@"adding",nil]]; [self startNext];
@@ -502,7 +512,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (void)syncAll;
 {
   NSArray *rows=[self playlists]; unsigned int i;
-  for(i=0;i<[rows count];++i) if(![[[rows objectAtIndex:i] objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![self isSyncPendingForInput:[[rows objectAtIndex:i] objectForKey:@"service_id"]]) [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",[[rows objectAtIndex:i] objectForKey:@"service_id"],@"input",nil]];
+  for(i=0;i<[rows count];++i) if([RDLPLibrary canSyncPlaylist:[rows objectAtIndex:i]] && ![self isSyncPendingForInput:[[rows objectAtIndex:i] objectForKey:@"service_id"]]) [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",[[rows objectAtIndex:i] objectForKey:@"service_id"],@"input",nil]];
   [self startNext];
 }
 - (void)discoverPlaylists;

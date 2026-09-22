@@ -149,9 +149,10 @@ details using native alerts, one at a time. Download and playlist errors also
 leave a short final status. Successful downloads with database/export warnings
 produce an alert instead of hiding those warnings inside progress text.
 
-The sidebar is an NSOutlineView with three collapsible, nonselectable parent
-rows: System (All Downloads and the local **Ad-Hoc** collection), Added Playlists (manually added), and My Playlists
-(discovered through Load My Playlists). Groups start expanded and keep their
+The sidebar is an NSOutlineView with four collapsible, nonselectable parent
+rows: System (All Downloads and the local **Ad-Hoc** collection), Added Playlists
+(manually added), My Playlists (discovered through Load My Playlists), and
+Unsupported Playlists. Groups start expanded and keep their
 collapse state during library refreshes. Selecting a child keeps the existing
 Download/Play targeting behavior. Discovery promotes an existing manual playlist
 without duplicating it and preserves its selection, membership, and downloads.
@@ -168,9 +169,27 @@ fail as normal queue jobs and remain available for retry.
 
 Database version 2 records discovery origin. Existing version-1 playlists migrate
 to Added Playlists because their original source was not recorded. Running Load
-My Playlists moves discovered matches into My Playlists. Using cookies for an
-ordinary playlist sync does not change its group; clearing cookies does not
+My Playlists moves supported discovered matches into My Playlists. Using cookies
+for an ordinary playlist sync does not change its group; clearing cookies does not
 change stored provenance. Both app platforms can read the upgraded database.
+
+Unsupported playlists (including History and Watch Later) retain their metadata
+and provenance but appear only in Unsupported Playlists. The shared application
+store uses the library’s offline `rdlp_parse_playlist_id` function to classify
+IDs, exposed to SQLite for count/page queries without loading every playlist
+into Objective-C objects. URL submissions also check the extracted ID against
+the raw-ID parser. This is a local type check, not a network availability check.
+No schema migration or persistent capability flag is needed. Both apps disable
+manual Sync and omit these records from Sync All; the shared scheduler and
+service also guard direct submissions before network work. Ad-Hoc remains in
+System. Unsupported playlists can still be selected and removed locally.
+
+Validation: Docker builds passed for macOS PowerPC/i386 and iOS armv7/arm64,
+as did all 42 portable store tests, service integration, and app artifact checks.
+Both Apple static analyzers reported zero warnings/errors. The full native Mac
+regression suite passed on x4-vm with synthetic data, including unsupported
+outline grouping, disabled Sync, bulk-plan exclusion, and submission guards.
+The iOS UI regression bundle compiled; its new checks were not run on a device.
 
 
 The main toolbar contains Library, Download, Play, Remove, flexible space,
@@ -324,10 +343,10 @@ imported cookie file is not removed.
 
 The fresh-launch root is `RDLPPlaylistsViewController`, a `UITableViewController`
 with a plain table titled **Playlists**, containing System
-(All Downloads and Ad-Hoc after adding a video), Added Playlists, and My Playlists. These section
-headers use UIKit's default sizing and do not collapse. Empty sections have
-zero rows and no placeholder footer. Swipe an Added Playlists or My Playlists row
-to reveal **Delete**. Tapping Delete removes only its local library entry; the
+(All Downloads and Ad-Hoc after adding a video), Added Playlists, My Playlists,
+and Unsupported Playlists. These section headers use UIKit's default sizing and do not collapse. Empty sections have
+zero rows and no placeholder footer. Swipe an Added Playlists, My Playlists, or
+Unsupported Playlists row to reveal **Delete**. Tapping Delete removes only its local library entry; the
 YouTube playlist is unchanged. All Downloads and Ad-Hoc cannot be deleted.
 Removal is unavailable while the library is busy or the playlist has pending or
 completed downloads. The swiped playlist stays fixed across refreshes, and these
@@ -611,7 +630,7 @@ by both applications.
 
 | macOS change | UIKit equivalent |
 | --- | --- |
-| Sidebar outline and discovery provenance | Collapsible System, Added Playlists, My Playlists sections |
+| Sidebar outline and discovery provenance | Collapsible System, Added Playlists, My Playlists, Unsupported Playlists sections |
 | Flat queue table with job ID, status, quality, video, playlist columns | Native flat subtitle cells, permanent job IDs, status accessories, and stable-ID job actions |
 | Context commands, quality preferences, confirmations | Video/job dialogs, Settings, and captured/revalidated alert requests |
 | Representative status and app-wide progress | Shared download policy, status icons, fixed status/progress area |

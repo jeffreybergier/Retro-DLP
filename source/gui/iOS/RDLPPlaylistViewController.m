@@ -34,13 +34,13 @@
   if(playlist) {
     [playlist retain]; [playlist_ release]; playlist_=playlist; self.title=[playlist objectForKey:@"title"];
   }
-  self.navigationItem.rightBarButtonItem.enabled=[[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] || ![library_ isSyncPendingForInput:[playlist_ objectForKey:@"service_id"]];
+  self.navigationItem.rightBarButtonItem.enabled=[[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] || ([RDLPLibrary canSyncPlaylist:playlist_] && ![library_ isSyncPendingForInput:[playlist_ objectForKey:@"service_id"]]);
   [super refresh:sender];
 }
 - (void)sync:(id)sender;
 {
   (void)sender; NSString *input=[playlist_ objectForKey:@"service_id"];
-  if(![input isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![library_ isSyncPendingForInput:input]) [library_ syncPlaylistInput:input];
+  if([RDLPLibrary canSyncPlaylist:playlist_] && ![library_ isSyncPendingForInput:input]) [library_ syncPlaylistInput:input];
   [self refresh:nil];
 }
 @end

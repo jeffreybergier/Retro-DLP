@@ -3,6 +3,7 @@
 #endif
 #include "rdapp_store.h"
 #include <sqlite3.h>
+#include <retrodlp/retrodlp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +13,21 @@
 #include <limits.h>
 #include <math.h>
 
+int rdapp_playlist_can_sync(const char *input) {
+  char id[256], canonical[256];
+  /* URL parsing accepts special IDs more broadly than raw-ID parsing. Check
+     the extracted ID too, so list=WL cannot bypass the same policy. */
+  return rdlp_parse_playlist_id(input,id,sizeof(id),NULL)==RDLP_OK &&
+    rdlp_parse_playlist_id(id,canonical,sizeof(canonical),NULL)==RDLP_OK;
+}
+static void playlist_can_sync_sql(sqlite3_context *context,int argc,sqlite3_value **argv) {
+  (void)argc;
+  sqlite3_result_int(context,rdapp_playlist_can_sync((const char *)sqlite3_value_text(argv[0])));
+}
+static int register_playlist_functions(sqlite3 *db) {
+  return sqlite3_create_function(db,"rdapp_can_sync",1,SQLITE_UTF8,NULL,
+    playlist_can_sync_sql,NULL,NULL)==SQLITE_OK;
+}
 struct rdapp_store { sqlite3 *db; char error[512]; };
 static int failure(rdapp_store *s, const char *message) {
   snprintf(s->error, sizeof(s->error), "%s", message); return 0;
@@ -57,7 +73,7 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
   sqlite3_stmt *p; int version;
   *out = NULL;
   if (!s) return 0;
-  if (sqlite3_open(path, &s->db) != SQLITE_OK) { rdapp_store_close(s); return 0; }
+  if (sqlite3_open(path, &s->db) != SQLITE_OK || !register_playlist_functions(s->db)) { rdapp_store_close(s); return 0; }
   sqlite3_busy_timeout(s->db, 5000);
   p = prepare(s, "PRAGMA user_version");
   if (!p || sqlite3_step(p) != SQLITE_ROW || sqlite3_column_int(p,0) > 6) {
@@ -176,7 +192,7 @@ int rdapp_store_open_reader(const char *path, rdapp_store **out) {
   rdapp_store *s=calloc(1,sizeof(*s)); *out=NULL;
   if(!s) return 0;
   if(sqlite3_open_v2(path,&s->db,SQLITE_OPEN_READONLY,NULL)!=SQLITE_OK ||
-     !sql(s,"BEGIN")) { rdapp_store_close(s); return 0; }
+     !register_playlist_functions(s->db) || !sql(s,"BEGIN")) { rdapp_store_close(s); return 0; }
   *out=s; return 1;
 }
 /* Keep counting free of row projection, sorting and correlated metadata queries. */
@@ -185,14 +201,22 @@ static int query_parts(rdapp_query kind,int64_t key,const char *format,
   *fields="j.*, p.title AS playlist_title";
   *order="j.id DESC";
   switch(kind) {
+    case RDAPP_UNSUPPORTED_IDS:
+      *fields="p.id";
+      *from="playlists p WHERE p.service_id<>'adhoc' AND NOT rdapp_can_sync(p.service_id)";
+      *order="p.title COLLATE NOCASE,p.id"; break;
+    case RDAPP_UNSUPPORTED_PLAYLISTS:
+      *fields="p.*, (SELECT count(*) FROM entries e WHERE e.playlist_id=p.id) AS count";
+      *from="playlists p WHERE p.service_id<>'adhoc' AND NOT rdapp_can_sync(p.service_id)";
+      *order="p.title COLLATE NOCASE,p.id"; break;
     case RDAPP_ADDED_IDS: case RDAPP_ACCOUNT_IDS:
       *fields="p.id";
-      *from=kind==RDAPP_ADDED_IDS?"playlists p WHERE p.source='added'":"playlists p WHERE p.source='account'";
+      *from=kind==RDAPP_ADDED_IDS?"playlists p WHERE p.source='added' AND rdapp_can_sync(p.service_id)":"playlists p WHERE p.source='account' AND rdapp_can_sync(p.service_id)";
       *order="p.title COLLATE NOCASE,p.id"; break;
     case RDAPP_PLAYLISTS: case RDAPP_ADDED_PLAYLISTS: case RDAPP_ACCOUNT_PLAYLISTS: case RDAPP_PLAYLIST: case RDAPP_PLAYLIST_INPUT:
       *fields="p.*, (SELECT count(*) FROM entries e WHERE e.playlist_id=p.id) AS count";
-      *from=kind==RDAPP_ADDED_PLAYLISTS?"playlists p WHERE p.source='added'":
-        (kind==RDAPP_ACCOUNT_PLAYLISTS?"playlists p WHERE p.source='account'":
+      *from=kind==RDAPP_ADDED_PLAYLISTS?"playlists p WHERE p.source='added' AND rdapp_can_sync(p.service_id)":
+        (kind==RDAPP_ACCOUNT_PLAYLISTS?"playlists p WHERE p.source='account' AND rdapp_can_sync(p.service_id)":
         (kind==RDAPP_PLAYLIST?"playlists p WHERE p.id=?1":(kind==RDAPP_PLAYLIST_INPUT?"playlists p WHERE p.service_id=?2":"playlists p WHERE 1")));
       *order="p.title COLLATE NOCASE,p.id"; break;
     case RDAPP_MISSING: case RDAPP_DOWNLOAD_CANDIDATES:
@@ -258,7 +282,8 @@ int rdapp_store_after(rdapp_store *s,rdapp_query kind,int64_t key,const char *vi
   const char *fields,*from,*order; char query[2048]; sqlite3_stmt *p;
   if(!query_parts(kind,key,format,&fields,&from,&order) || kind==RDAPP_PLAYLISTS ||
      kind==RDAPP_ADDED_PLAYLISTS || kind==RDAPP_ACCOUNT_PLAYLISTS || kind==RDAPP_PLAYLIST || kind==RDAPP_PLAYLIST_INPUT ||
-     kind==RDAPP_ADDED_IDS || kind==RDAPP_ACCOUNT_IDS)
+     kind==RDAPP_ADDED_IDS || kind==RDAPP_ACCOUNT_IDS ||
+     kind==RDAPP_UNSUPPORTED_IDS || kind==RDAPP_UNSUPPORTED_PLAYLISTS)
     return failure(s,"Invalid seek query");
   snprintf(query,sizeof(query),"SELECT %s FROM %s AND %s%s?4 ORDER BY %s LIMIT 1",fields,from,
     (kind==RDAPP_ENTRIES || kind==RDAPP_VIDEO_ENTRIES || kind==RDAPP_MISSING || kind==RDAPP_DOWNLOAD_CANDIDATES)?"e.position":"j.id",

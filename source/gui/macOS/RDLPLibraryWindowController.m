@@ -463,7 +463,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [sidebar_ setDelegate:nil]; [sidebar_ setDataSource:nil];
   [table_ setDelegate:nil]; [table_ setDataSource:nil];
   [split_ setDelegate:nil]; [split_ release]; [queueWindow_ close]; [queueWindow_ release];
-  [sidebarItems_ release]; [downloadPolicy_ release]; [library_ release]; [playlists_ release]; [rows_ release]; [videoRows_ release]; [addedPlaylists_ release]; [accountPlaylists_ release]; [adhocPlaylist_ release]; [selectedPlaylist_ release];
+  [sidebarItems_ release]; [downloadPolicy_ release]; [library_ release]; [playlists_ release]; [rows_ release]; [videoRows_ release]; [addedPlaylists_ release]; [accountPlaylists_ release]; [unsupportedPlaylists_ release]; [adhocPlaylist_ release]; [selectedPlaylist_ release];
   [addSheet_ release]; [downloadSheet_ release]; [downloadRequest_ release]; [downloadFormat_ release]; [queueRows_ release]; [toolbarItems_ release]; [confirmation_ release]; [confirmationRequest_ release]; [super dealloc];
 }
 - (NSDictionary *)selectedRow;
@@ -490,6 +490,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [playlists_ release]; playlists_=[[library_ playlists] copy];
   [addedPlaylists_ release]; addedPlaylists_=[[library_ playlistIDsFromAccount:NO] copy];
   [accountPlaylists_ release]; accountPlaylists_=[[library_ playlistIDsFromAccount:YES] copy];
+  [unsupportedPlaylists_ release]; unsupportedPlaylists_=[[library_ unsupportedPlaylistIDs] copy];
   [adhocPlaylist_ release]; adhocPlaylist_=[[library_ adhocPlaylist] retain];
   if(mode_==0 && ![self selectedPlaylist]) { mode_=1; [selectedPlaylist_ release]; selectedPlaylist_=nil; [selection release]; selection=nil; }
   [rows_ release]; rows_=[(mode_==0?[library_ entriesForPlaylist:selectedPlaylist_]:[library_ jobsForPlaylist:nil completedOnly:YES]) copy];
@@ -497,7 +498,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [videoRows_ release]; videoRows_=[[RDLPVideoRows alloc] initWithRows:rows_ library:library_ playlist:mode_==0?selectedPlaylist_:nil];
   [sidebar_ reloadData]; [table_ reloadData]; [queue_ reloadData];
   if(!sidebarLoaded_) {
-    [sidebar_ expandItem:@"System"]; [sidebar_ expandItem:@"Added Playlists"]; [sidebar_ expandItem:@"My Playlists"]; sidebarLoaded_=YES;
+    [sidebar_ expandItem:@"System"]; [sidebar_ expandItem:@"Added Playlists"]; [sidebar_ expandItem:@"My Playlists"]; [sidebar_ expandItem:@"Unsupported Playlists"]; sidebarLoaded_=YES;
   } else if(selectedPlaylist_ && ![oldGroup isEqualToString:[RDLPLibraryViews groupForPlaylist:[self selectedPlaylist]]]) {
     [sidebar_ expandItem:[RDLPLibraryViews groupForPlaylist:[self selectedPlaylist]]];
   }
@@ -567,7 +568,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (NSArray *)syncPlan;
 {
   NSMutableArray *inputs=[NSMutableArray array]; NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
-  while((playlist=[e nextObject])) if(![[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) [inputs addObject:[playlist objectForKey:@"service_id"]];
+  while((playlist=[e nextObject])) if([RDLPLibrary canSyncPlaylist:playlist] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) [inputs addObject:[playlist objectForKey:@"service_id"]];
   return inputs;
 }
 - (NSUInteger)queuedCount;
@@ -636,18 +637,18 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (NSInteger)outlineView:(NSOutlineView *)outline numberOfChildrenOfItem:(id)item;
 {
   (void)outline;
-  if(!item) return 3; if([item isEqual:@"System"]) return adhocPlaylist_?2:1;
-  return (NSInteger)[([item isEqual:@"My Playlists"]?accountPlaylists_:addedPlaylists_) count];
+  if(!item) return 4; if([item isEqual:@"System"]) return adhocPlaylist_?2:1;
+  return (NSInteger)[([item isEqual:@"Unsupported Playlists"]?unsupportedPlaylists_:([item isEqual:@"My Playlists"]?accountPlaylists_:addedPlaylists_)) count];
 }
 - (id)outlineView:(NSOutlineView *)outline child:(NSInteger)index ofItem:(id)item;
 {
   (void)outline;
-  if(!item) return [[NSArray arrayWithObjects:@"System",@"Added Playlists",@"My Playlists",nil] objectAtIndex:(NSUInteger)index];
+  if(!item) return [[NSArray arrayWithObjects:@"System",@"Added Playlists",@"My Playlists",@"Unsupported Playlists",nil] objectAtIndex:(NSUInteger)index];
   if([item isEqual:@"System"]) {
     if(index==0) return @"All Downloads";
     NSString *key=[adhocPlaylist_ objectForKey:@"id"]; if(![sidebarItems_ objectForKey:key]) [sidebarItems_ setObject:key forKey:key]; return [sidebarItems_ objectForKey:key];
   }
-  NSDictionary *playlist=[([item isEqual:@"My Playlists"]?accountPlaylists_:addedPlaylists_) objectAtIndex:(NSUInteger)index];
+  NSDictionary *playlist=[([item isEqual:@"Unsupported Playlists"]?unsupportedPlaylists_:([item isEqual:@"My Playlists"]?accountPlaylists_:addedPlaylists_)) objectAtIndex:(NSUInteger)index];
   NSString *key=[playlist objectForKey:@"id"];
   if(![sidebarItems_ objectForKey:key]) [sidebarItems_ setObject:key forKey:key];
   return [sidebarItems_ objectForKey:key];
@@ -756,7 +757,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(action==@selector(importCookies:)) return ![library_ isBusy] && noCookies;
   if(action==@selector(replaceCookies:) || action==@selector(clearCookies:)) return ![library_ isBusy] && !noCookies;
   if(action==@selector(discover:)) return ![library_ isBusy] && ![library_ isDiscoveryPending];
-  if(action==@selector(sync:)) return playlist && ![[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
+  if(action==@selector(sync:)) return playlist && [RDLPLibrary canSyncPlaylist:playlist] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]];
   if(action==@selector(syncAll:)) return [library_ hasPlaylistsToSync];
   if(action==@selector(chooseDownload:)) {
     NSUInteger index=(NSUInteger)[item tag];
@@ -927,7 +928,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   }
 }
 - (void)sync:(id)sender;
-{ (void)sender; NSDictionary *playlist=[self contextPlaylist]; if(playlist && ![[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID]) [library_ syncPlaylistInput:[playlist objectForKey:@"service_id"]]; }
+{ (void)sender; NSDictionary *playlist=[self contextPlaylist]; if(playlist && [RDLPLibrary canSyncPlaylist:playlist]) [library_ syncPlaylistInput:[playlist objectForKey:@"service_id"]]; }
 - (void)syncAll:(id)sender;
 {
   (void)sender; NSArray *inputs=[self syncPlan]; if(![inputs count]) return;

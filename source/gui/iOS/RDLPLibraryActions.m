@@ -8,7 +8,7 @@
   if([action isEqualToString:@"import"]) return ![library_ isBusy] && ![[library_ cookieStatus] isEqualToString:@"Imported"];
   if([action isEqualToString:@"clearCookies"]) return ![library_ isBusy] && ![[library_ cookieStatus] isEqualToString:@"Not Imported"];
   if([action isEqualToString:@"discover"]) return ![library_ isBusy] && ![library_ isDiscoveryPending];
-  if([action isEqualToString:@"sync"]) return playlist_ && ![[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![library_ isSyncPendingForInput:[playlist_ objectForKey:@"service_id"]];
+  if([action isEqualToString:@"sync"]) return playlist_ && [RDLPLibrary canSyncPlaylist:playlist_] && ![library_ isSyncPendingForInput:[playlist_ objectForKey:@"service_id"]];
   if([action isEqualToString:@"syncAll"]) return [library_ hasPlaylistsToSync];
   if([action isEqualToString:@"removePlaylist"]) return [model_ canRemovePlaylist:playlist_];
   if([action isEqualToString:@"bulk"]) return [library_ hasMissingEntriesForPlaylist:[playlist_ objectForKey:@"id"] format:[RDLPLibrary preferredFormat]];
@@ -164,7 +164,7 @@
 - (void)syncAll:(id)sender;
 {
   (void)sender; NSMutableArray *inputs=[NSMutableArray array];
-  for(NSDictionary *playlist in [library_ playlists]) if(![[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) [inputs addObject:[playlist objectForKey:@"service_id"]];
+  for(NSDictionary *playlist in [library_ playlists]) if([RDLPLibrary canSyncPlaylist:playlist] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) [inputs addObject:[playlist objectForKey:@"service_id"]];
   if([inputs count]) [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:@"syncAll",@"operation",inputs,@"inputs",nil] title:@"Sync all playlists?" detail:@"Refresh playlist metadata from YouTube. Local downloads are retained." button:@"Sync All"];
 }
 - (void)sync:(id)sender; { (void)sender; if([self enabled:@"sync"]) [library_ syncPlaylistInput:[playlist_ objectForKey:@"service_id"]]; }

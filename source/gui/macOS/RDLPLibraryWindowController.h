@@ -23,7 +23,7 @@
   NSAlert *confirmation_;
   NSDictionary *confirmationRequest_;
   NSPanel *addSheet_, *downloadSheet_;
-  NSArray *playlists_, *rows_, *addedPlaylists_, *accountPlaylists_; NSDictionary *adhocPlaylist_;
+  NSArray *playlists_, *rows_, *addedPlaylists_, *accountPlaylists_, *unsupportedPlaylists_; NSDictionary *adhocPlaylist_;
   NSString *selectedPlaylist_, *downloadFormat_;
   NSDictionary *downloadRequest_;
   int mode_, context_;

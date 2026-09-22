@@ -81,6 +81,7 @@
 {
   if(screen==RDLPScreenLibrary) {
     NSMutableDictionary *row=[self row:[item objectForKey:@"title"] detail:[[item objectForKey:@"synced_at"] length]?[NSString stringWithFormat:@"%@ videos",[item objectForKey:@"count"]]:@"Not synced" action:@"playlist"];
+    if(![[item objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![RDLPLibrary canSyncPlaylist:item]) [row setObject:@"This playlist type cannot be synced" forKey:@"detail"];
     [row setObject:item forKey:@"playlist"]; return row;
   }
   if(screen==RDLPScreenQueue) {
@@ -108,6 +109,7 @@
     [sections addObject:[self section:@"System" rows:rows]];
     [sections addObject:[self section:@"Added Playlists" rows:[self displayRows:[library_ playlistsFromAccount:NO] screen:screen playlist:nil]]];
     [sections addObject:[self section:@"My Playlists" rows:[self displayRows:[library_ playlistsFromAccount:YES] screen:screen playlist:nil]]];
+    [sections addObject:[self section:@"Unsupported Playlists" rows:[self displayRows:[library_ unsupportedPlaylists] screen:screen playlist:nil]]];
   } else if(screen==RDLPScreenSettings) {
     NSArray *titles=[RDLPLibrary qualityTitles], *formats=[RDLPLibrary qualityFormats]; NSString *format=[RDLPLibrary preferredFormat];
     for(NSUInteger i=0;i<[titles count];++i) {

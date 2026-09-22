@@ -106,6 +106,9 @@ int main(int argc,char **argv) {
   config.change_callback=library_changed;
   config.lock=lock; config.unlock=unlock; config.lock_context=&f;
   snprintf(db,sizeof(db),"%s/library.sqlite",argv[1]); assert(rdapp_store_open(db,&s));
+  assert(rdapp_service_run(s,&config,RDAPP_SYNC,"WL",NULL,message,sizeof(message))==RDLP_ERROR_INVALID_PLAYLIST);
+  assert(rdapp_service_run(s,&config,RDAPP_SYNC,"https://www.youtube.com/playlist?list=HL",NULL,message,sizeof(message))==RDLP_ERROR_INVALID_PLAYLIST);
+  assert(f.requests==0); /* Unsupported types never create network work. */
   require(rdapp_service_run(s,&config,RDAPP_SYNC,"PLfixture",NULL,message,sizeof(message)),message);
   assert(f.requests==2); /* Existing playlist page + browse; no image/video requests. */
   memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_PLAYLISTS,0,collect,&c)); assert(c.count==1); key=c.job.id;

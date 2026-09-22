@@ -200,7 +200,7 @@ static void selectRow(RDLPLibraryWindowController *window,NSString *key,NSUInteg
     NSOutlineView *outline=(NSOutlineView *)table;
     id item=row==0?@"All Downloads":[[[window valueForKey:@"playlists_"] objectAtIndex:row-1] objectForKey:@"id"];
     if(row>0) item=[[window valueForKey:@"sidebarItems_"] objectForKey:item];
-    [outline expandItem:@"System"]; [outline expandItem:@"Added Playlists"]; [outline expandItem:@"My Playlists"];
+    [outline expandItem:@"System"]; [outline expandItem:@"Added Playlists"]; [outline expandItem:@"My Playlists"]; [outline expandItem:@"Unsupported Playlists"];
     row=(NSUInteger)[outline rowForItem:item];
   }
   [[window window] makeKeyAndOrderFront:nil];
@@ -706,7 +706,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     [window_ toggleSidebar:nil]; pump();
     NSOutlineView *outline=[window_ valueForKey:@"sidebar_"];
     requireCondition([outline isKindOfClass:[NSOutlineView class]],@"Sidebar must be an outline");
-    requireCondition([outline numberOfRows]==5 && [[outline itemAtRow:0] isEqual:@"System"] && [[outline itemAtRow:2] isEqual:@"Added Playlists"] && [[outline itemAtRow:4] isEqual:@"My Playlists"],@"Expected three groups and fixture children");
+    requireCondition([outline numberOfRows]==6 && [[outline itemAtRow:0] isEqual:@"System"] && [[outline itemAtRow:2] isEqual:@"Added Playlists"] && [[outline itemAtRow:4] isEqual:@"My Playlists"],@"Expected four groups and fixture children");
     [outline collapseItem:@"Added Playlists"]; [window_ refresh:nil];
     requireCondition(![outline isItemExpanded:@"Added Playlists"],@"Refresh must retain collapsed group");
     [outline expandItem:@"Added Playlists"];
@@ -878,9 +878,28 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition(rdapp_store_open("/tmp/retrodlp-toolbar-fixture/Support/retrodlp.sqlite",&discoveryStore),@"Could not open isolated discovery store");
     requireCondition(rdapp_store_discovered_playlist(discoveryStore,"PLfixture","Offline test playlist"),@"Discovery promotion failed");
     rdapp_store_close(discoveryStore); [window_ refresh:nil];
-    requireCondition([[window_ valueForKey:@"playlists_"] count]==1 && [outline numberOfRows]==5,@"Discovery must not duplicate playlist");
+    requireCondition([[window_ valueForKey:@"playlists_"] count]==1 && [outline numberOfRows]==6,@"Discovery must not duplicate playlist");
     requireCondition([[outline itemAtRow:3] isEqual:@"My Playlists"] && [[outline itemAtRow:4] isEqual:selectedKey],@"Discovered playlist must move to My Playlists");
     requireCondition([[window_ valueForKey:@"selectedPlaylist_"] isEqual:selectedKey] && [outline selectedRow]==4,@"Promotion must preserve selected playlist");
+    requireCondition(rdapp_store_open("/tmp/retrodlp-toolbar-fixture/Support/retrodlp.sqlite",&discoveryStore),@"Open unsupported playlist fixture");
+    requireCondition(rdapp_store_discovered_playlist(discoveryStore,"WL","Watch Later") && rdapp_store_discovered_playlist(discoveryStore,"HL","History"),@"Discover unsupported playlists");
+    rdapp_store_close(discoveryStore); [window_ refresh:nil];
+    requireCondition([window_ outlineView:outline numberOfChildrenOfItem:@"My Playlists"]==1 && [window_ outlineView:outline numberOfChildrenOfItem:@"Unsupported Playlists"]==2,@"Unsupported types have a separate outline group");
+    [outline expandItem:@"Unsupported Playlists"];
+    NSArray *unsupported=[library_ unsupportedPlaylists];
+    NSDictionary *unsupportedPlaylist=[unsupported objectAtIndex:0];
+    [outline selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)[outline rowForItem:[[window_ valueForKey:@"sidebarItems_"] objectForKey:[unsupportedPlaylist objectForKey:@"id"]]]] byExtendingSelection:NO];
+    [window_ tableWasUsed:outline];
+    requireCondition([[window_ valueForKey:@"selectedPlaylist_"] isEqual:[unsupportedPlaylist objectForKey:@"id"]],@"Unsupported playlist is selected by its outline identity");
+    NSMenuItem *unsupportedSyncItem=[[[NSMenuItem alloc] initWithTitle:@"Sync" action:@selector(sync:) keyEquivalent:@""] autorelease];
+    requireCondition(![window_ validateMenuItem:unsupportedSyncItem],@"Unsupported playlist disables manual Sync");
+    NSArray *syncInputs=[window_ performSelector:@selector(syncPlan)];
+    requireCondition([syncInputs count]==1 && ![syncInputs containsObject:@"WL"] && ![syncInputs containsObject:@"HL"],@"Bulk sync skips unsupported types");
+    NSUInteger commandsBefore=[[library_ valueForKey:@"commands_"] count];
+    [library_ syncPlaylistInput:@"WL"]; [library_ syncPlaylistInput:@"https://www.youtube.com/playlist?list=HL"];
+    requireCondition([[library_ valueForKey:@"commands_"] count]==commandsBefore && ![library_ isBusy],@"Direct and automatic submissions cannot schedule unsupported syncs");
+    [library_ removePlaylist:[unsupported objectAtIndex:0]]; [library_ removePlaylist:[unsupported objectAtIndex:1]];
+    [window_ refresh:nil]; selectRow(window_,@"sidebar_",1);
     /* Missing CA makes these real worker attempts fail locally before networking. */
     NSUInteger attempts=0; NSEnumerator *jobEnumerator=[[library_ jobsForPlaylist:nil completedOnly:NO] objectEnumerator]; NSDictionary *pendingJob;
     while((pendingJob=[jobEnumerator nextObject])) if([[pendingJob objectForKey:@"state"] isEqualToString:@"queued"]) ++attempts;

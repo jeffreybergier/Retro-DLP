@@ -49,6 +49,7 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
   BOOL queueRun_;
   NSUInteger queueProcessed_, queueFailed_, queueCancelled_;
 }
++ (BOOL)canSyncPlaylist:(NSDictionary *)playlist;
 + (NSArray *)qualityTitles;
 + (NSArray *)qualityFormats;
 /* Preset name and exact expression, without implying measured resolution. */
@@ -67,6 +68,8 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
 - (NSDictionary *)adhocPlaylist;
 - (NSArray *)playlistsFromAccount:(BOOL)account;
 - (NSArray *)playlistIDsFromAccount:(BOOL)account;
+- (NSArray *)unsupportedPlaylists;
+- (NSArray *)unsupportedPlaylistIDs;
 - (NSDictionary *)playlistForID:(NSString *)key;
 - (NSDictionary *)jobForID:(NSString *)key;
 - (NSArray *)jobsForPlaylist:(NSString *)key video:(NSString *)video;

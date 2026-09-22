@@ -19,7 +19,11 @@ typedef enum { RDAPP_PLAYLISTS, RDAPP_ENTRIES, RDAPP_JOBS, RDAPP_DOWNLOADS,
   RDAPP_ADDED_PLAYLISTS, RDAPP_ACCOUNT_PLAYLISTS, RDAPP_QUEUE, RDAPP_PENDING,
   RDAPP_BLOCKING_JOBS, RDAPP_VIDEO_JOBS, RDAPP_JOB, RDAPP_PLAYLIST,
   RDAPP_MISSING, RDAPP_DOWNLOAD_CANDIDATES, RDAPP_PLAYLIST_INPUT,
-  RDAPP_ADDED_IDS, RDAPP_ACCOUNT_IDS, RDAPP_VIDEO_ENTRIES } rdapp_query;
+  RDAPP_ADDED_IDS, RDAPP_ACCOUNT_IDS, RDAPP_VIDEO_ENTRIES,
+  RDAPP_UNSUPPORTED_PLAYLISTS, RDAPP_UNSUPPORTED_IDS } rdapp_query;
+/* Offline capability check using the library parser, including canonical IDs
+   extracted from URLs. Ad-Hoc is local and is never syncable. */
+int rdapp_playlist_can_sync(const char *input);
 /* Serialized by the owner. All strings passed to callbacks are borrowed. */
 int rdapp_store_open(const char *path, rdapp_store **out);
 /* UI reader: no migration or recovery; WAL snapshots do not block the worker. */

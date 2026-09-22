@@ -93,9 +93,11 @@
 
 @implementation RDLPLibraryViews
 + (BOOL)isSidebarGroup:(id)item {
-  return [item isEqual:@"System"] || [item isEqual:@"Added Playlists"] || [item isEqual:@"My Playlists"];
+  return [item isEqual:@"System"] || [item isEqual:@"Added Playlists"] || [item isEqual:@"My Playlists"] || [item isEqual:@"Unsupported Playlists"];
 }
 + (NSString *)groupForPlaylist:(NSDictionary *)playlist {
+  if([[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID]) return @"System";
+  if(![RDLPLibrary canSyncPlaylist:playlist]) return @"Unsupported Playlists";
   return [[playlist objectForKey:@"source"] isEqualToString:@"account"]?@"My Playlists":@"Added Playlists";
 }
 + (NSOutlineView *)sidebarInView:(NSView *)view owner:(id)owner {

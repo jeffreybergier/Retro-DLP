@@ -173,6 +173,10 @@ rdlp_error_code rdapp_service_run(rdapp_store *s,const rdapp_service_config *c,
   if(!s || !c || !message || !cap || !c->download_root) return RDLP_ERROR_INVALID_ARGUMENT;
   message[0]=0;
   if(c->result) memset(c->result,0,sizeof(*c->result));
+  if(operation==RDAPP_SYNC && !rdapp_playlist_can_sync(input)) {
+    snprintf(message,cap,"This playlist type cannot be synced by RetroDLP.");
+    return RDLP_ERROR_INVALID_PLAYLIST;
+  }
   if(operation==RDAPP_ADD_VIDEO) code=add_video(s,c,input,job,message,cap,&error);
   else {
     code=rdlp_context_create(&c->resolver,&context,&error);

@@ -16,10 +16,16 @@ META = 'https://github.com/jeffreybergier/Retro-DLP/metadata/'
 ROOT = Path(__file__).resolve().parents[4]
 BUILD = ROOT / 'build/apps/tests'
 BUILD.mkdir(parents=True, exist_ok=True)
-subprocess.run(['cc', '-std=c99', '-Wall', '-Wextra', '-Werror', '-shared', '-fPIC',
-                str(ROOT/'source/gui/shared/tests/store_probe.c'), '-lsqlite3',
+# Bind archive symbols locally: the shipping static library is not built with PIC.
+subprocess.run(['cc', '-std=c99', '-Wall', '-Wextra', '-Werror', '-shared', '-fPIC', '-Wl,-Bsymbolic',
+                '-I'+str(ROOT/'source/library/shared/include'),
+                str(ROOT/'source/gui/shared/tests/store_probe.c'),
+                str(ROOT/'build/linux/libretrodlp.a'),
+                '-lsqlite3', '-lcurl', '-lcrypto', '-lm', '-ldl', '-lpthread',
                 '-o', str(BUILD/'store.so')], check=True)
 lib = C.CDLL(str(BUILD/'store.so'))
+lib.rdapp_playlist_can_sync.argtypes=[C.c_char_p]
+lib.rdapp_playlist_can_sync.restype=C.c_int
 P = C.c_void_p
 S = C.c_char_p
 I = C.c_int64
@@ -115,6 +121,40 @@ class StoreTests(unittest.TestCase):
         result=I()
         self.check(lib.rdapp_store_index(store or self.db,kind,self.key if key is None else key,identity,C.byref(result)))
         return result.value
+
+    def test_playlist_capability_and_groups(self):
+        for value in (b'PLtest', b'UUtest', b'FLtest', b'OLtest', b'RDtest',
+                      b'https://www.youtube.com/playlist?list=PLtest'):
+            self.assertEqual(lib.rdapp_playlist_can_sync(value),1,value)
+        for value in (None, b'', b'adhoc', b'WL', b'HL', b'LL', b'FEhistory',
+                      b'unknown', b'https://www.youtube.com/playlist?list=WL',
+                      b'https://www.youtube.com/feed/history'):
+            self.assertEqual(lib.rdapp_playlist_can_sync(value),0,value)
+        for value in (b'WL',b'HL',b'LL',b'PLaccount'):
+            self.check(lib.rdapp_store_discovered_playlist(self.db,value,value))
+        key=I()
+        self.check(lib.rdapp_store_playlist(self.db,b'FEhistory',b'History',C.byref(key)))
+        self.check(lib.rdapp_store_add_adhoc(self.db,b'ABCDEFGHIJK',b'Video',C.byref(key)))
+        # All records stay visible, but only supported records appear in the
+        # account/added lists and their lightweight ID projections.
+        self.assertEqual(self.count(0),7)
+        self.assertEqual(self.count(4),1)
+        self.assertEqual(self.count(5),1)
+        self.assertEqual(self.count(15),1)
+        self.assertEqual(self.count(16),1)
+        expected=['FEhistory','HL','LL','WL']
+        self.assertEqual([r['service_id'] for r in self.page(18,limit=10)],expected)
+        self.assertEqual(self.count(19),4)
+        reader=P()
+        self.check(lib.rdapp_store_open_reader(os.fsencode(self.path/'db.sqlite'),C.byref(reader)))
+        try:
+            self.assertEqual(self.count(18,store=reader),4)
+            self.assertEqual(self.page(18,offset=3,store=reader)[0]['service_id'],'WL')
+        finally:
+            lib.rdapp_store_close(reader)
+        lib.rdapp_store_close(self.db)
+        self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
+        self.assertEqual(self.count(18),4)
 
     def test_count_page_seek_and_identity_preserve_membership(self):
         self.check(self.snapshot([(b'abcdefghijk',b'First',3),(b'lmnopqrstuv',b'Second',8),(b'abcdefghijk',b'Duplicate',15)]))

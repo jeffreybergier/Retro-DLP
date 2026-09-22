@@ -318,6 +318,17 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   require(![library playlistForID:otherKey] && [root tableView:root.tableView numberOfRowsInSection:1]==0,@"Native Delete removes the last Added Playlists row without recursive reload");
   nativeDelete(root,playlistIndex(root,accountKey));
   require(![library playlistForID:accountKey] && [root tableView:root.tableView numberOfRowsInSection:2]==0 && [library adhocPlaylist],@"Native Delete removes the last My Playlists row and retains Ad-Hoc");
+  require(rdapp_store_discovered_playlist(store,"WL","Watch Later") && rdapp_store_discovered_playlist(store,"HL","History"),@"Discover unsupported playlist types");
+  [root refresh:nil];
+  require([root tableView:root.tableView numberOfRowsInSection:3]==2 && [root tableView:root.tableView numberOfRowsInSection:2]==0,@"Unsupported playlists appear in their own table section");
+  NSDictionary *unsupported=[[library unsupportedPlaylists] objectAtIndex:0];
+  RDLPPlaylistViewController *detail=[[RDLPPlaylistViewController alloc] initWithLibrary:library playlist:unsupported];
+  [detail view]; [detail refresh:nil];
+  require(!detail.navigationItem.rightBarButtonItem.enabled,@"Unsupported playlist disables Sync");
+  [detail sync:nil]; [library syncPlaylistInput:@"https://www.youtube.com/playlist?list=WL"]; [library syncAll];
+  require([[library valueForKey:@"commands_"] count]==0 && ![library hasPlaylistsToSync],@"Only unsupported and Ad-Hoc playlists means no manual or automatic sync work");
+  require([root tableView:root.tableView canEditRowAtIndexPath:playlistIndex(root,[unsupported objectForKey:@"id"])],@"Unsupported playlists remain removable");
+  [detail release];
   rdapp_store_close(store);
   window.rootViewController=previous; [previous release]; pump();
   [navigation release]; [root release]; [library shutdown]; [library release];
@@ -521,7 +532,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     pump(); pump();
     require([[[root valueForKey:@"alert_"] title] isEqualToString:@"Add Playlist"],@"Second action opens Add Playlist after sheet dismisses");
     confirm(root,NO);
-    require([sections(root) count]==3,@"Three library groups");
+    require([sections(root) count]==4,@"Four library groups");
     require([[[sections(root) objectAtIndex:1] objectForKey:@"rows"] count]==1,@"Added playlist group");
     require([[[sections(root) objectAtIndex:2] objectForKey:@"rows"] count]==1,@"Account playlist group");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"library.png"]);
