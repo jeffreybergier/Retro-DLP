@@ -103,17 +103,49 @@ static void testMacErrorAlert(RDLPLibraryWindowController *window) {
 }
 /* Exercise VLC-present/absent branches without changing installed applications. */
 static BOOL probeVLC, probeQuickTime, probeDefault;
-static NSString *probeOpened;
+static NSString *probeOpened, *probeOpenedPath, *probeVersion;
 @interface RDLPPlaybackProbe : RDLPAppKit
 + (void)checkFile:(NSString *)path;
++ (void)checkPlaylistsInDirectory:(NSString *)directory;
 @end
 @implementation RDLPPlaybackProbe
 + (NSString *)VLCApplication { return probeVLC?@"/Applications/VLC.app":nil; }
++ (NSString *)VLCVersion { return probeVersion; }
 + (NSString *)QuickTimeApplication { return probeQuickTime?@"/Applications/QuickTime Player.app":nil; }
 + (NSString *)defaultApplication:(NSString *)path { (void)path; return probeDefault?@"/Applications/QuickTime Player.app":nil; }
-+ (void)openInVLC:(NSString *)path { (void)path; probeOpened=@"VLC"; }
++ (void)openInVLC:(NSString *)path { probeOpenedPath=path; probeOpened=@"VLC"; }
 + (void)openInQuickTime:(NSString *)path { (void)path; probeOpened=@"QuickTime"; }
 + (void)openDefaultApplication:(NSString *)path { (void)path; probeOpened=@"Default"; }
++ (void)checkPlaylistsInDirectory:(NSString *)directory {
+  NSString *xspf=[directory stringByAppendingPathComponent:@"Playlist.xspf"];
+  NSString *m3u=[directory stringByAppendingPathComponent:@"Playlist.m3u8"];
+  NSString *video=[directory stringByAppendingPathComponent:@"video.mp4"];
+  [@"fixture" writeToFile:xspf atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+  [@"fixture" writeToFile:m3u atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+  [@"fixture" writeToFile:video atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+  [self checkFile:xspf];
+  NSUserDefaults *defaults=[NSUserDefaults standardUserDefaults];
+  NSString *saved=[[defaults stringForKey:@"RetroDLPVideoPlayer"] copy];
+  probeVLC=YES; [self saveVideoPlayer:@"VLC"];
+  NSArray *versions=[NSArray arrayWithObjects:@"0.9.10",@"1.1.9",@"1.1.11",@"1.1",@"",@"unknown",@"1..12",@"1.1.12-rc1",@"1.1.12",@"1.1.13",@"1.10.0",@"2.0.0",@"3.0.21",nil];
+  unsigned int i;
+  for(i=0;i<[versions count]+1;++i) {
+    probeVersion=i<[versions count]?[versions objectAtIndex:i]:nil;
+    NSString *expected=i>=8 && i<[versions count]?xspf:m3u;
+    requireCondition([[self VLCPlaybackPath:xspf] isEqual:expected] && [[self VLCPlaybackPath:m3u] isEqual:expected],@"VLC versions must select the correct playlist numerically");
+    probeOpenedPath=nil; [self openPreferredPlayback:xspf];
+    requireCondition([probeOpenedPath isEqual:expected],@"Dispatch must receive the compatible playlist");
+    probeOpenedPath=nil; [self openPreferredPlayback:video];
+    requireCondition([probeOpenedPath isEqual:video],@"VLC version selection must preserve single-video playback");
+  }
+  probeVersion=@"0.9.10";
+  [[NSFileManager defaultManager] removeFileAtPath:m3u handler:nil];
+  probeOpenedPath=nil; [self openPreferredPlayback:xspf];
+  requireCondition(!probeOpenedPath && ![self preferredPlaybackApplication:xspf],@"Missing legacy playlist must never fall through to unsafe XSPF");
+  if(saved) [defaults setObject:saved forKey:@"RetroDLPVideoPlayer"];
+  else [defaults removeObjectForKey:@"RetroDLPVideoPlayer"];
+  [defaults synchronize]; [saved release];
+}
 + (void)checkFile:(NSString *)path {
   NSUserDefaults *defaults=[NSUserDefaults standardUserDefaults];
   NSString *saved=[[defaults stringForKey:@"RetroDLPVideoPlayer"] copy];
@@ -934,6 +966,19 @@ int main(void) {
     setrlimit(RLIMIT_NOFILE,&files); /* Test process only; leave the hard limit intact. */
   }
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+  if(getenv("RDPlaybackTestOnly")) {
+    char directory[]="/tmp/retrodlp-playback-test.XXXXXX";
+    int result=0;
+    if(!mkdtemp(directory)) { [pool drain]; return 1; }
+    @try {
+      [RDLPPlaybackProbe checkPlaylistsInDirectory:[NSString stringWithUTF8String:directory]];
+      NSString *application=[RDLPAppKit VLCApplication];
+      if(application) requireCondition([[RDLPAppKit VLCVersion] isEqual:[[[NSBundle bundleWithPath:application] infoDictionary] objectForKey:@"CFBundleShortVersionString"]],@"Read installed VLC version from its bundle");
+      printf("PASS: native VLC version selection, playlist dispatch, missing-file safety, and video playback paths\n");
+    } @catch(NSException *exception) { fprintf(stderr,"FAIL: %s\n",[[exception description] UTF8String]); result=1; }
+    [[NSFileManager defaultManager] removeFileAtPath:[NSString stringWithUTF8String:directory] handler:nil];
+    [pool drain]; return result;
+  }
   NSApplication *app=[RDLPApplication sharedApplication]; RDLPToolbarTest *delegate=[[RDLPToolbarTest alloc] init];
   [RDLPAppKit setApplication:app delegate:delegate]; [app run]; [delegate release]; [pool drain]; return 0;
 }

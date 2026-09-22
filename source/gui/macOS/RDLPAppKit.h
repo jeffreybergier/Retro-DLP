@@ -16,6 +16,9 @@
 + (void)revealInFinder:(NSString *)path;
 /* Saved player choice; unavailable players fall back to the system default. */
 + (NSString *)VLCApplication;
++ (NSString *)VLCVersion;
+/* Select the compatible generated playlist; video paths pass through unchanged. */
++ (NSString *)VLCPlaybackPath:(NSString *)path;
 + (NSString *)QuickTimeApplication;
 + (NSString *)videoPlayer;
 + (BOOL)videoPlayerAvailable:(NSString *)player;

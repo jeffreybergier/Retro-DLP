@@ -67,7 +67,7 @@ int rdapp_store_reconcile_job(rdapp_store *, int64_t job, const char *root);
 int rdapp_store_cancel(rdapp_store *, int64_t job);
 int rdapp_store_forget_file(rdapp_store *, int64_t job);
 int rdapp_store_remove_playlist(rdapp_store *, int64_t playlist, const char *root);
-/* Atomic M3U8 export, rooted in an app-owned directory. Missing files omitted. */
+/* XSPF and M3U8 exports (each atomically replaced), rooted in an app-owned directory. Missing files omitted. */
 int rdapp_store_reconcile(rdapp_store *, const char *root);
 int rdapp_store_remove_file(rdapp_store *, int64_t job, const char *root);
 int rdapp_store_export(rdapp_store *, int64_t playlist, const char *root);

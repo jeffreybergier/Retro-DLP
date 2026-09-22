@@ -45,7 +45,7 @@ Existing `make` commands and generated paths under `build/` are unchanged.
 Native macOS and iOS frontends provide a SQLite playlist library, quality-specific
 download queue, and offline playback. macOS offers VLC, QuickTime, and Default App
 under Video Player in the application menu. It defaults to VLC when installed,
-otherwise Default App, and exports M3U8 playlists under
+otherwise Default App, and exports XSPF playlists with video metadata plus compatible M3U8 playlists under
 `~/Documents/RetroDLP`; iOS keeps videos inside its own Documents directory and
 uses the native movie player. Opening a video restores its position and waits for
 you to tap Play. iOS saves playback position every ten seconds during

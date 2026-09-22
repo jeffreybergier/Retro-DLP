@@ -152,7 +152,16 @@ int main(int argc,char **argv) {
   require(rdapp_service_run(s,&config,RDAPP_DOWNLOAD,NULL,&c.job,message,sizeof(message)),message);
   snprintf(file,sizeof(file),"%s/%s",argv[1],c.path); assert(stat(file,&st)==0 && st.st_size>0);
   assert(outcome.downloaded_bytes==(uint64_t)st.st_size && !outcome.warning && f.format_seen==1 && f.target_seen==1);
-  snprintf(export,sizeof(export),"%s/Playlists/Offline playlist [PLfixture]/Playlist.m3u8",argv[1]); output=fopen(export,"r"); assert(output); assert(fgets(message,sizeof(message),output)); assert(!strcmp(message,"#EXTM3U\n")); assert(fgets(message,sizeof(message),output)); assert(strstr(message,"One video")); fclose(output);
+  snprintf(export,sizeof(export),"%s/Playlists/Offline playlist [PLfixture]/Playlist.xspf",argv[1]);
+  output=fopen(export,"r"); assert(output);
+  assert(fgets(message,sizeof(message),output)); assert(!strcmp(message,"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"));
+  while(fgets(message,sizeof(message),output) && !strstr(message,"<title>One video</title>")) {}
+  assert(strstr(message,"<title>One video</title>")); fclose(output);
+  snprintf(export,sizeof(export),"%s/Playlists/Offline playlist [PLfixture]/Playlist.m3u8",argv[1]);
+  output=fopen(export,"r"); assert(output);
+  assert(fgets(message,sizeof(message),output)); assert(!strcmp(message,"#EXTM3U\n"));
+  assert(fgets(message,sizeof(message),output)); assert(strstr(message,"#EXTINF:") && strstr(message,"One video"));
+  assert(fgets(message,sizeof(message),output)); assert(!strncmp(message,"./",2)); fclose(output);
   /* A second explicit quality expression exercises HTTP failure and fresh retry. */
   assert(rdapp_store_enqueue(s,key,NULL,"18/18")); claim(s,&c); f.media="status";
   code=rdapp_service_run(s,&config,RDAPP_DOWNLOAD,NULL,&c.job,message,sizeof(message)); assert(code==RDLP_ERROR_HTTP_STATUS);

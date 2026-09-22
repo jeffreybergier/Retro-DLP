@@ -131,7 +131,7 @@ int rdapp_store_save_playback_seconds(rdapp_store *s,const char *video,double se
 void rdapp_filename(const char *text, char *out, size_t cap) {
   size_t n = 0, i = 0;
   if (!cap) return;
-  /* Preserve whole UTF-8 codepoints; filenames cannot inject paths or M3U lines. */
+  /* Preserve whole UTF-8 codepoints and replace filename control characters. */
   while (text && text[i] && n + 1 < cap && n < 100) {
     unsigned char c = (unsigned char)text[i];
     size_t len = c < 128 ? 1 : (c < 224 ? 2 : (c < 240 ? 3 : 4));
@@ -508,28 +508,142 @@ int rdapp_store_remove_playlist(rdapp_store *s,int64_t key,const char *root) {
   if(by_id(s,"DELETE FROM jobs WHERE playlist_id=?",key) && by_id(s,"DELETE FROM playlists WHERE id=?",key) && sql(s,"COMMIT")) return 1;
   sqlite3_exec(s->db,"ROLLBACK",NULL,NULL,NULL); return 0;
 }
+/* Stream valid UTF-8, escaping XML text or flattening M3U metadata lines. */
+static void playlist_text(FILE *f,const char *text,int xml) {
+  const unsigned char *p=(const unsigned char *)text;
+  size_t remaining=text?strlen(text):0;
+  while(remaining) {
+    unsigned int cp=*p; size_t n=1,i; int valid=1;
+    if(cp>=128) {
+      n=cp>=0xc2 && cp<=0xdf?2:(cp>=0xe0 && cp<=0xef?3:(cp>=0xf0 && cp<=0xf4?4:1));
+      if(n==1 || n>remaining) valid=0;
+      else {
+        cp&=(1U<<(7-n))-1;
+        for(i=1;i<n;++i) {
+          if((p[i]&0xc0)!=0x80) { valid=0; break; }
+          cp=(cp<<6)|(p[i]&0x3f);
+        }
+        if(valid && ((n==2 && cp<0x80) || (n==3 && cp<0x800) || (n==4 && cp<0x10000) ||
+                     (cp>=0xd800 && cp<=0xdfff) || cp>0x10ffff)) valid=0;
+      }
+    }
+    if(!valid) { fputs("\xef\xbf\xbd",f); ++p; --remaining; continue; }
+    if((cp<32 && cp!=9 && cp!=10 && cp!=13) || cp==0xfffe || cp==0xffff) fputs("\xef\xbf\xbd",f);
+    else if(!xml && (cp==9 || cp==10 || cp==13)) fputc(' ',f);
+    else if(xml && cp=='&') fputs("&amp;",f);
+    else if(xml && cp=='<') fputs("&lt;",f);
+    else if(xml && cp=='>') fputs("&gt;",f);
+    else if(xml && cp==13) fputs("&#13;",f);
+    else fwrite(p,1,n,f);
+    p+=n; remaining-=n;
+  }
+}
+static void xspf_text(FILE *f,const char *text) { playlist_text(f,text,1); }
+static void xspf_element(FILE *f,const char *name,const char *value) {
+  if(!value || !value[0]) return;
+  fprintf(f,"    <%s>",name); xspf_text(f,value); fprintf(f,"</%s>\n",name);
+}
+/* Encode UTF-8 bytes, preserving separators only for a full filesystem path. */
+static void xspf_uri(FILE *f,const char *value,int path) {
+  const unsigned char *p=(const unsigned char *)value;
+  for(;p && *p;++p) {
+    unsigned char c=*p;
+    if((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || strchr("-._~",c) || (path && c=='/')) fputc(c,f);
+    else fprintf(f,"%%%02X",(unsigned int)c);
+  }
+}
+static void xspf_resource(FILE *f,const char *name,const char *prefix,const char *id) {
+  fprintf(f,"    <%s>",name); xspf_text(f,prefix); xspf_uri(f,id,0); fprintf(f,"</%s>\n",name);
+}
+#define RDAPP_XSPF_META "https://github.com/jeffreybergier/Retro-DLP/metadata/"
+static void xspf_meta(FILE *f,const char *name,const char *value) {
+  if(!value || !value[0]) return;
+  fprintf(f,"    <meta rel=\"" RDAPP_XSPF_META "%s\">",name); xspf_text(f,value); fputs("</meta>\n",f);
+}
 int rdapp_store_export(rdapp_store *s,int64_t key,const char *root) {
-  sqlite3_stmt *p; char dir[PATH_MAX],path[PATH_MAX],temp[PATH_MAX]; FILE *f; int fd,rc; struct stat st;
-  p=prepare(s,"SELECT directory FROM playlists WHERE id=?"); if(!p) return 0;
+  sqlite3_stmt *p; char dir[PATH_MAX],path[PATH_MAX],temp[PATH_MAX],legacy[PATH_MAX],legacy_temp[PATH_MAX]; FILE *f,*m; int fd,mfd,rc; struct stat st;
+  p=prepare(s,"SELECT directory,title,service_id,source FROM playlists WHERE id=?"); if(!p) return 0;
   sqlite3_bind_int64(p,1,key);
   if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); return failure(s,"Playlist does not exist"); }
-  rc=snprintf(dir,sizeof(dir),"%s/%s",root,sqlite3_column_text(p,0)); sqlite3_finalize(p);
-  if(rc<0 || (size_t)rc>=sizeof(dir) || !rdapp_make_directory(dir)) return failure(s,"Cannot create playlist directory");
-  if(snprintf(path,sizeof(path),"%s/Playlist.m3u8",dir)>=(int)sizeof(path) || snprintf(temp,sizeof(temp),"%s/.playlist-XXXXXX",dir)>=(int)sizeof(temp)) return failure(s,"Playlist path is too long");
-  fd=mkstemp(temp); if(fd<0) return failure(s,strerror(errno));
-  f=fdopen(fd,"w"); if(!f) { close(fd); unlink(temp); return failure(s,strerror(errno)); }
-  fputs("#EXTM3U\n",f);
-  p=prepare(s,"SELECT j.path FROM entries e JOIN jobs j ON j.id=(SELECT j2.id FROM jobs j2 WHERE j2.playlist_id=e.playlist_id AND j2.video_id=e.video_id AND j2.state='complete' ORDER BY j2.id DESC LIMIT 1) WHERE e.playlist_id=? ORDER BY e.position");
-  if(!p) { fclose(f); unlink(temp); return 0; }
+  rc=snprintf(dir,sizeof(dir),"%s/%s",root,sqlite3_column_text(p,0));
+  if(rc<0 || (size_t)rc>=sizeof(dir) || !rdapp_make_directory(dir)) { sqlite3_finalize(p); return failure(s,"Cannot create playlist directory"); }
+  if(snprintf(path,sizeof(path),"%s/Playlist.xspf",dir)>=(int)sizeof(path) ||
+     snprintf(legacy,sizeof(legacy),"%s/Playlist.m3u8",dir)>=(int)sizeof(legacy) ||
+     snprintf(temp,sizeof(temp),"%s/.playlist-XXXXXX",dir)>=(int)sizeof(temp) ||
+     snprintf(legacy_temp,sizeof(legacy_temp),"%s/.playlist-XXXXXX",dir)>=(int)sizeof(legacy_temp)) { sqlite3_finalize(p); return failure(s,"Playlist path is too long"); }
+  fd=mkstemp(temp); if(fd<0) { sqlite3_finalize(p); return failure(s,strerror(errno)); }
+  f=fdopen(fd,"w"); if(!f) { sqlite3_finalize(p); close(fd); unlink(temp); return failure(s,strerror(errno)); }
+  mfd=mkstemp(legacy_temp);
+  if(mfd<0) { sqlite3_finalize(p); fclose(f); unlink(temp); return failure(s,strerror(errno)); }
+  m=fdopen(mfd,"w");
+  if(!m) { sqlite3_finalize(p); close(mfd); fclose(f); unlink(temp); unlink(legacy_temp); return failure(s,strerror(errno)); }
+  fputs("#EXTM3U\n",m);
+  /* VLC 0.9.x requires an explicit base instead of using the playlist's URL.
+     Its importer concatenates the base and location, so retain the final slash. */
+  fputs("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<playlist version=\"1\" xmlns=\"http://xspf.org/ns/0/\" xml:base=\"file://",f);
+  xspf_uri(f,dir,1); fputs("/\">\n",f);
+  xspf_element(f,"title",(const char *)sqlite3_column_text(p,1));
+  /* The local Ad-Hoc collection has no corresponding YouTube playlist. */
+  if(strcmp((const char *)sqlite3_column_text(p,3),"system")) {
+    xspf_resource(f,"info","https://www.youtube.com/playlist?list=",(const char *)sqlite3_column_text(p,2));
+    xspf_resource(f,"identifier","https://www.youtube.com/playlist?list=",(const char *)sqlite3_column_text(p,2));
+  }
+  sqlite3_finalize(p);
+  fputs("  <trackList>\n",f);
+  p=prepare(s,"SELECT j.path,e.title,e.channel,e.description_snippet,e.video_id,e.position,e.duration,"
+    "e.channel_id,e.view_count_text,e.published_text,e.view_count,"
+    "(SELECT t.url FROM entry_thumbnails t WHERE t.playlist_id=e.playlist_id AND t.position=e.position ORDER BY t.thumbnail_index LIMIT 1),p.title "
+    "FROM entries e JOIN playlists p ON p.id=e.playlist_id JOIN jobs j ON j.id="
+    "(SELECT j2.id FROM jobs j2 WHERE j2.playlist_id=e.playlist_id AND j2.video_id=e.video_id AND j2.state='complete' ORDER BY j2.id DESC LIMIT 1) "
+    "WHERE e.playlist_id=? ORDER BY e.position");
+  if(!p) { fclose(f); fclose(m); unlink(temp); unlink(legacy_temp); return 0; }
   sqlite3_bind_int64(p,1,key);
   while((rc=sqlite3_step(p))==SQLITE_ROW) {
     char full[PATH_MAX]; const char *relative=(const char *)sqlite3_column_text(p,0); const char *base=strrchr(relative,'/');
-    if(snprintf(full,sizeof(full),"%s/%s",root,relative)<(int)sizeof(full) && lstat(full,&st)==0 && S_ISREG(st.st_mode))
-      fprintf(f,"./%s\n",base?base+1:relative);
+    if(snprintf(full,sizeof(full),"%s/%s",root,relative)<(int)sizeof(full) && lstat(full,&st)==0 && S_ISREG(st.st_mode)) {
+      sqlite3_int64 position=sqlite3_column_int64(p,5),duration=sqlite3_column_int64(p,6);
+      const char *artist=(const char *)sqlite3_column_text(p,2);
+      /* Both formats consume this same row and file-existence decision. VLC's
+         legacy EXTINF reader stores artist - title as separate metadata. */
+      fprintf(m,"#EXTINF:%lld,",(long long)(sqlite3_column_type(p,6)!=SQLITE_NULL && duration>=0 && duration<=INT_MAX?duration:-1));
+      if(artist && artist[0]) { playlist_text(m,artist,0); fputs(" - ",m); }
+      playlist_text(m,(const char *)sqlite3_column_text(p,1),0); fputc('\n',m);
+      /* Generated filenames have no CR/LF. Keep literal UTF-8 here: old VLC
+         first treats percent escapes as filename bytes and reports errors. */
+      fprintf(m,"./%s\n",base?base+1:relative);
+      fputs("  <track>\n",f);
+      xspf_resource(f,"location","./",base?base+1:relative);
+      xspf_resource(f,"identifier","https://www.youtube.com/watch?v=",(const char *)sqlite3_column_text(p,4));
+      xspf_element(f,"title",(const char *)sqlite3_column_text(p,1));
+      xspf_element(f,"creator",(const char *)sqlite3_column_text(p,2));
+      xspf_element(f,"annotation",(const char *)sqlite3_column_text(p,3));
+      xspf_resource(f,"info","https://www.youtube.com/watch?v=",(const char *)sqlite3_column_text(p,4));
+      xspf_element(f,"image",(const char *)sqlite3_column_text(p,11));
+      xspf_element(f,"album",(const char *)sqlite3_column_text(p,12));
+      if(position>=0 && position<INT64_MAX) fprintf(f,"    <trackNum>%lld</trackNum>\n",(long long)(position+1));
+      if(sqlite3_column_type(p,6)!=SQLITE_NULL && duration>=0 && duration<=INT64_MAX/1000)
+        fprintf(f,"    <duration>%lld</duration>\n",(long long)(duration*1000));
+      xspf_meta(f,"channel_id",(const char *)sqlite3_column_text(p,7));
+      xspf_meta(f,"view_count_text",(const char *)sqlite3_column_text(p,8));
+      xspf_meta(f,"published_text",(const char *)sqlite3_column_text(p,9));
+      xspf_meta(f,"view_count",(const char *)sqlite3_column_text(p,10));
+      fputs("  </track>\n",f);
+    }
   }
   sqlite3_finalize(p);
-  { int ok=rc==SQLITE_DONE && !ferror(f); if(fflush(f) || fsync(fd)) ok=0; if(fclose(f)) ok=0;
-    if(!ok || rename(temp,path)) { unlink(temp); return failure(s,"Could not write VLC playlist"); }
+  fputs("  </trackList>\n</playlist>\n",f);
+  { int ok=rc==SQLITE_DONE && !ferror(f) && !ferror(m);
+    if(fflush(f) || fsync(fd)) ok=0;
+    if(fflush(m) || fsync(mfd)) ok=0;
+    if(fclose(f)) ok=0;
+    if(fclose(m)) ok=0;
+    /* Prepare both completely before replacing either. Each rename is atomic;
+       reject unexpected destination types before starting publication. */
+    if(lstat(path,&st)==0 && !S_ISREG(st.st_mode)) ok=0;
+    if(lstat(legacy,&st)==0 && !S_ISREG(st.st_mode)) ok=0;
+    if(!ok || rename(temp,path) || rename(legacy_temp,legacy)) {
+      unlink(temp); unlink(legacy_temp); return failure(s,"Could not write VLC playlists");
+    }
   }
   return 1;
 }

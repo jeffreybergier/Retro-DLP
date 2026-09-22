@@ -552,6 +552,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   if(!playlist) return nil;
   NSString *path=[library_ playlistFile:playlist];
+  if([[RDLPAppKit videoPlayer] isEqualToString:@"VLC"]) path=[RDLPAppKit VLCPlaybackPath:path];
   if(![[NSFileManager defaultManager] fileExistsAtPath:path]) return nil;
   /* Recovery/export maintains this file. Toolbar validation only needs a count. */
   return [[library_ jobsForPlaylist:[playlist objectForKey:@"id"] completedOnly:YES] count]?path:nil;

@@ -30,7 +30,7 @@ Both frontends now use `RDLPLibraryRows`, an immutable `NSArray` subclass:
 - Row heights and swipe eligibility do not fetch offscreen payloads. Delete and
   retry actions recheck the captured identity before changing the database.
 
-Startup file reconciliation and M3U8 exports now run on the existing background
+Startup file reconciliation and XSPF/M3U8 exports now run on the existing background
 worker before queued downloads. Retrying a job checks just its own file instead
 of reconciling/exporting the entire library. Cancellation uses a separate short-held
 lock, so backgrounding and shutdown do not wait for a sync/export to release the

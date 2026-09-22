@@ -117,6 +117,25 @@
 + (NSString *)VLCApplication {
   return [[NSWorkspace sharedWorkspace] fullPathForApplication:@"VLC"];
 }
++ (NSString *)VLCVersion {
+  NSString *application=[self VLCApplication];
+  id version=application?[[[NSBundle bundleWithPath:application] infoDictionary] objectForKey:@"CFBundleShortVersionString"]:nil;
+  return [version isKindOfClass:[NSString class]]?version:nil;
+}
++ (NSString *)VLCPlaybackPath:(NSString *)path {
+  NSString *name=[path lastPathComponent];
+  if(![name isEqualToString:@"Playlist.xspf"] && ![name isEqualToString:@"Playlist.m3u8"]) return path;
+  NSString *version=[self VLCVersion];
+  BOOL known=[version length]>0;
+  NSArray *parts=[version componentsSeparatedByString:@"."];
+  unsigned int i;
+  for(i=0;i<[parts count];++i) {
+    NSString *part=[parts objectAtIndex:i];
+    if(![part length] || [part rangeOfCharacterFromSet:[[NSCharacterSet characterSetWithCharactersInString:@"0123456789"] invertedSet]].location!=NSNotFound) known=NO;
+  }
+  BOOL modern=known && [version compare:@"1.1.12" options:NSNumericSearch]!=NSOrderedAscending;
+  return [[path stringByDeletingLastPathComponent] stringByAppendingPathComponent:modern?@"Playlist.xspf":@"Playlist.m3u8"];
+}
 + (NSString *)QuickTimeApplication {
   return [[NSWorkspace sharedWorkspace] fullPathForApplication:@"QuickTime Player"];
 }
@@ -138,22 +157,25 @@
   }
 }
 + (NSString *)preferredPlaybackApplication:(NSString *)path {
-  if(![path length] || ![[NSFileManager defaultManager] fileExistsAtPath:path]) return nil;
   NSString *player=[self videoPlayer];
+  if([player isEqualToString:@"VLC"]) path=[self VLCPlaybackPath:path];
+  if(![path length] || ![[NSFileManager defaultManager] fileExistsAtPath:path]) return nil;
   if([player isEqualToString:@"VLC"]) return [self VLCApplication];
   if([player isEqualToString:@"QuickTime"]) return [self QuickTimeApplication];
   return [self defaultApplication:path];
 }
 + (void)openPreferredPlayback:(NSString *)path {
-  if(![path length] || ![[NSFileManager defaultManager] fileExistsAtPath:path]) return;
   NSString *player=[self videoPlayer];
+  if([player isEqualToString:@"VLC"]) path=[self VLCPlaybackPath:path];
+  if(![path length] || ![[NSFileManager defaultManager] fileExistsAtPath:path]) return;
   if([player isEqualToString:@"VLC"]) [self openInVLC:path];
   else if([player isEqualToString:@"QuickTime"]) [self openInQuickTime:path];
   else [self openDefaultApplication:path];
 }
 + (void)openInVLC:(NSString *)path {
   NSString *application=[self VLCApplication];
-  if(path && application && ![[NSWorkspace sharedWorkspace] openFile:path withApplication:application]) [RDLPAppKit showAlert:@"Could not open this file in VLC."];
+  path=[self VLCPlaybackPath:path];
+  if(path && application && (![[NSFileManager defaultManager] fileExistsAtPath:path] || ![[NSWorkspace sharedWorkspace] openFile:path withApplication:application])) [RDLPAppKit showAlert:@"Could not open this file in VLC."];
 }
 + (void)openInQuickTime:(NSString *)path {
   NSString *application=[self QuickTimeApplication];

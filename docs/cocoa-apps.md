@@ -274,15 +274,47 @@ Media is organized under:
 ~/Documents/RetroDLP/
   Playlists/<sanitized playlist title> [<YouTube playlist ID>]/
     <sanitized video title> [<local download ID>].mp4
+    Playlist.xspf
     Playlist.m3u8
   .staging/<local download ID>/       # partial transfers / retained mux inputs
 ```
 
-A playlist's directory is stable after creation. Exported playlists use UTF-8,
-relative file paths, and current playlist order, including repeated entries. Only
+A playlist's directory is stable after creation. Exported XSPF playlists use UTF-8,
+percent-encoded relative file URIs, and current playlist order, including repeated entries. Only
 completed files that still exist are exported. If several qualities exist, the
 most recently created completed job supplies that video's playlist entry. A
 video in different playlists has an independent local copy in each folder.
+The root `xml:base` is the percent-encoded absolute `file://` URI of the playlist
+directory with a trailing slash, allowing VLC 0.9.10 to resolve relative tracks.
+Moving a library requires regenerating its playlists to update that base.
+
+Each track carries the occurrence's title, channel as artist (`creator`),
+description (`annotation`), first stored thumbnail URL (`image`), playlist title
+as `album`, original one-based position (`trackNum`), and duration in milliseconds
+when available. The YouTube video URL supplies both `identifier` and `info`.
+Channel ID, numeric and display view counts, and publication text are preserved
+in `meta` fields whose `rel` values start with
+`https://github.com/jeffreybergier/Retro-DLP/metadata/` and end in the database
+field name (`channel_id`, `view_count`, `view_count_text`, `published_text`).
+VLC can display the standard fields; custom metadata is retained for readers
+that understand it. Missing optional values are omitted, and known zero values
+remain zero. Publication text is not treated as an exact date. The export does
+not fetch artwork or modify media files. The playlist itself includes its title
+and YouTube URL, except that the local Ad-Hoc collection has no YouTube URL.
+Both files are generated from the same query and row traversal, preserving identical
+files, order, and duplicates. M3U8 uses UTF-8, plain relative filenames,
+and `EXTINF` metadata containing duration in seconds (or -1 when unknown), channel,
+and title. Line breaks in metadata are flattened. XSPF retains the richer fields.
+Startup reconciliation regenerates both files, each published with an atomic rename
+after both have been fully written. The M3U8 file remains portable with its folder.
+
+When VLC is the selected player, native code reads `CFBundleShortVersionString`
+from its app bundle and compares numeric version components. VLC below 1.1.12,
+or an absent/unrecognized version, opens `Playlist.m3u8`; VLC 1.1.12 or newer
+opens `Playlist.xspf`. Single-video playback and other player choices keep their
+existing behavior. A missing compatible playlist does not fall back to XSPF on
+old VLC. The threshold is conservative: 0.9.10 crashes in its Mac interface with
+XSPF tracks, while 1.1.12 was tested without that crash.
 
 `~/Library/Application Support/RetroDLP/retrodlp.sqlite` stores the library and
 queue. Cookies are copied to an owner-only file alongside it. The original
@@ -541,7 +573,7 @@ library.
 
 - `rdapp_store.{h,c}`: normalized SQLite tables, complete playlist snapshots,
   ordered membership, durable jobs, recovery, file removal, path construction,
-  and atomic M3U8 export. No Apple headers.
+  and atomic XSPF/M3U8 exports. No Apple headers.
 - `rdapp_service.{h,c}`: sync, account discovery, resolve/download/mux orchestration,
   staging and publication, and durable operation outcomes. It accepts the public
   resolver transport/callback options, including fixture transports on Linux.
@@ -866,6 +898,11 @@ omits the CA resource. Prepare a fresh library with
 copy the app and fixture to `/tmp` on the Tiger test Mac, and launch the test app.
 It writes `/tmp/retrodlp-toolbar-test.txt` and exits. Recreate/restore the fixture
 before each run; the test deliberately changes only that fixture.
+
+For focused native playback routing tests, run the test bundle's executable with
+`RDPlaybackTestOnly=1`. It creates and removes its own temporary playlist fixture,
+checks versions below/at/above 1.1.12 and malformed/missing versions, and verifies
+playlist dispatch, missing-file behavior, and unchanged single-video paths.
 
 For toolbar persistence coverage, launch with `RDToolbarCustomizationTest=save`
 in the test bundle's `LSEnvironment`, then relaunch with that value set to

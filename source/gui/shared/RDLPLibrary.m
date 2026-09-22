@@ -563,7 +563,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   return [root_ stringByAppendingPathComponent:relative];
 }
 - (NSString *)playlistFile:(NSDictionary *)playlist;
-{ return [[root_ stringByAppendingPathComponent:[playlist objectForKey:@"directory"]] stringByAppendingPathComponent:@"Playlist.m3u8"]; }
+{ return [[root_ stringByAppendingPathComponent:[playlist objectForKey:@"directory"]] stringByAppendingPathComponent:@"Playlist.xspf"]; }
 - (void)removeDownload:(NSDictionary *)job;
 {
   NSString *key=[job objectForKey:@"id"];
@@ -578,7 +578,12 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   if(busy_) { [self reportError:@"Couldn’t remove playlist" detail:@"Wait for the current operation to finish."]; return; }
   [lock_ lock]; int ok=rdapp_store_remove_playlist(store_,identifier([playlist objectForKey:@"id"]),[root_ fileSystemRepresentation]);
   NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy]; [lock_ unlock];
-  if(ok) { unlink([[self playlistFile:playlist] fileSystemRepresentation]); rmdir([[root_ stringByAppendingPathComponent:[playlist objectForKey:@"directory"]] fileSystemRepresentation]); }
+  if(ok) {
+    NSString *directory=[root_ stringByAppendingPathComponent:[playlist objectForKey:@"directory"]];
+    unlink([[directory stringByAppendingPathComponent:@"Playlist.xspf"] fileSystemRepresentation]);
+    unlink([[directory stringByAppendingPathComponent:@"Playlist.m3u8"] fileSystemRepresentation]);
+    rmdir([directory fileSystemRepresentation]);
+  }
   if(error) [self reportError:@"Couldn’t remove playlist" detail:error]; [error release]; [self changed];
 }
 - (BOOL)importCookies:(NSString *)path;

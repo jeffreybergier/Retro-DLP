@@ -6,6 +6,12 @@ import sqlite3
 import subprocess
 import tempfile
 import unittest
+from urllib.parse import quote, unquote, urljoin, urlsplit
+import xml.etree.ElementTree as ET
+
+XSPF = '{http://xspf.org/ns/0/}'
+XML_BASE = '{http://www.w3.org/XML/1998/namespace}base'
+META = 'https://github.com/jeffreybergier/Retro-DLP/metadata/'
 
 ROOT = Path(__file__).resolve().parents[4]
 BUILD = ROOT / 'build/apps/tests'
@@ -449,11 +455,153 @@ class StoreTests(unittest.TestCase):
         path=self.path/job['path']; path.parent.mkdir(parents=True); path.write_bytes(b'video fixture')
         self.check(lib.rdapp_store_finish(self.db,int(job['id']),b'complete',b'18',b''))
         self.check(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)))
-        export=path.parent/'Playlist.m3u8'
-        self.assertEqual(export.read_text().splitlines(),['#EXTM3U','./'+path.name,'./'+path.name])
+        export=path.parent/'Playlist.xspf'
+        playlist=ET.parse(export).getroot()
+        self.assertEqual(playlist.tag,XSPF+'playlist')
+        self.assertEqual(playlist.attrib,{'version':'1',XML_BASE:path.parent.as_uri()+'/'})
+        self.assertEqual(playlist.findtext(XSPF+'title'),'My / playlist')
+        self.assertEqual(playlist.findtext(XSPF+'info'),'https://www.youtube.com/playlist?list=PLtest')
+        tracks=playlist.findall(XSPF+'trackList/'+XSPF+'track')
+        self.assertEqual([t.findtext(XSPF+'location') for t in tracks],['./'+quote(path.name)]*2)
+        self.assertEqual([t.findtext(XSPF+'title') for t in tracks],['First / title\n','Duplicate'])
+        self.assertEqual([t.findtext(XSPF+'trackNum') for t in tracks],['1','3'])
+        self.assertMatchingPlaylists(export)
+        self.assertEqual(export.with_suffix('.m3u8').read_text().splitlines()[1],'#EXTINF:-1,First / title ')
+        for track in tracks:
+            self.assertIsNone(track.find(XSPF+'creator'))
+            self.assertIsNone(track.find(XSPF+'duration'))
+            self.assertIsNone(track.find(XSPF+'image'))
+            self.assertEqual(track.findall(XSPF+'meta'),[])
         path.unlink()
         self.check(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)))
-        self.assertEqual(export.read_text(),'#EXTM3U\n')
+        self.assertEqual(ET.parse(export).findall(XSPF+'trackList/'+XSPF+'track'),[])
+        self.assertMatchingPlaylists(export)
+    def assertMatchingPlaylists(self,export):
+        playlist=ET.parse(export).getroot()
+        tracks=playlist.findall(XSPF+'trackList/'+XSPF+'track')
+        m3u=export.with_suffix('.m3u8').read_text().splitlines()
+        self.assertEqual(m3u[0],'#EXTM3U')
+        locations=[line for line in m3u[1:] if not line.startswith('#')]
+        self.assertEqual([(export.parent/line).resolve() for line in locations],
+            [Path(unquote(urlsplit(urljoin(playlist.attrib[XML_BASE],t.findtext(XSPF+'location'))).path)) for t in tracks])
+        self.assertEqual(len([line for line in m3u if line.startswith('#EXTINF:')]),len(tracks))
+    def test_xspf_exports_metadata_per_occurrence_and_encodes_file_uris(self):
+        title='Café & <video> "雪" #100%'
+        channel='Artist & "Friends"'
+        description='Line one\r\n<description> & details\t'+('long text '*1000)
+        urls=(S*2)(b'https://img.example/first.jpg?x=1&y=2',b'https://img.example/second.jpg')
+        entry=Entry(b'abcdefghijk',title.encode(),2,urls,2,channel.encode(),b'UCchannel',
+                    b'1.2K views',b'2 years ago',description.encode(),3723,1234,1,1)
+        duplicate=Entry(b'abcdefghijk',b'Another occurrence',8,None,0,b'Another artist',
+                        None,None,None,None,0,0,1,1)
+        self.check(self.snapshot([duplicate,entry]))
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,None,b'18'))
+        job=self.claim(); path=self.path/job['path']; path.parent.mkdir(parents=True); path.write_bytes(b'video')
+        self.check(lib.rdapp_store_finish(self.db,int(job['id']),b'complete',b'18',b''))
+        self.check(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)))
+        export=path.parent/'Playlist.xspf'
+        self.assertMatchingPlaylists(export)
+        m3u=export.with_suffix('.m3u8').read_text().splitlines()
+        self.assertEqual(m3u[1],f'#EXTINF:3723,{channel} - {title}')
+        self.assertEqual(m3u[3],'#EXTINF:0,Another artist - Another occurrence')
+        tracks=ET.parse(export).findall(XSPF+'trackList/'+XSPF+'track')
+        self.assertEqual(len(tracks),2)
+        first,second=tracks
+        expected={'title':title,'creator':channel,'annotation':description,'album':'My / playlist',
+                  'duration':'3723000','trackNum':'3','image':urls[0].decode(),
+                  'identifier':'https://www.youtube.com/watch?v=abcdefghijk',
+                  'info':'https://www.youtube.com/watch?v=abcdefghijk'}
+        for name,value in expected.items(): self.assertEqual(first.findtext(XSPF+name),value,name)
+        location=first.findtext(XSPF+'location')
+        self.assertEqual(location,'./'+quote(path.name))
+        self.assertEqual(Path(unquote(urlsplit(urljoin(export.as_uri(),location)).path)),path)
+        self.assertEqual({m.attrib['rel']:m.text for m in first.findall(XSPF+'meta')},
+            {META+'channel_id':'UCchannel',META+'view_count_text':'1.2K views',
+             META+'published_text':'2 years ago',META+'view_count':'1234'})
+        self.assertEqual(second.findtext(XSPF+'title'),'Another occurrence')
+        self.assertEqual(second.findtext(XSPF+'creator'),'Another artist')
+        self.assertEqual(second.findtext(XSPF+'trackNum'),'9')
+        self.assertEqual(second.findtext(XSPF+'duration'),'0')
+        self.assertEqual(second.findtext(XSPF+'location'),location)
+        self.assertIsNone(second.find(XSPF+'image'))
+        self.assertEqual({m.attrib['rel']:m.text for m in second.findall(XSPF+'meta')},{META+'view_count':'0'})
+    def test_xspf_base_resolves_relative_files_from_another_directory(self):
+        download_root=self.path/'Library & "Café" #100%'
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
+        job=self.claim(); path=download_root/job['path']; path.parent.mkdir(parents=True); path.write_bytes(b'video')
+        self.check(lib.rdapp_store_finish(self.db,int(job['id']),b'complete',b'18',b''))
+        self.check(lib.rdapp_store_export(self.db,self.key,os.fsencode(download_root)))
+        # Even a copy opened elsewhere must resolve against the explicit base.
+        relocated=self.path/'relocated.xspf'
+        relocated.write_bytes((path.parent/'Playlist.xspf').read_bytes())
+        playlist=ET.parse(relocated).getroot()
+        base=playlist.attrib[XML_BASE]
+        self.assertEqual(base,path.parent.as_uri()+'/')
+        for track in playlist.findall(XSPF+'trackList/'+XSPF+'track'):
+            location=track.findtext(XSPF+'location')
+            self.assertTrue(location.startswith('./'))
+            self.assertEqual(Path(unquote(urlsplit(urljoin(base,location)).path)),path)
+            # VLC 0.9.10 decodes and concatenates these instead of URI resolution.
+            legacy_uri=unquote(base)+unquote(location)
+            self.assertEqual(Path(os.path.normpath(legacy_uri[len('file://'):])),path)
+    def test_xspf_uses_latest_completed_quality_and_skips_nonregular_files(self):
+        self.check(self.snapshot([(b'abcdefghijk',b'Video',0)]))
+        paths=[]
+        for quality in (b'18',b'137+140'):
+            self.check(lib.rdapp_store_enqueue(self.db,self.key,None,quality))
+            job=self.claim(); path=self.path/job['path']; path.parent.mkdir(parents=True,exist_ok=True); path.write_bytes(b'video')
+            paths.append(path)
+            self.check(lib.rdapp_store_finish(self.db,int(job['id']),b'complete',quality,b''))
+        export=path.parent/'Playlist.xspf'
+        self.check(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)))
+        self.assertEqual(ET.parse(export).findtext(XSPF+'trackList/'+XSPF+'track/'+XSPF+'location'),'./'+quote(path.name))
+        self.assertMatchingPlaylists(export)
+        path.unlink(); path.symlink_to(paths[0])
+        self.check(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)))
+        self.assertEqual(ET.parse(export).findall(XSPF+'trackList/'+XSPF+'track'),[])
+        self.assertMatchingPlaylists(export)
+    def test_both_exports_recover_and_preserve_previous_files_on_failure(self):
+        directory=self.path/self.rows(0)[0]['directory']; directory.mkdir(parents=True)
+        legacy=directory/'Playlist.m3u8'; legacy.write_text('#EXTM3U\n')
+        export=directory/'Playlist.xspf'; export.mkdir()  # Force atomic publication to fail.
+        self.assertEqual(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)),0)
+        self.assertEqual(legacy.read_text(),'#EXTM3U\n')
+        self.assertEqual(list(directory.glob('.playlist-*')),[])
+        export.rmdir()
+        self.check(lib.rdapp_store_reconcile(self.db,os.fsencode(self.path)))
+        self.assertEqual(legacy.read_text(),'#EXTM3U\n')
+        previous=export.read_bytes(); previous_legacy=legacy.read_bytes()
+        legacy.unlink(); legacy.mkdir()  # Failure on the second destination also preserves XSPF.
+        self.assertEqual(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)),0)
+        self.assertEqual(export.read_bytes(),previous)
+        self.assertEqual(list(directory.glob('.playlist-*')),[])
+        legacy.rmdir(); legacy.write_bytes(previous_legacy)
+        with sqlite3.connect(self.path/'db.sqlite') as db: db.execute('DROP TABLE entry_thumbnails')
+        self.assertEqual(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)),0)
+        self.assertEqual(export.read_bytes(),previous)
+        self.assertEqual(legacy.read_bytes(),previous_legacy)
+        self.assertEqual(list(directory.glob('.playlist-*')),[])
+    def test_xspf_adhoc_has_no_fabricated_playlist_url(self):
+        adhoc=I()
+        self.check(lib.rdapp_store_add_adhoc(self.db,b'ABCDEFGHIJK',b'Ad-hoc',C.byref(adhoc)))
+        self.check(lib.rdapp_store_export(self.db,adhoc,os.fsencode(self.path)))
+        directory=self.path/self.page(11,key=adhoc.value)[0]['directory']
+        playlist=ET.parse(directory/'Playlist.xspf').getroot()
+        self.assertIsNone(playlist.find(XSPF+'info'))
+        self.assertIsNone(playlist.find(XSPF+'identifier'))
+    def test_xspf_replaces_invalid_xml_text_and_omits_invalid_duration(self):
+        title=b'Bad \x01 \xff \xed\xa0\x80 \xef\xbf\xbe good \xf0\x9f\x8e\xac'
+        self.check(self.snapshot([(b'abcdefghijk',b'Valid filename',0)]))
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,None,b'18'))
+        job=self.claim(); path=self.path/job['path']; path.parent.mkdir(parents=True); path.write_bytes(b'video')
+        self.check(lib.rdapp_store_finish(self.db,int(job['id']),b'complete',b'18',b''))
+        for duration in (-1,2**63-1):
+            with sqlite3.connect(self.path/'db.sqlite') as db:
+                db.execute('UPDATE entries SET duration=?,title=CAST(? AS TEXT)',(duration,title))
+            self.check(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)))
+            track=ET.parse(path.parent/'Playlist.xspf').find(XSPF+'trackList/'+XSPF+'track')
+            self.assertEqual(track.findtext(XSPF+'title'),'Bad \ufffd \ufffd \ufffd\ufffd\ufffd \ufffd good 🎬')
+            self.assertIsNone(track.find(XSPF+'duration'))
     def test_resync_keeps_downloads_but_changes_export_membership(self):
         self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
         job=self.claim(); path=self.path/job['path']; path.parent.mkdir(parents=True); path.write_bytes(b'video')
@@ -461,7 +609,7 @@ class StoreTests(unittest.TestCase):
         self.check(self.snapshot([(b'lmnopqrstuv',b'Second',0)]))
         self.assertEqual(len(self.rows(3)),1)
         self.check(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)))
-        self.assertEqual((path.parent/'Playlist.m3u8').read_text(),'#EXTM3U\n')
+        self.assertEqual(ET.parse(path.parent/'Playlist.xspf').findall(XSPF+'trackList/'+XSPF+'track'),[])
         self.assertTrue(path.exists())
     def test_playlist_removal_requires_explicit_download_cleanup(self):
         self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
