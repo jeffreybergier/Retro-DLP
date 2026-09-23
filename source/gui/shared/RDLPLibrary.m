@@ -221,8 +221,15 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   if(![[NSFileManager defaultManager] fileExistsAtPath:[assets_ stringByAppendingPathComponent:@"core.min.js"]])
     assets_=[support stringByAppendingPathComponent:@"ejs"];
   assets_=[assets_ copy]; status_=[@"" copy]; errors_=[[NSMutableArray alloc] init];
-  if(!rdapp_make_directory([support fileSystemRepresentation]) || !rdapp_make_directory([root fileSystemRepresentation]) ||
-     !rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],(rdapp_store **)&store_)) {
+  NSError *directoryError=nil;
+  NSFileManager *files=[NSFileManager defaultManager];
+  if(![files RDLP_createDirectoryAtPath:support error:&directoryError] ||
+     ![files RDLP_createDirectoryAtPath:root error:&directoryError]) {
+    NSLog(@"Cannot prepare RetroDLP library directories: %@",directoryError);
+    [self release]; return nil;
+  }
+  if(!rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],(rdapp_store **)&store_)) {
+    NSLog(@"Cannot open RetroDLP library database in %@",support);
     [self release]; return nil;
   }
   chmod([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],0600);

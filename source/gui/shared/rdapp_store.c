@@ -30,6 +30,7 @@ static int register_playlist_functions(sqlite3 *db) {
 }
 struct rdapp_store { sqlite3 *db; char error[512]; };
 static int failure(rdapp_store *s, const char *message) {
+  fprintf(stderr,"RetroDLP store failure: %s (sqlite=%d)\n",message,sqlite3_extended_errcode(s->db));
   snprintf(s->error, sizeof(s->error), "%s", message); return 0;
 }
 static int sql(rdapp_store *s, const char *q) {
@@ -73,10 +74,14 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
   sqlite3_stmt *p; int version;
   *out = NULL;
   if (!s) return 0;
-  if (sqlite3_open(path, &s->db) != SQLITE_OK || !register_playlist_functions(s->db)) { rdapp_store_close(s); return 0; }
+  if (sqlite3_open(path, &s->db) != SQLITE_OK || !register_playlist_functions(s->db)) {
+    fprintf(stderr,"RetroDLP database open failed: path=%s error=%s code=%d errno=%d\n",path,sqlite3_errmsg(s->db),sqlite3_extended_errcode(s->db),errno);
+    rdapp_store_close(s); return 0;
+  }
   sqlite3_busy_timeout(s->db, 5000);
   p = prepare(s, "PRAGMA user_version");
   if (!p || sqlite3_step(p) != SQLITE_ROW || sqlite3_column_int(p,0) > 6) {
+    fprintf(stderr,"RetroDLP schema version check failed: error=%s code=%d\n",sqlite3_errmsg(s->db),sqlite3_extended_errcode(s->db));
     sqlite3_finalize(p); rdapp_store_close(s); return 0;
   }
   version=sqlite3_column_int(p,0);
@@ -163,10 +168,25 @@ void rdapp_filename(const char *text, char *out, size_t cap) {
   out[n] = 0;
 }
 int rdapp_make_directory(const char *path) {
-  char buffer[PATH_MAX]; size_t i; struct stat st;
+  char buffer[PATH_MAX]; size_t i,length; struct stat st;
   if (!path || path[0]!='/' || strlen(path)>=sizeof(buffer)) return 0;
   strcpy(buffer,path);
-  for (i=1;;++i) {
+  length=strlen(buffer);
+  while(length>1 && buffer[length-1]=='/') buffer[--length]=0;
+  /* The bridge prepares the app roots. For playlist/staging subdirectories,
+     find the nearest existing ancestor without touching parents outside the
+     app container; sandboxed mkdir may reject even an existing parent. */
+  i=length;
+  while(stat(buffer,&st)) {
+    if(errno!=ENOENT || i==1) return 0;
+    while(i>1 && buffer[i-1]!='/') --i;
+    if(i>1) --i;
+    buffer[i]=0;
+  }
+  if(!S_ISDIR(st.st_mode)) return 0;
+  if(i==length) return 1;
+  memcpy(buffer,path,length); buffer[length]=0;
+  for (++i;;++i) {
     if (buffer[i]=='/' || buffer[i]==0) {
       char saved=buffer[i]; buffer[i]=0;
       if (mkdir(buffer,0700) && errno != EEXIST) return 0;

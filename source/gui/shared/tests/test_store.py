@@ -26,6 +26,10 @@ subprocess.run(['cc', '-std=c99', '-Wall', '-Wextra', '-Werror', '-shared', '-fP
 lib = C.CDLL(str(BUILD/'store.so'))
 lib.rdapp_playlist_can_sync.argtypes=[C.c_char_p]
 lib.rdapp_playlist_can_sync.restype=C.c_int
+lib.rdapp_make_directory.argtypes=[C.c_char_p]
+lib.rdapp_make_directory.restype=C.c_int
+lib.rdapp_test_writable_root.argtypes=[C.c_char_p]
+lib.rdapp_test_writable_root.restype=None
 P = C.c_void_p
 S = C.c_char_p
 I = C.c_int64
@@ -66,6 +70,24 @@ lib.rdapp_test_measure.argtypes=[P]
 lib.rdapp_test_measure.restype=None
 lib.rdapp_test_steps.argtypes=[]
 lib.rdapp_test_steps.restype=I
+
+class DirectoryTests(unittest.TestCase):
+    def test_create_inside_container_with_unwritable_ancestors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            lib.rdapp_test_writable_root(os.fsencode(root))
+            try:
+                target=root/'Playlists'/'Example'
+                self.assertEqual(lib.rdapp_make_directory(os.fsencode(target)),1)
+                self.assertTrue(target.is_dir())
+                self.assertEqual(target.stat().st_mode & 0o777,0o700)
+                self.assertEqual(lib.rdapp_make_directory(os.fsencode(target)+b'/'),1)
+                blocked=root/'file'
+                blocked.write_text('keep')
+                self.assertEqual(lib.rdapp_make_directory(os.fsencode(blocked/'child')),0)
+                self.assertEqual(blocked.read_text(),'keep')
+            finally:
+                lib.rdapp_test_writable_root(None)
 
 class StoreTests(unittest.TestCase):
     def setUp(self):

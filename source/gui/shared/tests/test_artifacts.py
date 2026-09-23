@@ -55,6 +55,13 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
         assert plist.get('UIBackgroundModes')==['audio']
         entitlements=subprocess.check_output(['ldid','-e',str(exe)])
         assert b'no-sandbox' not in entitlements and b'platform-application' not in entitlements
+        # ldid prints one plist per architecture in a universal executable.
+        signed_slices=re.findall(rb'<\?xml.*?</plist>',entitlements,re.S)
+        assert len(signed_slices)==len(architectures)
+        for signed_slice in signed_slices:
+            signed=plistlib.loads(signed_slice)
+            assert signed['application-identifier']==plist['CFBundleIdentifier']
+            assert signed['com.apple.private.security.container-required']==plist['CFBundleIdentifier']
     with zipfile.ZipFile(directory/archive_name) as archive:
         prefix=('Payload/' if platform=='iOS' else '')+'RetroDLP.app/'
         assert archive.read(prefix+exe_relative)==exe.read_bytes(),platform+' archive has stale executable'

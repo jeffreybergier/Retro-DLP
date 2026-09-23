@@ -13,8 +13,10 @@ ROOT = $(abspath ../../..)
 BUILD_DIR = $(ROOT)/build/apps/iOS
 ANALYZE_OUTPUT_DIR = $(BUILD_DIR)/analyze
 EXTRA_FLAGS = -I$(SHARED_DIR) -I$(ROOT)/source/library/shared/include
-# The IPA has app-owned storage and no private filesystem entitlements.
+# Keep app-owned sandboxed storage, including when registered by uicache on a
+# rootless jailbreak. The container entitlement identifies only this app.
 PHONE_LDID_SIGN ?= 1
+PHONE_LDID_ENTITLEMENTS = Entitlements.plist
 include /altivec/altivec_common_phone.mk
 IOS_FRAMEWORKS := $(ROOT)/build/iOS/libretrodlp-download.a $(ROOT)/build/iOS/libretrodlp.a $(IOS_FRAMEWORKS) $(ALTIVECCORE_DIR)/lib/libcrypto.a -framework CoreFoundation -framework SystemConfiguration -framework Security -framework MediaPlayer -framework AVFoundation
 EXTRA_BUNDLE_STEPS = @set -e; cp $(ALTIVECCORE_DIR)/lib/cacert.pem $@/cacert.pem; cp -R $(ROOT)/build/apps/resources/ejs $@/; chmod 755 $@/ejs; chmod 644 $@/ejs/*; touch "$@"
