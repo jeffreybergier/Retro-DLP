@@ -28,6 +28,7 @@
 - (NSInteger)outlineView:(NSOutlineView *)outline numberOfChildrenOfItem:(id)item;
 @end
 #import "../../shared/tests/shared_status_test.h"
+#import "../../shared/tests/shared_worker_test.h"
 #import "../../shared/tests/shared_metadata_test.h"
 #import "../../shared/tests/shared_video_rows_test.h"
 
@@ -564,6 +565,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     [[NSUserDefaults standardUserDefaults] setObject:@"18" forKey:@"downloadFormat"];
     [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"RetroDLPVideoPlayer"];
     testMainThreadCompatibility();
+    testSharedWorker(@"/tmp/retrodlp-toolbar-fixture/Worker");
     library_=[[RDLPLibrary alloc] initWithSupportDirectory:@"/tmp/retrodlp-toolbar-fixture/Support" downloadDirectory:@"/tmp/retrodlp-toolbar-fixture/Downloads"];
     requireCondition(library_!=nil,@"Fixture failed to open");
     pump();

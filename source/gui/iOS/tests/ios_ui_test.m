@@ -14,6 +14,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import "../../shared/tests/shared_status_test.h"
+#import "../../shared/tests/shared_worker_test.h"
 #import "ios_lifecycle_test.h"
 #import "ios_playback_progress_test.h"
 #import "../../shared/tests/shared_metadata_test.h"
@@ -395,6 +396,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     testSharedVideoRows([documents_ stringByAppendingPathComponent:@"RowFixture"]);
     testSharedStatus([documents_ stringByAppendingPathComponent:@"StatusFixture"]);
     testIOSLifecycle([documents_ stringByAppendingPathComponent:@"LifecycleFixture"]);
+    testSharedWorker([documents_ stringByAppendingPathComponent:@"WorkerFixture"]);
     testIOSDownloadNotifications([documents_ stringByAppendingPathComponent:@"NotificationFixture"]);
     {
       RDLPStatusTestLibrary *errors=[[[RDLPStatusTestLibrary alloc] initWithSupportDirectory:[documents_ stringByAppendingPathComponent:@"Alerts/Support"] downloadDirectory:[documents_ stringByAppendingPathComponent:@"Alerts/Downloads"]] autorelease];

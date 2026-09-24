@@ -27,6 +27,7 @@ objects = root / 'build/apps/macOS/Intermediates/ppc'
 cmd = ['/osxcross/legacy/target/bin/oppc32-gcc', '-arch', 'ppc',
        '-isysroot', '/osxcross/legacy/target/SDK/MacOSX10.5.sdk',
        '-Wall', '-Wextra', '-Werror', '-D_NONSTD_SOURCE',
+       '-isystem', str(root / 'source/deps/QuickJS'),
        '-I/altivec/libs/cocoa/build-mac/include',
        '-I' + str(root / 'source/gui/shared'),
        '-I' + str(root / 'source/library/shared/include'),

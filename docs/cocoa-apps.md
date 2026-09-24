@@ -615,6 +615,15 @@ actual formats are distinct. Only one worker operation runs at a time; database
 locks are not held over network transfers or muxing. Progress is throttled, copied
 before the C callback returns, and delivered on the main thread.
 
+Resolver workers receive a 2 MiB native stack, leaving headroom above QuickJS's
+1 MiB stack limit. The default 512 KiB worker stack can hit its guard page during
+recursive JavaScript conversion before QuickJS can return an exception. iOS sets
+the stack size on `NSThread` before starting it. macOS uses detached POSIX threads
+so this also works on Tiger; a one-time empty `NSThread` launch enables Cocoa's
+internal thread locks when necessary. The shared native worker regression runs
+recursive QuickJS array conversion through the real scheduler and checks the
+actual stack allocation, exception result, and balanced completion.
+
 Downloads use app-owned staging files and publish exclusively on the destination
 volume. Existing files are never overwritten. Retry clears only the job's known
 staging files. Startup marks abandoned running jobs interrupted, reconciles

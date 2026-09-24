@@ -2,6 +2,7 @@
 #import "RDLPLibrary+Platform.h"
 #import "RDLP_Foundation.h"
 #import <CoreFoundation/CoreFoundation.h>
+#import <TargetConditionals.h>
 #include "rdapp_store.h"
 #include "rdapp_service.h"
 #include <retrodlp/retrodlp.h>
@@ -645,7 +646,29 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   if(![type isEqualToString:@"reconcile"]) [self showStatus:[type isEqualToString:@"download"]?@"Resolving video…":
     ([type isEqualToString:@"discover"]?@"Loading playlists…":([type isEqualToString:@"addVideo"]?@"Adding video…":([[command objectForKey:@"adding"] boolValue]?@"Adding playlist…":@"Syncing playlist…")))];
   [self changed];
-  [NSThread detachNewThreadSelector:@selector(work:) toTarget:self withObject:command];
+  /* QuickJS permits 1 MiB of stack; the default 512 KiB worker stack can
+     hit its guard page before QuickJS detects overflow. Leave native headroom. */
+#if TARGET_OS_IPHONE
+  NSThread *worker=[[NSThread alloc] initWithTarget:self selector:@selector(work:) object:command];
+  [worker setStackSize:2U*1024U*1024U];
+  [worker start];
+  [worker release];
+#else
+  /* NSThread's configurable stack API is unavailable on Tiger. */
+  int error=[NSThread RDLP_detachNewThreadSelector:@selector(work:) toTarget:self
+    withObject:command stackSize:2U*1024U*1024U];
+  if(error) {
+    NSString *message=[NSString stringWithFormat:@"Couldn’t start worker: %s",strerror(error)];
+    paused_=YES; operationsSuspended_=YES;
+    if(activeJob_) {
+      [lock_ lock];
+      rdapp_store_finish(store_,activeJob_,"failed","",[message UTF8String]);
+      [lock_ unlock];
+    }
+    [self finished:[NSDictionary dictionaryWithObjectsAndKeys:
+      [NSNumber numberWithInt:RDLP_ERROR_INTERNAL],@"code",message,@"message",nil]];
+  }
+#endif
 }
 - (void)finished:(NSDictionary *)result;
 {

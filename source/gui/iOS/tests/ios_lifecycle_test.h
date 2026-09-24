@@ -1,6 +1,7 @@
 /* Real scheduler and delegate, with only the worker and OS task grant faked.
    No network requests or production-library access. */
 #include <sys/xattr.h>
+#include <pthread.h>
 @interface RDLPAppDelegate (LifecycleTesting)
 - (void)activityChanged:(id)sender;
 - (void)backgroundTimeExpired;
@@ -38,12 +39,18 @@
 }
 @end
 @implementation RDLPActivityTestLibrary
-- (void)workerStarted:(id)command;
-{ (void)command; ++workers_; }
+- (void)workerStarted:(NSNumber *)stackSize;
+{
+  statusRequire([stackSize unsignedLongLongValue]>=2U*1024U*1024U,
+    @"Native worker stack accommodates QuickJS's 1 MiB limit and native calls");
+  ++workers_;
+}
 - (void)work:(NSDictionary *)command;
 {
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
-  [self performSelectorOnMainThread:@selector(workerStarted:) withObject:command waitUntilDone:NO];
+  (void)command;
+  NSNumber *stackSize=[NSNumber numberWithUnsignedLongLong:pthread_get_stacksize_np(pthread_self())];
+  [self performSelectorOnMainThread:@selector(workerStarted:) withObject:stackSize waitUntilDone:NO];
   [pool drain];
   /* The test explicitly delivers completion, exercising the real scheduler. */
 }
