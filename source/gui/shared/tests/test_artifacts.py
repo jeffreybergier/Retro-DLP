@@ -110,6 +110,7 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
             assert (bundle/resources/filename).read_bytes()==data
             assert archive.read(prefix+resources+'/'+filename)==data
             assert data[:4]==b'icns' and struct.unpack('>I',data[4:8])[0]==len(data)
+            assert len(data)<=1_000_000,'ICNS exceeds the Leopard-compatible whole-file limit'
             offset=8; elements=set()
             while offset<len(data):
                 kind,length=struct.unpack('>4sI',data[offset:offset+8])

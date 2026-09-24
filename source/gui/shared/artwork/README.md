@@ -44,5 +44,9 @@ generator or require its image libraries.
 
 Each ICNS element, **including its eight-byte header**, is limited to 300,000
 bytes. The generator tries lossless JPEG 2000 first, then increases compression
-only when needed. Packaging validation checks the limit, required legacy
+only when needed. The complete ICNS is also limited to 1,000,000 bytes: Leopard
+can open larger ICNS files in Preview but reject them as application icons.
+The 1024-pixel representation is encoded last within the remaining byte budget,
+preserving every smaller representation and all standard/Retina sizes.
+Packaging validation checks both limits, required legacy
 elements, icon declarations, dimensions, opacity, and copies in the final archives.

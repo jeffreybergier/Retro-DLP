@@ -12,6 +12,7 @@ from PIL import Image
 APPS = Path(__file__).resolve().parents[2]
 ARTWORK = APPS / 'shared/artwork'
 MAX_ELEMENT_BYTES = 300_000  # Decimal KB, including the ICNS element header.
+MAX_FILE_BYTES = 1_000_000  # Stay below Leopard's roughly 1 MiB app-icon limit.
 IOS_ICONS = {
     'AppIcon20x20.png': 20,
     'AppIcon20x20@2x.png': 40,
@@ -68,7 +69,7 @@ def element(kind, payload):
     return struct.pack('>4sI', kind, length) + payload
 
 
-def jpeg2000(image):
+def jpeg2000(image, max_bytes=MAX_ELEMENT_BYTES):
     # Try lossless first. Rate-limited JPEG 2000 keeps large slices compatible
     # with the reference apps while bounding each slice independently.
     for rate in (None, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64):
@@ -77,9 +78,9 @@ def jpeg2000(image):
             quality_mode='rates', quality_layers=[rate], irreversible=True)
         image.save(output, format='JPEG2000', **options)
         payload = output.getvalue()
-        if len(payload) + 8 <= MAX_ELEMENT_BYTES:
+        if len(payload) + 8 <= max_bytes:
             return payload
-    raise ValueError('Cannot encode a JPEG 2000 slice within 300 KB')
+    raise ValueError(f'Cannot encode a JPEG 2000 slice within {max_bytes} bytes')
 
 
 def main():
@@ -111,10 +112,20 @@ def main():
         if size == 128:
             pixels = b'\0\0\0\0' + pixels
         chunks.extend((element(rgb, pixels), element(mask, channels[3].tobytes())))
-    for kind, size in ((b'ic08', 256), (b'ic09', 512), (b'ic10', 1024),
+    for kind, size in ((b'ic08', 256), (b'ic09', 512),
                        (b'ic11', 32), (b'ic12', 64), (b'ic13', 256), (b'ic14', 512)):
         chunks.append(element(kind, jpeg2000(sizes[size])))
+    # Budget the largest representation last, preserving all smaller images.
+    # Leopard can decode a larger standalone ICNS in Preview while rejecting
+    # the same file as a bundle icon. Per-element limits alone are insufficient.
+    remaining = MAX_FILE_BYTES - 8 - sum(len(chunk) for chunk in chunks)
+    if remaining <= 8:
+        raise ValueError('No room for the 1024px icon within the ICNS file limit')
+    chunks.append(element(b'ic10', jpeg2000(sizes[1024],
+                                         min(MAX_ELEMENT_BYTES, remaining))))
     body = b''.join(chunks)
+    if len(body) + 8 > MAX_FILE_BYTES:
+        raise ValueError('ICNS exceeds the Leopard-compatible file size limit')
     destination = APPS / 'macOS/Resources/RetroDLP.icns'
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(struct.pack('>4sI', b'icns', len(body) + 8) + body)
