@@ -5,16 +5,19 @@
 @protocol RDLPPlayerViewControllerDelegate;
 
 /**
- * iOS 5+ player UI using controls adapted from ALMoviePlayerController.
+ * iOS 5+ player UI with native navigation and toolbars.
  * The core properties follow AVPlayerViewController's naming and semantics.
- * Use init, then assign player and present using normal UIViewController APIs.
+ * Use init, assign player, and embed in RDLPPlayerNavigationController for
+ * native bars and a status bar that stays hidden throughout the player session.
+ * Present that navigation controller modally using normal UIViewController APIs.
  * All properties and delegate callbacks are used on the main thread.
+ * Set the inherited title property to the current video's display title.
  *
  * A persistent playback owner (such as RDLPPlayerQueue) retains the player
  * independently and manages its playlist and audio-only track selection.
  * Audio-session setup, remote controls, Now Playing metadata, and saved
  * progress remain app responsibilities. This view controller
- * supplies video presentation, play/pause, scrubbing, volume, and fit/fill UI.
+ * supplies video presentation, play/pause, scrubbing, and double-tap fit/fill.
  * Setting player, presenting, or dismissing this controller does not itself
  * start or stop playback. Dismissal detaches video presentation.
  */
@@ -77,8 +80,8 @@
 
 /**
  * Requests originate from the UI; the playback owner performs the action.
- * Programmatic property changes do not generate requests. Optional Playlist
- * and Audio Only buttons are shown only if their handlers are implemented;
+ * Programmatic property changes do not generate requests. The optional
+ * headphones button is shown only if its audio-only handler is implemented;
  * the Audio Only button also requires a non-nil player.
  *
  * The controller does not maintain a second playlist or automatically advance
@@ -91,9 +94,6 @@
 - (void)playerViewControllerDidRequestPreviousItem:(RDLPPlayerViewController *)playerViewController;
 - (void)playerViewControllerDidRequestNextItem:(RDLPPlayerViewController *)playerViewController;
 
-/** The owner presents its playlist UI and handles item selection. */
-- (void)playerViewControllerDidRequestPlaylist:(RDLPPlayerViewController *)playerViewController;
-
 /**
  * Requests the new mode. The owner may decline by leaving audioOnly unchanged.
  * Apply track selection in the persistent playback owner so it also takes
@@ -105,7 +105,8 @@
 /**
  * Done was tapped. The owner dismisses or removes this controller; playback
  * continues unless the owner explicitly pauses it. Without this handler, Done
- * dismisses a modally presented controller and is hidden when embedded.
+ * dismisses the modal navigation controller when this is its root. Otherwise
+ * Done is hidden and normal navigation back behavior is available.
  */
 - (void)playerViewControllerDidRequestDismissal:(RDLPPlayerViewController *)playerViewController;
 

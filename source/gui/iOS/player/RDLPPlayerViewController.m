@@ -19,6 +19,9 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   AVPlayerItem *_observedItem, *_scrubItem;
   id _timeObserver;
   BOOL _visible, _active, _observing, _chromeVisible, _failedToEnd;
+  BOOL _scrubbing, _seeking;
+  CMTime _scrubTime;
+  NSUInteger _seekGeneration;
 }
 - (void)configure;
 - (void)refresh;
@@ -28,7 +31,12 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
 - (void)stopObserving;
 - (void)observeCurrentItem;
 - (void)showControls;
+- (void)setChromeVisible:(BOOL)visible animated:(BOOL)animated;
 - (void)scheduleHide;
+- (void)layoutToolbar;
+- (void)resetScrubbing;
+- (void)seekToScrubTime;
+- (void)finishScrubbing;
 @end
 
 @implementation RDLPPlayerViewController
@@ -48,9 +56,12 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   _chromeVisible=YES;
   _active=[UIApplication sharedApplication].applicationState==UIApplicationStateActive;
   _videoGravity=[AVLayerVideoGravityResizeAspect copy];
-  /* Match the app's iOS 5-compatible extended-edge configuration. */
-  if([self respondsToSelector:@selector(setEdgesForExtendedLayout:)])
-    [self setValue:[NSNumber numberWithUnsignedInteger:0] forKey:@"edgesForExtendedLayout"];
+  /* Keep video underneath translucent bars on both legacy and modern UIKit. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  self.wantsFullScreenLayout=YES;
+#pragma clang diagnostic pop
+  /* iOS 7+ defaults to extending under all translucent bars. */
   NSNotificationCenter *center=[NSNotificationCenter defaultCenter];
   [center addObserver:self selector:@selector(willResignActive:) name:UIApplicationWillResignActiveNotification object:nil];
   [center addObserver:self selector:@selector(didBecomeActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
@@ -74,19 +85,24 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   _controls.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
   [self.view addSubview:_controls];
   NSArray *buttons=[NSArray arrayWithObjects:_controls.doneButton,_controls.playButton,_controls.previousButton,
-                    _controls.nextButton,_controls.playlistButton,_controls.audioButton,_controls.scaleButton,nil];
-  for(UIButton *button in buttons) {
-    [button addTarget:self action:@selector(buttonPressed:) forControlEvents:UIControlEventTouchUpInside];
-    [button addTarget:self action:@selector(cancelHide) forControlEvents:UIControlEventTouchDown];
-    [button addTarget:self action:@selector(scheduleHide) forControlEvents:UIControlEventTouchUpOutside|UIControlEventTouchCancel];
+                    _controls.nextButton,_controls.audioButton,nil];
+  for(UIBarButtonItem *button in buttons) {
+    button.target=self;
+    button.action=@selector(buttonPressed:);
   }
+  self.toolbarItems=_controls.toolbarItems;
   [_controls.slider addTarget:self action:@selector(scrubBegan:) forControlEvents:UIControlEventTouchDown];
   [_controls.slider addTarget:self action:@selector(scrubChanged:) forControlEvents:UIControlEventValueChanged];
   [_controls.slider addTarget:self action:@selector(scrubEnded:) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside];
-  [_controls.slider addTarget:self action:@selector(scrubCancelled:) forControlEvents:UIControlEventTouchCancel];
+  [_controls.slider addTarget:self action:@selector(scrubEnded:) forControlEvents:UIControlEventTouchCancel];
   UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(toggleControls:)];
+  UITapGestureRecognizer *doubleTap=[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(toggleVideoGravity:)];
+  doubleTap.numberOfTapsRequired=2;
+  doubleTap.delegate=self;
+  [tap requireGestureRecognizerToFail:doubleTap];
   tap.delegate=self;
   [self.view addGestureRecognizer:tap]; [tap release];
+  [self.view addGestureRecognizer:doubleTap]; [doubleTap release];
   [self updatePresentation];
   [self refresh];
   [self showControls];
@@ -94,6 +110,17 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
 - (void)viewWillAppear:(BOOL)animated {
   [super viewWillAppear:animated];
   _visible=YES;
+  UINavigationController *navigation=self.navigationController;
+  navigation.navigationBar.barStyle=UIBarStyleBlack;
+  navigation.navigationBar.translucent=YES;
+  navigation.toolbar.barStyle=UIBarStyleBlack;
+  navigation.toolbar.translucent=YES;
+  /* On iOS 5 tintColor colors the bar itself; black barStyle is sufficient.
+   * On iOS 7+ tintColor colors the buttons. */
+  if([navigation.navigationBar respondsToSelector:@selector(setBarTintColor:)]) {
+    navigation.navigationBar.tintColor=[UIColor whiteColor];
+    navigation.toolbar.tintColor=[UIColor whiteColor];
+  }
   [self startObserving];
   [self updatePresentation];
   [self showControls];
@@ -104,10 +131,45 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   [self cancelHide];
   [self stopObserving];
   [self updatePresentation];
+  UINavigationController *navigation=self.navigationController;
+  if(navigation.topViewController!=self && !navigation.isBeingDismissed) {
+    [navigation setNavigationBarHidden:NO animated:animated];
+    [navigation setToolbarHidden:navigation.topViewController.toolbarItems.count==0 animated:animated];
+  }
 }
+- (void)viewDidLayoutSubviews {
+  [super viewDidLayoutSubviews];
+  [self layoutToolbar];
+}
+- (void)layoutToolbar {
+  UINavigationController *navigation=self.navigationController;
+  if(!_controls || navigation.topViewController!=self) return;
+  /* The content bounds already reflect rotation when the toolbar may still
+   * have its old frame. Refresh its items after resizing the custom view. */
+  CGSize size=CGSizeMake(self.view.bounds.size.width,navigation.toolbar.bounds.size.height);
+  if(size.width>0 && size.height>0 && [_controls sizeForToolbar:size]) {
+    [navigation.toolbar setItems:self.toolbarItems animated:NO];
+    [navigation.toolbar setNeedsLayout];
+  }
+}
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+- (void)willAnimateRotationToInterfaceOrientation:(UIInterfaceOrientation)orientation duration:(NSTimeInterval)duration {
+  [super willAnimateRotationToInterfaceOrientation:orientation duration:duration];
+  [self layoutToolbar];
+}
+- (void)didRotateFromInterfaceOrientation:(UIInterfaceOrientation)orientation {
+  [super didRotateFromInterfaceOrientation:orientation];
+  [self layoutToolbar];
+}
+#pragma clang diagnostic pop
 - (void)viewDidUnload {
   [self cancelHide];
   [self stopObserving];
+  self.navigationItem.titleView=nil;
+  self.navigationItem.leftBarButtonItem=nil;
+  self.navigationItem.rightBarButtonItem=nil;
+  self.toolbarItems=nil;
   [_controls release]; _controls=nil;
   [super viewDidUnload];
 }
@@ -141,7 +203,6 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   if([_videoGravity isEqualToString:gravity]) return;
   NSString *copy=[gravity copy]; [_videoGravity release]; _videoGravity=copy;
   [self updatePresentation];
-  [self refresh];
 }
 - (void)setAudioOnly:(BOOL)audioOnly {
   _audioOnly=audioOnly;
@@ -196,7 +257,7 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   if(_observing) for(NSString *key in RDLPPlayerKeys()) [_player removeObserver:self forKeyPath:key context:RDLPPlayerObservation];
   _observing=NO;
   [self observeCurrentItem];
-  [_scrubItem release]; _scrubItem=nil;
+  [self resetScrubbing];
 }
 - (void)observeCurrentItem {
   AVPlayerItem *item=_observing?_player.currentItem:nil;
@@ -209,7 +270,7 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
     [center removeObserver:self name:AVPlayerItemFailedToPlayToEndTimeNotification object:_observedItem];
   }
   [item retain]; [_observedItem release]; _observedItem=item;
-  [_scrubItem release]; _scrubItem=nil;
+  [self resetScrubbing];
   _failedToEnd=NO;
   if(item) {
     for(NSString *key in RDLPItemKeys()) [item addObserver:self forKeyPath:key options:0 context:RDLPPlayerObservation];
@@ -228,6 +289,8 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
     [self performSelectorOnMainThread:@selector(itemNotification:) withObject:notification waitUntilDone:NO]; return;
   }
   if(notification.object!=_observedItem) return;
+  /* Seeks only change the position, not the bar items or their layout. */
+  if([notification.name isEqualToString:AVPlayerItemTimeJumpedNotification]) { [self refreshTime]; return; }
   if([notification.name isEqualToString:AVPlayerItemFailedToPlayToEndTimeNotification]) _failedToEnd=YES;
   [self refresh];
 }
@@ -237,23 +300,22 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   if(!_controls) return;
   AVPlayerItem *item=_player.currentItem;
   BOOL failed=_player.status==AVPlayerStatusFailed || item.status==AVPlayerItemStatusFailed || _failedToEnd;
+  if(failed) [self resetScrubbing];
   BOOL ready=item && item.status==AVPlayerItemStatusReadyToPlay && !failed;
   _controls.playButton.enabled=ready;
-  _controls.playButton.selected=_player.rate!=0;
+  _controls.playButton.image=[UIImage imageNamed:_player.rate!=0?@"RDLPPlayer.bundle/pause.png":@"RDLPPlayer.bundle/play.png"];
   _controls.playButton.accessibilityLabel=_player.rate!=0?@"Pause":@"Play";
   _controls.previousButton.enabled=_player && _canSkipToPreviousItem && [_delegate respondsToSelector:@selector(playerViewControllerDidRequestPreviousItem:)];
   _controls.nextButton.enabled=_player && _canSkipToNextItem && [_delegate respondsToSelector:@selector(playerViewControllerDidRequestNextItem:)];
-  _controls.playlistButton.hidden=![_delegate respondsToSelector:@selector(playerViewControllerDidRequestPlaylist:)];
-  _controls.audioButton.hidden=![_delegate respondsToSelector:@selector(playerViewController:didRequestAudioOnly:)];
+  BOOL audio=[_delegate respondsToSelector:@selector(playerViewController:didRequestAudioOnly:)];
   _controls.audioButton.enabled=_player!=nil;
-  _controls.audioButton.selected=_audioOnly;
   _controls.audioButton.accessibilityLabel=_audioOnly?@"Show video":@"Use audio only";
-  _controls.doneButton.hidden=![_delegate respondsToSelector:@selector(playerViewControllerDidRequestDismissal:)] &&
-                             !(self.presentingViewController && !self.parentViewController);
-  _controls.scaleButton.hidden=_audioOnly;
-  _controls.scaleButton.enabled=ready;
-  _controls.scaleButton.selected=[_videoGravity isEqualToString:AVLayerVideoGravityResizeAspectFill];
-  _controls.scaleButton.accessibilityLabel=_controls.scaleButton.selected?@"Fit video":@"Fill screen";
+  _controls.audioButton.accessibilityTraits=UIAccessibilityTraitButton|(_audioOnly?UIAccessibilityTraitSelected:0);
+  _controls.audioButton.tintColor=_audioOnly?[UIColor colorWithRed:0.2 green:0.6 blue:1 alpha:1]:nil;
+  BOOL modalRoot=self.navigationController.presentingViewController && [self.navigationController.viewControllers objectAtIndex:0]==self;
+  BOOL done=[_delegate respondsToSelector:@selector(playerViewControllerDidRequestDismissal:)] || modalRoot;
+  self.navigationItem.leftBarButtonItem=audio?_controls.audioButton:nil;
+  self.navigationItem.rightBarButtonItem=done?_controls.doneButton:nil;
   NSString *message=failed?@"Unable to play this item":(!item?@"No media":(_audioOnly?@"Audio Only":nil));
   [_controls setMessage:message];
   [_controls setNeedsLayout];
@@ -280,26 +342,45 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
 }
 - (void)showControls {
   _chromeVisible=_showsPlaybackControls;
-  [_controls setChromeVisible:_chromeVisible animated:NO];
+  [self setChromeVisible:_chromeVisible animated:NO];
   [self scheduleHide];
+}
+- (void)setChromeVisible:(BOOL)visible animated:(BOOL)animated {
+  UINavigationController *navigation=self.navigationController;
+  if(!_visible || navigation.topViewController!=self) return;
+  [navigation setNavigationBarHidden:!visible animated:animated];
+  [navigation setToolbarHidden:!visible animated:animated];
 }
 - (void)hideControls {
   if([_controls isTracking]) { [self scheduleHide]; return; }
   _chromeVisible=NO;
-  [_controls setChromeVisible:NO animated:YES];
+  [self setChromeVisible:NO animated:YES];
 }
 - (void)toggleControls:(UITapGestureRecognizer *)tap {
   (void)tap;
   if(!_showsPlaybackControls) return;
-  if(_chromeVisible) { [self cancelHide]; [self hideControls]; } else [self showControls];
+  if(_chromeVisible) { [self cancelHide]; [self hideControls]; }
+  else {
+    _chromeVisible=YES;
+    [self setChromeVisible:YES animated:YES];
+    [self scheduleHide];
+  }
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
   (void)recognizer;
   return ![touch.view isDescendantOfView:_controls];
 }
+- (void)toggleVideoGravity:(UITapGestureRecognizer *)tap {
+  (void)tap;
+  if(!_visible || !_active || _audioOnly || !self.view.userInteractionEnabled ||
+     _player.currentItem.status!=AVPlayerItemStatusReadyToPlay) return;
+  self.videoGravity=[_videoGravity isEqualToString:AVLayerVideoGravityResizeAspectFill]?
+    AVLayerVideoGravityResizeAspect:AVLayerVideoGravityResizeAspectFill;
+}
 
-- (void)buttonPressed:(UIButton *)button {
-  if(!button.enabled || button.hidden || !_visible || !_active) return;
+- (void)buttonPressed:(UIBarButtonItem *)button {
+  if(!button.enabled || !_visible || !_active) return;
+  if(button!=_controls.doneButton && !self.view.userInteractionEnabled) return;
   [self scheduleHide];
   if(button==_controls.playButton) {
     if(!_player.currentItem) return;
@@ -309,44 +390,75 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
       if(isfinite(duration) && duration>0 && CMTimeGetSeconds(_player.currentTime)>=duration) [_player seekToTime:kCMTimeZero];
       [_player play];
     }
-  } else if(button==_controls.scaleButton) {
-    self.videoGravity=button.selected?AVLayerVideoGravityResizeAspect:AVLayerVideoGravityResizeAspectFill;
   } else if(button==_controls.previousButton && [_delegate respondsToSelector:@selector(playerViewControllerDidRequestPreviousItem:)]) {
     [_delegate playerViewControllerDidRequestPreviousItem:self];
   } else if(button==_controls.nextButton && [_delegate respondsToSelector:@selector(playerViewControllerDidRequestNextItem:)]) {
     [_delegate playerViewControllerDidRequestNextItem:self];
-  } else if(button==_controls.playlistButton && [_delegate respondsToSelector:@selector(playerViewControllerDidRequestPlaylist:)]) {
-    [_delegate playerViewControllerDidRequestPlaylist:self];
   } else if(button==_controls.audioButton && [_delegate respondsToSelector:@selector(playerViewController:didRequestAudioOnly:)]) {
     [_delegate playerViewController:self didRequestAudioOnly:!_audioOnly];
   } else if(button==_controls.doneButton) {
     if([_delegate respondsToSelector:@selector(playerViewControllerDidRequestDismissal:)]) [_delegate playerViewControllerDidRequestDismissal:self];
-    else if(self.presentingViewController && !self.parentViewController) [self dismissViewControllerAnimated:YES completion:nil];
+    else if(self.navigationController.presentingViewController) [self.navigationController dismissViewControllerAnimated:YES completion:nil];
   }
 }
 
 - (void)scrubBegan:(UISlider *)slider {
+  if(!slider.enabled || !_visible || !_active || !self.view.userInteractionEnabled) return;
   [self cancelHide];
-  [_scrubItem release]; _scrubItem=nil;
-  if(slider.enabled && _visible && _active) _scrubItem=[_player.currentItem retain];
+  if(!_scrubItem) {
+    _scrubItem=[_player.currentItem retain];
+    _scrubTime=kCMTimeInvalid;
+  }
+  _scrubbing=YES;
 }
 - (void)scrubChanged:(UISlider *)slider {
   /* VoiceOver adjusts a slider without touch-down/up events. */
-  if(!slider.tracking && !_scrubItem) { [self scrubBegan:slider]; [self scrubEnded:slider]; return; }
+  BOOL accessibility=!slider.tracking && !_scrubbing;
+  if(accessibility) [self scrubBegan:slider];
   if(!_scrubItem) return;
   double duration=CMTimeGetSeconds(_scrubItem.duration);
-  [_controls setElapsedTime:slider.value*duration duration:duration];
+  if(_scrubItem==_player.currentItem && _scrubItem.status==AVPlayerItemStatusReadyToPlay && isfinite(duration) && duration>0) {
+    CMTime time=CMTimeMakeWithSeconds(slider.value*duration,600);
+    if(!CMTIME_IS_VALID(_scrubTime) || CMTimeCompare(time,_scrubTime)!=0) {
+      _scrubTime=time;
+      [_controls setElapsedTime:slider.value*duration duration:duration];
+      if(!_seeking) [self seekToScrubTime];
+    }
+  }
+  if(accessibility) { _scrubbing=NO; [self finishScrubbing]; }
 }
 - (void)scrubEnded:(UISlider *)slider {
-  AVPlayerItem *item=_scrubItem;
-  double duration=item?CMTimeGetSeconds(item.duration):NAN;
-  if(item && item==_player.currentItem && item.status==AVPlayerItemStatusReadyToPlay && isfinite(duration) && duration>0)
-    [_player seekToTime:CMTimeMakeWithSeconds(slider.value*duration,600)];
-  [self scrubCancelled:slider];
+  if(!_scrubbing) return;
+  [self scrubChanged:slider];
+  _scrubbing=NO;
+  [self finishScrubbing];
 }
-- (void)scrubCancelled:(UISlider *)slider {
-  (void)slider;
+- (void)seekToScrubTime {
+  /* One seek in flight, one latest target. Never queue every drag event.
+   * https://developer.apple.com/library/archive/qa/qa1820/_index.html */
+  _seeking=YES;
+  CMTime time=_scrubTime;
+  NSUInteger generation=++_seekGeneration;
+  [_player seekToTime:time toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero completionHandler:^(BOOL finished) {
+    (void)finished;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      /* Item/lifecycle changes invalidate completions, including same-item reentry. */
+      if(generation!=_seekGeneration) return;
+      _seeking=NO;
+      if(CMTimeCompare(time,_scrubTime)!=0) [self seekToScrubTime];
+      else [self finishScrubbing];
+    });
+  }];
+}
+- (void)resetScrubbing {
+  ++_seekGeneration;
+  _scrubbing=_seeking=NO;
   [_scrubItem release]; _scrubItem=nil;
+}
+- (void)finishScrubbing {
+  /* Do not read the old player time while the final seek is still pending. */
+  if(_scrubbing || _seeking) return;
+  [self resetScrubbing];
   [self refreshTime];
   [self scheduleHide];
 }

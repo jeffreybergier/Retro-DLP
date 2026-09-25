@@ -53,11 +53,11 @@ static void Check(BOOL value, NSString *message) {
     [self queueChanged:nil];
     [_view beginAppearanceTransition:YES animated:NO]; [_view endAppearanceTransition];
     RDLPPlayerControls *controls=[_view valueForKey:@"controls"];
-    [controls.previousButton sendActionsForControlEvents:UIControlEventTouchUpInside];
+    [controls.previousButton.target performSelector:controls.previousButton.action withObject:controls.previousButton];
     Check(_queue.currentIndex==1 && controls.nextButton.enabled,@"UI previous request changes the real queue and updates availability");
-    [controls.nextButton sendActionsForControlEvents:UIControlEventTouchUpInside];
+    [controls.nextButton.target performSelector:controls.nextButton.action withObject:controls.nextButton];
     Check(_queue.currentIndex==2 && !controls.nextButton.enabled,@"UI next request reaches the playlist end");
-    [controls.audioButton sendActionsForControlEvents:UIControlEventTouchUpInside];
+    [controls.audioButton.target performSelector:controls.audioButton.action withObject:controls.audioButton];
     Check(_queue.audioOnly && _view.audioOnly,@"Audio-only request updates queue and UI together");
     NSUInteger changes=_changes;
     _queue.audioOnly=YES;

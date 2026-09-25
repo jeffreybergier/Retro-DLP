@@ -143,31 +143,45 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
   UIViewController *owner=window.rootViewController;
   [RDLPUIKit presentPlayer:owner library:library job:job];
   pump(); pump();
-  RDLPDownloadedPlayerViewController *controller=(id)owner.presentedViewController;
+  RDLPDownloadedPlayerViewController *controller=(id)[(UINavigationController *)owner.presentedViewController topViewController];
   require([controller isKindOfClass:[RDLPDownloadedPlayerViewController class]],@"Downloaded videos use the AVFoundation player");
   playbackWait(controller);
   require(controller.queue.playlist.count==1 && controller.queue.currentIndex==0,@"Presentation creates a one-item playlist");
   require(controller.player.rate==1 && CMTimeGetSeconds(controller.player.currentTime)>=9 && CMTimeGetSeconds(controller.player.currentTime)<14,@"Playback starts at the saved checkpoint");
   RDLPPlayerControls *controls=[controller valueForKey:@"controls"];
-  require(!controls.previousButton.enabled && !controls.nextButton.enabled && controls.playlistButton.hidden,@"One-item presentation has no unavailable navigation actions");
+  require(!controls.previousButton.enabled && !controls.nextButton.enabled,@"One-item presentation disables previous and next");
+  require([controller.title isEqualToString:@"Native playback"] && controller.navigationItem.leftBarButtonItem==controls.audioButton && controller.navigationItem.rightBarButtonItem==controls.doneButton,@"Title, headphones, and Done occupy the native navigation bar");
   require([[playbackNowPlayingInfo() objectForKey:MPMediaItemPropertyTitle] isEqualToString:@"Native playback"],@"App adapter supplies title metadata");
   screenshot(window,[directory stringByAppendingPathComponent:@"playing.png"]);
-  [controls.playButton sendActionsForControlEvents:UIControlEventTouchUpInside]; pump();
-  require(controller.player.rate==0 && !controls.playButton.selected,@"Pause button pauses playback and changes its artwork");
+  UINavigationController *playerNavigation=controller.navigationController;
+  UIViewController *playlistScreen=[[[UIViewController alloc] init] autorelease];
+  [playerNavigation pushViewController:playlistScreen animated:NO]; pump();
+  require(controller.player.rate==1 && ![[controller valueForKey:@"stopped"] boolValue],@"Pushing a player screen preserves the playback session");
+  require(!playerNavigation.navigationBarHidden && playerNavigation.toolbarHidden,@"Pushed screens get navigation back without playback controls");
+  controller.showsPlaybackControls=NO;
+  require(!playerNavigation.navigationBarHidden,@"Offscreen player does not hide another screen's navigation bar");
+  controller.showsPlaybackControls=YES;
+  [playerNavigation popViewControllerAnimated:NO]; pump();
+  require(controller.player.rate==1 && !playerNavigation.toolbarHidden,@"Returning restores controls and keeps playback running");
+  [controls.playButton.target performSelector:controls.playButton.action withObject:controls.playButton]; pump();
+  require(controller.player.rate==0 && [controls.playButton.accessibilityLabel isEqualToString:@"Play"],@"Pause button pauses playback and changes its artwork");
   require([[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyPlaybackRate] doubleValue]==0,@"Pause freezes Now Playing time");
   screenshot(window,[directory stringByAppendingPathComponent:@"paused.png"]);
   [controls.slider sendActionsForControlEvents:UIControlEventTouchDown];
   controls.slider.value=1.0f/3.0f;
   [controls.slider sendActionsForControlEvents:UIControlEventValueChanged];
+  pump(); pump();
+  require(fabs(CMTimeGetSeconds(controller.player.currentTime)-20)<1,@"Dragging scrubs the actual video before releasing the slider");
+  require(controller.player.rate==0,@"Scrubbing a paused video preserves pause");
   [controls.slider sendActionsForControlEvents:UIControlEventTouchUpInside]; pump(); pump();
   require(fabs(CMTimeGetSeconds(controller.player.currentTime)-20)<1,@"Scrubber seeks the actual AVPlayer");
   require(fabs([[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyElapsedPlaybackTime] doubleValue]-20)<1,@"Paused scrubs update system metadata");
-  [controls.audioButton sendActionsForControlEvents:UIControlEventTouchUpInside]; pump();
+  [controls.audioButton.target performSelector:controls.audioButton.action withObject:controls.audioButton]; pump();
   require(controller.audioOnly && controller.queue.audioOnly,@"Audio Only is wired from the visible control to the queue");
   for(AVPlayerItemTrack *track in controller.player.currentItem.tracks)
     if([track.assetTrack.mediaType isEqualToString:AVMediaTypeVideo]) require(!track.enabled,@"Video decoding is disabled for audio-only playback");
   screenshot(window,[directory stringByAppendingPathComponent:@"audio-only.png"]);
-  [controls.audioButton sendActionsForControlEvents:UIControlEventTouchUpInside]; pump();
+  [controls.audioButton.target performSelector:controls.audioButton.action withObject:controls.audioButton]; pump();
   for(AVPlayerItemTrack *track in controller.player.currentItem.tracks)
     if([track.assetTrack.mediaType isEqualToString:AVMediaTypeVideo]) require(track.enabled,@"Show Video restores video tracks");
   if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestNowPlayingHold"] boolValue]) {
@@ -176,7 +190,7 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
     for(NSUInteger i=0;i<100;++i) pump();
   }
   [controller retain];
-  [controls.doneButton sendActionsForControlEvents:UIControlEventTouchUpInside]; pump(); pump();
+  [controls.doneButton.target performSelector:controls.doneButton.action withObject:controls.doneButton]; pump(); pump();
   require(!owner.presentedViewController && controller.player.rate==0,@"Done stops playback and returns to the library");
   require(![playbackNowPlayingInfo() count],@"Done clears Now Playing metadata");
   [controller release];
@@ -221,7 +235,7 @@ static void testPlaylistSelection(UIWindow *window,NSString *directory) {
   window.rootViewController=navigation; pump();
   [list tableView:list.tableView didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:3 inSection:0]];
   pump(); pump();
-  RDLPDownloadedPlayerViewController *player=(id)list.presentedViewController;
+  RDLPDownloadedPlayerViewController *player=(id)[(UINavigationController *)list.presentedViewController topViewController];
   require([player isKindOfClass:[RDLPDownloadedPlayerViewController class]],@"Playlist row presents the downloaded player");
   playbackWait(player);
   NSURL *first=[NSURL fileURLWithPath:[library fileForJob:[library jobForPlaylist:pid video:@"AAAAAAAAAAA" format:@"18"]]];
@@ -230,7 +244,7 @@ static void testPlaylistSelection(UIWindow *window,NSString *directory) {
   require(player.player.rate==1 && fabs(CMTimeGetSeconds(player.player.currentTime)-12)<2,@"Tapped duplicate restores its bookmark and autoplays");
   RDLPPlayerControls *controls=[player valueForKey:@"controls"];
   require(controls.previousButton.enabled && !controls.nextButton.enabled,@"Transport availability reflects the selected playlist index");
-  [controls.previousButton sendActionsForControlEvents:UIControlEventTouchUpInside]; playbackWait(player);
+  [controls.previousButton.target performSelector:controls.previousButton.action withObject:controls.previousButton]; playbackWait(player);
   require(player.queue.currentIndex==1 && player.player.rate==1 && fabs(CMTimeGetSeconds(player.player.currentTime)-24)<1,@"Visible Previous button selects the preceding available video and restores its bookmark");
   screenshot(window,[directory stringByAppendingPathComponent:@"playlist-player.png"]);
   [list dismissViewControllerAnimated:NO completion:nil]; pump();
@@ -683,7 +697,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require(findRow(detail,@"play")!=nil && findRow(detail,@"delete")!=nil,@"Completed video offers Play and confirmed Delete");
     [library_ savePlaybackSeconds:1 forVideo:[video objectForKey:@"video_id"]];
     [detail performRow:findRow(detail,@"play")]; pump();
-    UIViewController *playerController=detail.presentedViewController;
+    UIViewController *playerController=(id)[(UINavigationController *)detail.presentedViewController topViewController];
     require([playerController isKindOfClass:[RDLPDownloadedPlayerViewController class]],@"Video details always present RDLPDownloadedPlayerViewController");
     /* Dismissal during the native presentation animation can be ignored. */
     for(NSUInteger wait=0;wait<10 && playerController.isBeingPresented;++wait) pump();
@@ -789,7 +803,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     [RDLPLibrary savePreferredFormat:@"137+140"];
     [library_ savePlaybackSeconds:1 forVideo:@"AAAAAAAAAAA"];
     [list tableView:list.tableView didSelectRowAtIndexPath:playIndex]; pump(); pump();
-    RDLPDownloadedPlayerViewController *playlistPlayer=(RDLPDownloadedPlayerViewController *)list.presentedViewController;
+    RDLPDownloadedPlayerViewController *playlistPlayer=(id)[(UINavigationController *)list.presentedViewController topViewController];
     require([playlistPlayer isKindOfClass:[RDLPDownloadedPlayerViewController class]],@"Playlist tap presents RDLPDownloadedPlayerViewController even with another preferred quality");
     require([[playlistPlayer.queue.playlist objectAtIndex:0] isEqual:[NSURL fileURLWithPath:file]],@"Playlist plays only the tapped local file");
     playbackWait(playlistPlayer); [playlistPlayer.player pause];
@@ -874,7 +888,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"downloads.png"]);
     for(NSString *format in [NSArray arrayWithObjects:@"18",@"137+140",nil]) {
       [all tableView:all.tableView didSelectRowAtIndexPath:videoIndex(all,@"AAAAAAAAAAA",format)]; pump(); pump();
-      RDLPDownloadedPlayerViewController *player=(RDLPDownloadedPlayerViewController *)all.presentedViewController;
+      RDLPDownloadedPlayerViewController *player=(id)[(UINavigationController *)all.presentedViewController topViewController];
       require([player isKindOfClass:[RDLPDownloadedPlayerViewController class]] && [[player.queue.playlist objectAtIndex:0] isEqual:[NSURL fileURLWithPath:[format isEqualToString:@"18"]?file:highFile]],@"All Downloads plays precisely the tapped quality");
       [player.player pause]; [all dismissViewControllerAnimated:YES completion:nil];
       for(NSUInteger wait=0;wait<10 && (all.presentedViewController || navigation_.presentedViewController);++wait) pump();

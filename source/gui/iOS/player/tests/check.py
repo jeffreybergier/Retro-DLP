@@ -19,7 +19,7 @@ sdk = os.environ.get('IOS_SDK', '/osxcross/modern/SDK/iPhoneOS8.4.sdk')
 bin_dir = os.environ.get('IOS_BIN', '/osxcross/modern/bin')
 env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ['PATH'])
 sources = [player / 'RDLPPlayerControls.m', player / 'RDLPPlayerViewController.m',
-           player / 'RDLPPlayerQueue.m']
+           player / 'RDLPPlayerQueue.m', player / 'RDLPPlayerNavigationController.m']
 flags = ['-isysroot', sdk, '-B' + bin_dir, '-fno-objc-arc', '-fblocks',
          '-Wall', '-Wextra', '-Werror', '-Wunguarded-availability',
          '-Wno-deprecated-declarations', '-I' + str(player)]
@@ -46,7 +46,8 @@ for arch, minimum in [('armv7', '5.0'), ('arm64', '7.0')]:
     for source in sources:
         subprocess.run([clang, '--analyze', '-Xanalyzer', '-analyzer-output=text']
                        + target + flags + [str(source)], env=env, check=True)
-    shutil.copytree(player / 'RDLPPlayer.bundle', app / 'RDLPPlayer.bundle', dirs_exist_ok=True)
+    shutil.rmtree(app / 'RDLPPlayer.bundle', ignore_errors=True)
+    shutil.copytree(player / 'RDLPPlayer.bundle', app / 'RDLPPlayer.bundle')
     shutil.copyfile(fixture, app / 'fixture.mp4')
     info = dict(CFBundleExecutable='RDLPPlayerTests', CFBundleName='RDLPPlayerTests',
                 CFBundleDisplayName='Player Tests', CFBundleIdentifier='test.retrodlp.player',

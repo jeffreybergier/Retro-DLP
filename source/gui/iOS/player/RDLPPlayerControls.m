@@ -1,49 +1,40 @@
-/* Layout and artwork adapted from ALMoviePlayerController.
- * Copyright (c) 2013 Anthony Lobianco. See RDLPPlayer.bundle/LICENSE-ALMoviePlayerController.txt. */
 #import "RDLPPlayerControls.h"
-#import <MediaPlayer/MediaPlayer.h>
-#import <QuartzCore/QuartzCore.h>
 #import <math.h>
 
-/* UITextAlignment is required by the iOS 5 SDK/runtime. */
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
-@interface RDLPPlayerControls () {
-  UIView *_topBar, *_bottomBar;
-  UILabel *_elapsedLabel, *_durationLabel, *_messageLabel;
-  MPVolumeView *_volumeView;
+@interface RDLPPlayerTimeline : UISlider
+@end
+@implementation RDLPPlayerTimeline
+- (CGRect)trackRectForBounds:(CGRect)bounds {
+  CGRect track=[super trackRectForBounds:bounds];
+  /* Center the artwork, leaving the native control's touch bounds in place. */
+  track.origin.y=CGRectGetMidY(bounds)-track.size.height/2+1;
+  return track;
 }
 @end
 
-static UIButton *RDLPButton(UIView *bar, NSString *title, NSString *imageName, NSString *label) {
-  UIButton *button=[[UIButton alloc] initWithFrame:CGRectZero];
-  button.showsTouchWhenHighlighted=YES;
-  button.titleLabel.font=[UIFont systemFontOfSize:14];
-  button.titleLabel.shadowOffset=CGSizeMake(1,1);
-  [button setTitleShadowColor:[UIColor blackColor] forState:UIControlStateNormal];
-  [button setTitleColor:[UIColor grayColor] forState:UIControlStateDisabled];
-  [button setTitle:title forState:UIControlStateNormal];
-  if(imageName) [button setImage:[UIImage imageNamed:[@"RDLPPlayer.bundle/" stringByAppendingString:imageName]] forState:UIControlStateNormal];
-  button.accessibilityLabel=label;
-  [bar addSubview:button];
-  return button;
+@interface RDLPPlayerControls () {
+  RDLPPlayerTimeline *_timeline;
+  UIBarButtonItem *_timelineItem;
+  UILabel *_messageLabel;
+  CGSize _toolbarSize;
 }
+@end
 
-static UILabel *RDLPTimeLabel(UIView *bar, UITextAlignment alignment) {
-  UILabel *label=[[UILabel alloc] initWithFrame:CGRectZero];
-  label.backgroundColor=[UIColor clearColor];
-  label.font=[UIFont systemFontOfSize:12];
-  label.textColor=[UIColor lightTextColor];
-  label.textAlignment=(__typeof__(label.textAlignment))alignment;
-  label.layer.shadowColor=[UIColor blackColor].CGColor;
-  label.layer.shadowRadius=1;
-  label.layer.shadowOffset=CGSizeMake(1,1);
-  label.layer.shadowOpacity=0.8f;
-  [bar addSubview:label];
-  return label;
+static UIBarButtonItem *RDLPImageButton(NSString *name, NSString *label) {
+  UIImage *image=[UIImage imageNamed:[@"RDLPPlayer.bundle/" stringByAppendingString:name]];
+  UIBarButtonItem *item=[[UIBarButtonItem alloc] initWithImage:image style:UIBarButtonItemStylePlain target:nil action:NULL];
+  item.accessibilityLabel=label;
+  return item;
 }
-
+static UIBarButtonItem *RDLPToolbarSpace(BOOL flexible) {
+  UIBarButtonItem *space=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:
+    flexible?UIBarButtonSystemItemFlexibleSpace:UIBarButtonSystemItemFixedSpace target:nil action:NULL] autorelease];
+  if(!flexible) space.width=-8; // Reduce the legacy toolbar's outer margins.
+  return space;
+}
 static NSString *RDLPTimeText(double seconds) {
   if(!isfinite(seconds) || seconds<0) return @"--:--";
   double minutes=floor(seconds/60);
@@ -51,44 +42,33 @@ static NSString *RDLPTimeText(double seconds) {
   return [NSString stringWithFormat:@"%.0f:%02.0f",minutes,floor(fmod(seconds,60))];
 }
 
-static BOOL RDLPViewIsTracking(UIView *view) {
-  if([view isKindOfClass:[UIControl class]] && [(UIControl *)view isTracking]) return YES;
-  for(UIView *child in view.subviews) if(RDLPViewIsTracking(child)) return YES;
-  return NO;
-}
-
 @implementation RDLPPlayerControls
 @synthesize doneButton=_doneButton, playButton=_playButton, previousButton=_previousButton;
-@synthesize nextButton=_nextButton, playlistButton=_playlistButton, audioButton=_audioButton;
-@synthesize scaleButton=_scaleButton, slider=_slider;
+@synthesize nextButton=_nextButton, audioButton=_audioButton, toolbarItems=_toolbarItems;
+- (UIView *)timeline { return _timeline; }
+- (UISlider *)slider { return _timeline; }
 
 - (id)initWithFrame:(CGRect)frame {
   self=[super initWithFrame:frame]; if(!self) return nil;
-  self.backgroundColor=[UIColor clearColor];
-  _topBar=[[UIView alloc] initWithFrame:CGRectZero];
-  _bottomBar=[[UIView alloc] initWithFrame:CGRectZero];
-  for(UIView *bar in [NSArray arrayWithObjects:_topBar,_bottomBar,nil]) {
-    bar.backgroundColor=[[UIColor blackColor] colorWithAlphaComponent:0.5];
-    [self addSubview:bar];
-  }
-  _doneButton=RDLPButton(_topBar,@"Done",nil,@"Done");
-  _scaleButton=RDLPButton(_topBar,nil,@"movieFullscreen.png",@"Fill screen");
-  [_scaleButton setImage:[UIImage imageNamed:@"RDLPPlayer.bundle/movieEndFullscreen.png"] forState:UIControlStateSelected];
-  _elapsedLabel=RDLPTimeLabel(_topBar,UITextAlignmentRight);
-  _durationLabel=RDLPTimeLabel(_topBar,UITextAlignmentLeft);
-  _slider=[[UISlider alloc] initWithFrame:CGRectZero];
-  _slider.maximumValue=1;
-  _slider.accessibilityLabel=@"Playback position";
-  [_topBar addSubview:_slider];
-  _playButton=RDLPButton(_bottomBar,nil,@"moviePlay.png",@"Play");
-  [_playButton setImage:[UIImage imageNamed:@"RDLPPlayer.bundle/moviePause.png"] forState:UIControlStateSelected];
-  _previousButton=RDLPButton(_bottomBar,nil,@"movieBackward.png",@"Previous item");
-  _nextButton=RDLPButton(_bottomBar,nil,@"movieForward.png",@"Next item");
-  _playlistButton=RDLPButton(_bottomBar,@"Playlist",nil,@"Show playlist");
-  _audioButton=RDLPButton(_bottomBar,@"Audio Only",nil,@"Use audio only");
-  [_audioButton setTitle:@"Show Video" forState:UIControlStateSelected];
-  _volumeView=[[MPVolumeView alloc] initWithFrame:CGRectZero];
-  [_bottomBar addSubview:_volumeView];
+  self.userInteractionEnabled=NO;
+  _doneButton=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:nil action:NULL];
+  _audioButton=RDLPImageButton(@"headphones.png",@"Use audio only");
+  _audioButton.style=UIBarButtonItemStyleBordered;
+  _previousButton=RDLPImageButton(@"backward-fast.png",@"Previous item");
+  _nextButton=RDLPImageButton(@"forward-fast.png",@"Next item");
+  _previousButton.width=_nextButton.width=32;
+  /* Align the plain artwork with the neighboring bordered play button. */
+  _previousButton.imageInsets=_nextButton.imageInsets=UIEdgeInsetsMake(2,0,-2,0);
+  _previousButton.landscapeImagePhoneInsets=_nextButton.landscapeImagePhoneInsets=UIEdgeInsetsMake(2,0,-2,0);
+  _playButton=RDLPImageButton(@"play.png",@"Play");
+  _playButton.style=UIBarButtonItemStyleBordered;
+  _timeline=[[RDLPPlayerTimeline alloc] initWithFrame:CGRectMake(0,0,164,40)];
+  _timeline.continuous=YES;
+  _timeline.accessibilityLabel=@"Playback position";
+  _timelineItem=[[UIBarButtonItem alloc] initWithCustomView:_timeline];
+  /* Keep spare space beside the scrubber, with transport buttons at the edges. */
+  _toolbarItems=[[NSArray alloc] initWithObjects:RDLPToolbarSpace(NO),_previousButton,
+    RDLPToolbarSpace(YES),_timelineItem,RDLPToolbarSpace(YES),_nextButton,_playButton,RDLPToolbarSpace(NO),nil];
   _messageLabel=[[UILabel alloc] initWithFrame:CGRectZero];
   _messageLabel.backgroundColor=[UIColor clearColor];
   _messageLabel.textColor=[UIColor whiteColor];
@@ -99,74 +79,30 @@ static BOOL RDLPViewIsTracking(UIView *view) {
   [self setElapsedTime:0 duration:NAN];
   return self;
 }
-
 - (void)dealloc {
-  [_topBar release]; [_bottomBar release];
-  [_doneButton release]; [_scaleButton release]; [_playButton release];
-  [_previousButton release]; [_nextButton release]; [_playlistButton release]; [_audioButton release];
-  [_elapsedLabel release]; [_durationLabel release]; [_slider release];
-  [_volumeView release]; [_messageLabel release];
+  [_toolbarItems release]; [_timelineItem release]; [_timeline release]; [_messageLabel release];
+  [_doneButton release]; [_playButton release]; [_previousButton release]; [_nextButton release]; [_audioButton release];
   [super dealloc];
 }
-
+- (BOOL)sizeForToolbar:(CGSize)size {
+  /* UIKit may adjust the custom view's frame; only rebuild for a bar resize. */
+  if(CGSizeEqualToSize(_toolbarSize,size)) return NO;
+  _toolbarSize=size;
+  /* Give the scrubber the width recovered from the two smaller outer margins. */
+  CGSize timelineSize=CGSizeMake(MAX(100,size.width-156),MIN(40,size.height));
+  _timeline.frame=(CGRect){_timeline.frame.origin,timelineSize};
+  _timelineItem.width=timelineSize.width;
+  return YES;
+}
 - (void)setElapsedTime:(double)elapsed duration:(double)duration {
   NSString *current=RDLPTimeText(elapsed), *total=RDLPTimeText(duration);
-  if(![_elapsedLabel.text isEqualToString:current]) _elapsedLabel.text=current;
-  if(![_durationLabel.text isEqualToString:total]) _durationLabel.text=total;
-  _slider.accessibilityValue=[NSString stringWithFormat:@"%@ of %@",current,total];
+  self.slider.accessibilityValue=[NSString stringWithFormat:@"%@ of %@",current,total];
 }
-
-- (void)setMessage:(NSString *)message {
-  _messageLabel.text=message;
-}
-
-- (void)setChromeVisible:(BOOL)visible animated:(BOOL)animated {
-  /* Disabling hit testing immediately also prevents taps on fading controls. */
-  _topBar.userInteractionEnabled=_bottomBar.userInteractionEnabled=visible;
-  _topBar.accessibilityElementsHidden=_bottomBar.accessibilityElementsHidden=!visible;
-  if(!animated) {
-    [_topBar.layer removeAllAnimations]; [_bottomBar.layer removeAllAnimations];
-    _topBar.alpha=_bottomBar.alpha=visible?1:0;
-    return;
-  }
-  [UIView animateWithDuration:0.25 delay:0
-                     options:UIViewAnimationOptionBeginFromCurrentState|UIViewAnimationOptionAllowUserInteraction
-                  animations:^{ _topBar.alpha=_bottomBar.alpha=visible?1:0; } completion:nil];
-}
-
-- (BOOL)isTracking { return RDLPViewIsTracking(self); }
-
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-  UIView *hit=[super hitTest:point withEvent:event];
-  return hit==self?nil:hit;
-}
-
+- (void)setMessage:(NSString *)message { _messageLabel.text=message; }
+- (BOOL)isTracking { return self.slider.tracking; }
 - (void)layoutSubviews {
   [super layoutSubviews];
-  CGFloat width=self.bounds.size.width, height=self.bounds.size.height;
-  CGFloat barHeight=([[[UIDevice currentDevice] systemVersion] floatValue]>=7)?70:50;
-  CGFloat padding=width<=320?8:20;
-  _topBar.frame=CGRectMake(0,0,width,barHeight);
-  _bottomBar.frame=CGRectMake(0,MAX(barHeight,height-barHeight),width,barHeight);
-  CGFloat y=(barHeight-44)/2;
-  _doneButton.frame=CGRectMake(padding,y,44,44);
-  _scaleButton.frame=CGRectMake(width-padding-44,y,44,44);
-  CGFloat left=_doneButton.hidden?padding:padding+48;
-  CGFloat right=_scaleButton.hidden?width-padding:width-padding-48;
-  _elapsedLabel.frame=CGRectMake(left,0,50,barHeight);
-  _durationLabel.frame=CGRectMake(right-50,0,50,barHeight);
-  _slider.frame=CGRectMake(left+56,(barHeight-34)/2,MAX(0,right-left-112),34);
-  _playButton.frame=CGRectMake(width/2-22,y,44,44);
-  _previousButton.frame=CGRectMake(width/2-72,y,44,44);
-  _nextButton.frame=CGRectMake(width/2+28,y,44,44);
-  _playlistButton.frame=CGRectMake(padding,y,60,44);
-  _audioButton.frame=CGRectMake(width-padding-80,y,80,44);
-  CGFloat volumeX=_playlistButton.hidden?padding:padding+68;
-  CGFloat volumeWidth=MIN(210,width/2-80-volumeX);
-  _volumeView.hidden=volumeWidth<100;
-  _volumeView.frame=CGRectMake(volumeX,(barHeight-22)/2,MAX(0,volumeWidth),22);
-  CGFloat messageHeight=MIN(60,MAX(0,height-2*barHeight));
-  _messageLabel.frame=CGRectMake(20,(height-messageHeight)/2,MAX(0,width-40),messageHeight);
+  _messageLabel.frame=CGRectMake(20,(self.bounds.size.height-60)/2,MAX(0,self.bounds.size.width-40),60);
 }
 @end
 #pragma clang diagnostic pop

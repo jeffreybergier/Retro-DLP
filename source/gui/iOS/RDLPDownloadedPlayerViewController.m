@@ -100,6 +100,7 @@ static double RDLPResumePosition(double seconds,double duration) {
   [self.player pause];
   [self unobserveItem];
   [_video release]; _video=nil; [_metadata release]; _metadata=nil;
+  self.title=nil;
   _item=[self.player.currentItem retain];
   if(_item && _queue.currentIndex<_jobs.count) {
     NSDictionary *job=[_jobs objectAtIndex:_queue.currentIndex];
@@ -109,6 +110,7 @@ static double RDLPResumePosition(double seconds,double duration) {
     _savedPosition=_resume;
     NSString *title=[job objectForKey:@"title"], *channel=[job objectForKey:@"channel"];
     if(!title.length) title=_video.length?_video:@"Video";
+    self.title=title;
     NSMutableDictionary *metadata=[NSMutableDictionary dictionaryWithObject:title forKey:MPMediaItemPropertyTitle];
     if(channel.length) [metadata setObject:channel forKey:MPMediaItemPropertyArtist];
     _metadata=[metadata copy];
@@ -126,7 +128,8 @@ static double RDLPResumePosition(double seconds,double duration) {
 - (BOOL)canBecomeFirstResponder { return YES; }
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
-  if(_started || _stopped) return;
+  if(_stopped) return;
+  if(_started) { [self becomeFirstResponder]; return; }
   [RDLPActivePlayback stop]; RDLPActivePlayback=self;
   _started=YES; _wantsPlay=YES;
   AVAudioSession *session=[AVAudioSession sharedInstance]; NSError *error=nil;
@@ -141,7 +144,8 @@ static double RDLPResumePosition(double seconds,double duration) {
   [self refreshPlayback];
 }
 - (void)viewWillDisappear:(BOOL)animated {
-  [self stop];
+  if(self.isBeingDismissed || self.navigationController.isBeingDismissed || self.isMovingFromParentViewController)
+    [self stop];
   [super viewWillDisappear:animated];
 }
 - (void)stop {
@@ -271,7 +275,8 @@ static double RDLPResumePosition(double seconds,double duration) {
   (void)controller; if(_queue.canSkipToNextItem) [self selectIndex:_queue.currentIndex+1];
 }
 - (void)playerViewControllerDidRequestDismissal:(RDLPPlayerViewController *)controller {
-  (void)controller; [self stop]; [self dismissViewControllerAnimated:YES completion:nil];
+  (void)controller; [self stop];
+  [(self.navigationController?:self) dismissViewControllerAnimated:YES completion:nil];
 }
 - (void)play {
   if(_stopped) return;
