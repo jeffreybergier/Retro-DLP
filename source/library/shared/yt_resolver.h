@@ -46,6 +46,7 @@ typedef struct {
   char *url;
   char *mime_type;
   char *user_agent;
+  char *audio_language;
   int itag;
   int width;
   int height;

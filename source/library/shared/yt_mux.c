@@ -3,6 +3,7 @@
 #endif
 
 #include "yt_mux.h"
+#include "yt_iso639.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -48,6 +49,38 @@ static int checked_input(const char *path) {
          information.st_size <= YT_MUX_MAX_INPUT_SIZE;
 }
 
+/* MP4's mdhd language uses ISO 639-2/T, not YouTube's BCP-47 tag. Regional
+   subtags cannot be represented there; unknown identifiers remain und. */
+static uint16_t mp4_audio_language(const char *language) {
+  char base[4];
+  size_t length;
+  size_t index;
+  if (language == NULL)
+    return ISOM_LANGUAGE_CODE_UNDEFINED;
+  length = strcspn(language, "-");
+  if (length != 2 && length != 3)
+    return ISOM_LANGUAGE_CODE_UNDEFINED;
+  for (index = 0; index < length; ++index) {
+    char letter = language[index];
+    if (letter >= 'A' && letter <= 'Z')
+      letter = (char)(letter + ('a' - 'A'));
+    if (letter < 'a' || letter > 'z')
+      return ISOM_LANGUAGE_CODE_UNDEFINED;
+    base[index] = letter;
+  }
+  base[length] = '\0';
+  for (index = 0; index < sizeof(yt_iso639_codes) / sizeof(yt_iso639_codes[0]);
+       ++index) {
+    if (strcmp(base, yt_iso639_codes[index].alpha2) == 0 ||
+        strcmp(base, yt_iso639_codes[index].alpha3) == 0 ||
+        strcmp(base, yt_iso639_codes[index].bibliographic) == 0) {
+      const char *code = yt_iso639_codes[index].alpha3;
+      return (uint16_t)LSMASH_PACK_ISO_LANGUAGE(code[0], code[1], code[2]);
+    }
+  }
+  return ISOM_LANGUAGE_CODE_UNDEFINED;
+}
+
 static void mux_track_cleanup(YTMuxTrack *track) {
   if (track == NULL)
     return;
@@ -81,7 +114,8 @@ static int open_input_track(const char *path, lsmash_summary_type summary_type,
   return 1;
 }
 
-static int setup_output_track(lsmash_root_t *output, YTMuxTrack *track) {
+static int setup_output_track(lsmash_root_t *output, YTMuxTrack *track,
+                               const char *audio_language) {
   lsmash_track_parameters_t track_parameters;
   lsmash_media_parameters_t media_parameters;
   int sample_entry;
@@ -129,6 +163,7 @@ static int setup_output_track(lsmash_root_t *output, YTMuxTrack *track) {
     track->timescale = audio->frequency;
     track->timebase = 1;
     media_parameters.media_handler_name = "L-SMASH Audio Handler";
+    media_parameters.ISO_language = mp4_audio_language(audio_language);
   }
   if (track->output_track == 0 || track->timescale == 0 ||
       track->timebase == 0)
@@ -325,7 +360,8 @@ static int validate_flat_mp4(const char *path, int64_t *size_out) {
 }
 
 YTStatus yt_mux_mp4_tracks(const char *video_path, const char *audio_path,
-                           const char *destination, int64_t *bytes_written,
+                           const char *destination, const char *audio_language,
+                           int64_t *bytes_written,
                            YTMuxCancelCallback cancel_callback,
                            void *cancel_opaque) {
   YTMuxTrack tracks[2];
@@ -387,8 +423,8 @@ YTStatus yt_mux_mp4_tracks(const char *video_path, const char *audio_path,
     goto finished;
   lsmash_initialize_movie_parameters(&movie);
   if (lsmash_set_movie_parameters(output, &movie) < 0 ||
-      !setup_output_track(output, &tracks[0]) ||
-      !setup_output_track(output, &tracks[1]) ||
+      !setup_output_track(output, &tracks[0], NULL) ||
+      !setup_output_track(output, &tracks[1], audio_language) ||
       !mux_samples(output, tracks, cancel_callback, cancel_opaque,
                    &was_cancelled))
     goto finished;

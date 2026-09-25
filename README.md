@@ -213,6 +213,15 @@ retro-dlp -f '137+599/137+140/136+140' VIDEO_ID_OR_URL
 alternatives from left to right. Retro-DLP never silently picks an unlisted
 fallback. Its default format expression is `22/18`.
 
+Audio selection uses YouTube's original-track identity, regardless of language.
+For example, `136+140` selects the original variant of audio format `140`, even
+when a dub has a higher bitrate or is marked as the default. If the original is
+unavailable in the requested supported format, or multiple tracks are present
+without an original marker, resolution reports the format unavailable. Videos
+without track metadata and unambiguous single-track responses remain supported.
+Adaptive downloads write the selected audio language into the muxed MP4 when
+known; progressive files are downloaded unchanged.
+
 Print metadata without downloading:
 
 ```sh

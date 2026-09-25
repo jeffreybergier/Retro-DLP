@@ -29,7 +29,104 @@ typedef struct {
   int has_video;
   int has_audio;
   int is_drc;
+  const char *audio_track_id;
+  int audio_is_original;
+  int audio_is_alternate;
 } YTFormatCandidate;
+
+typedef struct {
+  const char *original_id;
+  const char *single_id;
+  int has_original;
+  int has_tracks;
+  int multiple_tracks;
+} YTAudioPolicy;
+
+static int contains_case_insensitive(const char *text, const char *word) {
+  size_t index;
+  if (text == NULL)
+    return 0;
+  for (; *text != '\0'; ++text) {
+    for (index = 0; word[index] != '\0'; ++index) {
+      if (text[index] == '\0' ||
+          tolower((unsigned char)text[index]) != (unsigned char)word[index])
+        break;
+    }
+    if (word[index] == '\0')
+      return 1;
+  }
+  return 0;
+}
+
+static void read_audio_track(cJSON *format, YTFormatCandidate *candidate) {
+  cJSON *track = cJSON_GetObjectItemCaseSensitive(format, "audioTrack");
+  const char *name = yt_json_string(track, "displayName");
+  candidate->audio_track_id = yt_json_string(track, "id");
+  candidate->audio_is_alternate =
+      contains_case_insensitive(name, "descriptive") ||
+      contains_case_insensitive(name, "dubbed");
+  candidate->audio_is_original = !candidate->audio_is_alternate &&
+      contains_case_insensitive(name, "original");
+}
+
+/* Inspect all variants, including unsupported codecs and missing URLs. An
+   unavailable original must not make a supported dub look like the only track.
+   audioIsDefault is deliberately ignored: it can designate a localized dub. */
+static YTAudioPolicy audio_policy(cJSON *document) {
+  YTAudioPolicy policy;
+  cJSON *streaming = cJSON_GetObjectItemCaseSensitive(document, "streamingData");
+  cJSON *array;
+  cJSON *format;
+  int adaptive;
+  memset(&policy, 0, sizeof(policy));
+  for (adaptive = 0; adaptive <= 1; ++adaptive) {
+    array = cJSON_GetObjectItemCaseSensitive(
+        streaming, adaptive ? "adaptiveFormats" : "formats");
+    cJSON_ArrayForEach(format, array) {
+      YTFormatCandidate candidate;
+      const char *id;
+      const char *name;
+      if (!cJSON_IsObject(cJSON_GetObjectItemCaseSensitive(format, "audioTrack")))
+        continue;
+      memset(&candidate, 0, sizeof(candidate));
+      read_audio_track(format, &candidate);
+      id = candidate.audio_track_id;
+      name = yt_json_string(cJSON_GetObjectItemCaseSensitive(format, "audioTrack"),
+                            "displayName");
+      if ((id == NULL || id[0] == '\0') &&
+          (name == NULL || name[0] == '\0'))
+        continue;
+      policy.has_tracks = 1;
+      if (id != NULL && id[0] != '\0') {
+        if (policy.single_id == NULL)
+          policy.single_id = id;
+        else if (strcmp(policy.single_id, id) != 0)
+          policy.multiple_tracks = 1;
+      }
+      if (candidate.audio_is_original) {
+        policy.has_original = 1;
+        if (policy.original_id == NULL && id != NULL && id[0] != '\0')
+          policy.original_id = id;
+      }
+    }
+  }
+  return policy;
+}
+
+static int audio_allowed(const YTFormatCandidate *candidate,
+                          const YTAudioPolicy *policy) {
+  if (candidate->audio_is_alternate)
+    return 0;
+  if (policy->has_original)
+    return candidate->audio_is_original ||
+        (candidate->audio_track_id != NULL && policy->original_id != NULL &&
+         strcmp(candidate->audio_track_id, policy->original_id) == 0);
+  if (!policy->has_tracks)
+    return 1; /* Legacy, single-track responses have no audioTrack metadata. */
+  return !policy->multiple_tracks && policy->single_id != NULL &&
+      candidate->audio_track_id != NULL &&
+      strcmp(candidate->audio_track_id, policy->single_id) == 0;
+}
 
 typedef struct {
   int itags[2];
@@ -292,6 +389,7 @@ static int read_format_candidate(cJSON *format, YTFormatCandidate *candidate) {
   candidate->audio_channels = json_integer(format, "audioChannels");
   candidate->is_drc = cJSON_IsTrue(
       cJSON_GetObjectItemCaseSensitive(format, "isDrc"));
+  read_audio_track(format, candidate);
   content_length = yt_json_string(format, "contentLength");
   candidate->content_length = parse_decimal(content_length);
   return 1;
@@ -494,6 +592,7 @@ static YTStatus inspect_progressive_mp4(cJSON *document, int max_height,
   cJSON *formats;
   cJSON *format;
   YTFormatCandidate current;
+  YTAudioPolicy policy = audio_policy(document);
 
   if (max_height <= 0)
     return YT_ERR_INVALID_RESPONSE;
@@ -509,7 +608,8 @@ static YTStatus inspect_progressive_mp4(cJSON *document, int max_height,
       format_candidate_free(&current);
       continue;
     }
-    if (current.height <= 0 || current.height > max_height) {
+    if (current.height <= 0 || current.height > max_height ||
+        !audio_allowed(&current, &policy)) {
       format_candidate_free(&current);
       continue;
     }
@@ -542,6 +642,8 @@ static int adaptive_video_is_better(const YTFormatCandidate *candidate,
 
 static int adaptive_audio_is_better(const YTFormatCandidate *candidate,
                                     const YTFormatCandidate *selected) {
+  if (selected->url != NULL && candidate->is_drc != selected->is_drc)
+    return !candidate->is_drc;
   return selected->url == NULL || candidate->bitrate > selected->bitrate;
 }
 
@@ -552,6 +654,7 @@ static YTStatus inspect_adaptive_mp4(cJSON *document, int max_height,
   cJSON *formats;
   cJSON *format;
   YTFormatCandidate current;
+  YTAudioPolicy policy = audio_policy(document);
 
   if (max_height != 720 && max_height != 1080)
     return YT_ERR_INVALID_RESPONSE;
@@ -576,7 +679,7 @@ static YTStatus inspect_adaptive_mp4(cJSON *document, int max_height,
       }
     } else if (strncmp(current.mime_type, "audio/mp4", 9) == 0 &&
                mime_has_codec(current.mime_type, "mp4a.40.2") &&
-               current.audio_channels <= 2) {
+               current.audio_channels <= 2 && audio_allowed(&current, &policy)) {
       if (adaptive_audio_is_better(&current, audio)) {
         format_candidate_free(audio);
         *audio = current;
@@ -601,6 +704,19 @@ static YTStatus finish_candidate(const YTFormatCandidate *candidate,
   result->mime_type = yt_copy_string(candidate->mime_type);
   result->user_agent = yt_copy_string(client == NULL ? YT_USER_AGENT :
                                                     client->user_agent);
+  if (candidate->audio_track_id != NULL &&
+      candidate->audio_track_id[0] != '\0' &&
+      candidate->audio_track_id[0] != '.') {
+    char *separator;
+    result->audio_language = yt_copy_string(candidate->audio_track_id);
+    if (result->audio_language == NULL) {
+      yt_media_request_free(result);
+      return YT_ERR_OUT_OF_MEMORY;
+    }
+    separator = strchr(result->audio_language, '.');
+    if (separator != NULL)
+      *separator = '\0';
+  }
   if (result->url == NULL || result->mime_type == NULL ||
       result->user_agent == NULL) {
     yt_media_request_free(result);
@@ -788,6 +904,7 @@ static YTStatus find_exact_candidate(cJSON *document, int itag,
   cJSON *format;
   YTFormatCandidate candidate;
   int adaptive;
+  YTAudioPolicy policy = audio_policy(document);
   memset(selected, 0, sizeof(*selected));
   streaming_data = cJSON_GetObjectItemCaseSensitive(document, "streamingData");
   for (adaptive = 0; adaptive <= 1; ++adaptive) {
@@ -808,7 +925,8 @@ static YTStatus find_exact_candidate(cJSON *document, int itag,
       }
       if (candidate.has_video != want_video ||
           candidate.has_audio != want_audio ||
-          !candidate_supported(&candidate)) {
+          !candidate_supported(&candidate) ||
+          (want_audio && !audio_allowed(&candidate, &policy))) {
         format_candidate_free(&candidate);
         continue;
       }

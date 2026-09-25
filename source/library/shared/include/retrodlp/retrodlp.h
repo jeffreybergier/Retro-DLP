@@ -249,6 +249,9 @@ RDLP_API int rdlp_selection_media_fps(const rdlp_selection *selection,
                                       size_t media_index);
 RDLP_API int rdlp_selection_media_audio_channels(
     const rdlp_selection *selection, size_t media_index);
+/* Borrowed YouTube language tag (e.g. en or pt-BR), or NULL when unknown. */
+RDLP_API const char *rdlp_selection_media_audio_language(
+    const rdlp_selection *selection, size_t media_index);
 RDLP_API size_t rdlp_selection_media_header_count(
     const rdlp_selection *selection, size_t media_index);
 RDLP_API const rdlp_http_header *rdlp_selection_media_header(

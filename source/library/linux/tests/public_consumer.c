@@ -204,6 +204,7 @@ static rdlp_error_code fixture_send(void *opaque,
       "\"formats\":[{\"itag\":18,"
       "\"url\":\"https://fixture.googlevideo.com/media?expire=1900000000\","
       "\"mimeType\":\"video/mp4; codecs=\\\"avc1.42001E, mp4a.40.2\\\"\","
+      "\"audioTrack\":{\"id\":\"ja.4\",\"displayName\":\"Japanese original\"},"
       "\"width\":640,\"height\":360,\"contentLength\":\"1234\"}]}}";
   fixture_state *state = (fixture_state *)opaque;
   const char *data;
@@ -616,6 +617,10 @@ int main(void) {
       rdlp_selection_media_count(selection) == 1 &&
       rdlp_selection_media_itag(selection, 0) == 18 &&
       rdlp_selection_media_height(selection, 0) == 360 &&
+      rdlp_selection_media_audio_language(selection, 0) != NULL &&
+      strcmp(rdlp_selection_media_audio_language(selection, 0), "ja") == 0 &&
+      rdlp_selection_media_audio_language(selection, 1) == NULL &&
+      rdlp_selection_media_audio_language(NULL, 0) == NULL &&
       rdlp_selection_media_header_count(selection, 0) == 1 &&
       rdlp_selection_format_count(selection) == 1 &&
       rdlp_selection_format_itag(selection, 0) == 18 &&

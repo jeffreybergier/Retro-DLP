@@ -446,6 +446,7 @@ rdlp_error_code rdlp_download_selection(
   }
   emit_event(options, RDLP_DOWNLOAD_EVENT_MUXING, destination, 0U, 0U);
   internal_status = yt_mux_mp4_tracks(video_path, audio_path, destination,
+                                      rdlp_selection_media_audio_language(selection, 1),
                                       &final_bytes, mux_cancelled,
                                       (void *)options);
   if (internal_status != YT_OK) {

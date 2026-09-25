@@ -348,6 +348,7 @@ void yt_media_request_free(YTMediaRequest *media) {
   free(media->url);
   free(media->mime_type);
   free(media->user_agent);
+  free(media->audio_language);
   memset(media, 0, sizeof(*media));
 }
 

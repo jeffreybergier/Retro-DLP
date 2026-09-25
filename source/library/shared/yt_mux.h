@@ -8,7 +8,8 @@
 typedef int (*YTMuxCancelCallback)(void *opaque);
 
 YTStatus yt_mux_mp4_tracks(const char *video_path, const char *audio_path,
-                           const char *destination, int64_t *bytes_written,
+                           const char *destination, const char *audio_language,
+                           int64_t *bytes_written,
                            YTMuxCancelCallback cancel_callback,
                            void *cancel_opaque);
 

@@ -792,6 +792,11 @@ int rdlp_selection_media_audio_channels(const rdlp_selection *selection,
   const YTMediaRequest *media = media_at(selection, media_index);
   return media == NULL ? 0 : media->audio_channels;
 }
+const char *rdlp_selection_media_audio_language(const rdlp_selection *selection,
+                                               size_t media_index) {
+  const YTMediaRequest *media = media_at(selection, media_index);
+  return media == NULL ? NULL : media->audio_language;
+}
 size_t rdlp_selection_media_header_count(const rdlp_selection *selection,
                                          size_t media_index) {
   return media_at(selection, media_index) == NULL

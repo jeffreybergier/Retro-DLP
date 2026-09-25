@@ -25,6 +25,7 @@ CORE_SOURCES := source/library/shared/retrodlp.c \
 DOWNLOAD_SOURCES := source/library/shared/retrodlp_download.c source/library/shared/yt_mux.c
 SHARED_SOURCES := $(CLI_SOURCES) $(CORE_SOURCES) $(DOWNLOAD_SOURCES)
 TEST_SOURCES := \
+	source/library/shared/tests/audio_track_test.c \
 	source/library/shared/tests/allocation_test.c source/library/shared/tests/cache_test.c \
 	source/library/shared/tests/cookie_test.c \
 	source/library/shared/tests/ejs_test.c source/library/shared/tests/ejs_test_data.c \

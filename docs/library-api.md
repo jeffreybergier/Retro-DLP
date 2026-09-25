@@ -162,10 +162,22 @@ assume the only header is `User-Agent`.
 
 Selection accessors expose the video ID, title, selected format expression,
 adaptive flag, and media count. Per-media accessors expose URL, MIME type,
-itag, dimensions, content length, frame rate, audio channel count, and headers.
+itag, dimensions, content length, frame rate, audio channel count, language, and headers.
+`rdlp_selection_media_audio_language` returns the selected YouTube language tag
+(for example `ja` or `pt-BR`), or `NULL` when unknown or the index is invalid.
+The string is borrowed until the selection is destroyed.
 When `include_format_inventory` was nonzero, the format accessors expose each
 format's itag, MIME type, dimensions, frame rate, video/audio presence, and
 whether Retro-DLP supports it.
+
+Both exact and automatic selection use original audio identity before DRC,
+URL challenges, or bitrate. The default track is not assumed to be original.
+An original identified in an unsupported codec or without a usable URL prevents
+fallback to a dub. Ambiguous multilingual responses without an original marker
+return `RDLP_ERROR_FORMAT_UNAVAILABLE`; untagged variants are also rejected when
+the response identifies other audio tracks. Responses with no track metadata,
+or a single non-alternate track ID, retain single-track behavior. The format
+inventory remains grouped by itag and reports codec support, not audio eligibility.
 
 Playlist accessors expose ID, title, and ordered entries, preserving duplicate
 video occurrences. Each entry has its service index, video ID, and title.
@@ -302,6 +314,12 @@ source tracks if muxing fails. Download events, cancellation, timeouts, and CA
 configuration are supplied through `rdlp_download_options`. The component does
 not write to stdout or stderr.
 
+Adaptive muxing sets the audio track's standard MP4 language field using the
+selected language, mapped to ISO 639-2/T (`en` to `eng`, `ja` to `jpn`). Regional
+subtags reduce to the base language (`pt-BR` to `por`); absent or unrecognized
+codes use `und`. This changes metadata without re-encoding. Progressive downloads
+pass through the source file and its existing metadata unchanged.
+
 Cancellation is checked before and during transfers, before muxing, and while
 samples are being muxed. Cancelling or failing during adaptive muxing retains
 the downloaded audio and video tracks and reports that fact through
@@ -349,7 +367,7 @@ methods are `RDLP_HTTP_GET`, `RDLP_HTTP_POST`, and `RDLP_HTTP_HEAD`.
 | Validation | `rdlp_parse_video_id`, `rdlp_parse_playlist_id`, `rdlp_format_expression_valid`, `rdlp_is_playlist_collection_input` |
 | Operations | `rdlp_resolve_video`, `rdlp_list_playlist`, `rdlp_list_playlist_collection`, `rdlp_download_selection` |
 | Selection identity | `rdlp_selection_destroy`, `rdlp_selection_video_id`, `rdlp_selection_title`, `rdlp_selection_format_id`, `rdlp_selection_is_adaptive` |
-| Selected media | `rdlp_selection_media_count`, `rdlp_selection_media_url`, `rdlp_selection_media_mime_type`, `rdlp_selection_media_itag`, `rdlp_selection_media_width`, `rdlp_selection_media_height`, `rdlp_selection_media_content_length`, `rdlp_selection_media_fps`, `rdlp_selection_media_audio_channels`, `rdlp_selection_media_header_count`, `rdlp_selection_media_header` |
+| Selected media | `rdlp_selection_media_count`, `rdlp_selection_media_url`, `rdlp_selection_media_mime_type`, `rdlp_selection_media_itag`, `rdlp_selection_media_width`, `rdlp_selection_media_height`, `rdlp_selection_media_content_length`, `rdlp_selection_media_fps`, `rdlp_selection_media_audio_channels`, `rdlp_selection_media_audio_language`, `rdlp_selection_media_header_count`, `rdlp_selection_media_header` |
 | Format inventory | `rdlp_selection_format_count`, `rdlp_selection_format_itag`, `rdlp_selection_format_mime_type`, `rdlp_selection_format_width`, `rdlp_selection_format_height`, `rdlp_selection_format_fps`, `rdlp_selection_format_has_video`, `rdlp_selection_format_has_audio`, `rdlp_selection_format_is_supported` |
 | Playlist | `rdlp_playlist_destroy`, `rdlp_playlist_id`, `rdlp_playlist_title`, `rdlp_playlist_entry_count`, `rdlp_playlist_entry_video_id`, `rdlp_playlist_entry_title`, `rdlp_playlist_entry_index` |
 | Optional playlist metadata | `rdlp_playlist_entry_duration`, `rdlp_playlist_entry_channel`, `rdlp_playlist_entry_channel_id`, `rdlp_playlist_entry_thumbnail_count`, `rdlp_playlist_entry_thumbnail_url`, `rdlp_playlist_entry_view_count`, `rdlp_playlist_entry_view_count_text`, `rdlp_playlist_entry_published_text`, `rdlp_playlist_entry_description_snippet` |

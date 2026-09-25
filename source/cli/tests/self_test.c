@@ -23,6 +23,7 @@
 #include "../../library/shared/tests/yt_formats_test_support.h"
 
 int retro_dlp_run_playlist_metadata_tests(void);
+int retro_dlp_run_audio_track_tests(void);
 
 #define SELF_TEST_VIDEO_ID "YE7VzlLtp-4"
 
@@ -695,6 +696,8 @@ int retro_dlp_run_self_tests(void) {
   failures += test_cjson();
   announce_test("deterministic player fixtures");
   failures += test_offline_player_fixtures();
+  announce_test("original audio and MP4 language fixtures");
+  failures += retro_dlp_run_audio_track_tests();
   announce_test("QuickJS evaluation");
   failures += test_quickjs();
   announce_test("cache and SHA-256 fixtures");
