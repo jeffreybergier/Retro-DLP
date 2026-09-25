@@ -9,6 +9,8 @@
 { return [model_ sectionsForScreen:RDLPScreenPlaylist playlist:playlist_ video:nil collapsed:nil]; }
 - (BOOL)containsEntryForRetry:(NSDictionary *)entry;
 { return [library_ playlist:[playlist_ objectForKey:@"id"] containsVideo:[entry objectForKey:@"video_id"]]; }
+- (void)playJob:(NSDictionary *)job entry:(NSDictionary *)entry;
+{ [RDLPUIKit presentPlayer:self library:library_ playlist:[playlist_ objectForKey:@"id"] entry:entry job:job]; }
 - (NSString *)downloadFormatForJob:(NSDictionary *)job;
 {
   /* A deliberately deleted download is a new request from the playlist.

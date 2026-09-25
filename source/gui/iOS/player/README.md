@@ -1,7 +1,8 @@
 # RDLP Player
 
-A manually reference-counted iOS 5+ player UI and playlist queue, now used by
-the app for downloaded-video playback.
+A self-contained, manually reference-counted iOS 5+ player UI and playlist queue.
+The code in this folder depends only on Apple frameworks and its bundled artwork;
+it does not import app code or know about the library, download jobs, or database.
 
 `RDLPPlayerViewController.h` and `RDLPPlayerQueue.h` are the public APIs.
 `RDLPPlayerControls` is an internal view. An internal UIView subclass in the
@@ -64,12 +65,20 @@ advancement, and audio-only track handling do not require library integration.
 
 ## Downloaded-video integration
 
-`RDLPDownloadedPlayerViewController` is the small app-specific adapter. All
+[`RDLPDownloadedPlayerViewController`](../RDLPDownloadedPlayerViewController.h),
+outside this folder, is the app-specific adapter. All
 library, playlist, and download-list Play actions present it through RDLPUIKit.
-It owns a one-item queue containing precisely the tapped download's URL, restores
-the saved position, then starts playback. Previous/next are disabled and the
-playlist button is hidden. Audio Only updates both the presentation and video
-tracks; Show Video restores them without replacing the item.
+Playlist-row taps create a snapshot of all available downloads in playlist
+order, select the tapped occurrence, restore its bookmark, then autoplay. Missing
+files and unfinished downloads are excluded. Each occurrence uses the same newest
+available quality as its library row, with the tapped row's exact job preserved.
+Repeated entries stay distinct. All Downloads and individual-video Play actions
+still start one-item queues. The playlist button remains hidden for this round.
+Previous/next buttons and remote track commands navigate the queue, preserving
+play/pause state. Natural completion advances and restores the following video's
+bookmark before continuing; the last item stops without wrapping.
+Audio Only updates both the presentation and video tracks; Show Video restores
+them without replacing the item. Audio-only mode survives item changes.
 
 The adapter configures the playback audio session, receives iOS 5 remote-control
 events, handles interruptions, and publishes Now Playing metadata. It saves
@@ -81,13 +90,15 @@ The reusable view detaches its video
 layer before backgrounding so audio can continue with Home or device lock.
 Done saves progress, stops playback, removes the checkpoint observer,
 clears metadata, and deactivates the audio session. A replacement stops the prior
-session. The adapter intentionally supports one downloaded job; future multi-job
-playlists will also need per-item metadata and bookmark switching here.
+session. Each item transition flushes the outgoing bookmark, switches observers
+and metadata, then restores the new item's bookmark. Late notifications and seek
+completions from a previous item cannot overwrite the current item's state.
 
 The app Makefile compiles all four classes and packages `RDLPPlayer.bundle`.
 `python3 source/gui/iOS/tests/build_ios_ui_test.py` builds offline device tests of
-this adapter after `make app-iOS`, including real-file resume, controls, audio-only
-tracks, remote events, interruption handling, and teardown.
+this adapter after `make app-iOS`, including playlist filtering/order/duplicates,
+per-item resume, natural advancement, rapid skips, controls, audio-only tracks,
+remote events, interruption handling, and teardown.
 
 ## Connecting the two reusable components
 

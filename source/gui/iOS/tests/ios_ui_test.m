@@ -182,6 +182,61 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
   [controller release];
   [library shutdown]; [library release];
 }
+static void testPlaylistSelection(UIWindow *window,NSString *directory) {
+  [[NSFileManager defaultManager] removeItemAtPath:directory error:NULL];
+  NSString *support=[directory stringByAppendingPathComponent:@"Support"], *downloads=[directory stringByAppendingPathComponent:@"Downloads"];
+  RDLPLibrary *library=[[RDLPOfflineLibrary alloc] initWithSupportDirectory:support downloadDirectory:downloads];
+  rdapp_store *store=NULL; int64_t key=0;
+  require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open playlist playback fixture");
+  rdapp_entry entries[]={
+    {.video_id="AAAAAAAAAAA",.title="First",.position=0},
+    {.video_id="CCCCCCCCCCC",.title="Missing file",.position=1},
+    {.video_id="BBBBBBBBBBB",.title="Second",.position=2},
+    {.video_id="AAAAAAAAAAA",.title="Repeated first",.position=3},
+    {.video_id="DDDDDDDDDDD",.title="Queued",.position=4},
+    {.video_id="EEEEEEEEEEE",.title="Not downloaded",.position=5}};
+  require(rdapp_store_snapshot(store,"PLplayback","Playback playlist",entries,6,&key) &&
+    rdapp_store_enqueue(store,key,"AAAAAAAAAAA","18") &&
+    rdapp_store_enqueue(store,key,"AAAAAAAAAAA","137+140") &&
+    rdapp_store_enqueue(store,key,"BBBBBBBBBBB","18") &&
+    rdapp_store_enqueue(store,key,"CCCCCCCCCCC","18"),@"Create playlist, duplicate entry, and multiple download qualities");
+  for(NSUInteger i=0;i<4;++i) require(rdapp_store_claim(store,NULL,NULL),@"Assign fixture paths");
+  NSString *pid=[NSString stringWithFormat:@"%lld",(long long)key];
+  NSString *fixture=[[NSBundle mainBundle] pathForResource:@"playback-fixture" ofType:@"mp4"];
+  for(NSDictionary *job in [library jobsForPlaylist:pid completedOnly:NO]) {
+    if([[job objectForKey:@"format"] isEqualToString:@"18"] && ![[job objectForKey:@"video_id"] isEqualToString:@"CCCCCCCCCCC"]) {
+      NSString *path=[library fileForJob:job];
+      require(rdapp_make_directory([[path stringByDeletingLastPathComponent] fileSystemRepresentation]) &&
+        [[NSFileManager defaultManager] copyItemAtPath:fixture toPath:path error:NULL],@"Write available playback fixture");
+    }
+    require(rdapp_store_finish(store,[[job objectForKey:@"id"] longLongValue],"complete",[[job objectForKey:@"format"] UTF8String],""),@"Complete fixture job, including deliberately missing files");
+  }
+  require(rdapp_store_enqueue(store,key,"DDDDDDDDDDD","18"),@"Queued video must not enter the playback queue");
+  rdapp_store_close(store);
+  [library savePlaybackSeconds:12 forVideo:@"AAAAAAAAAAA"];
+  [library savePlaybackSeconds:24 forVideo:@"BBBBBBBBBBB"];
+  RDLPPlaylistViewController *list=[[RDLPPlaylistViewController alloc] initWithLibrary:library playlist:[library playlistForID:pid]];
+  UIViewController *previous=[window.rootViewController retain];
+  UINavigationController *navigation=[[UINavigationController alloc] initWithRootViewController:list];
+  window.rootViewController=navigation; pump();
+  [list tableView:list.tableView didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:3 inSection:0]];
+  pump(); pump();
+  RDLPDownloadedPlayerViewController *player=(id)list.presentedViewController;
+  require([player isKindOfClass:[RDLPDownloadedPlayerViewController class]],@"Playlist row presents the downloaded player");
+  playbackWait(player);
+  NSURL *first=[NSURL fileURLWithPath:[library fileForJob:[library jobForPlaylist:pid video:@"AAAAAAAAAAA" format:@"18"]]];
+  NSURL *second=[NSURL fileURLWithPath:[library fileForJob:[library jobForPlaylist:pid video:@"BBBBBBBBBBB" format:@"18"]]];
+  require([player.queue.playlist isEqualToArray:[NSArray arrayWithObjects:first,second,first,nil]] && player.queue.currentIndex==2,@"Available files retain playlist order and the tapped duplicate's exact index; missing/newer quality, queued and undownloaded entries are excluded");
+  require(player.player.rate==1 && fabs(CMTimeGetSeconds(player.player.currentTime)-12)<2,@"Tapped duplicate restores its bookmark and autoplays");
+  RDLPPlayerControls *controls=[player valueForKey:@"controls"];
+  require(controls.previousButton.enabled && !controls.nextButton.enabled,@"Transport availability reflects the selected playlist index");
+  [controls.previousButton sendActionsForControlEvents:UIControlEventTouchUpInside]; playbackWait(player);
+  require(player.queue.currentIndex==1 && player.player.rate==1 && fabs(CMTimeGetSeconds(player.player.currentTime)-24)<1,@"Visible Previous button selects the preceding available video and restores its bookmark");
+  screenshot(window,[directory stringByAppendingPathComponent:@"playlist-player.png"]);
+  [list dismissViewControllerAnimated:NO completion:nil]; pump();
+  window.rootViewController=previous; [previous release]; [navigation release]; [list release];
+  [library shutdown]; [library release];
+}
 static void testDeletedDownloadQuality(NSString *directory) {
   [[NSFileManager defaultManager] removeItemAtPath:directory error:NULL];
   NSString *support=[directory stringByAppendingPathComponent:@"Support"], *downloads=[directory stringByAppendingPathComponent:@"Downloads"];
@@ -333,10 +388,12 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   @try {
     testIOSPlaybackWrites([documents_ stringByAppendingPathComponent:@"PlaybackWrites"]);
     testIOSPlaybackProgress([documents_ stringByAppendingPathComponent:@"PlaybackFixture"]);
+    testIOSPlaylistPlayback([documents_ stringByAppendingPathComponent:@"PlaylistPlayback"]);
+    testPlaylistSelection(window_,[documents_ stringByAppendingPathComponent:@"PlaylistSelection"]);
     testIOSNowPlaying([documents_ stringByAppendingPathComponent:@"NowPlaying"]);
     testDownloadedPlayback(window_,[documents_ stringByAppendingPathComponent:@"NativePlayback"]);
     if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestPlaybackOnly"] boolValue]) {
-      [@"PASS: one-item autoplay, Now Playing, transport, audio-only, seeks and cleanup; nonblocking checkpoint writes, paused/background saves, debounce, database reopen, and first/last ten-percent reset" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [@"PASS: playlist filtering/order/duplicates, per-video resume, automatic advancement, rapid navigation, Now Playing, audio-only, autoplay, debounced paused/background checkpoints, and first/last ten-percent reset" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
       return;
     }
     testDeletedDownloadQuality([documents_ stringByAppendingPathComponent:@"DeletedQuality"]);

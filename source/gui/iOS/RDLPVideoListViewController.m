@@ -54,6 +54,8 @@
 - (BOOL)containsEntryForRetry:(NSDictionary *)entry; { (void)entry; return YES; }
 - (NSString *)downloadFormatForJob:(NSDictionary *)job;
 { return job?[job objectForKey:@"format"]:[RDLPLibrary preferredFormat]; }
+- (void)playJob:(NSDictionary *)job entry:(NSDictionary *)entry;
+{ (void)entry; [RDLPUIKit presentPlayer:self library:library_ job:job]; }
 - (BOOL)shouldHideToolbar;
 {
   NSString *status=[library_ status];
@@ -192,7 +194,7 @@
   if(job && ![format isEqualToString:[job objectForKey:@"format"]])
     job=[model_ jobForPlaylist:pid video:[entry objectForKey:@"video_id"] format:format];
   if([policy_ playable:job]) {
-    [RDLPUIKit presentPlayer:self library:library_ job:job]; return;
+    [self playJob:job entry:entry]; return;
   }
   if([policy_ canCancel:job]) return;
   NSString *status=[policy_ statusForJob:job];

@@ -1,7 +1,8 @@
 APP_NAME = RetroDLP
 SOURCES = main.m RDLPLibrary+iOS.m RDLPAppDelegate.m RDLPLibraryViewController.m RDLPLibraryActions.m RDLPLibrarySections.m RDLPUIKit.m RDLPDownloadPolicy.m RDLPStatusBarView.m RDLPSettingsViewController.m RDLPPlaylistsViewController.m RDLPPlaylistViewController.m RDLPVideoListViewController.m RDLPDownloadsViewController.m RDLPQueueViewController.m
 SHARED_DIR = ../shared
-SOURCES += RDLPPlayerControls.m RDLPPlayerViewController.m RDLPPlayerQueue.m RDLPDownloadedPlayerViewController.m
+SOURCES += RDLPDownloadedPlayerViewController.m
+SOURCES += RDLPPlayerControls.m RDLPPlayerViewController.m RDLPPlayerQueue.m
 SOURCE_DIRS = $(SHARED_DIR) player
 vpath %.c $(SHARED_DIR)
 vpath %.m $(SHARED_DIR) player

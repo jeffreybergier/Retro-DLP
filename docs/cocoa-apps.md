@@ -535,10 +535,19 @@ eligible to run. There is no global Pause control or indefinite background
 downloading.
 
 iOS downloaded-video playback uses `RDLPDownloadedPlayerViewController`, a small
-app adapter over `RDLPPlayerViewController` and `RDLPPlayerQueue`. Each Play
-or downloaded-row tap creates a one-item playlist for exactly that local file,
-restores its bookmark, then starts playback. Previous/next are disabled and the
-playlist button is hidden. Audio Only disables the item's video tracks and
+app adapter in `source/gui/iOS/`, over `RDLPPlayerViewController` and
+`RDLPPlayerQueue`. The reusable `source/gui/iOS/player/` folder has no app-code
+dependencies; library/job metadata and bookmark persistence stay in the adapter.
+A playlist-row
+tap queues all available downloaded entries in playlist order, selects the tapped
+occurrence, restores its bookmark, then autoplays. Missing files and unfinished
+downloads are excluded. Repeated entries remain distinct, and each entry uses its
+newest existing downloaded quality, with the tapped job preserved exactly.
+All Downloads and individual-video Play actions still create one-item queues.
+Previous/next buttons and remote track commands navigate the available entries.
+Automatic advancement restores each video's bookmark and updates Now Playing;
+the final item stops without wrapping. The playlist button remains hidden.
+Audio Only disables the item's video tracks and
 detaches the video layer; Show Video restores them without replacing the item.
 
 The app declares `UIBackgroundModes = audio` and activates

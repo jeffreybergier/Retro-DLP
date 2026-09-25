@@ -1,8 +1,9 @@
 #import "RDLPUIKit.h"
 #import "RDLPStatusBarView.h"
 #import "RDLPLibrary.h"
+#import "RDLPDownloadPolicy.h"
 #import <AIFontAwesome.h>
-#import "player/RDLPDownloadedPlayerViewController.h"
+#import "RDLPDownloadedPlayerViewController.h"
 #import <math.h>
 /* Keep raster pixels and UIImage.scale tied to the same display scale.
    AIFontAwesome also accepts zero for this, but the cache needs the resolved
@@ -104,6 +105,41 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   if(!path || ![[NSFileManager defaultManager] fileExistsAtPath:path]) { [self showMessage:@"The downloaded file is missing. Retry its download from Queue."]; return; }
   RDLPDownloadedPlayerViewController *controller=[[RDLPDownloadedPlayerViewController alloc]
     initWithLibrary:library job:job URL:[NSURL fileURLWithPath:path]];
+  [owner presentViewController:controller animated:YES completion:nil]; [controller release];
+}
++ (void)presentPlayer:(UIViewController *)owner library:(RDLPLibrary *)library playlist:(NSString *)playlist entry:(NSDictionary *)entry job:(NSDictionary *)selectedJob;
+{
+  RDLPDownloadPolicy *policy=[[[RDLPDownloadPolicy alloc] initWithLibrary:library] autorelease];
+  NSDictionary *selectedFile=[policy localFileForJob:selectedJob];
+  if(!selectedFile) { [self showMessage:@"The downloaded file is missing. Retry its download from Queue."]; return; }
+  /* Query completed jobs once, newest first, instead of querying every entry.
+   * Keep the same representative-quality policy as the playlist's rows. */
+  NSMutableDictionary *jobsByVideo=[NSMutableDictionary dictionary], *URLsByVideo=[NSMutableDictionary dictionary];
+  for(NSDictionary *job in [library jobsForPlaylist:playlist completedOnly:YES]) {
+    NSString *video=[job objectForKey:@"video_id"];
+    if([jobsByVideo objectForKey:video]) continue;
+    NSDictionary *file=[policy localFileForJob:job];
+    if(!file) continue;
+    [jobsByVideo setObject:job forKey:video];
+    [URLsByVideo setObject:[NSURL fileURLWithPath:[file objectForKey:@"path"]] forKey:video];
+  }
+  NSMutableArray *jobs=[NSMutableArray array], *URLs=[NSMutableArray array];
+  NSUInteger selected=NSNotFound;
+  for(NSDictionary *candidate in [library entriesForPlaylist:playlist]) {
+    NSString *video=[candidate objectForKey:@"video_id"];
+    BOOL tapped=[video isEqualToString:[entry objectForKey:@"video_id"]] &&
+      [[candidate objectForKey:@"position"] isEqual:[entry objectForKey:@"position"]];
+    NSDictionary *job=tapped?selectedJob:[jobsByVideo objectForKey:video];
+    if(!job) continue;
+    if(tapped) selected=jobs.count;
+    [jobs addObject:job];
+    [URLs addObject:tapped?[NSURL fileURLWithPath:[selectedFile objectForKey:@"path"]]:[URLsByVideo objectForKey:video]];
+  }
+  /* A sync may remove/reorder the tapped occurrence while the list is visible.
+   * In that case play the exact tapped file rather than selecting a different row. */
+  if(selected==NSNotFound) { [self presentPlayer:owner library:library job:selectedJob]; return; }
+  RDLPDownloadedPlayerViewController *controller=[[RDLPDownloadedPlayerViewController alloc]
+    initWithLibrary:library jobs:jobs URLs:URLs startingAtIndex:selected];
   [owner presentViewController:controller animated:YES completion:nil]; [controller release];
 }
 + (UIBarButtonItem *)item:(NSString *)title target:(id)target action:(SEL)action;

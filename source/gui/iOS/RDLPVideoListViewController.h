@@ -17,6 +17,7 @@
 - (NSArray *)listSections;
 - (BOOL)containsEntryForRetry:(NSDictionary *)entry;
 - (NSString *)downloadFormatForJob:(NSDictionary *)job;
+- (void)playJob:(NSDictionary *)job entry:(NSDictionary *)entry;
 - (void)refresh:(id)sender;
 - (void)queue:(id)sender;
 - (void)configureAddVideoButton;
