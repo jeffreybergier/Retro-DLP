@@ -5,10 +5,13 @@
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
 
+/* UITextAlignment is required by the iOS 5 SDK/runtime. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
 @interface RDLPPlayerControls () {
   UIView *_topBar, *_bottomBar;
   UILabel *_elapsedLabel, *_durationLabel, *_messageLabel;
-  UIActivityIndicatorView *_spinner;
   MPVolumeView *_volumeView;
 }
 @end
@@ -93,10 +96,6 @@ static BOOL RDLPViewIsTracking(UIView *view) {
   _messageLabel.numberOfLines=2;
   _messageLabel.font=[UIFont systemFontOfSize:18];
   [self addSubview:_messageLabel];
-  _spinner=[[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhiteLarge];
-  _spinner.hidesWhenStopped=YES;
-  _spinner.userInteractionEnabled=NO;
-  [self addSubview:_spinner];
   [self setElapsedTime:0 duration:NAN];
   return self;
 }
@@ -106,7 +105,7 @@ static BOOL RDLPViewIsTracking(UIView *view) {
   [_doneButton release]; [_scaleButton release]; [_playButton release];
   [_previousButton release]; [_nextButton release]; [_playlistButton release]; [_audioButton release];
   [_elapsedLabel release]; [_durationLabel release]; [_slider release];
-  [_volumeView release]; [_messageLabel release]; [_spinner release];
+  [_volumeView release]; [_messageLabel release];
   [super dealloc];
 }
 
@@ -117,9 +116,8 @@ static BOOL RDLPViewIsTracking(UIView *view) {
   _slider.accessibilityValue=[NSString stringWithFormat:@"%@ of %@",current,total];
 }
 
-- (void)setMessage:(NSString *)message loading:(BOOL)loading {
+- (void)setMessage:(NSString *)message {
   _messageLabel.text=message;
-  if(loading) [_spinner startAnimating]; else [_spinner stopAnimating];
 }
 
 - (void)setChromeVisible:(BOOL)visible animated:(BOOL)animated {
@@ -169,6 +167,6 @@ static BOOL RDLPViewIsTracking(UIView *view) {
   _volumeView.frame=CGRectMake(volumeX,(barHeight-22)/2,MAX(0,volumeWidth),22);
   CGFloat messageHeight=MIN(60,MAX(0,height-2*barHeight));
   _messageLabel.frame=CGRectMake(20,(height-messageHeight)/2,MAX(0,width-40),messageHeight);
-  _spinner.center=CGPointMake(width/2,height/2);
 }
 @end
+#pragma clang diagnostic pop

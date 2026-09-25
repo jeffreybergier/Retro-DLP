@@ -1,9 +1,10 @@
 APP_NAME = RetroDLP
 SOURCES = main.m RDLPLibrary+iOS.m RDLPAppDelegate.m RDLPLibraryViewController.m RDLPLibraryActions.m RDLPLibrarySections.m RDLPUIKit.m RDLPDownloadPolicy.m RDLPStatusBarView.m RDLPSettingsViewController.m RDLPPlaylistsViewController.m RDLPPlaylistViewController.m RDLPVideoListViewController.m RDLPDownloadsViewController.m RDLPQueueViewController.m
 SHARED_DIR = ../shared
-SOURCE_DIRS = $(SHARED_DIR)
+SOURCES += RDLPPlayerControls.m RDLPPlayerViewController.m RDLPPlayerQueue.m RDLPDownloadedPlayerViewController.m
+SOURCE_DIRS = $(SHARED_DIR) player
 vpath %.c $(SHARED_DIR)
-vpath %.m $(SHARED_DIR)
+vpath %.m $(SHARED_DIR) player
 EXTRA_SOURCES = rdapp_store.c rdapp_service.c RDLPLibrary.m RDLPVideoRows.m RDLP_Foundation.m
 INFO_PLIST = Info.plist
 RES_DIR = Resources
@@ -18,15 +19,15 @@ EXTRA_FLAGS = -I$(SHARED_DIR) -I$(ROOT)/source/library/shared/include
 PHONE_LDID_SIGN ?= 1
 PHONE_LDID_ENTITLEMENTS = Entitlements.plist
 include /altivec/altivec_common_phone.mk
-IOS_FRAMEWORKS := $(ROOT)/build/iOS/libretrodlp-download.a $(ROOT)/build/iOS/libretrodlp.a $(IOS_FRAMEWORKS) $(ALTIVECCORE_DIR)/lib/libcrypto.a -framework CoreFoundation -framework SystemConfiguration -framework Security -framework MediaPlayer -framework AVFoundation
-EXTRA_BUNDLE_STEPS = @set -e; cp $(ALTIVECCORE_DIR)/lib/cacert.pem $@/cacert.pem; cp -R $(ROOT)/build/apps/resources/ejs $@/; chmod 755 $@/ejs; chmod 644 $@/ejs/*; touch "$@"
+IOS_FRAMEWORKS := $(ROOT)/build/iOS/libretrodlp-download.a $(ROOT)/build/iOS/libretrodlp.a $(IOS_FRAMEWORKS) $(ALTIVECCORE_DIR)/lib/libcrypto.a -framework CoreFoundation -framework SystemConfiguration -framework Security -framework MediaPlayer -framework AVFoundation -framework CoreMedia -framework QuartzCore
+EXTRA_BUNDLE_STEPS = @set -e; cp $(ALTIVECCORE_DIR)/lib/cacert.pem $@/cacert.pem; cp -R $(ROOT)/build/apps/resources/ejs $@/; cp -R player/RDLPPlayer.bundle $@/; chmod 755 $@/ejs; chmod 644 $@/ejs/*; touch "$@"
 
 .DEFAULT_GOAL := app
 # The installed engine's IPA recipe assumes relative paths; package explicitly
 # so all app artifacts remain under the repository build directory.
 app: validate $(APP_BUNDLE)
 	@python3 package_ipa.py $(APP_BUNDLE) $(BUILD_DIR)/RetroDLP.ipa
-$(APP_BUNDLE): Info.plist Makefile $(wildcard $(RES_DIR)/*.png) $(ALTIVECCORE_DIR)/lib/cacert.pem $(wildcard $(ROOT)/build/apps/resources/ejs/*)
+$(APP_BUNDLE): Info.plist Makefile $(wildcard $(RES_DIR)/*.png player/RDLPPlayer.bundle/*) $(ALTIVECCORE_DIR)/lib/cacert.pem $(wildcard $(ROOT)/build/apps/resources/ejs/*)
 $(INT_DIR)/$(APP_NAME)-bin: $(ROOT)/build/iOS/libretrodlp-download.a $(ROOT)/build/iOS/libretrodlp.a
-$(OBJS): $(wildcard *.h $(SHARED_DIR)/*.h)
+$(OBJS): $(wildcard *.h player/*.h $(SHARED_DIR)/*.h)
 .PHONY: app

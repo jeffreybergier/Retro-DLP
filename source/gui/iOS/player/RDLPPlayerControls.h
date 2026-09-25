@@ -12,7 +12,7 @@
 @property(nonatomic,readonly) UIButton *scaleButton;
 @property(nonatomic,readonly) UISlider *slider;
 - (void)setElapsedTime:(double)elapsed duration:(double)duration;
-- (void)setMessage:(NSString *)message loading:(BOOL)loading;
+- (void)setMessage:(NSString *)message;
 - (void)setChromeVisible:(BOOL)visible animated:(BOOL)animated;
 - (BOOL)isTracking;
 @end

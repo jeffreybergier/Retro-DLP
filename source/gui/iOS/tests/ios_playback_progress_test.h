@@ -1,18 +1,30 @@
-/* Exercise foreground checkpoint policy and SQLite persistence with controlled
-   legacy player readings during seeks, pauses, and app lifecycle changes. */
-@interface RDLPPlaybackProgress : UIViewController
-- (id)initWithLibrary:(RDLPLibrary *)library video:(NSString *)video movie:(MPMoviePlayerController *)movie;
-- (void)preparePlayback;
-- (void)saveProgress:(id)sender;
-- (void)configureNowPlayingWithJob:(NSDictionary *)job;
-- (void)updateNowPlaying:(id)sender;
+/* Device regressions use real AVFoundation items and an isolated SQLite store. */
+#import "../player/RDLPDownloadedPlayerViewController.h"
+#import "../player/RDLPPlayerControls.h"
+@interface RDLPDownloadedPlayerViewController (Testing)
+- (void)saveProgress;
+- (void)updateNowPlaying;
 @end
-@interface RDLPPlaybackTestLibrary : NSObject { rdapp_store *store_; }
+@interface RDLPPlaybackTestEvent : UIEvent { UIEventSubtype _subtype; }
+- (id)initWithSubtype:(UIEventSubtype)subtype;
+@end
+@implementation RDLPPlaybackTestEvent
+- (id)initWithSubtype:(UIEventSubtype)subtype { self=[super init]; if(self) _subtype=subtype; return self; }
+- (UIEventType)type { return UIEventTypeRemoteControl; }
+- (UIEventSubtype)subtype { return _subtype; }
+@end
+static void playbackRemote(RDLPDownloadedPlayerViewController *controller,UIEventSubtype subtype) {
+  RDLPPlaybackTestEvent *event=[[RDLPPlaybackTestEvent alloc] initWithSubtype:subtype];
+  [controller remoteControlReceivedWithEvent:event]; [event release];
+}
+@interface RDLPPlaybackTestLibrary : NSObject { rdapp_store *store_; NSUInteger _writes; }
+@property(nonatomic,readonly) NSUInteger writes;
 - (id)initWithPath:(NSString *)path;
 - (double)playbackSecondsForVideo:(NSString *)video;
 - (void)savePlaybackSeconds:(double)seconds forVideo:(NSString *)video;
 @end
 @implementation RDLPPlaybackTestLibrary
+@synthesize writes=_writes;
 - (id)initWithPath:(NSString *)path;
 {
   self=[super init]; if(!self) return nil;
@@ -33,53 +45,8 @@
 {
   if(!rdapp_store_save_playback_seconds(store_,[video UTF8String],seconds))
     [NSException raise:@"PlaybackTest" format:@"Save playback fixture"];
+  ++_writes;
 }
-@end
-@interface RDLPPlaybackTestSlider : UISlider { BOOL testTracking_; }
-@property(nonatomic) BOOL testTracking;
-@end
-@implementation RDLPPlaybackTestSlider
-@synthesize testTracking=testTracking_;
-- (BOOL)isTracking; { return testTracking_; }
-@end
-@interface RDLPPlaybackTestMovie : NSObject {
-  double time_, initial_;
-  BOOL autoplay_, started_;
-  BOOL reentrantLoad_;
-  NSUInteger seeks_;
-  MPMoviePlaybackState state_;
-  UIView *view_;
-}
-@property(nonatomic,retain) UIView *view;
-@property(nonatomic) double currentPlaybackTime, initialPlaybackTime;
-@property(nonatomic) BOOL shouldAutoplay;
-@property(nonatomic) BOOL reentrantLoad;
-@property(nonatomic,readonly) NSUInteger seeks;
-@property(nonatomic) MPMoviePlaybackState playbackState;
-- (double)duration;
-- (float)currentPlaybackRate;
-- (MPMovieLoadState)loadState;
-- (void)play;
-- (void)notifyState;
-@end
-@implementation RDLPPlaybackTestMovie
-@synthesize view=view_;
-- (void)dealloc; { [view_ release]; [super dealloc]; }
-@synthesize initialPlaybackTime=initial_, shouldAutoplay=autoplay_, playbackState=state_, reentrantLoad=reentrantLoad_, seeks=seeks_;
-- (double)currentPlaybackTime; { return time_; }
-- (void)setCurrentPlaybackTime:(double)seconds;
-{
-  time_=seconds; ++seeks_;
-  if(reentrantLoad_ && seeks_<3)
-    [[NSNotificationCenter defaultCenter] postNotificationName:MPMoviePlayerLoadStateDidChangeNotification object:self];
-}
-- (double)duration; { return 120; }
-- (float)currentPlaybackRate; { return 1; }
-- (MPMovieLoadState)loadState; { return MPMovieLoadStatePlayable; }
-- (void)play;
-{ if(!started_) { time_=initial_; started_=YES; } state_=MPMoviePlaybackStatePlaying; [self notifyState]; }
-- (void)notifyState;
-{ [[NSNotificationCenter defaultCenter] postNotificationName:MPMoviePlayerPlaybackStateDidChangeNotification object:self]; }
 @end
 static void playbackRequire(BOOL condition,NSString *message) {
   if(!condition) [NSException raise:@"PlaybackTest" format:@"%@",message];
@@ -134,145 +101,124 @@ static void testIOSPlaybackWrites(NSString *directory) {
   rdapp_store_close(store);
   [library shutdown]; [library release];
 }
+static void playbackPump(void) {
+  [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+}
+static void playbackWait(RDLPDownloadedPlayerViewController *controller) {
+  NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:10];
+  while(![[controller valueForKey:@"ready"] boolValue] && [deadline timeIntervalSinceNow]>0) playbackPump();
+  playbackRequire([[controller valueForKey:@"ready"] boolValue],@"Local AVPlayer item and resume seek become ready");
+}
+static void playbackSeek(AVPlayer *player,double seconds) {
+  __block BOOL done=NO;
+  [player seekToTime:CMTimeMakeWithSeconds(seconds,600) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero
+    completionHandler:^(BOOL finished) { (void)finished; done=YES; }];
+  NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:5];
+  while(!done && [deadline timeIntervalSinceNow]>0) playbackPump();
+  playbackRequire(done,@"Fixture seek completes");
+}
+static RDLPDownloadedPlayerViewController *playbackController(RDLPPlaybackTestLibrary *library,NSDictionary *job) {
+  NSURL *URL=[[NSBundle mainBundle] URLForResource:@"playback-fixture" withExtension:@"mp4"];
+  RDLPDownloadedPlayerViewController *controller=[[RDLPDownloadedPlayerViewController alloc]
+    initWithLibrary:(RDLPLibrary *)library job:job URL:URL];
+  [controller viewWillAppear:NO]; [controller viewDidAppear:NO]; playbackWait(controller);
+  return controller;
+}
 static void testIOSPlaybackProgress(NSString *directory) {
   [[NSFileManager defaultManager] removeItemAtPath:directory error:NULL];
   [[NSFileManager defaultManager] createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:NULL];
   NSString *path=[directory stringByAppendingPathComponent:@"playback.sqlite"], *video=@"AAAAAAAAAAA";
   RDLPPlaybackTestLibrary *library=[[RDLPPlaybackTestLibrary alloc] initWithPath:path];
-  RDLPPlaybackTestMovie *movie=[[RDLPPlaybackTestMovie alloc] init];
-  movie.reentrantLoad=YES;
-  RDLPPlaybackProgress *progress=[[RDLPPlaybackProgress alloc] initWithLibrary:(RDLPLibrary *)library video:video movie:(MPMoviePlayerController *)movie];
+  [library savePlaybackSeconds:12 forVideo:video];
+  NSDictionary *job=[NSDictionary dictionaryWithObject:video forKey:@"video_id"];
+  RDLPDownloadedPlayerViewController *controller=playbackController(library,job);
+  playbackRequire(controller.queue.playlist.count==1 && controller.queue.currentIndex==0 &&
+    !controller.queue.canSkipToNextItem && !controller.queue.canSkipToPreviousItem,@"A tap owns exactly one queue item");
+  playbackRequire(controller.player.rate==1 && fabs(CMTimeGetSeconds(controller.player.currentTime)-12)<1,@"Opening restores the bookmark and starts playback");
+  playbackSeek(controller.player,20); [controller saveProgress];
+  playbackRequire(fabs([library playbackSecondsForVideo:video]-20)<1,@"Foreground playback saves its actual position");
+  [controller.player pause];
+  NSUInteger writes=library.writes;
+  playbackSeek(controller.player,25);
   NSNotificationCenter *center=[NSNotificationCenter defaultCenter];
-  [progress preparePlayback];
-  playbackRequire(movie.seeks==1,@"A synchronous load notification cannot repeat the startup seek");
-  playbackRequire(!movie.shouldAutoplay && movie.playbackState!=MPMoviePlaybackStatePlaying,@"Preparing the movie waits for the user's Play action");
-  [movie play];
-  movie.reentrantLoad=NO;
-  movie.currentPlaybackTime=42; [movie notifyState];
-  playbackRequire([library playbackSecondsForVideo:video]==0,@"State notifications do not save positions");
-  [progress saveProgress:nil];
-  playbackRequire([library playbackSecondsForVideo:video]==42,@"Foreground playback saves on a timer tick");
-  [progress viewDidAppear:NO];
-  NSTimer *timer=[progress valueForKey:@"timer_"];
-  movie.currentPlaybackTime=43; [timer setFireDate:[NSDate distantPast]];
-  [[NSRunLoop currentRunLoop] runMode:UITrackingRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.02]];
-  playbackRequire([library playbackSecondsForVideo:video]==42,@"Touch tracking suppresses timer saves even if the player still reports Playing");
-  [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.02]];
-  playbackRequire([library playbackSecondsForVideo:video]==43,@"Timer resumes after touch tracking ends");
-  [timer invalidate];
-  movie.currentPlaybackTime=42; [progress saveProgress:nil];
-  movie.view=[[[UIView alloc] initWithFrame:CGRectZero] autorelease];
-  RDLPPlaybackTestSlider *slider=[[[RDLPPlaybackTestSlider alloc] initWithFrame:CGRectZero] autorelease];
-  [movie.view addSubview:slider]; slider.testTracking=YES;
-  movie.currentPlaybackTime=110; [progress saveProgress:nil];
-  playbackRequire([library playbackSecondsForVideo:video]==42,@"A held scrubber prevents saves even outside tracking run-loop mode");
-  slider.testTracking=NO;
-  movie.playbackState=MPMoviePlaybackStateSeekingForward; movie.currentPlaybackTime=110;
-  [progress saveProgress:nil];
-  playbackRequire([library playbackSecondsForVideo:video]==42,@"Scrubbing into the final ten percent cannot reset a checkpoint");
-  movie.playbackState=MPMoviePlaybackStateSeekingBackward; movie.currentPlaybackTime=5;
-  [progress saveProgress:nil];
-  playbackRequire([library playbackSecondsForVideo:video]==42,@"Backward scrubbing does not save");
-  movie.playbackState=MPMoviePlaybackStatePaused; movie.currentPlaybackTime=0; [movie notifyState];
-  [progress saveProgress:nil];
-  playbackRequire([library playbackSecondsForVideo:video]==42,@"Paused readings do not save");
-  movie.playbackState=MPMoviePlaybackStatePlaying;
+  for(NSUInteger i=0;i<100;++i)
+    [center postNotificationName:AVPlayerItemTimeJumpedNotification object:controller.player.currentItem];
+  playbackRequire(library.writes==writes,@"A burst of position changes does not write synchronously");
+  [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.7]];
+  playbackRequire(library.writes==writes+1 && fabs([library playbackSecondsForVideo:video]-25)<0.1,@"Paused seeks debounce into one write of the final position");
+  [controller saveProgress]; [controller saveProgress];
+  playbackRequire(library.writes==writes+1,@"An unchanged paused position is not written repeatedly");
   [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
-  playbackRequire([library playbackSecondsForVideo:video]==42,@"Becoming inactive does not save a transient zero");
-  movie.currentPlaybackTime=55;
-  [center postNotificationName:UIApplicationDidEnterBackgroundNotification object:nil];
-  [progress saveProgress:nil];
-  playbackRequire([library playbackSecondsForVideo:video]==42,@"Background audio does not advance the bookmark");
-  NSDictionary *finished=[NSDictionary dictionaryWithObject:[NSNumber numberWithInteger:MPMovieFinishReasonPlaybackEnded] forKey:MPMoviePlayerPlaybackDidFinishReasonUserInfoKey];
-  [center postNotificationName:MPMoviePlayerPlaybackDidFinishNotification object:movie userInfo:finished];
-  playbackRequire([library playbackSecondsForVideo:video]==42,@"Background completion does not change the bookmark");
-  [progress viewWillDisappear:NO]; [progress viewDidDisappear:NO];
-  [progress release]; [movie release]; [library release];
-
-  library=[[RDLPPlaybackTestLibrary alloc] initWithPath:path];
-  movie=[[RDLPPlaybackTestMovie alloc] init];
-  progress=[[RDLPPlaybackProgress alloc] initWithLibrary:(RDLPLibrary *)library video:video movie:(MPMoviePlayerController *)movie];
-  playbackRequire(movie.initialPlaybackTime==42,@"Reopened database restores the last foreground checkpoint");
-  [progress preparePlayback];
-  playbackRequire(movie.currentPlaybackTime==42 && movie.playbackState!=MPMoviePlaybackStatePlaying,@"Restoring the bookmark does not start playback");
-  [movie play];
-  [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+  [controller.player play]; playbackSeek(controller.player,30); [controller saveProgress];
+  playbackRequire(fabs([library playbackSecondsForVideo:video]-30)<1,@"Background playback advances the bookmark");
+  [controller playerViewController:controller didRequestAudioOnly:YES];
+  playbackRequire(controller.audioOnly && controller.queue.audioOnly && controller.player.rate==1,@"Audio Only changes presentation and queue without pausing");
+  for(AVPlayerItemTrack *track in controller.player.currentItem.tracks)
+    if([track.assetTrack.mediaType isEqualToString:AVMediaTypeVideo]) playbackRequire(!track.enabled,@"Audio Only disables video tracks");
+  [controller playerViewController:controller didRequestAudioOnly:NO];
+  [controller.player pause];
+  double positions[]={5,6,6.1,53.9,54,55};
+  double expected[]={0,0,6.1,53.9,0,0};
+  for(NSUInteger i=0;i<sizeof(positions)/sizeof(positions[0]);++i) {
+    playbackSeek(controller.player,positions[i]); [controller saveProgress];
+    playbackRequire(fabs([library playbackSecondsForVideo:video]-expected[i])<0.01,@"First/last ten percent (including boundaries) saves zero; middle positions survive");
+  }
+  playbackSeek(controller.player,60);
+  [center postNotificationName:AVPlayerItemDidPlayToEndTimeNotification object:controller.player.currentItem];
+  playbackRequire([library playbackSecondsForVideo:video]==0,@"Background completion resets the bookmark");
   [center postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
-  movie.currentPlaybackTime=5; [progress saveProgress:nil];
-  playbackRequire([library playbackSecondsForVideo:video]==5,@"Foreground playback after a backward seek saves its new position");
-  movie.currentPlaybackTime=0; [progress saveProgress:nil];
-  playbackRequire([library playbackSecondsForVideo:video]==0,@"Foreground playback can save the beginning");
-  movie.currentPlaybackTime=107.9; [progress saveProgress:nil];
-  playbackRequire([library playbackSecondsForVideo:video]==107.9,@"A position before ninety percent still resumes");
-  movie.currentPlaybackTime=108; [progress saveProgress:nil];
-  playbackRequire([library playbackSecondsForVideo:video]==0,@"Exactly ninety percent restarts next time");
-  movie.currentPlaybackTime=119; [progress saveProgress:nil];
-  playbackRequire([library playbackSecondsForVideo:video]==0,@"Later playback keeps saving zero");
-  movie.currentPlaybackTime=60; [progress saveProgress:nil];
-  [center postNotificationName:MPMoviePlayerPlaybackDidFinishNotification object:movie];
-  playbackRequire([library playbackSecondsForVideo:video]==60,@"Missing finish reason does not mean playback ended");
-  movie.playbackState=MPMoviePlaybackStateStopped;
-  [center postNotificationName:MPMoviePlayerPlaybackDidFinishNotification object:movie userInfo:finished];
-  playbackRequire([library playbackSecondsForVideo:video]==0,@"Foreground natural completion resets the bookmark even between timer ticks");
-  [progress viewDidDisappear:NO];
-  movie.playbackState=MPMoviePlaybackStatePlaying; movie.currentPlaybackTime=70; [progress saveProgress:nil];
-  playbackRequire([library playbackSecondsForVideo:video]==0,@"Dismissed player cannot save again");
-  [progress release]; [movie release];
-
-  [library savePlaybackSeconds:110 forVideo:video];
-  movie=[[RDLPPlaybackTestMovie alloc] init];
-  progress=[[RDLPPlaybackProgress alloc] initWithLibrary:(RDLPLibrary *)library video:video movie:(MPMoviePlayerController *)movie];
-  [progress preparePlayback];
-  playbackRequire(movie.initialPlaybackTime==0 && movie.currentPlaybackTime==0,@"Old checkpoints in the final ten percent also start over");
-  [progress release]; [movie release]; [library release];
+  playbackSeek(controller.player,35);
+  [controller stop];
+  playbackRequire(fabs([library playbackSecondsForVideo:video]-35)<0.1,@"Dismissal flushes a pending paused seek immediately");
+  [library savePlaybackSeconds:7 forVideo:video];
+  [controller saveProgress]; playbackRemote(controller,UIEventSubtypeRemoteControlPlay);
+  playbackRequire(controller.player.rate==0 && [library playbackSecondsForVideo:video]==7,@"Stopped controllers cannot restart or overwrite progress");
+  [controller release]; [library release];
+  library=[[RDLPPlaybackTestLibrary alloc] initWithPath:path];
+  controller=playbackController(library,job);
+  playbackRequire(fabs(CMTimeGetSeconds(controller.player.currentTime)-7)<1,@"A new presentation restores persisted progress");
+  [controller stop]; [controller release];
+  for(NSNumber *position in [NSArray arrayWithObjects:@5,@55,nil]) {
+    [library savePlaybackSeconds:position.doubleValue forVideo:video];
+    controller=playbackController(library,job);
+    playbackRequire(CMTimeGetSeconds(controller.player.currentTime)<1,@"Old bookmarks near either end restart at zero");
+    [controller stop]; [controller release];
+  }
+  [library release];
 }
-
 static NSDictionary *playbackNowPlayingInfo(void) {
-  /* Legacy MediaPlayer coalesces metadata writes; allow its update to settle. */
   [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.1]];
   return [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo;
 }
-/* Metadata must follow background transport independently of saved bookmarks. */
 static void testIOSNowPlaying(NSString *directory) {
   [[NSFileManager defaultManager] createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:NULL];
   RDLPPlaybackTestLibrary *library=[[RDLPPlaybackTestLibrary alloc] initWithPath:[directory stringByAppendingPathComponent:@"now-playing.sqlite"]];
-  RDLPPlaybackTestMovie *movie=[[RDLPPlaybackTestMovie alloc] init];
-  RDLPPlaybackProgress *progress=[[RDLPPlaybackProgress alloc] initWithLibrary:(RDLPLibrary *)library video:@"AAAAAAAAAAA" movie:(MPMoviePlayerController *)movie];
-  [progress configureNowPlayingWithJob:[NSDictionary dictionaryWithObjectsAndKeys:@"Video title",@"title",@"Channel name",@"channel",nil]];
-  [progress preparePlayback];
-  [movie play];
-  NSNotificationCenter *notifications=[NSNotificationCenter defaultCenter];
-  [notifications postNotificationName:UIApplicationWillResignActiveNotification object:nil];
-  movie.currentPlaybackTime=42; [movie notifyState];
+  NSDictionary *job=[NSDictionary dictionaryWithObjectsAndKeys:@"AAAAAAAAAAA",@"video_id",@"Video title",@"title",@"Channel name",@"channel",nil];
+  RDLPDownloadedPlayerViewController *controller=playbackController(library,job);
   playbackRequire([[playbackNowPlayingInfo() objectForKey:MPMediaItemPropertyTitle] isEqualToString:@"Video title"] &&
-    [[playbackNowPlayingInfo() objectForKey:MPMediaItemPropertyArtist] isEqualToString:@"Channel name"],@"Background metadata retains title and channel");
-  playbackRequire([[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyElapsedPlaybackTime] doubleValue]==42 &&
-    [[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyPlaybackRate] doubleValue]==1,@"Background playback publishes live position and rate");
-  [progress saveProgress:nil];
-  playbackRequire([library playbackSecondsForVideo:@"AAAAAAAAAAA"]==0,@"Now Playing does not change the background bookmark policy");
-  movie.playbackState=MPMoviePlaybackStatePaused; [movie notifyState];
-  playbackRequire([[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyPlaybackRate] doubleValue]==0,@"Background pause freezes elapsed time");
-  movie.currentPlaybackTime=12;
-  NSTimer *tick=[NSTimer timerWithTimeInterval:1 target:progress selector:@selector(updateNowPlaying:) userInfo:nil repeats:NO];
-  [progress updateNowPlaying:tick];
-  playbackRequire([[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyElapsedPlaybackTime] doubleValue]==12,@"A seek without a state notification refreshes elapsed time");
-  movie.currentPlaybackTime=NAN; [movie notifyState];
-  playbackRequire([[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyElapsedPlaybackTime] doubleValue]==12,@"Invalid time readings preserve the last valid position");
-  NSDictionary *ended=[NSDictionary dictionaryWithObject:[NSNumber numberWithInteger:MPMovieFinishReasonPlaybackEnded] forKey:MPMoviePlayerPlaybackDidFinishReasonUserInfoKey];
-  [notifications postNotificationName:MPMoviePlayerPlaybackDidFinishNotification object:movie userInfo:ended];
-  [progress updateNowPlaying:tick];
-  playbackRequire(![playbackNowPlayingInfo() count],@"Completion clears metadata and timer ticks cannot republish it");
-  movie.currentPlaybackTime=0; [movie play];
-  playbackRequire([playbackNowPlayingInfo() count]>0,@"Replaying a finished movie restores metadata");
-  RDLPPlaybackTestMovie *nextMovie=[[RDLPPlaybackTestMovie alloc] init];
-  RDLPPlaybackProgress *next=[[RDLPPlaybackProgress alloc] initWithLibrary:(RDLPLibrary *)library video:@"AAAAAAAAAAA" movie:(MPMoviePlayerController *)nextMovie];
-  [next configureNowPlayingWithJob:[NSDictionary dictionary]];
-  [progress viewDidDisappear:NO]; [progress release]; [movie release];
+    [[playbackNowPlayingInfo() objectForKey:MPMediaItemPropertyArtist] isEqualToString:@"Channel name"],@"Now Playing publishes library metadata");
+  playbackRemote(controller,UIEventSubtypeRemoteControlPause);
+  playbackSeek(controller.player,12);
+  playbackRequire([[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyPlaybackRate] doubleValue]==0 &&
+    fabs([[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyElapsedPlaybackTime] doubleValue]-12)<0.1,@"Remote pause and paused seek update Now Playing");
+  playbackRemote(controller,UIEventSubtypeRemoteControlPlay);
+  playbackRequire(controller.player.rate==1,@"Remote Play resumes playback");
+  [controller beginInterruption];
+  playbackRequire(controller.player.rate==0,@"Interruption pauses playback");
+  [controller endInterruptionWithFlags:AVAudioSessionInterruptionFlags_ShouldResume];
+  playbackRequire(controller.player.rate==1,@"Allowed interruption recovery resumes previously playing audio");
+  [controller beginInterruption];
+  [controller endInterruptionWithFlags:0];
+  playbackRequire(controller.player.rate==0,@"Interruption without permission to resume stays paused");
+  playbackRemote(controller,UIEventSubtypeRemoteControlPause);
+  [controller beginInterruption]; [controller endInterruptionWithFlags:AVAudioSessionInterruptionFlags_ShouldResume];
+  playbackRequire(controller.player.rate==0,@"An interruption cannot start user-paused playback");
+  RDLPDownloadedPlayerViewController *next=playbackController(library,[NSDictionary dictionaryWithObject:@"AAAAAAAAAAA" forKey:@"video_id"]);
+  playbackRequire(controller.player.rate==0,@"Replacement stops the previous session");
+  [controller release];
   playbackRequire([[playbackNowPlayingInfo() objectForKey:MPMediaItemPropertyTitle] isEqualToString:@"AAAAAAAAAAA"] &&
-    ![playbackNowPlayingInfo() objectForKey:MPMediaItemPropertyArtist],@"Replacement survives old-player teardown, falls back to video ID, and drops old artist");
-  NSDictionary *error=[NSDictionary dictionaryWithObject:[NSNumber numberWithInteger:MPMovieFinishReasonPlaybackError] forKey:MPMoviePlayerPlaybackDidFinishReasonUserInfoKey];
-  [notifications postNotificationName:MPMoviePlayerPlaybackDidFinishNotification object:nextMovie userInfo:error];
-  playbackRequire(![playbackNowPlayingInfo() count],@"Playback errors clear metadata");
-  [next release]; [nextMovie release]; [library release];
-  [notifications postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+    ![playbackNowPlayingInfo() objectForKey:MPMediaItemPropertyArtist],@"Old teardown cannot erase replacement metadata; missing title falls back to ID");
+  [next stop];
+  playbackRequire(!playbackNowPlayingInfo().count,@"Stopping clears Now Playing");
+  [next release]; [library release];
 }

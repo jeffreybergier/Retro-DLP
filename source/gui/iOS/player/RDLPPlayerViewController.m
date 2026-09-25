@@ -12,7 +12,7 @@
 
 static void *RDLPPlayerObservation=&RDLPPlayerObservation;
 static NSArray *RDLPPlayerKeys(void) { return [NSArray arrayWithObjects:@"currentItem",@"rate",@"status",nil]; }
-static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",@"duration",@"playbackBufferEmpty",nil]; }
+static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",@"duration",nil]; }
 
 @interface RDLPPlayerViewController () <UIGestureRecognizerDelegate> {
   RDLPPlayerControls *_controls;
@@ -254,9 +254,8 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   _controls.scaleButton.enabled=ready;
   _controls.scaleButton.selected=[_videoGravity isEqualToString:AVLayerVideoGravityResizeAspectFill];
   _controls.scaleButton.accessibilityLabel=_controls.scaleButton.selected?@"Fit video":@"Fill screen";
-  BOOL loading=item && !failed && (!ready || (_player.rate!=0 && item.playbackBufferEmpty));
   NSString *message=failed?@"Unable to play this item":(!item?@"No media":(_audioOnly?@"Audio Only":nil));
-  [_controls setMessage:loading?nil:message loading:loading];
+  [_controls setMessage:message];
   [_controls setNeedsLayout];
   [self refreshTime];
   if(_player.rate==0 || failed) [self showControls]; else [self scheduleHide];

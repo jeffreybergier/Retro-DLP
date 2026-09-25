@@ -60,6 +60,7 @@ cmd = ['/usr/bin/clang', '-target', 'armv7-apple-ios5.0', '-arch', 'armv7',
 cmd += [str(objects / (name + '.o')) for name in
         ['RDLPAppDelegate', 'RDLPLibraryViewController', 'RDLPLibraryActions',
          'RDLPLibrarySections', 'RDLPUIKit', 'RDLPDownloadPolicy', 'RDLPStatusBarView', 'RDLPSettingsViewController', 'RDLPPlaylistsViewController', 'RDLPPlaylistViewController', 'RDLPVideoListViewController', 'RDLPDownloadsViewController', 'RDLPQueueViewController',
+         'RDLPPlayerControls', 'RDLPPlayerViewController', 'RDLPPlayerQueue', 'RDLPDownloadedPlayerViewController',
          'RDLPLibrary', 'RDLPLibrary+iOS', 'RDLPVideoRows', 'RDLP_Foundation', 'rdapp_store', 'rdapp_service']]
 cmd += [str(root / 'build/iOS/libretrodlp-download.a'),
         str(root / 'build/iOS/libretrodlp.a'),
@@ -68,7 +69,7 @@ cmd += [str(root / 'build/iOS/libretrodlp-download.a'),
         '/altivec/libs/core/build-phone/lib/libcrypto.a']
 for framework in ['UIKit', 'Foundation', 'CoreGraphics', 'CoreText',
                   'CoreFoundation', 'SystemConfiguration', 'Security',
-                  'MediaPlayer', 'AVFoundation']:
+                  'MediaPlayer', 'AVFoundation', 'CoreMedia', 'QuartzCore']:
     cmd += ['-framework', framework]
 cmd += ['-lobjc', '-lpthread', '-o',
         str(app / 'RetroDLPIOSOfflineTest')]

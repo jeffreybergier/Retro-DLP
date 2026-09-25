@@ -59,7 +59,7 @@
   if(![video length] || !isfinite(seconds) || seconds<0) return;
   RDLPIOSPlaybackStorage *storage=platformStorage_;
   [storage->positions setObject:[NSNumber numberWithDouble:seconds] forKey:video];
-  /* Native control callbacks never wait for SQLite or the worker's lock.
+  /* Player callbacks never wait for SQLite or the worker's lock.
      Serial writes preserve backward seeks and completion resets. Pending
      values remain available if another player is opened before a write ends. */
   NSString *videoID=[[video copy] autorelease];

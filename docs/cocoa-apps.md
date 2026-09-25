@@ -534,50 +534,48 @@ still require explicit Retry. Stopping one quality leaves other queued downloads
 eligible to run. There is no global Pause control or indefinite background
 downloading.
 
-iOS playback declares `UIBackgroundModes = audio` and configures and activates
-`AVAudioSessionCategoryPlayback` when opening a video. This uses APIs available
-on iOS 5. The legacy movie player
-may pause when backgrounded; the user can resume audio with the system media
-controls. The app does not force playback to restart on backgrounding. The audio
-session remains available while backgrounded. This mode is for media playback;
-downloads continue to use the finite task allowance described above.
+iOS downloaded-video playback uses `RDLPDownloadedPlayerViewController`, a small
+app adapter over `RDLPPlayerViewController` and `RDLPPlayerQueue`. Each Play
+or downloaded-row tap creates a one-item playlist for exactly that local file,
+restores its bookmark, then starts playback. Previous/next are disabled and the
+playlist button is hidden. Audio Only disables the item's video tracks and
+detaches the video layer; Show Video restores them without replacing the item.
 
-The app supplies video title (`MPMediaItemPropertyTitle`), channel
-(`MPMediaItemPropertyArtist`), actual movie duration, elapsed time, and playback
-rate through `MPNowPlayingInfoCenter`. These APIs and keys are available in iOS 5.
-The native movie controller still handles system transport controls; it cannot
-derive the library's video/channel labels from the local download filename.
-Apple documents that [elapsed time is extrapolated from the supplied position and rate](https://developer.apple.com/documentation/mediaplayer/mpnowplayinginfopropertyelapsedplaybacktime).
-The app refreshes metadata on load, duration, playback-state, and app lifecycle
-notifications, including in the background. A one-second timer detects seeks
-(including paused scrubs, for which the legacy player has no public completion
-notification) and rate changes; ordinary ticks do not republish an advancing
-position. This timer is independent of bookmark persistence. Completion, errors,
-and dismissal clear metadata, and teardown of an old player cannot clear its
-replacement. Missing titles fall back to the video ID; missing channels omit the
-artist.
+The app declares `UIBackgroundModes = audio` and activates
+`AVAudioSessionCategoryPlayback` when the player appears. The UI detaches its
+AVPlayerLayer before backgrounding, following Apple's
+[background audio guidance](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/MediaPlaybackGuide/Contents/Resources/en.lproj/RefiningTheUserExperience/RefiningTheUserExperience.html).
+Home/lock can continue audio; Done ends playback and deactivates the session.
+Foregrounding never forces playback to resume. iOS 5 remote-control events
+support play, pause, toggle, and stop; interruption handling resumes only when
+playback was active and the system allows it. Downloads still use the finite
+background-task allowance described above.
 
-Legacy playback saves a checkpoint every ten seconds during normal foreground
-playback, and when leaving a still-playing foreground player. The timer uses the
-default run-loop mode so it pauses during touch tracking. It also checks native
-controls for active touches using the public
-[`UIControl.isTracking`](https://developer.apple.com/documentation/uikit/uicontrol/istracking)
-property, without installing control handlers. Seeking and paused states are ignored. Saving stops at `UIApplicationWillResignActiveNotification`
-and resumes after `UIApplicationDidBecomeActiveNotification`; background audio
-does not advance the bookmark. Playback-state changes do not trigger saves.
-This avoids interpreting unreliable positions reported during scrubbing and app
-transitions. Leaving the app can lose progress since the last timer tick.
+The adapter publishes title, channel, elapsed time, duration, and playback rate
+through `MPNowPlayingInfoCenter`. AVFoundation rate/readiness/buffering changes
+and time-jump notifications refresh metadata, including paused seeks and
+background remote control. Completion, failure, and dismissal clear metadata;
+an old controller cannot clear its replacement's metadata. Missing titles fall
+back to the video ID; missing channels omit the artist.
 
-At ninety percent of the duration or later, a checkpoint saves zero so the next
-viewing starts over. Natural completion in the foreground also saves zero.
-Existing checkpoints in the final ten percent restart from the beginning.
+Bookmarks save during foreground and background playback, including paused
+seeks. An AVPlayer periodic time observer checkpoints every ten playback seconds;
+time-jump notifications debounce seeks for 0.5 seconds. The custom scrubber
+previews while dragging and performs one seek on release. Pause, backgrounding,
+and Done flush the latest position immediately. Identical saved positions skip
+the database write. Autoplay starts after restoring the saved position.
+
+At ten percent of the duration or earlier, or ninety percent or later, a
+checkpoint saves zero so the next viewing starts over. Natural completion also
+saves zero in the background. Existing checkpoints near either end restart
+from the beginning.
 iOS captures accepted positions in memory and writes them on a serial background
 queue, so player callbacks do not wait for SQLite or a download worker's database
 lock. Reads see pending checkpoints. Writes already accepted hold the existing
 finite background-operation allowance until they finish; an abrupt process kill
 can still interrupt a pending write.
 
-Build the focused native player and checkpoint regression suite with
+Build the focused downloaded-player and checkpoint regression suite with
 `RDLP_TEST_PLAYBACK_ONLY=1 python3 source/gui/iOS/tests/build_ios_ui_test.py`.
 Use `RDLP_TEST_INTERACTION_ONLY=1` instead to include the Low/delete/Medium
 redownload regression.

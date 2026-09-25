@@ -1,7 +1,7 @@
 # RDLP Player
 
-An isolated, manually reference-counted iOS 5+ player UI and playlist queue. Nothing in the app's
-existing player path or build has been changed to use it.
+A manually reference-counted iOS 5+ player UI and playlist queue, now used by
+the app for downloaded-video playback.
 
 `RDLPPlayerViewController.h` and `RDLPPlayerQueue.h` are the public APIs.
 `RDLPPlayerControls` is an internal view. An internal UIView subclass in the
@@ -23,7 +23,8 @@ There are no third-party runtime dependencies.
   Cancellation does not seek; switching queue items invalidates an old drag.
   Scrubbing preserves the existing play/pause state. Indefinite or invalid
   durations disable scrubbing. VoiceOver slider adjustments also seek.
-- Observes current-item changes, readiness, buffering, failure, and time jumps.
+- Observes current-item changes, readiness, failure, and time jumps. No spinner
+  is displayed in any playback state.
   A single AVPlayer time observer updates the position four times per second
   while the view is visible and the app is active. No repeating NSTimer.
 - Detaches the video layer and removes playback observers when disappearing
@@ -61,7 +62,34 @@ background capability, remote commands, Now Playing metadata, and progress
 persistence remain app integration concerns. Queue navigation, automatic
 advancement, and audio-only track handling do not require library integration.
 
-## Connecting the two components
+## Downloaded-video integration
+
+`RDLPDownloadedPlayerViewController` is the small app-specific adapter. All
+library, playlist, and download-list Play actions present it through RDLPUIKit.
+It owns a one-item queue containing precisely the tapped download's URL, restores
+the saved position, then starts playback. Previous/next are disabled and the
+playlist button is hidden. Audio Only updates both the presentation and video
+tracks; Show Video restores them without replacing the item.
+
+The adapter configures the playback audio session, receives iOS 5 remote-control
+events, handles interruptions, and publishes Now Playing metadata. It saves
+positions while playing or paused, in the foreground or background. Seeks use a
+0.5-second debounce; normal playback checkpoints every ten seconds. Pause,
+backgrounding, and dismissal flush immediately, and identical positions skip
+the database write. Positions in the first or last ten percent save as zero.
+The reusable view detaches its video
+layer before backgrounding so audio can continue with Home or device lock.
+Done saves progress, stops playback, removes the checkpoint observer,
+clears metadata, and deactivates the audio session. A replacement stops the prior
+session. The adapter intentionally supports one downloaded job; future multi-job
+playlists will also need per-item metadata and bookmark switching here.
+
+The app Makefile compiles all four classes and packages `RDLPPlayer.bundle`.
+`python3 source/gui/iOS/tests/build_ios_ui_test.py` builds offline device tests of
+this adapter after `make app-iOS`, including real-file resume, controls, audio-only
+tracks, remote events, interruption handling, and teardown.
+
+## Connecting the two reusable components
 
 A host retains the queue for the playback session, assigns `queue.player` to
 the view controller, and forwards its delegate requests. For example, with
@@ -104,9 +132,9 @@ delegate and remove the notification observer when their owner is torn down.
 Keep the queue alive after dismissing the view if playback should continue;
 releasing the queue stops its player.
 
-## Later integration
+## Build integration
 
-Compile the three `.m` files with ARC disabled and blocks enabled. Link UIKit,
+Compile the three reusable `.m` files with ARC disabled and blocks enabled. Link UIKit,
 Foundation, AVFoundation, CoreMedia, CoreGraphics, QuartzCore, and MediaPlayer.
 Copy `RDLPPlayer.bundle` intact to the application bundle's resource root.
 It contains AL's original normal/retina artwork and its required MIT notice.

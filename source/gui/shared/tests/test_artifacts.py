@@ -41,6 +41,9 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
         if platform=='iOS':
             avkit=[block for block in commands if 'AVKit.framework/AVKit' in block]
             assert not avkit,'Legacy-only playback must not link AVKit'
+            undefined=subprocess.check_output(['/osxcross/modern/bin/nm','-arch',architecture,'-u',str(exe)],text=True)
+            assert 'MPMoviePlayer' not in undefined,'Obsolete movie player is still linked'
+            assert '_OBJC_CLASS_$_AVQueuePlayer' in undefined,'Playlist player is missing'
 
     plist=plistlib.loads((bundle/plist_relative).read_bytes())
     assert 'RetroDLPTestDirectory' not in plist,'Test directory leaked into release'
@@ -69,6 +72,10 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
         mode=archive.getinfo(prefix+exe_relative).external_attr>>16
         assert mode & stat.S_IXUSR,'Executable mode was lost'
         if platform=='iOS':
+            for source in (ROOT/'source/gui/iOS/player/RDLPPlayer.bundle').iterdir():
+                relative='RDLPPlayer.bundle/'+source.name
+                assert (bundle/relative).read_bytes()==source.read_bytes(),relative+' is stale in bundle'
+                assert archive.read(prefix+relative)==source.read_bytes(),relative+' is stale in IPA'
             for filename,dimensions in IPHONE_LAUNCH_IMAGES.items():
                 data=(bundle/filename).read_bytes()
                 assert data[:8]==b'\x89PNG\r\n\x1a\n',filename+' is not a PNG'
