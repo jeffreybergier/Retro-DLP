@@ -24,7 +24,7 @@ static double RDLPResumePosition(double seconds,double duration) {
   id _checkpointObserver;
   double _resume, _savedPosition;
   float _observedRate;
-  BOOL _started, _stopped, _ready, _preparing, _finished;
+  BOOL _started, _stopped, _ready, _preparing, _finished, _observingRate;
   BOOL _wantsPlay, _resumeAfterInterruption, _selecting, _changingItem;
 }
 - (void)refreshPlayback;
@@ -39,7 +39,8 @@ static double RDLPResumePosition(double seconds,double duration) {
 @end
 
 @implementation RDLPDownloadedPlayerViewController
-@synthesize queue=_queue;
+@synthesize queue=_queue, playerViewController=_playerViewController;
+- (AVPlayer *)player { return _queue.player; }
 - (id)initWithLibrary:(RDLPLibrary *)library job:(NSDictionary *)job URL:(NSURL *)URL {
   return [self initWithLibrary:library jobs:[NSArray arrayWithObject:job]
     URLs:[NSArray arrayWithObject:URL] startingAtIndex:0];
@@ -55,8 +56,12 @@ static double RDLPResumePosition(double seconds,double duration) {
   _library=[library retain]; _jobs=[[NSArray alloc] initWithArray:jobs copyItems:YES];
   _queue=[[RDLPPlayerQueue alloc] init];
   if(![_queue setPlaylist:URLs startingAtIndex:index]) { [self release]; return nil; }
-  self.player=_queue.player; self.delegate=self;
+  _playerViewController=[[RDLPPlayerViewController alloc] init];
+  _playerViewController.player=_queue.player;
+  _playerViewController.delegate=self;
+  self.viewControllers=[NSArray arrayWithObject:_playerViewController];
   [self.player addObserver:self forKeyPath:@"rate" options:0 context:RDLPDownloadObservation];
+  _observingRate=YES;
   NSNotificationCenter *center=[NSNotificationCenter defaultCenter];
   [center addObserver:self selector:@selector(queueChanged:) name:RDLPPlayerQueueDidChangeNotification object:_queue];
   [center addObserver:self selector:@selector(applicationInactive:) name:UIApplicationWillResignActiveNotification object:nil];
@@ -70,8 +75,9 @@ static double RDLPResumePosition(double seconds,double duration) {
   [self stop];
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   [self unobserveItem];
-  [self.player removeObserver:self forKeyPath:@"rate" context:RDLPDownloadObservation];
-  self.delegate=nil;
+  if(_observingRate) [self.player removeObserver:self forKeyPath:@"rate" context:RDLPDownloadObservation];
+  _playerViewController.delegate=nil;
+  [_playerViewController release];
   [_queue release]; [_jobs release]; [_library release]; [_video release]; [_metadata release];
   [super dealloc];
 }
@@ -84,9 +90,9 @@ static double RDLPResumePosition(double seconds,double duration) {
 }
 - (void)queueChanged:(NSNotification *)notification {
   (void)notification;
-  self.canSkipToPreviousItem=_queue.canSkipToPreviousItem;
-  self.canSkipToNextItem=_queue.canSkipToNextItem;
-  self.audioOnly=_queue.audioOnly;
+  _playerViewController.canSkipToPreviousItem=_queue.canSkipToPreviousItem;
+  _playerViewController.canSkipToNextItem=_queue.canSkipToNextItem;
+  _playerViewController.audioOnly=_queue.audioOnly;
   if(_stopped || _item==self.player.currentItem) return;
   [self saveProgress]; // Read the outgoing item, even after AVQueuePlayer advances.
   /* The completed item may no longer expose a valid time once removed. Native
@@ -100,7 +106,7 @@ static double RDLPResumePosition(double seconds,double duration) {
   [self.player pause];
   [self unobserveItem];
   [_video release]; _video=nil; [_metadata release]; _metadata=nil;
-  self.title=nil;
+  _playerViewController.title=nil;
   _item=[self.player.currentItem retain];
   if(_item && _queue.currentIndex<_jobs.count) {
     NSDictionary *job=[_jobs objectAtIndex:_queue.currentIndex];
@@ -110,7 +116,7 @@ static double RDLPResumePosition(double seconds,double duration) {
     _savedPosition=_resume;
     NSString *title=[job objectForKey:@"title"], *channel=[job objectForKey:@"channel"];
     if(!title.length) title=_video.length?_video:@"Video";
-    self.title=title;
+    _playerViewController.title=title;
     NSMutableDictionary *metadata=[NSMutableDictionary dictionaryWithObject:title forKey:MPMediaItemPropertyTitle];
     if(channel.length) [metadata setObject:channel forKey:MPMediaItemPropertyArtist];
     _metadata=[metadata copy];
@@ -122,7 +128,7 @@ static double RDLPResumePosition(double seconds,double duration) {
     [center addObserver:self selector:@selector(timeChanged:) name:AVPlayerItemTimeJumpedNotification object:_item];
   }
   _changingItem=NO;
-  if(self.isViewLoaded) self.view.userInteractionEnabled=YES;
+  if(_playerViewController.isViewLoaded) _playerViewController.view.userInteractionEnabled=YES;
   [self refreshPlayback];
 }
 - (BOOL)canBecomeFirstResponder { return YES; }
@@ -172,13 +178,13 @@ static double RDLPResumePosition(double seconds,double duration) {
     _resume=RDLPResumePosition(_resume,duration);
     _preparing=YES;
     /* Prevent a Play tap or scrub racing the single initial resume seek. */
-    self.view.userInteractionEnabled=NO;
+    _playerViewController.view.userInteractionEnabled=NO;
     AVPlayerItem *item=_item;
     [item seekToTime:CMTimeMakeWithSeconds(_resume,600) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero
       completionHandler:^(BOOL finished) {
         dispatch_async(dispatch_get_main_queue(), ^{
           if(_stopped || item!=_item) return; // A skip can finish an older seek later.
-          self.view.userInteractionEnabled=YES;
+          _playerViewController.view.userInteractionEnabled=YES;
           _preparing=NO;
           _ready=finished;
           if(_ready && _wantsPlay) [self.player play];
@@ -276,7 +282,7 @@ static double RDLPResumePosition(double seconds,double duration) {
 }
 - (void)playerViewControllerDidRequestDismissal:(RDLPPlayerViewController *)controller {
   (void)controller; [self stop];
-  [(self.navigationController?:self) dismissViewControllerAnimated:YES completion:nil];
+  [self dismissViewControllerAnimated:YES completion:nil];
 }
 - (void)play {
   if(_stopped) return;
@@ -298,8 +304,10 @@ static double RDLPResumePosition(double seconds,double duration) {
     case UIEventSubtypeRemoteControlPause:
     case UIEventSubtypeRemoteControlStop:
       _wantsPlay=NO; _resumeAfterInterruption=NO; [self saveProgress]; [self.player pause]; break;
-    case UIEventSubtypeRemoteControlNextTrack: [self playerViewControllerDidRequestNextItem:self]; break;
-    case UIEventSubtypeRemoteControlPreviousTrack: [self playerViewControllerDidRequestPreviousItem:self]; break;
+    case UIEventSubtypeRemoteControlNextTrack:
+      if(_queue.canSkipToNextItem) [self selectIndex:_queue.currentIndex+1]; break;
+    case UIEventSubtypeRemoteControlPreviousTrack:
+      if(_queue.canSkipToPreviousItem) [self selectIndex:_queue.currentIndex-1]; break;
     default: break;
   }
 }

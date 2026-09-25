@@ -1,5 +1,4 @@
 #import "RDLPUIKit.h"
-#import "player/RDLPPlayerNavigationController.h"
 #import "RDLPStatusBarView.h"
 #import "RDLPLibrary.h"
 #import "RDLPDownloadPolicy.h"
@@ -106,9 +105,8 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   if(!path || ![[NSFileManager defaultManager] fileExistsAtPath:path]) { [self showMessage:@"The downloaded file is missing. Retry its download from Queue."]; return; }
   RDLPDownloadedPlayerViewController *controller=[[RDLPDownloadedPlayerViewController alloc]
     initWithLibrary:library job:job URL:[NSURL fileURLWithPath:path]];
-  UINavigationController *navigation=[[RDLPPlayerNavigationController alloc] initWithRootViewController:controller];
-  [owner presentViewController:navigation animated:YES completion:nil];
-  [navigation release]; [controller release];
+  [owner presentViewController:controller animated:YES completion:nil];
+  [controller release];
 }
 + (void)presentPlayer:(UIViewController *)owner library:(RDLPLibrary *)library playlist:(NSString *)playlist entry:(NSDictionary *)entry job:(NSDictionary *)selectedJob;
 {
@@ -143,9 +141,8 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   if(selected==NSNotFound) { [self presentPlayer:owner library:library job:selectedJob]; return; }
   RDLPDownloadedPlayerViewController *controller=[[RDLPDownloadedPlayerViewController alloc]
     initWithLibrary:library jobs:jobs URLs:URLs startingAtIndex:selected];
-  UINavigationController *navigation=[[RDLPPlayerNavigationController alloc] initWithRootViewController:controller];
-  [owner presentViewController:navigation animated:YES completion:nil];
-  [navigation release]; [controller release];
+  [owner presentViewController:controller animated:YES completion:nil];
+  [controller release];
 }
 + (UIBarButtonItem *)item:(NSString *)title target:(id)target action:(SEL)action;
 { return [[[UIBarButtonItem alloc] initWithTitle:title style:UIBarButtonItemStyleBordered target:target action:action] autorelease]; }

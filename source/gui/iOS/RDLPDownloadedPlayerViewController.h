@@ -1,13 +1,18 @@
 #import "player/RDLPPlayerViewController.h"
+#import "player/RDLPPlayerNavigationController.h"
 #import "player/RDLPPlayerQueue.h"
 
 @class RDLPLibrary;
 
-/* App adapter: a snapshot of downloaded jobs in playlist order. Home/lock keeps audio
- * playing; dismissing the controller ends the session. Main thread only. */
-@interface RDLPDownloadedPlayerViewController : RDLPPlayerViewController
+/* App session and navigation container. Present directly; its root child supplies
+ * the player UI. Home/lock keeps audio playing; dismissal ends the session.
+ * The session uses AVPlayer and the child's public API, never player subclassing.
+ * Main thread only. */
+@interface RDLPDownloadedPlayerViewController : RDLPPlayerNavigationController
     <RDLPPlayerViewControllerDelegate, AVAudioSessionDelegate>
 @property(nonatomic,readonly,retain) RDLPPlayerQueue *queue;
+@property(nonatomic,readonly,retain) AVPlayer *player;
+@property(nonatomic,readonly,retain) RDLPPlayerViewController *playerViewController;
 - (id)initWithLibrary:(RDLPLibrary *)library job:(NSDictionary *)job URL:(NSURL *)URL;
 /* Jobs and URLs correspond one-to-one, including repeated playlist entries.
  * Invalid/empty input returns nil. Each selected item restores its own bookmark. */

@@ -81,9 +81,15 @@ advancement, and audio-only track handling do not require library integration.
 ## Downloaded-video integration
 
 [`RDLPDownloadedPlayerViewController`](../RDLPDownloadedPlayerViewController.h),
-outside this folder, is the app-specific adapter. All
-library, playlist, and download-list Play actions present it through RDLPUIKit
-inside a dedicated modal UINavigationController.
+outside this folder, is the app-specific session and navigation container. All
+library, playlist, and download-list Play actions present it directly through
+RDLPUIKit. It owns an ordinary RDLPPlayerViewController as its root child;
+it does not subclass the player. UIKit manages containment and appearance, and
+the session communicates through AVPlayer, public properties, and the custom
+delegate. Session lifetime follows the modal container, so pushing another
+screen does not stop playback. This composition also permits a future
+AVPlayerViewController without subclassing it; the custom playlist/audio-only
+UI bindings would still need to be adapted for Apple's controls.
 Playlist-row taps create a snapshot of all available downloads in playlist
 order, select the tapped occurrence, restore its bookmark, then autoplay. Missing
 files and unfinished downloads are excluded. Each occurrence uses the same newest
