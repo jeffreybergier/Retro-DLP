@@ -24,18 +24,8 @@
 - (NSTableView *)tableView; { [self window]; return queue_; }
 - (void)loadWindow;
 {
-  AIWindowStyleMask mask=AIWindowStyleMaskTitled|AIWindowStyleMaskClosable|
-    AIWindowStyleMaskMiniaturizable|AIWindowStyleMaskResizable;
-#if MAC_OS_X_VERSION_MAX_ALLOWED >= 101200
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-  mask|=NSWindowStyleMaskTexturedBackground;
-#pragma clang diagnostic pop
-#else
-  mask|=NSTexturedBackgroundWindowMask;
-#endif
   NSWindow *window=[[[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,640,400)
-    styleMask:mask backing:NSBackingStoreBuffered defer:NO] autorelease];
+    styleMask:RDLPTexturedWindowStyleMask backing:NSBackingStoreBuffered defer:NO] autorelease];
   [window setTitle:@"Download Queue"]; [window setReleasedWhenClosed:NO];
   [window setMinSize:NSMakeSize(480,300)]; [window center];
   [self setWindow:window]; [self setShouldCascadeWindows:NO];
@@ -54,11 +44,7 @@
   NSTableColumn *numberColumn=[queue_ tableColumnWithIdentifier:@"number"];
   [numberColumn setMinWidth:36]; [numberColumn setMaxWidth:36]; [numberColumn setWidth:36];
   [numberColumn setResizingMask:NSTableColumnNoResizing];
-#if MAC_OS_X_VERSION_MAX_ALLOWED >= 101200
-  [[numberColumn dataCell] setAlignment:NSTextAlignmentRight];
-#else
-  [[numberColumn dataCell] setAlignment:NSRightTextAlignment];
-#endif
+  [[numberColumn dataCell] setAlignment:RDLPTextAlignmentRight];
   NSTableColumn *queueState=[queue_ tableColumnWithIdentifier:@"state"];
   [queueState setMinWidth:24]; [queueState setMaxWidth:24]; [queueState setWidth:24];
   [queueState setResizingMask:NSTableColumnNoResizing];

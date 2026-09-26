@@ -1,6 +1,17 @@
 #import <AppKit/AppKit.h>
 #import <AIFontAwesome.h>
 
+/* Textured background is bit 8 in both SDKs; its modern name is deprecated. */
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 101200
+#define RDLPTextAlignmentRight NSTextAlignmentRight
+#define RDLPTexturedWindowStyleMask (NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|\
+  NSWindowStyleMaskMiniaturizable|NSWindowStyleMaskResizable|(1UL << 8))
+#else
+#define RDLPTextAlignmentRight NSRightTextAlignment
+#define RDLPTexturedWindowStyleMask (NSTitledWindowMask|NSClosableWindowMask|\
+  NSMiniaturizableWindowMask|NSResizableWindowMask|NSTexturedBackgroundWindowMask)
+#endif
+
 /* Runtime and drawing compatibility for Tiger through modern macOS. */
 @interface RDLPAppKit : NSObject
 + (CGFloat)backingScaleForWindow:(NSWindow *)window;

@@ -79,6 +79,11 @@ check the current implementation before treating an item there as unfinished.
   compatibility helpers where they cover the operation. Keep deprecation or
   availability warning suppressions narrow and next to the compatibility code;
   do not silence unrelated warnings.
+- In app-owned Objective-C source, keep SDK and platform conditionals (`#if`,
+  `#ifdef`, `#ifndef`, and related preprocessor directives), compatibility
+  macros, and compiler warning suppressions only in `RDLPAppKit.m`,
+  `RDLPUIKit.m`, and `RDLP_Foundation.m`. Other `.m` files must call those
+  helpers instead of adding conditional compilation or diagnostic pragmas.
 - macOS code must remain compatible with Tiger and its PPC compiler: do not
   introduce blocks into code built for that target. This restriction does not
   apply to the existing iOS player code, which uses blocks.

@@ -146,11 +146,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [sizeColumn setMinWidth:48]; [sizeColumn setWidth:48];
   [sizeColumn setResizingMask:NSTableColumnUserResizingMask];
   [[sizeColumn dataCell] setLineBreakMode:NSLineBreakByTruncatingTail];
-#if MAC_OS_X_VERSION_MAX_ALLOWED >= 101200
-  [[sizeColumn dataCell] setAlignment:NSTextAlignmentRight];
-#else
-  [[sizeColumn dataCell] setAlignment:NSRightTextAlignment];
-#endif
+  [[sizeColumn dataCell] setAlignment:RDLPTextAlignmentRight];
   NSArray *videoTextColumns=[NSArray arrayWithObjects:@"quality",@"title",@"channel",nil];
   CGFloat widths[]={48,240,140}, minimums[]={48,120,80};
   NSUInteger videoColumnIndex;
@@ -238,19 +234,8 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)loadWindow;
 {
   /* Tiger cannot change a window's style mask after creation. */
-  AIWindowStyleMask mask=AIWindowStyleMaskTitled|AIWindowStyleMaskClosable|
-    AIWindowStyleMaskMiniaturizable|AIWindowStyleMaskResizable;
-#if MAC_OS_X_VERSION_MAX_ALLOWED >= 101200
-  /* Intentional legacy appearance; newer AppKit renders its own fallback. */
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-  mask|=NSWindowStyleMaskTexturedBackground;
-#pragma clang diagnostic pop
-#else
-  mask|=NSTexturedBackgroundWindowMask;
-#endif
   NSWindow *window=[[[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,800,600)
-    styleMask:mask backing:NSBackingStoreBuffered defer:NO] autorelease];
+    styleMask:RDLPTexturedWindowStyleMask backing:NSBackingStoreBuffered defer:NO] autorelease];
   [window setTitle:@"RetroDLP"]; [window setReleasedWhenClosed:NO];
   if(AICCCurrentTier()>=AICCTierMiddle)
     [window setCollectionBehavior:AIWindowCollectionBehaviorFullScreenPrimary];

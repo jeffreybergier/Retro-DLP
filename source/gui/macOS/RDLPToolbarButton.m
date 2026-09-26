@@ -1,9 +1,5 @@
 #import "RDLPToolbarButton.h"
 #import "RDLPAppKit.h"
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#endif
 @interface RDLPToolbarGeometry : NSObject {
 @public
   NSRect icon, caret;
@@ -165,6 +161,3 @@
   else if(![action isEqualToString:NSAccessibilityPressAction] || defaultEnabled_) [super accessibilityPerformAction:action];
 }
 @end
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
