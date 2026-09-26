@@ -15,6 +15,7 @@
   NSTableView *table_;
   NSTableView *queue_;
   NSArray *queueRows_, *videoRows_;
+  NSMutableDictionary *queueStatusCache_;
   NSMutableDictionary *sidebarItems_;
   BOOL sidebarLoaded_;
   NSTextField *input_, *status_, *customFormat_, *customError_, *customSummary_;

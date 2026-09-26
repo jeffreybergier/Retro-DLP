@@ -71,9 +71,10 @@
 }
 - (NSDictionary *)jobRow:(NSDictionary *)job;
 {
-  NSString *detail=[NSString stringWithFormat:@"%@ · %@\n%@",[policy_ statusForJob:job],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")];
+  NSString *status=[policy_ statusForJob:job];
+  NSString *detail=[NSString stringWithFormat:@"%@ · %@\n%@",status,[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")];
   NSMutableDictionary *row=[self row:[job objectForKey:@"title"] detail:detail action:@"job"];
-  [row setObject:job forKey:@"job"]; [row setObject:[policy_ statusForJob:job] forKey:@"status"]; return row;
+  [row setObject:job forKey:@"job"]; [row setObject:status forKey:@"status"]; return row;
 }
 - (NSArray *)displayRows:(NSArray *)rows screen:(RDLPScreen)screen playlist:(NSString *)playlist;
 { return [[[RDLPSectionRows alloc] initWithRows:rows model:self screen:screen playlist:playlist] autorelease]; }

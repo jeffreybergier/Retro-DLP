@@ -46,6 +46,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (NSDictionary *)selectedPlaylist;
 - (NSDictionary *)jobForEntry:(NSDictionary *)entry;
 - (NSString *)statusForJob:(NSDictionary *)job;
+- (NSString *)queueStatusForJob:(NSDictionary *)job;
 - (BOOL)playable:(NSDictionary *)job;
 - (void)refresh:(id)sender;
 - (void)tableWasUsed:(NSTableView *)view;
@@ -464,7 +465,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [table_ setDelegate:nil]; [table_ setDataSource:nil];
   [split_ setDelegate:nil]; [split_ release]; [queueWindow_ close]; [queueWindow_ release];
   [sidebarItems_ release]; [downloadPolicy_ release]; [library_ release]; [playlists_ release]; [rows_ release]; [videoRows_ release]; [addedPlaylists_ release]; [accountPlaylists_ release]; [unsupportedPlaylists_ release]; [adhocPlaylist_ release]; [selectedPlaylist_ release];
-  [addSheet_ release]; [downloadSheet_ release]; [downloadRequest_ release]; [downloadFormat_ release]; [queueRows_ release]; [toolbarItems_ release]; [confirmation_ release]; [confirmationRequest_ release]; [super dealloc];
+  [addSheet_ release]; [downloadSheet_ release]; [downloadRequest_ release]; [downloadFormat_ release]; [queueRows_ release]; [queueStatusCache_ release]; [toolbarItems_ release]; [confirmation_ release]; [confirmationRequest_ release]; [super dealloc];
 }
 - (NSDictionary *)selectedRow;
 { NSInteger row=[table_ selectedRow]; return row>=0 && (NSUInteger)row<[rows_ count]?[rows_ objectAtIndex:(NSUInteger)row]:nil; }
@@ -477,6 +478,19 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 { return [downloadPolicy_ representativeJobForEntry:entry playlist:selectedPlaylist_ jobs:[library_ jobsForPlaylist:selectedPlaylist_ video:[entry objectForKey:@"video_id"]]]; }
 - (NSString *)statusForJob:(NSDictionary *)job;
 { return [downloadPolicy_ statusForJob:job]; }
+- (NSString *)queueStatusForJob:(NSDictionary *)job;
+{
+  NSString *key=[job objectForKey:@"id"];
+  NSString *status=key?[queueStatusCache_ objectForKey:key]:nil;
+  if(status) return status;
+  status=[self statusForJob:job];
+  if(key && status) {
+    if(!queueStatusCache_) queueStatusCache_=[[NSMutableDictionary alloc] init];
+    if([queueStatusCache_ count]>=128) [queueStatusCache_ removeAllObjects];
+    [queueStatusCache_ setObject:status forKey:key];
+  }
+  return status;
+}
 
 - (BOOL)playable:(NSDictionary *)job;
 { return [downloadPolicy_ playable:job]; }
@@ -495,6 +509,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(mode_==0 && ![self selectedPlaylist]) { mode_=1; [selectedPlaylist_ release]; selectedPlaylist_=nil; [selection release]; selection=nil; }
   [rows_ release]; rows_=[(mode_==0?[library_ entriesForPlaylist:selectedPlaylist_]:[library_ jobsForPlaylist:nil completedOnly:YES]) copy];
   [queueRows_ release]; queueRows_=[[library_ queueRows] copy];
+  [queueStatusCache_ removeAllObjects];
   [videoRows_ release]; videoRows_=[[RDLPVideoRows alloc] initWithRows:rows_ library:library_ playlist:mode_==0?selectedPlaylist_:nil];
   [sidebar_ reloadData]; [table_ reloadData]; [queue_ reloadData];
   if(!sidebarLoaded_) {
@@ -687,7 +702,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     return [actual length] && ![actual isEqualToString:format]?[label stringByAppendingFormat:@" → %@",[RDLPLibrary qualityLabelForFormat:actual]]:label;
   }
   if([key isEqualToString:@"state"]) {
-    NSString *status=queue?[self statusForJob:job]:[entry objectForKey:@"status"]; AIFontAwesomeIcon icon=0;
+    NSString *status=queue?[self queueStatusForJob:job]:[entry objectForKey:@"status"]; AIFontAwesomeIcon icon=0;
     if([status isEqualToString:@"Downloaded"]) icon=AIFACircleCheck;
     else if([status isEqualToString:@"Downloading"]) icon=AIFAArrowDown;
     else if([status isEqualToString:@"Queued"]) icon=AIFAClock;
@@ -701,7 +716,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   if([[column identifier] isEqualToString:@"state"]) {
     NSDictionary *entry=[(view==queue_?queueRows_:videoRows_) objectAtIndex:(NSUInteger)row];
-    [cell setRepresentedObject:view==queue_?[self statusForJob:entry]:[entry objectForKey:@"status"]];
+    [cell setRepresentedObject:view==queue_?[self queueStatusForJob:entry]:[entry objectForKey:@"status"]];
   }
 }
 - (NSString *)tableView:(NSTableView *)view toolTipForCell:(NSCell *)cell rect:(NSRectPointer)rect tableColumn:(NSTableColumn *)column row:(NSInteger)row mouseLocation:(NSPoint)point;
@@ -714,7 +729,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     return [value isKindOfClass:[NSString class]]?value:[value description];
   }
   NSDictionary *job=entry;
-  NSString *status=[self statusForJob:job], *error=[job objectForKey:@"error"];
+  NSString *status=[self queueStatusForJob:job], *error=[job objectForKey:@"error"];
   return [error length]?[NSString stringWithFormat:@"%@: %@",status,error]:status;
 }
 - (void)tableViewSelectionDidChange:(NSNotification *)notification;

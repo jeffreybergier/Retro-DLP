@@ -116,25 +116,41 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   /* Query completed jobs once, newest first, instead of querying every entry.
    * Keep the same representative-quality policy as the playlist's rows. */
   NSMutableDictionary *jobsByVideo=[NSMutableDictionary dictionary], *URLsByVideo=[NSMutableDictionary dictionary];
-  for(NSDictionary *job in [library jobsForPlaylist:playlist completedOnly:YES]) {
-    NSString *video=[job objectForKey:@"video_id"];
-    if([jobsByVideo objectForKey:video]) continue;
-    NSDictionary *file=[policy localFileForJob:job];
-    if(!file) continue;
-    [jobsByVideo setObject:job forKey:video];
-    [URLsByVideo setObject:[NSURL fileURLWithPath:[file objectForKey:@"path"]] forKey:video];
+  NSArray *completed=[library jobsForPlaylist:playlist completedOnly:YES];
+  NSUInteger index=0, count=[completed count];
+  while(index<count) {
+    NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+    NSUInteger end=MIN(index+32,count);
+    for(;index<end;++index) {
+      NSDictionary *job=[completed objectAtIndex:index];
+      NSString *video=[job objectForKey:@"video_id"];
+      if([jobsByVideo objectForKey:video]) continue;
+      NSDictionary *file=[policy localFileForJob:job];
+      if(!file) continue;
+      [jobsByVideo setObject:job forKey:video];
+      [URLsByVideo setObject:[NSURL fileURLWithPath:[file objectForKey:@"path"]] forKey:video];
+    }
+    [pool drain];
   }
   NSMutableArray *jobs=[NSMutableArray array], *URLs=[NSMutableArray array];
   NSUInteger selected=NSNotFound;
-  for(NSDictionary *candidate in [library entriesForPlaylist:playlist]) {
-    NSString *video=[candidate objectForKey:@"video_id"];
-    BOOL tapped=[video isEqualToString:[entry objectForKey:@"video_id"]] &&
-      [[candidate objectForKey:@"position"] isEqual:[entry objectForKey:@"position"]];
-    NSDictionary *job=tapped?selectedJob:[jobsByVideo objectForKey:video];
-    if(!job) continue;
-    if(tapped) selected=[jobs count];
-    [jobs addObject:job];
-    [URLs addObject:tapped?[NSURL fileURLWithPath:[selectedFile objectForKey:@"path"]]:[URLsByVideo objectForKey:video]];
+  NSArray *entries=[library entriesForPlaylist:playlist];
+  index=0; count=[entries count];
+  while(index<count) {
+    NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+    NSUInteger end=MIN(index+32,count);
+    for(;index<end;++index) {
+      NSDictionary *candidate=[entries objectAtIndex:index];
+      NSString *video=[candidate objectForKey:@"video_id"];
+      BOOL tapped=[video isEqualToString:[entry objectForKey:@"video_id"]] &&
+        [[candidate objectForKey:@"position"] isEqual:[entry objectForKey:@"position"]];
+      NSDictionary *job=tapped?selectedJob:[jobsByVideo objectForKey:video];
+      if(!job) continue;
+      if(tapped) selected=[jobs count];
+      [jobs addObject:job];
+      [URLs addObject:tapped?[NSURL fileURLWithPath:[selectedFile objectForKey:@"path"]]:[URLsByVideo objectForKey:video]];
+    }
+    [pool drain];
   }
   /* A sync may remove/reorder the tapped occurrence while the list is visible.
    * In that case play the exact tapped file rather than selecting a different row. */
