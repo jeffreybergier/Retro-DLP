@@ -1,9 +1,5 @@
 #import "RDLPAppKit.h"
 #import <math.h>
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#endif
 @implementation RDLPAppKit
 /* CGFloat returns need NSInvocation across the legacy and modern ABIs.
    Mirrors ENIL's XP_backingScaleFactor; Tiger has no backing scale API. */
@@ -94,8 +90,10 @@
 }
 + (NSString *)chooseCookieFile {
   NSOpenPanel *panel=[NSOpenPanel openPanel]; [panel setCanChooseDirectories:NO]; [panel setAllowsMultipleSelection:NO];
-  if([panel runModalForDirectory:nil file:nil types:nil]==NSOKButton) return [panel filename];
-  return nil;
+  if([panel runModal]!=NSOKButton) return nil;
+  /* Tiger can still provide a filename when the URL accessor is unavailable. */
+  if([panel respondsToSelector:@selector(URL)]) return [[panel URL] path];
+  return [panel performSelector:@selector(filename)];
 }
 + (void)revealInFinder:(NSString *)path {
   if(!path || ![[NSWorkspace sharedWorkspace] selectFile:path inFileViewerRootedAtPath:@""])
@@ -186,6 +184,3 @@
     [RDLPAppKit showAlert:@"Could not open this file in its default app. Check that the download exists and choose an app in Finder’s Open With settings."];
 }
 @end
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif

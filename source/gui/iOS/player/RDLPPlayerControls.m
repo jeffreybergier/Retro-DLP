@@ -1,8 +1,6 @@
 #import "RDLPPlayerControls.h"
+#import "../RDLPUIKit.h"
 #import <math.h>
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
 @interface RDLPPlayerTimeline : UISlider
 @end
@@ -53,7 +51,7 @@ static NSString *RDLPTimeText(double seconds) {
   [self setUserInteractionEnabled:NO];
   _doneButton=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:nil action:NULL];
   _audioButton=RDLPImageButton(@"headphones.png",@"Use audio only");
-  [_audioButton setStyle:UIBarButtonItemStyleBordered];
+  [RDLPUIKit setBorderedStyleForBarButtonItem:_audioButton];
   _previousButton=RDLPImageButton(@"backward-fast.png",@"Previous item");
   _nextButton=RDLPImageButton(@"forward-fast.png",@"Next item");
   [_previousButton setWidth:32]; [_nextButton setWidth:32];
@@ -61,7 +59,7 @@ static NSString *RDLPTimeText(double seconds) {
   [_previousButton setImageInsets:UIEdgeInsetsMake(2,0,-2,0)]; [_nextButton setImageInsets:UIEdgeInsetsMake(2,0,-2,0)];
   [_previousButton setLandscapeImagePhoneInsets:UIEdgeInsetsMake(2,0,-2,0)]; [_nextButton setLandscapeImagePhoneInsets:UIEdgeInsetsMake(2,0,-2,0)];
   _playButton=RDLPImageButton(@"play.png",@"Play");
-  [_playButton setStyle:UIBarButtonItemStyleBordered];
+  [RDLPUIKit setBorderedStyleForBarButtonItem:_playButton];
   _timeline=[[RDLPPlayerTimeline alloc] initWithFrame:CGRectMake(0,0,164,40)];
   [_timeline setContinuous:YES];
   [_timeline setAccessibilityLabel:@"Playback position"];
@@ -72,7 +70,7 @@ static NSString *RDLPTimeText(double seconds) {
   _messageLabel=[[UILabel alloc] initWithFrame:CGRectZero];
   [_messageLabel setBackgroundColor:[UIColor clearColor]];
   [_messageLabel setTextColor:[UIColor whiteColor]];
-  [_messageLabel setTextAlignment:(__typeof__([_messageLabel textAlignment]))UITextAlignmentCenter];
+  [RDLPUIKit centerTextInLabel:_messageLabel];
   [_messageLabel setNumberOfLines:2];
   [_messageLabel setFont:[UIFont systemFontOfSize:18]];
   [self addSubview:_messageLabel];
@@ -105,4 +103,3 @@ static NSString *RDLPTimeText(double seconds) {
   [_messageLabel setFrame:CGRectMake(20,([self bounds].size.height-60)/2,MAX(0,[self bounds].size.width-40),60)];
 }
 @end
-#pragma clang diagnostic pop

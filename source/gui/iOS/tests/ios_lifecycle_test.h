@@ -8,7 +8,7 @@
 - (UIBackgroundTaskIdentifier)beginBackgroundTask;
 - (void)endBackgroundTask:(UIBackgroundTaskIdentifier)task;
 - (void)downloadCompleted:(NSNotification *)notification;
-- (void)presentDownloadNotification:(UILocalNotification *)notification;
+- (void)presentDownloadNotification:(id)notification;
 @end
 @interface RDLPBackgroundTestDelegate : RDLPAppDelegate {
 @public
@@ -22,7 +22,7 @@
 { self=[super init]; if(self) notifications_=[[NSMutableArray alloc] init]; return self; }
 - (void)dealloc;
 { [notifications_ release]; [super dealloc]; }
-- (void)presentDownloadNotification:(UILocalNotification *)notification;
+- (void)presentDownloadNotification:(id)notification;
 {
   statusRequire([NSThread isMainThread],@"Deliver local notifications on the main thread");
   statusRequire(starts_>ends_,@"Deliver before releasing background execution");

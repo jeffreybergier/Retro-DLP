@@ -9,7 +9,7 @@
  * The session uses AVPlayer and the child's public API, never player subclassing.
  * Main thread only. */
 @interface RDLPDownloadedPlayerViewController : RDLPPlayerNavigationController
-    <RDLPPlayerViewControllerDelegate, AVAudioSessionDelegate>
+    <RDLPPlayerViewControllerDelegate>
 @property(nonatomic,readonly,retain) RDLPPlayerQueue *queue;
 @property(nonatomic,readonly,retain) AVPlayer *player;
 @property(nonatomic,readonly,retain) RDLPPlayerViewController *playerViewController;
@@ -17,5 +17,8 @@
 /* Jobs and URLs correspond one-to-one, including repeated playlist entries.
  * Invalid/empty input returns nil. Each selected item restores its own bookmark. */
 - (id)initWithLibrary:(RDLPLibrary *)library jobs:(NSArray *)jobs URLs:(NSArray *)URLs startingAtIndex:(NSUInteger)index;
+/* AVAudioSession's iOS 5 delegate selectors; installed by RDLPUIKit. */
+- (void)beginInterruption;
+- (void)endInterruptionWithFlags:(NSUInteger)flags;
 - (void)stop;
 @end

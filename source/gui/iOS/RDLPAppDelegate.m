@@ -11,9 +11,8 @@
 - (void)endBackgroundTask:(UIBackgroundTaskIdentifier)task;
 - (void)finishBackgroundTask;
 - (void)backgroundTimeExpired;
-- (void)registerDownloadNotifications:(UIApplication *)application;
 - (void)downloadCompleted:(NSNotification *)notification;
-- (void)presentDownloadNotification:(UILocalNotification *)notification;
+- (void)presentDownloadNotification:(id)notification;
 @end
 @implementation RDLPAppDelegate
 @synthesize window=window_;
@@ -27,7 +26,7 @@
   library_=[[RDLPLibrary alloc] initWithSupportDirectory:support downloadDirectory:[documents stringByAppendingPathComponent:@"RetroDLP"]];
   window_=[[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
   if(library_) {
-    [self registerDownloadNotifications:application];
+    [RDLPUIKit registerDownloadNotificationsForApplication:application];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(downloadCompleted:) name:RDLPLibraryDownloadDidComplete object:library_];
     RDLPPlaylistsViewController *root=[[RDLPPlaylistsViewController alloc] initWithLibrary:library_];
     UINavigationController *navigation=[[UINavigationController alloc] initWithRootViewController:root];
@@ -44,40 +43,17 @@
   }
   return YES;
 }
-- (void)registerDownloadNotifications:(UIApplication *)application;
-{
-  /* Like ENIL, use local alerts on iOS 5+ and ask for alert/sound permission
-     only where the iOS 8 registration API exists. No remote push registration. */
-  SEL registerSelector=@selector(registerUserNotificationSettings:);
-  Class settingsClass=NSClassFromString(@"UIUserNotificationSettings");
-  SEL createSelector=@selector(settingsForTypes:categories:);
-  if(![application respondsToSelector:registerSelector] ||
-     ![settingsClass respondsToSelector:createSelector]) return;
-  id (*createSettings)(id,SEL,NSUInteger,id)=(id (*)(id,SEL,NSUInteger,id))[settingsClass methodForSelector:createSelector];
-  id settings=createSettings(settingsClass,createSelector,6,nil); /* Sound=2, Alert=4. */
-  [application performSelector:registerSelector withObject:settings];
-}
 - (void)downloadCompleted:(NSNotification *)notification;
 {
   if(!backgrounded_) return;
   NSString *title=[[notification userInfo] objectForKey:@"title"];
   if(![title length]) title=[[notification userInfo] objectForKey:@"video_id"];
   if(![title length]) title=@"Video";
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-  UILocalNotification *alert=[[UILocalNotification alloc] init];
-  [alert setAlertBody:[NSString stringWithFormat:@"Download Complete '%@'",title]];
-  [alert setSoundName:UILocalNotificationDefaultSoundName];
-  [self presentDownloadNotification:alert];
-  [alert release];
-#pragma clang diagnostic pop
+  [self presentDownloadNotification:[RDLPUIKit downloadCompletionNotificationForTitle:title]];
 }
-- (void)presentDownloadNotification:(UILocalNotification *)notification;
+- (void)presentDownloadNotification:(id)notification;
 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-  [[UIApplication sharedApplication] presentLocalNotificationNow:notification];
-#pragma clang diagnostic pop
+  [RDLPUIKit presentDownloadNotification:notification];
 }
 - (void)applicationDidEnterBackground:(UIApplication *)application;
 { (void)application; backgrounded_=YES; [self activityChanged:nil]; }

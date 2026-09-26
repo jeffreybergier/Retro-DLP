@@ -2,6 +2,17 @@
 @class RDLPStatusBarView, RDLPLibrary;
 @interface RDLPUIKit : NSObject
 + (void)configureContentEdges:(UIViewController *)controller;
++ (void)configurePlayerFullScreenLayout:(UIViewController *)controller;
++ (void)setBorderedStyleForBarButtonItem:(UIBarButtonItem *)item;
++ (void)centerTextInLabel:(UILabel *)label;
++ (BOOL)legacyStatusBarHidden;
++ (void)setLegacyStatusBarHidden:(BOOL)hidden;
++ (void)registerDownloadNotificationsForApplication:(UIApplication *)application;
++ (id)downloadCompletionNotificationForTitle:(NSString *)title;
++ (void)presentDownloadNotification:(id)notification;
++ (void)activatePlaybackAudioSessionForDelegate:(id)delegate;
++ (void)deactivatePlaybackAudioSessionForDelegate:(id)delegate;
++ (BOOL)shouldResumePlaybackAfterInterruptionFlags:(NSUInteger)flags;
 + (UIImage *)statusIcon:(NSString *)status;
 + (UIImage *)queueActionIcon:(BOOL)stop;
 + (UIImage *)settingsIcon;

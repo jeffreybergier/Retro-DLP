@@ -1,11 +1,9 @@
 #import "RDLPDownloadedPlayerViewController.h"
 #import "RDLPLibrary.h"
+#import "RDLPUIKit.h"
 #import <MediaPlayer/MediaPlayer.h>
 #import <math.h>
 
-/* AVAudioSessionDelegate is the interruption API available on iOS 5. */
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 static void *RDLPDownloadObservation=&RDLPDownloadObservation;
 static RDLPDownloadedPlayerViewController *RDLPActivePlayback=nil; // nonretained
 static NSArray *RDLPDownloadItemKeys(void) {
@@ -138,10 +136,7 @@ static double RDLPResumePosition(double seconds,double duration) {
   if(_started) { [self becomeFirstResponder]; return; }
   [RDLPActivePlayback stop]; RDLPActivePlayback=self;
   _started=YES; _wantsPlay=YES;
-  AVAudioSession *session=[AVAudioSession sharedInstance]; NSError *error=nil;
-  [session setDelegate:self];
-  if(![session setCategory:AVAudioSessionCategoryPlayback error:&error] || ![session setActive:YES error:&error])
-    NSLog(@"Could not activate playback audio session: %@",error);
+  [RDLPUIKit activatePlaybackAudioSessionForDelegate:self];
   [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
   [self becomeFirstResponder];
   __block RDLPDownloadedPlayerViewController *owner=self; // MRC: observer must not retain its owner
@@ -166,9 +161,7 @@ static double RDLPResumePosition(double seconds,double duration) {
     RDLPActivePlayback=nil;
     [self resignFirstResponder];
     [[UIApplication sharedApplication] endReceivingRemoteControlEvents];
-    AVAudioSession *session=[AVAudioSession sharedInstance];
-    if([session delegate]==self) [session setDelegate:nil];
-    [session setActive:NO withFlags:AVAudioSessionSetActiveFlags_NotifyOthersOnDeactivation error:NULL];
+    [RDLPUIKit deactivatePlaybackAudioSessionForDelegate:self];
   }
 }
 - (void)refreshPlayback {
@@ -317,7 +310,6 @@ static double RDLPResumePosition(double seconds,double duration) {
 }
 - (void)endInterruptionWithFlags:(NSUInteger)flags {
   BOOL resume=_resumeAfterInterruption; _resumeAfterInterruption=NO;
-  if(resume && (flags & AVAudioSessionInterruptionFlags_ShouldResume)) [self play];
+  if(resume && [RDLPUIKit shouldResumePlaybackAfterInterruptionFlags:flags]) [self play];
 }
 @end
-#pragma clang diagnostic pop

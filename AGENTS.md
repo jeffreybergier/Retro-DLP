@@ -76,9 +76,11 @@ check the current implementation before treating an item there as unfinished.
   the batch size based on memory use and measured performance.
 - Check both compile-time SDK availability and runtime availability before
   using newer Cocoa APIs. Prefer the existing `RDLPAppKit` and `RDLPUIKit`
-  compatibility helpers where they cover the operation. Keep deprecation or
-  availability warning suppressions narrow and next to the compatibility code;
-  do not silence unrelated warnings.
+  compatibility helpers where they cover the operation. Keep availability
+  warning suppressions narrow and next to the compatibility code; do not
+  silence unrelated warnings. Do not suppress deprecated-declaration warnings
+  in app-owned code; use a compatible API or a runtime-checked compatibility
+  helper instead.
 - In app-owned Objective-C source, keep SDK and platform conditionals (`#if`,
   `#ifdef`, `#ifndef`, and related preprocessor directives), compatibility
   macros, and compiler warning suppressions only in `RDLPAppKit.m`,

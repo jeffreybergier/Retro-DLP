@@ -1,5 +1,6 @@
 #import "RDLPPlayerViewController.h"
 #import "RDLPPlayerControls.h"
+#import "../RDLPUIKit.h"
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
 
@@ -57,15 +58,13 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   _active=[[UIApplication sharedApplication] applicationState]==UIApplicationStateActive;
   _videoGravity=[AVLayerVideoGravityResizeAspect copy];
   /* Keep video underneath translucent bars on both legacy and modern UIKit. */
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-  [self setWantsFullScreenLayout:YES];
-#pragma clang diagnostic pop
+  [RDLPUIKit configurePlayerFullScreenLayout:self];
   /* iOS 7+ defaults to extending under all translucent bars. */
   NSNotificationCenter *center=[NSNotificationCenter defaultCenter];
   [center addObserver:self selector:@selector(willResignActive:) name:UIApplicationWillResignActiveNotification object:nil];
   [center addObserver:self selector:@selector(didBecomeActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
   [center addObserver:self selector:@selector(showControls) name:UIAccessibilityVoiceOverStatusChanged object:nil];
+  [center addObserver:self selector:@selector(orientationChanged:) name:UIApplicationDidChangeStatusBarOrientationNotification object:nil];
 }
 - (void)dealloc {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -152,17 +151,10 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
     [[navigation toolbar] setNeedsLayout];
   }
 }
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-- (void)willAnimateRotationToInterfaceOrientation:(UIInterfaceOrientation)orientation duration:(NSTimeInterval)duration {
-  [super willAnimateRotationToInterfaceOrientation:orientation duration:duration];
+- (void)orientationChanged:(NSNotification *)notification {
+  (void)notification;
   [self layoutToolbar];
 }
-- (void)didRotateFromInterfaceOrientation:(UIInterfaceOrientation)orientation {
-  [super didRotateFromInterfaceOrientation:orientation];
-  [self layoutToolbar];
-}
-#pragma clang diagnostic pop
 - (void)viewDidUnload {
   [self cancelHide];
   [self stopObserving];
