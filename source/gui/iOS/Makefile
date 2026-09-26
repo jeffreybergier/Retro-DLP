@@ -6,7 +6,7 @@ SOURCES += RDLPPlayerControls.m RDLPPlayerViewController.m RDLPPlayerQueue.m RDL
 SOURCE_DIRS = $(SHARED_DIR) player
 vpath %.c $(SHARED_DIR)
 vpath %.m $(SHARED_DIR) player
-EXTRA_SOURCES = rdapp_store.c rdapp_service.c RDLPLibrary.m RDLPVideoRows.m RDLP_Foundation.m
+EXTRA_SOURCES = rdapp_store.c rdapp_service.c rdlp_thread.c RDLPLibrary.m RDLPVideoRows.m RDLP_Foundation.m
 INFO_PLIST = Info.plist
 RES_DIR = Resources
 ALTIVECCORE_REQUIRED = 1

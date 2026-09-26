@@ -1,6 +1,6 @@
 #import "RDLP_Foundation.h"
 #import <TargetConditionals.h>
-#include <pthread.h>
+#include "rdlp_thread.h"
 
 static void *RDLPThreadMain(void *context) {
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
@@ -16,7 +16,7 @@ static void *RDLPThreadMain(void *context) {
 + (BOOL)RLDP_isMainThread {
   if([self respondsToSelector:@selector(isMainThread)]) return [self isMainThread];
   /* Tiger predates NSThread's main-thread queries. */
-  return pthread_main_np()!=0;
+  return rdlp_thread_is_main()!=0;
 }
 + (void)RDLP_prepareMultithreading:(id)object { (void)object; }
 + (int)RDLP_detachNewThreadSelector:(SEL)selector toTarget:(id)target
@@ -26,23 +26,14 @@ static void *RDLPThreadMain(void *context) {
   if(![self isMultiThreaded])
     [self detachNewThreadSelector:@selector(RDLP_prepareMultithreading:)
       toTarget:self withObject:nil];
-  pthread_attr_t attributes;
-  int error=pthread_attr_init(&attributes);
-  if(error) return error;
-  error=pthread_attr_setdetachstate(&attributes,PTHREAD_CREATE_DETACHED);
-  if(!error) error=pthread_attr_setstacksize(&attributes,stackSize);
-  if(!error) {
-    NSInvocation *invocation=[[NSInvocation invocationWithMethodSignature:
-      [target methodSignatureForSelector:selector]] retain];
-    [invocation setTarget:target];
-    [invocation setSelector:selector];
-    [invocation setArgument:&object atIndex:2];
-    [invocation retainArguments];
-    pthread_t thread;
-    error=pthread_create(&thread,&attributes,RDLPThreadMain,invocation);
-    if(error) [invocation release];
-  }
-  pthread_attr_destroy(&attributes);
+  NSInvocation *invocation=[[NSInvocation invocationWithMethodSignature:
+    [target methodSignatureForSelector:selector]] retain];
+  [invocation setTarget:target];
+  [invocation setSelector:selector];
+  [invocation setArgument:&object atIndex:2];
+  [invocation retainArguments];
+  int error=rdlp_thread_start(RDLPThreadMain,invocation,(size_t)stackSize);
+  if(error) [invocation release];
   return error;
 }
 @end

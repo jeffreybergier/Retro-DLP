@@ -55,7 +55,11 @@ check the current implementation before treating an item there as unfinished.
 - Do not use dot syntax in Objective-C
 - Do not write C code in Objective-C, use companion C files to support 
   Objective-C code if necessary. Or use the designated C/Objective-C bridge file
-  called 'RDLPLibrary.m'
+  called 'RDLPLibrary.m'. A platform-specific Objective-C file may call a
+  Darwin system API directly when implementing platform behavior, as the
+  `setxattr` backup fallback does in `source/gui/iOS/RDLPLibrary+iOS.m`.
+  `source/gui/shared/RDLPDownloadPolicy.m` may call `stat` to verify that a
+  completed download is a regular file and read its size for display.
 - Prefer writing non-UI logic in C rather than Objective-C for performance 
   reasons
 - Performance matters on retro devices. Avoid repeated work proportional to

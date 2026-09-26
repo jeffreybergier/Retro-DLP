@@ -61,7 +61,7 @@ cmd += [str(objects / (name + '.o')) for name in
         ['RDLPAppDelegate', 'RDLPLibraryViewController', 'RDLPLibraryActions',
          'RDLPLibrarySections', 'RDLPUIKit', 'RDLPDownloadPolicy', 'RDLPStatusBarView', 'RDLPSettingsViewController', 'RDLPPlaylistsViewController', 'RDLPPlaylistViewController', 'RDLPVideoListViewController', 'RDLPDownloadsViewController', 'RDLPQueueViewController',
          'RDLPPlayerControls', 'RDLPPlayerViewController', 'RDLPPlayerQueue', 'RDLPPlayerNavigationController', 'RDLPDownloadedPlayerViewController',
-         'RDLPLibrary', 'RDLPLibrary+iOS', 'RDLPVideoRows', 'RDLP_Foundation', 'rdapp_store', 'rdapp_service']]
+         'RDLPLibrary', 'RDLPLibrary+iOS', 'RDLPVideoRows', 'RDLP_Foundation', 'rdapp_store', 'rdapp_service', 'rdlp_thread']]
 cmd += [str(root / 'build/iOS/libretrodlp-download.a'),
         str(root / 'build/iOS/libretrodlp.a'),
         '/altivec/libs/core/build-phone/lib/libAltivecCore.a',

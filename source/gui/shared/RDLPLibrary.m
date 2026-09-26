@@ -648,13 +648,6 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   [self changed];
   /* QuickJS permits 1 MiB of stack; the default 512 KiB worker stack can
      hit its guard page before QuickJS detects overflow. Leave native headroom. */
-#if TARGET_OS_IPHONE
-  NSThread *worker=[[NSThread alloc] initWithTarget:self selector:@selector(work:) object:command];
-  [worker setStackSize:2U*1024U*1024U];
-  [worker start];
-  [worker release];
-#else
-  /* NSThread's configurable stack API is unavailable on Tiger. */
   int error=[NSThread RDLP_detachNewThreadSelector:@selector(work:) toTarget:self
     withObject:command stackSize:2U*1024U*1024U];
   if(error) {
@@ -668,7 +661,6 @@ static void download_callback(const rdlp_download_event *event,void *context) {
     [self finished:[NSDictionary dictionaryWithObjectsAndKeys:
       [NSNumber numberWithInt:RDLP_ERROR_INTERNAL],@"code",message,@"message",nil]];
   }
-#endif
 }
 - (void)finished:(NSDictionary *)result;
 {
