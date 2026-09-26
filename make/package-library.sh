@@ -24,8 +24,7 @@ cp source/library/shared/include/retrodlp/retrodlp.h source/library/shared/inclu
   "$stage/include/retrodlp/"
 cp "$platform_root/libretrodlp.a" \
   "$platform_root/libretrodlp-download.a" "$stage/lib/"
-cp docs/library-api.md "$stage/README.md"
-cp source/library/shared/examples/*.c source/library/shared/examples/README.md "$stage/examples/"
+cp source/library/shared/examples/*.c "$stage/examples/"
 cp LICENSE "$stage/LICENSE"
 
 # ZIP stores DOS timestamps. Normalize the staged copies so rebuilding the same
@@ -35,7 +34,7 @@ find "$stage" -exec touch -t 198001010000 {} +
 rm -f -- "$archive"
 (
   cd "$stage"
-  zip -9 -X -q -r retro-dlp-library.zip.tmp LICENSE README.md examples \
+  zip -9 -X -q -r retro-dlp-library.zip.tmp LICENSE examples \
     include lib
 )
 mv "$stage/retro-dlp-library.zip.tmp" "$archive"
