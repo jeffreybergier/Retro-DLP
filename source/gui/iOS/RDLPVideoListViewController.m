@@ -10,7 +10,7 @@
   library_=[library retain];
   policy_=[[RDLPDownloadPolicy alloc] initWithLibrary:library];
   model_=[[RDLPLibrarySections alloc] initWithLibrary:library];
-  self.title=title;
+  [self setTitle:title];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library_];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPLibraryStatusDidChange object:library_];
   return self;
@@ -19,7 +19,7 @@
 {
   [NSObject cancelPreviousPerformRequestsWithTarget:self];
   [[NSNotificationCenter defaultCenter] removeObserver:self];
-  alert_.delegate=nil; [alert_ dismissWithClickedButtonIndex:alert_.cancelButtonIndex animated:NO];
+  [alert_ setDelegate:nil]; [alert_ dismissWithClickedButtonIndex:[alert_ cancelButtonIndex] animated:NO];
   [alert_ release]; [retryRequest_ release]; [swipeJobID_ release]; [sections_ release]; [statusBar_ release];
   [model_ release]; [policy_ release]; [library_ release]; [super dealloc];
 }
@@ -27,8 +27,8 @@
 {
   [super viewDidLoad]; [RDLPUIKit configureContentEdges:self];
   statusBar_=[[RDLPStatusBarView alloc] initWithFrame:CGRectZero];
-  statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-112);
-  self.toolbarItems=[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:[self showsQueueButton]?@selector(queue:):NULL];
+  [statusBar_ setMaximumWidth:MAX(0,[[self view] bounds].size.width-112)];
+  [self setToolbarItems:[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:[self showsQueueButton]?@selector(queue:):NULL]];
   [self refresh:nil];
 }
 - (void)viewWillAppear:(BOOL)animated;
@@ -38,16 +38,16 @@
 }
 - (void)viewWillDisappear:(BOOL)animated;
 {
-  visible_=NO; [self.tableView setEditing:NO animated:NO];
+  visible_=NO; [[self tableView] setEditing:NO animated:NO];
   [swipeJobID_ release]; swipeJobID_=nil; [super viewWillDisappear:animated];
 }
 - (void)viewDidLayoutSubviews;
-{ [super viewDidLayoutSubviews]; statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-112); }
+{ [super viewDidLayoutSubviews]; [statusBar_ setMaximumWidth:MAX(0,[[self view] bounds].size.width-112)]; }
 - (void)updateToolbarAnimated:(BOOL)animated;
 {
-  if(!visible_ || self.navigationController.topViewController!=self) return;
+  if(!visible_ || [[self navigationController] topViewController]!=self) return;
   BOOL hidden=[self shouldHideToolbar];
-  if(self.navigationController.toolbarHidden!=hidden) [self.navigationController setToolbarHidden:hidden animated:animated];
+  if([[self navigationController] isToolbarHidden]!=hidden) [[self navigationController] setToolbarHidden:hidden animated:animated];
 }
 - (BOOL)showsQueueButton; { return YES; }
 - (NSArray *)listSections; { return [NSArray array]; }
@@ -78,28 +78,28 @@
     [sections_ release]; sections_=[sections copy];
   }
   [self refreshStatus:nil];
-  if(!swipeJobID_) [self.tableView reloadData];
+  if(!swipeJobID_) [[self tableView] reloadData];
 }
 - (void)queue:(id)sender;
 {
-  (void)sender; if(self.presentedViewController || self.navigationController.presentedViewController || alert_) return;
+  (void)sender; if([self presentedViewController] || [[self navigationController] presentedViewController] || alert_) return;
   RDLPQueueViewController *queue=[[[RDLPQueueViewController alloc] initWithLibrary:library_] autorelease];
   UINavigationController *modal=[[[UINavigationController alloc] initWithRootViewController:queue] autorelease];
-  [self.navigationController presentViewController:modal animated:YES completion:nil];
+  [[self navigationController] presentViewController:modal animated:YES completion:nil];
 }
 - (void)configureAddVideoButton;
 {
-  self.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit plusIcon] style:UIBarButtonItemStylePlain target:self action:@selector(addVideo:)] autorelease];
-  self.navigationItem.rightBarButtonItem.accessibilityLabel=@"Add Video";
+  [[self navigationItem] setRightBarButtonItem:[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit plusIcon] style:UIBarButtonItemStylePlain target:self action:@selector(addVideo:)] autorelease]];
+  [[[self navigationItem] rightBarButtonItem] setAccessibilityLabel:@"Add Video"];
 }
 - (void)addVideo:(id)sender;
 {
-  (void)sender; if(alert_ || self.presentedViewController || self.navigationController.presentedViewController) return;
+  (void)sender; if(alert_ || [self presentedViewController] || [[self navigationController] presentedViewController]) return;
   alert_=[[UIAlertView alloc] initWithTitle:@"Add Video" message:@"YouTube video URL or ID" delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Add",nil];
-  alert_.alertViewStyle=UIAlertViewStylePlainTextInput;
+  [alert_ setAlertViewStyle:UIAlertViewStylePlainTextInput];
   UITextField *field=[alert_ textFieldAtIndex:0];
-  field.autocapitalizationType=UITextAutocapitalizationTypeNone;
-  field.autocorrectionType=UITextAutocorrectionTypeNo;
+  [field setAutocapitalizationType:UITextAutocapitalizationTypeNone];
+  [field setAutocorrectionType:UITextAutocorrectionTypeNo];
   [alert_ show];
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table;
@@ -107,19 +107,19 @@
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section;
 { (void)table; return (NSInteger)[[[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"rows"] count]; }
 - (NSDictionary *)rowAtIndex:(NSIndexPath *)index;
-{ return [[[sections_ objectAtIndex:(NSUInteger)index.section] objectForKey:@"rows"] objectAtIndex:(NSUInteger)index.row]; }
+{ return [[[sections_ objectAtIndex:(NSUInteger)[index section]] objectForKey:@"rows"] objectAtIndex:(NSUInteger)[index row]]; }
 - (BOOL)canDeleteJob:(NSDictionary *)job;
 {
-  return !alert_ && !self.presentedViewController && !self.navigationController.presentedViewController &&
+  return !alert_ && ![self presentedViewController] && ![[self navigationController] presentedViewController] &&
     [policy_ canRemove:job] && ![policy_ canCancel:job];
 }
 - (BOOL)tableView:(UITableView *)table canEditRowAtIndexPath:(NSIndexPath *)index;
 {
   (void)table;
-  RDLPLibraryRows *rows=[[sections_ objectAtIndex:(NSUInteger)index.section] objectForKey:@"rows"];
+  RDLPLibraryRows *rows=[[sections_ objectAtIndex:(NSUInteger)[index section]] objectForKey:@"rows"];
   /* UIKit may ask about offscreen rows. Only inspect the displayed row here;
    * deleteJob: revalidates the captured job ID immediately before mutation. */
-  return [self canDeleteJob:[[rows cachedObjectAtIndex:(NSUInteger)index.row] objectForKey:@"job"]];
+  return [self canDeleteJob:[[rows cachedObjectAtIndex:(NSUInteger)[index row]] objectForKey:@"job"]];
 }
 - (UITableViewCellEditingStyle)tableView:(UITableView *)table editingStyleForRowAtIndexPath:(NSIndexPath *)index;
 { return [self tableView:table canEditRowAtIndexPath:index]?UITableViewCellEditingStyleDelete:UITableViewCellEditingStyleNone; }
@@ -149,7 +149,7 @@
 }
 - (void)deleteJob:(NSString *)key;
 {
-  [self.tableView setEditing:NO animated:YES];
+  [[self tableView] setEditing:NO animated:YES];
   [swipeJobID_ release]; swipeJobID_=nil;
   /* Tapping UIKit's Delete button confirms this quality, not its current row
    * position. Recheck state in case it was queued or started during the swipe. */
@@ -162,27 +162,27 @@
   UITableViewCell *cell=[table dequeueReusableCellWithIdentifier:@"video"];
   if(!cell) cell=[[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"video"] autorelease];
   NSDictionary *row=[self rowAtIndex:index]; NSString *status=[row objectForKey:@"status"];
-  cell.textLabel.text=[row objectForKey:@"title"];
-  cell.detailTextLabel.text=[row objectForKey:@"detail"];
-  cell.accessoryType=UITableViewCellAccessoryNone;
+  [[cell textLabel] setText:[row objectForKey:@"title"]];
+  [[cell detailTextLabel] setText:[row objectForKey:@"detail"]];
+  [cell setAccessoryType:UITableViewCellAccessoryNone];
   UIImageView *accessory=[[[UIImageView alloc] initWithImage:[self statusIcon:status]] autorelease];
-  accessory.isAccessibilityElement=NO; cell.accessoryView=accessory;
+  [accessory setIsAccessibilityElement:NO]; [cell setAccessoryView:accessory];
   NSMutableArray *spoken=[NSMutableArray array];
   NSString *detail=[row objectForKey:@"spoken_detail"];
-  if(!detail) detail=cell.detailTextLabel.text;
-  if([cell.textLabel.text length]) [spoken addObject:cell.textLabel.text];
+  if(!detail) detail=[[cell detailTextLabel] text];
+  if([[[cell textLabel] text] length]) [spoken addObject:[[cell textLabel] text]];
   if([detail length]) [spoken addObject:detail];
   if([status length]) [spoken addObject:status];
   NSString *accessibility=[row objectForKey:@"accessibility_label"];
-  cell.accessibilityLabel=accessibility?accessibility:[spoken componentsJoinedByString:@", "];
-  cell.accessibilityHint=[status isEqualToString:@"Downloaded"]?@"Play video":(([status isEqualToString:@"Queued"] || [status isEqualToString:@"Downloading"])?@"Download in progress":@"Download video");
+  [cell setAccessibilityLabel:accessibility?accessibility:[spoken componentsJoinedByString:@", "]];
+  [cell setAccessibilityHint:[status isEqualToString:@"Downloaded"]?@"Play video":(([status isEqualToString:@"Queued"] || [status isEqualToString:@"Downloading"])?@"Download in progress":@"Download video")];
   return cell;
 }
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index;
 {
   NSDictionary *row=[[[self rowAtIndex:index] retain] autorelease], *entry=[row objectForKey:@"video"];
   [table deselectRowAtIndexPath:index animated:YES];
-  if(alert_ || self.presentedViewController || self.navigationController.presentedViewController) return;
+  if(alert_ || [self presentedViewController] || [[self navigationController] presentedViewController]) return;
   NSString *pid=[row objectForKey:@"playlist_id"];
   NSDictionary *selectedJob=[row objectForKey:@"job"];
   NSString *format=selectedJob?[selectedJob objectForKey:@"format"]:[RDLPLibrary preferredFormat];
@@ -213,10 +213,10 @@
 - (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)index;
 {
   if(alert!=alert_) return;
-  BOOL adding=alert.alertViewStyle==UIAlertViewStylePlainTextInput;
-  NSString *input=adding?[[[alert textFieldAtIndex:0].text copy] autorelease]:nil;
-  NSDictionary *request=[[retryRequest_ retain] autorelease]; BOOL retry=index!=alert.cancelButtonIndex;
-  alert_.delegate=nil; [alert_ release]; alert_=nil; [retryRequest_ release]; retryRequest_=nil;
+  BOOL adding=[alert alertViewStyle]==UIAlertViewStylePlainTextInput;
+  NSString *input=adding?[[[[alert textFieldAtIndex:0] text] copy] autorelease]:nil;
+  NSDictionary *request=[[retryRequest_ retain] autorelease]; BOOL retry=index!=[alert cancelButtonIndex];
+  [alert_ setDelegate:nil]; [alert_ release]; alert_=nil; [retryRequest_ release]; retryRequest_=nil;
   if(!retry) return;
   if(adding) {
     [library_ addVideoInput:input]; [self refresh:nil]; return;

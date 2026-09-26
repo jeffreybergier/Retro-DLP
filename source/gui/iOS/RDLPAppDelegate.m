@@ -31,9 +31,9 @@
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(downloadCompleted:) name:RDLPLibraryDownloadDidComplete object:library_];
     RDLPPlaylistsViewController *root=[[RDLPPlaylistsViewController alloc] initWithLibrary:library_];
     UINavigationController *navigation=[[UINavigationController alloc] initWithRootViewController:root];
-    window_.rootViewController=navigation; [navigation release]; [root release];
+    [window_ setRootViewController:navigation]; [navigation release]; [root release];
   } else {
-    UIViewController *error=[[UIViewController alloc] init]; window_.rootViewController=error; [error release];
+    UIViewController *error=[[UIViewController alloc] init]; [window_ setRootViewController:error]; [error release];
     [RDLPUIKit showMessage:@"Cannot open the RetroDLP library. Check available storage and restart the app."];
   }
   [window_ makeKeyAndVisible];
@@ -66,8 +66,8 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
   UILocalNotification *alert=[[UILocalNotification alloc] init];
-  alert.alertBody=[NSString stringWithFormat:@"Download Complete '%@'",title];
-  alert.soundName=UILocalNotificationDefaultSoundName;
+  [alert setAlertBody:[NSString stringWithFormat:@"Download Complete '%@'",title]];
+  [alert setSoundName:UILocalNotificationDefaultSoundName];
   [self presentDownloadNotification:alert];
   [alert release];
 #pragma clang diagnostic pop
@@ -121,8 +121,8 @@
 {
   (void)application; (void)source; (void)annotation;
   if(![url isFileURL] || !library_) return NO;
-  UINavigationController *navigation=(UINavigationController *)window_.rootViewController;
-  id controller=navigation.topViewController;
+  UINavigationController *navigation=(UINavigationController *)[window_ rootViewController];
+  id controller=[navigation topViewController];
   return [controller requestCookieImport:[url path] discover:NO];
 }
 - (void)errorsChanged:(id)sender;
@@ -135,9 +135,9 @@
 {
   if(errorAlert_ || ![library_ hasErrors]) return;
   /* Wait for an input/confirmation alert to dismiss, and for foregrounding. */
-  if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive) { [self errorsChanged:nil]; return; }
-  for(UIWindow *window in [UIApplication sharedApplication].windows)
-    if(!window.hidden && window.windowLevel>=UIWindowLevelAlert) { [self errorsChanged:nil]; return; }
+  if([[UIApplication sharedApplication] applicationState]!=UIApplicationStateActive) { [self errorsChanged:nil]; return; }
+  for(UIWindow *window in [[UIApplication sharedApplication] windows])
+    if(![window isHidden] && [window windowLevel]>=UIWindowLevelAlert) { [self errorsChanged:nil]; return; }
   NSDictionary *error=[library_ takeError]; if(!error) return;
   errorAlert_=[[UIAlertView alloc] initWithTitle:[error objectForKey:@"title"] message:[error objectForKey:@"detail"] delegate:self cancelButtonTitle:@"OK" otherButtonTitles:nil];
   [errorAlert_ show];
@@ -145,14 +145,14 @@
 - (void)alertView:(UIAlertView *)alert didDismissWithButtonIndex:(NSInteger)index;
 {
   (void)index; if(alert!=errorAlert_) return;
-  errorAlert_.delegate=nil; [errorAlert_ release]; errorAlert_=nil; [self errorsChanged:nil];
+  [errorAlert_ setDelegate:nil]; [errorAlert_ release]; errorAlert_=nil; [self errorsChanged:nil];
 }
 - (void)dealloc;
 {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   [NSObject cancelPreviousPerformRequestsWithTarget:self];
   [self finishBackgroundTask];
-  errorAlert_.delegate=nil; [errorAlert_ dismissWithClickedButtonIndex:0 animated:NO]; [errorAlert_ release];
+  [errorAlert_ setDelegate:nil]; [errorAlert_ dismissWithClickedButtonIndex:0 animated:NO]; [errorAlert_ release];
   [library_ shutdown]; [library_ release]; [window_ release]; [super dealloc];
 }
 @end

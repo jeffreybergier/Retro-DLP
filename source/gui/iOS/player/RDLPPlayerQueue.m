@@ -42,38 +42,38 @@ static void *RDLPQueueObservation=&RDLPQueueObservation;
 }
 - (void)dealloc {
   [_player removeObserver:self forKeyPath:@"currentItem" context:RDLPQueueObservation];
-  while(_entries.count) [self removeEntry:[_entries lastObject]];
+  while([_entries count]) [self removeEntry:[_entries lastObject]];
   [_player pause]; [_player removeAllItems]; [_player release];
   [_entries release]; [_playlist release];
   [super dealloc];
 }
 - (BOOL)canSkipToPreviousItem { return _currentIndex!=NSNotFound && _currentIndex>0; }
-- (BOOL)canSkipToNextItem { return _currentIndex!=NSNotFound && _currentIndex+1<_playlist.count; }
+- (BOOL)canSkipToNextItem { return _currentIndex!=NSNotFound && _currentIndex+1<[_playlist count]; }
 
 - (BOOL)setPlaylist:(NSArray *)URLs startingAtIndex:(NSUInteger)index {
-  if(URLs.count && index>=URLs.count) return NO;
+  if([URLs count] && index>=[URLs count]) return NO;
   for(id URL in URLs) if(![URL isKindOfClass:[NSURL class]]) return NO;
   NSArray *copy=URLs?[URLs copy]:[[NSArray alloc] init];
   [_playlist release]; _playlist=copy;
-  [self prepareIndex:URLs.count?index:NSNotFound rate:0];
+  [self prepareIndex:[URLs count]?index:NSNotFound rate:0];
   return YES;
 }
 - (BOOL)selectItemAtIndex:(NSUInteger)index {
-  if(index>=_playlist.count) return NO;
-  [self prepareIndex:index rate:_player.rate];
+  if(index>=[_playlist count]) return NO;
+  [self prepareIndex:index rate:[_player rate]];
   return YES;
 }
 - (BOOL)skipToPreviousItem {
-  return self.canSkipToPreviousItem && [self selectItemAtIndex:_currentIndex-1];
+  return [self canSkipToPreviousItem] && [self selectItemAtIndex:_currentIndex-1];
 }
 - (BOOL)skipToNextItem {
-  if(!self.canSkipToNextItem) return NO;
+  if(![self canSkipToNextItem]) return NO;
   /* Reuse the already prepared next item. Keep notifications atomic for
    * clients, including when AVFoundation sends synchronous KVO callbacks. */
-  float rate=_player.rate;
+  float rate=[_player rate];
   _changing=YES;
   [_player advanceToNextItem];
-  _player.rate=rate;
+  [_player setRate:rate];
   _changing=NO;
   [self synchronize];
   return YES;
@@ -90,15 +90,15 @@ static void *RDLPQueueObservation=&RDLPQueueObservation;
   _changing=YES;
   [_player pause];
   [_player removeAllItems];
-  while(_entries.count) [self removeEntry:[_entries lastObject]];
+  while([_entries count]) [self removeEntry:[_entries lastObject]];
   _currentIndex=index;
   if(index!=NSNotFound) {
     [self appendItemAtIndex:index];
-    if(index+1<_playlist.count) [self appendItemAtIndex:index+1];
+    if(index+1<[_playlist count]) [self appendItemAtIndex:index+1];
   }
-  _player.actionAtItemEnd=self.canSkipToNextItem?AVPlayerActionAtItemEndAdvance:AVPlayerActionAtItemEndPause;
+  [_player setActionAtItemEnd:[self canSkipToNextItem]?AVPlayerActionAtItemEndAdvance:AVPlayerActionAtItemEndPause];
   [self applyAudioMode];
-  if(index!=NSNotFound) _player.rate=rate;
+  if(index!=NSNotFound) [_player setRate:rate];
   _changing=NO;
   [self publishChange];
 }
@@ -120,17 +120,17 @@ static void *RDLPQueueObservation=&RDLPQueueObservation;
 }
 - (void)synchronize {
   if(_changing) return;
-  AVPlayerItem *current=_player.currentItem;
+  AVPlayerItem *current=[_player currentItem];
   NSUInteger selected=NSNotFound;
   for(RDLPQueuedItem *entry in _entries) if(entry->item==current) { selected=entry->index; break; }
   BOOL changed=selected!=_currentIndex;
   _changing=YES;
   _currentIndex=selected;
-  while(_entries.count && ((RDLPQueuedItem *)[_entries objectAtIndex:0])->item!=current)
+  while([_entries count] && ((RDLPQueuedItem *)[_entries objectAtIndex:0])->item!=current)
     [self removeEntry:[_entries objectAtIndex:0]];
-  if(selected!=NSNotFound && _entries.count<2 && self.canSkipToNextItem)
+  if(selected!=NSNotFound && [_entries count]<2 && [self canSkipToNextItem])
     [self appendItemAtIndex:selected+1];
-  _player.actionAtItemEnd=self.canSkipToNextItem?AVPlayerActionAtItemEndAdvance:AVPlayerActionAtItemEndPause;
+  [_player setActionAtItemEnd:[self canSkipToNextItem]?AVPlayerActionAtItemEndAdvance:AVPlayerActionAtItemEndPause];
   [self applyAudioMode];
   _changing=NO;
   if(changed) [self publishChange];
@@ -138,14 +138,14 @@ static void *RDLPQueueObservation=&RDLPQueueObservation;
 - (void)applyAudioMode {
   for(RDLPQueuedItem *entry in _entries) {
     if(_audioOnly) {
-      for(AVPlayerItemTrack *track in entry->item.tracks) {
-        if([track.assetTrack.mediaType isEqualToString:AVMediaTypeVideo] && track.enabled) {
+      for(AVPlayerItemTrack *track in [entry->item tracks]) {
+        if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo] && [track isEnabled]) {
           if(![entry->disabledTracks containsObject:track]) [entry->disabledTracks addObject:track];
-          track.enabled=NO;
+          [track setEnabled:NO];
         }
       }
     } else {
-      for(AVPlayerItemTrack *track in entry->disabledTracks) track.enabled=YES;
+      for(AVPlayerItemTrack *track in entry->disabledTracks) [track setEnabled:YES];
       [entry->disabledTracks removeAllObjects];
     }
   }

@@ -20,7 +20,7 @@ static UIImage *RDLPFontAwesomeImageWithOffset(AIFontAwesomeIcon icon,CGFloat si
   UIImage *image=[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid
     iconSize:size canvasSize:canvas color:color scale:scale];
   if(image && verticalOffset!=0) {
-    UIGraphicsBeginImageContextWithOptions(image.size,NO,image.scale);
+    UIGraphicsBeginImageContextWithOptions([image size],NO,[image scale]);
     [image drawAtPoint:CGPointMake(0,verticalOffset)];
     image=UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
@@ -80,8 +80,8 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   /* Reserve the spinner slot even when it is hidden so hidesWhenStopped never
    * changes the message layout. Let UIKit size the native Queue button. */
   UIView *spinnerSlot=[[[UIView alloc] initWithFrame:CGRectMake(0,0,36,30)] autorelease];
-  status.spinner.center=CGPointMake(18,15);
-  [spinnerSlot addSubview:status.spinner];
+  [[status spinner] setCenter:CGPointMake(18,15)];
+  [spinnerSlot addSubview:[status spinner]];
   UIBarButtonItem *activity=[[[UIBarButtonItem alloc] initWithCustomView:spinnerSlot] autorelease];
   UIBarButtonItem *left=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
   UIBarButtonItem *right=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
@@ -92,7 +92,7 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
     return [NSArray arrayWithObjects:activity,left,message,right,empty,nil];
   }
   UIBarButtonItem *queue=[[[UIBarButtonItem alloc] initWithImage:[self queueToolbarIcon] style:UIBarButtonItemStyleBordered target:target action:action] autorelease];
-  queue.accessibilityLabel=@"Download Queue";
+  [queue setAccessibilityLabel:@"Download Queue"];
   return [NSArray arrayWithObjects:activity,left,message,right,queue,nil];
 }
 
@@ -132,7 +132,7 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
       [[candidate objectForKey:@"position"] isEqual:[entry objectForKey:@"position"]];
     NSDictionary *job=tapped?selectedJob:[jobsByVideo objectForKey:video];
     if(!job) continue;
-    if(tapped) selected=jobs.count;
+    if(tapped) selected=[jobs count];
     [jobs addObject:job];
     [URLs addObject:tapped?[NSURL fileURLWithPath:[selectedFile objectForKey:@"path"]]:[URLsByVideo objectForKey:video]];
   }

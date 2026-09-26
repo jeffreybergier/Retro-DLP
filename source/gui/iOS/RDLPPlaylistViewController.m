@@ -24,8 +24,8 @@
   [super viewDidLoad];
   if([[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID]) [self configureAddVideoButton];
   else {
-    self.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit syncIcon] style:UIBarButtonItemStylePlain target:self action:@selector(sync:)] autorelease];
-    self.navigationItem.rightBarButtonItem.accessibilityLabel=@"Sync";
+    [[self navigationItem] setRightBarButtonItem:[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit syncIcon] style:UIBarButtonItemStylePlain target:self action:@selector(sync:)] autorelease]];
+    [[[self navigationItem] rightBarButtonItem] setAccessibilityLabel:@"Sync"];
   }
   [self refresh:nil];
 }
@@ -34,9 +34,9 @@
   if(![self isViewLoaded]) return;
   NSDictionary *playlist=[library_ playlistForID:[playlist_ objectForKey:@"id"]];
   if(playlist) {
-    [playlist retain]; [playlist_ release]; playlist_=playlist; self.title=[playlist objectForKey:@"title"];
+    [playlist retain]; [playlist_ release]; playlist_=playlist; [self setTitle:[playlist objectForKey:@"title"]];
   }
-  self.navigationItem.rightBarButtonItem.enabled=[[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] || ([RDLPLibrary canSyncPlaylist:playlist_] && ![library_ isSyncPendingForInput:[playlist_ objectForKey:@"service_id"]]);
+  [[[self navigationItem] rightBarButtonItem] setEnabled:[[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] || ([RDLPLibrary canSyncPlaylist:playlist_] && ![library_ isSyncPendingForInput:[playlist_ objectForKey:@"service_id"]])];
   [super refresh:sender];
 }
 - (void)sync:(id)sender;

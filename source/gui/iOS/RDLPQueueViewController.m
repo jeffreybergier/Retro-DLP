@@ -6,8 +6,8 @@
 {
   self=[super initWithLibrary:library title:@"Download Queue"];
   if(self) {
-    self.title=@"Download Queue";
-    self.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(dismissQueue:)] autorelease];
+    [self setTitle:@"Download Queue"];
+    [[self navigationItem] setRightBarButtonItem:[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(dismissQueue:)] autorelease]];
   }
   return self;
 }
@@ -28,21 +28,21 @@
   [super refresh:sender];
   if(![self isViewLoaded] || swipeJobID_) return;
   NSIndexPath *index=[self selectedJobIndex];
-  if(index) [self.tableView selectRowAtIndexPath:index animated:NO scrollPosition:UITableViewScrollPositionNone];
+  if(index) [[self tableView] selectRowAtIndexPath:index animated:NO scrollPosition:UITableViewScrollPositionNone];
 }
 - (void)showJobInQueue:(NSDictionary *)job;
 {
   [selectedJobID_ release]; selectedJobID_=[[job objectForKey:@"id"] copy];
   [self view]; [self refresh:nil];
   NSIndexPath *index=[self selectedJobIndex];
-  if(index) [self.tableView selectRowAtIndexPath:index animated:NO scrollPosition:UITableViewScrollPositionMiddle];
+  if(index) [[self tableView] selectRowAtIndexPath:index animated:NO scrollPosition:UITableViewScrollPositionMiddle];
 }
 - (void)dismissQueue:(id)sender;
-{ (void)sender; [self.navigationController dismissViewControllerAnimated:YES completion:nil]; }
+{ (void)sender; [[self navigationController] dismissViewControllerAnimated:YES completion:nil]; }
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index;
 {
   UITableViewCell *cell=[super tableView:table cellForRowAtIndexPath:index];
-  cell.accessibilityHint=@"Show download details and actions";
+  [cell setAccessibilityHint:@"Show download details and actions"];
   return cell;
 }
 - (void)showJobAlert:(NSDictionary *)job operation:(NSString *)operation;
@@ -72,7 +72,7 @@
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index;
 {
   (void)table;
-  if(alert_ || self.presentedViewController || self.navigationController.presentedViewController) return;
+  if(alert_ || [self presentedViewController] || [[self navigationController] presentedViewController]) return;
   NSString *key=[[[self rowAtIndex:index] objectForKey:@"job"] objectForKey:@"id"];
   [selectedJobID_ release]; selectedJobID_=[key copy];
   [self showJobAlert:[model_ currentJob:key] operation:@"actions"];
@@ -85,7 +85,7 @@
   if(alert!=alert_) return;
   NSDictionary *request=[[retryRequest_ retain] autorelease];
   NSString *action=index>0 && (NSUInteger)index<=[jobActions_ count]?[[[jobActions_ objectAtIndex:(NSUInteger)index-1] retain] autorelease]:nil;
-  alert_.delegate=nil; [alert_ release]; alert_=nil;
+  [alert_ setDelegate:nil]; [alert_ release]; alert_=nil;
   [retryRequest_ release]; retryRequest_=nil; [jobActions_ release]; jobActions_=nil;
   if(!action) return;
   NSDictionary *job=[model_ currentJob:[request objectForKey:@"job"]]; if(!job) return;

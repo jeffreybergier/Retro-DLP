@@ -11,7 +11,7 @@
 {
   self=[super initWithStyle:UITableViewStylePlain]; if(!self) return nil;
   library_=[library retain]; model_=[[RDLPLibrarySections alloc] initWithLibrary:library];
-  self.title=@"Playlists";
+  [self setTitle:@"Playlists"];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPLibraryStatusDidChange object:library_];
   return self;
@@ -20,32 +20,32 @@
 {
   [NSObject cancelPreviousPerformRequestsWithTarget:self];
   [[NSNotificationCenter defaultCenter] removeObserver:self];
-  alert_.delegate=nil; [alert_ dismissWithClickedButtonIndex:0 animated:NO];
-  playlistActions_.delegate=nil; [playlistActions_ dismissWithClickedButtonIndex:playlistActions_.cancelButtonIndex animated:NO];
+  [alert_ setDelegate:nil]; [alert_ dismissWithClickedButtonIndex:0 animated:NO];
+  [playlistActions_ setDelegate:nil]; [playlistActions_ dismissWithClickedButtonIndex:[playlistActions_ cancelButtonIndex] animated:NO];
   [alert_ release]; [playlistActions_ release]; [request_ release]; [alertActions_ release];
   [swipePlaylistID_ release]; [sections_ release]; [statusBar_ release]; [model_ release]; [library_ release]; [super dealloc];
 }
 - (void)viewDidLoad;
 {
   [super viewDidLoad]; [RDLPUIKit configureContentEdges:self];
-  self.navigationItem.leftBarButtonItem=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit settingsIcon] style:UIBarButtonItemStylePlain target:self action:@selector(settings:)] autorelease];
-  self.navigationItem.leftBarButtonItem.accessibilityLabel=@"Settings";
-  self.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit plusIcon] style:UIBarButtonItemStylePlain target:self action:@selector(showPlaylistActions:)] autorelease];
-  self.navigationItem.rightBarButtonItem.accessibilityLabel=@"Library Actions";
+  [[self navigationItem] setLeftBarButtonItem:[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit settingsIcon] style:UIBarButtonItemStylePlain target:self action:@selector(settings:)] autorelease]];
+  [[[self navigationItem] leftBarButtonItem] setAccessibilityLabel:@"Settings"];
+  [[self navigationItem] setRightBarButtonItem:[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit plusIcon] style:UIBarButtonItemStylePlain target:self action:@selector(showPlaylistActions:)] autorelease]];
+  [[[self navigationItem] rightBarButtonItem] setAccessibilityLabel:@"Library Actions"];
   statusBar_=[[RDLPStatusBarView alloc] initWithFrame:CGRectZero];
-  statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-112);
-  self.toolbarItems=[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:@selector(queue:)];
+  [statusBar_ setMaximumWidth:MAX(0,[[self view] bounds].size.width-112)];
+  [self setToolbarItems:[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:@selector(queue:)]];
   [self refresh:nil];
 }
 - (void)viewWillAppear:(BOOL)animated;
-{ [super viewWillAppear:animated]; [self.navigationController setToolbarHidden:NO animated:animated]; [self refresh:nil]; }
+{ [super viewWillAppear:animated]; [[self navigationController] setToolbarHidden:NO animated:animated]; [self refresh:nil]; }
 - (void)viewWillDisappear:(BOOL)animated;
 {
-  [self.tableView setEditing:NO animated:NO];
+  [[self tableView] setEditing:NO animated:NO];
   [swipePlaylistID_ release]; swipePlaylistID_=nil; [super viewWillDisappear:animated];
 }
 - (void)viewDidLayoutSubviews;
-{ [super viewDidLayoutSubviews]; statusBar_.maximumWidth=MAX(0,self.view.bounds.size.width-112); }
+{ [super viewDidLayoutSubviews]; [statusBar_ setMaximumWidth:MAX(0,[[self view] bounds].size.width-112)]; }
 - (void)refresh:(id)sender;
 {
   (void)sender; if(![self isViewLoaded]) return;
@@ -55,7 +55,7 @@
     [sections_ release]; sections_=[sections copy];
   }
   [self refreshStatus:nil];
-  if(!swipePlaylistID_) [self.tableView reloadData];
+  if(!swipePlaylistID_) [[self tableView] reloadData];
 }
 - (void)refreshStatus:(id)sender;
 {
@@ -69,19 +69,19 @@
 - (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section;
 { (void)table; return [[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"title"]; }
 - (NSDictionary *)rowAtIndex:(NSIndexPath *)index;
-{ return [[[sections_ objectAtIndex:(NSUInteger)index.section] objectForKey:@"rows"] objectAtIndex:(NSUInteger)index.row]; }
+{ return [[[sections_ objectAtIndex:(NSUInteger)[index section]] objectForKey:@"rows"] objectAtIndex:(NSUInteger)[index row]]; }
 - (BOOL)canDeletePlaylist:(NSDictionary *)playlist;
 {
-  return !alert_ && !playlistActions_ && !self.presentedViewController &&
-    !self.navigationController.presentedViewController && [model_ canRemovePlaylist:playlist];
+  return !alert_ && !playlistActions_ && ![self presentedViewController] &&
+    ![[self navigationController] presentedViewController] && [model_ canRemovePlaylist:playlist];
 }
 - (BOOL)tableView:(UITableView *)table canEditRowAtIndexPath:(NSIndexPath *)index;
 {
   (void)table;
-  NSArray *rows=[[sections_ objectAtIndex:(NSUInteger)index.section] objectForKey:@"rows"];
+  NSArray *rows=[[sections_ objectAtIndex:(NSUInteger)[index section]] objectForKey:@"rows"];
   /* Avoid materializing every offscreen row when UIKit asks for editability. */
   NSDictionary *row=[rows respondsToSelector:@selector(cachedObjectAtIndex:)]?
-    [(RDLPLibraryRows *)rows cachedObjectAtIndex:(NSUInteger)index.row]:[rows objectAtIndex:(NSUInteger)index.row];
+    [(RDLPLibraryRows *)rows cachedObjectAtIndex:(NSUInteger)[index row]]:[rows objectAtIndex:(NSUInteger)[index row]];
   return [self canDeletePlaylist:[row objectForKey:@"playlist"]];
 }
 - (UITableViewCellEditingStyle)tableView:(UITableView *)table editingStyleForRowAtIndexPath:(NSIndexPath *)index;
@@ -107,7 +107,7 @@
 }
 - (void)deletePlaylist:(NSString *)key;
 {
-  [self.tableView setEditing:NO animated:YES];
+  [[self tableView] setEditing:NO animated:YES];
   [swipePlaylistID_ release]; swipePlaylistID_=nil;
   /* Delete confirms local removal; recheck the captured identity and blockers. */
   NSDictionary *playlist=[library_ playlistForID:key];
@@ -119,8 +119,8 @@
   UITableViewCell *cell=[table dequeueReusableCellWithIdentifier:@"playlist"];
   if(!cell) cell=[[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"playlist"] autorelease];
   NSDictionary *row=[self rowAtIndex:index];
-  cell.textLabel.text=[row objectForKey:@"title"]; cell.detailTextLabel.text=[row objectForKey:@"detail"];
-  cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator; return cell;
+  [[cell textLabel] setText:[row objectForKey:@"title"]]; [[cell detailTextLabel] setText:[row objectForKey:@"detail"]];
+  [cell setAccessoryType:UITableViewCellAccessoryDisclosureIndicator]; return cell;
 }
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index;
 {
@@ -134,7 +134,7 @@
   UIViewController *controller=[action isEqualToString:@"playlist"]?
     (UIViewController *)[[[RDLPPlaylistViewController alloc] initWithLibrary:library_ playlist:[row objectForKey:@"playlist"]] autorelease]:
     [[[RDLPDownloadsViewController alloc] initWithLibrary:library_] autorelease];
-  [self.navigationController pushViewController:controller animated:YES];
+  [[self navigationController] pushViewController:controller animated:YES];
 }
 - (BOOL)enabled:(NSString *)action;
 {
@@ -144,17 +144,17 @@
 }
 - (void)settings:(id)sender;
 {
-  (void)sender; if(self.navigationController.presentedViewController || alert_ || playlistActions_) return;
+  (void)sender; if([[self navigationController] presentedViewController] || alert_ || playlistActions_) return;
   RDLPSettingsViewController *settings=[[[RDLPSettingsViewController alloc] initWithLibrary:library_] autorelease];
   UINavigationController *modal=[[[UINavigationController alloc] initWithRootViewController:settings] autorelease];
-  [self.navigationController presentViewController:modal animated:YES completion:nil];
+  [[self navigationController] presentViewController:modal animated:YES completion:nil];
 }
 - (void)queue:(id)sender;
 {
-  (void)sender; if(self.navigationController.presentedViewController || alert_ || playlistActions_) return;
+  (void)sender; if([[self navigationController] presentedViewController] || alert_ || playlistActions_) return;
   RDLPQueueViewController *queue=[[[RDLPQueueViewController alloc] initWithLibrary:library_] autorelease];
   UINavigationController *modal=[[[UINavigationController alloc] initWithRootViewController:queue] autorelease];
-  [self.navigationController presentViewController:modal animated:YES completion:nil];
+  [[self navigationController] presentViewController:modal animated:YES completion:nil];
 }
 - (void)performConfirmed:(NSDictionary *)request;
 {
@@ -172,8 +172,8 @@
 {
   if(alert!=alert_) return;
   NSDictionary *request=[[request_ retain] autorelease];
-  NSString *text=alert.alertViewStyle==UIAlertViewStylePlainTextInput?[[[alert textFieldAtIndex:0].text copy] autorelease]:nil;
-  alert_.delegate=nil; [alert_ release]; alert_=nil; [request_ release]; request_=nil; [alertActions_ release]; alertActions_=nil;
+  NSString *text=[alert alertViewStyle]==UIAlertViewStylePlainTextInput?[[[[alert textFieldAtIndex:0] text] copy] autorelease]:nil;
+  [alert_ setDelegate:nil]; [alert_ release]; alert_=nil; [request_ release]; request_=nil; [alertActions_ release]; alertActions_=nil;
   if(index==0) return;
   if([[request objectForKey:@"operation"] isEqualToString:@"add"]) [library_ addPlaylistInput:text];
   else if([[request objectForKey:@"operation"] isEqualToString:@"addVideo"]) [library_ addVideoInput:text];
@@ -187,8 +187,8 @@
   alert_=[[UIAlertView alloc] initWithTitle:title message:detail delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:nil];
   for(NSString *button in buttons) [alert_ addButtonWithTitle:button];
   if(input) {
-    alert_.alertViewStyle=UIAlertViewStylePlainTextInput;
-    UITextField *field=[alert_ textFieldAtIndex:0]; field.text=input; field.autocapitalizationType=UITextAutocapitalizationTypeNone; field.autocorrectionType=UITextAutocorrectionTypeNo;
+    [alert_ setAlertViewStyle:UIAlertViewStylePlainTextInput];
+    UITextField *field=[alert_ textFieldAtIndex:0]; [field setText:input]; [field setAutocapitalizationType:UITextAutocapitalizationTypeNone]; [field setAutocorrectionType:UITextAutocorrectionTypeNo];
   }
   [alert_ show];
 }
@@ -214,13 +214,13 @@
   playlistActions_=[[UIActionSheet alloc] initWithTitle:nil delegate:self
     cancelButtonTitle:@"Cancel" destructiveButtonTitle:nil
     otherButtonTitles:@"Add Video…",@"Add Playlist…",@"Sync All Playlists…",@"Load My Playlists…",nil];
-  [playlistActions_ showFromBarButtonItem:self.navigationItem.rightBarButtonItem animated:YES];
+  [playlistActions_ showFromBarButtonItem:[[self navigationItem] rightBarButtonItem] animated:YES];
 }
 - (void)actionSheet:(UIActionSheet *)sheet didDismissWithButtonIndex:(NSInteger)index;
 {
   if(sheet!=playlistActions_) return;
-  BOOL cancelled=index==sheet.cancelButtonIndex || index<0;
-  playlistActions_.delegate=nil; [playlistActions_ release]; playlistActions_=nil;
+  BOOL cancelled=index==[sheet cancelButtonIndex] || index<0;
+  [playlistActions_ setDelegate:nil]; [playlistActions_ release]; playlistActions_=nil;
   if(cancelled) return;
   switch(index) {
     case 0: [self addVideo:nil]; break;

@@ -13,7 +13,7 @@
   /* Hide before UIKit lays out the player, and leave it hidden for the session. */
   if(![self respondsToSelector:@selector(setNeedsStatusBarAppearanceUpdate)] && !_ownsLegacyStatusBar) {
     UIApplication *application=[UIApplication sharedApplication];
-    _savedStatusBarHidden=application.statusBarHidden;
+    _savedStatusBarHidden=[application isStatusBarHidden];
     _ownsLegacyStatusBar=YES;
     [application setStatusBarHidden:YES withAnimation:UIStatusBarAnimationNone];
   }

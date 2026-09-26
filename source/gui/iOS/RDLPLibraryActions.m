@@ -22,8 +22,8 @@
   alert_=[[UIAlertView alloc] initWithTitle:title message:detail delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:nil];
   for(NSString *button in buttons) [alert_ addButtonWithTitle:button];
   if(input) {
-    alert_.alertViewStyle=UIAlertViewStylePlainTextInput;
-    UITextField *field=[alert_ textFieldAtIndex:0]; field.text=input; field.autocapitalizationType=UITextAutocapitalizationTypeNone; field.autocorrectionType=UITextAutocorrectionTypeNo;
+    [alert_ setAlertViewStyle:UIAlertViewStylePlainTextInput];
+    UITextField *field=[alert_ textFieldAtIndex:0]; [field setText:input]; [field setAutocapitalizationType:UITextAutocapitalizationTypeNone]; [field setAutocorrectionType:UITextAutocorrectionTypeNo];
   }
   [alert_ show];
 }
@@ -61,8 +61,8 @@
 {
   if(alert!=alert_) return;
   NSDictionary *request=[[request_ retain] autorelease]; NSArray *actions=[[alertActions_ retain] autorelease];
-  NSString *text=alert.alertViewStyle==UIAlertViewStylePlainTextInput?[[[alert textFieldAtIndex:0].text copy] autorelease]:nil;
-  alert_.delegate=nil; [alert_ release]; alert_=nil; [request_ release]; request_=nil; [alertActions_ release]; alertActions_=nil;
+  NSString *text=[alert alertViewStyle]==UIAlertViewStylePlainTextInput?[[[[alert textFieldAtIndex:0] text] copy] autorelease]:nil;
+  [alert_ setDelegate:nil]; [alert_ release]; alert_=nil; [request_ release]; request_=nil; [alertActions_ release]; alertActions_=nil;
   if(index==0) return;
   NSString *op=[request objectForKey:@"operation"];
   if([op isEqualToString:@"add"]) [library_ addPlaylistInput:text];
@@ -112,7 +112,7 @@
   } else if([op isEqualToString:@"clearCookies"]) { if([self enabled:@"clearCookies"]) [library_ clearCookies]; }
   else if([op isEqualToString:@"removePlaylist"]) {
     NSDictionary *playlist=[request objectForKey:@"playlist"];
-    if([model_ canRemovePlaylist:playlist]) { [library_ removePlaylist:playlist]; [self.navigationController popViewControllerAnimated:YES]; }
+    if([model_ canRemovePlaylist:playlist]) { [library_ removePlaylist:playlist]; [[self navigationController] popViewControllerAnimated:YES]; }
   } else {
     NSDictionary *job=[model_ currentJob:[request objectForKey:@"job"]];
     if([op isEqualToString:@"delete"] && [policy_ canRemove:job] && ![policy_ canCancel:job]) [library_ removeDownload:job];
@@ -139,13 +139,13 @@
   playlistActions_=[[UIActionSheet alloc] initWithTitle:nil delegate:self
     cancelButtonTitle:@"Cancel" destructiveButtonTitle:nil
     otherButtonTitles:@"Add Video…",@"Add Playlist…",@"Sync All Playlists…",@"Load My Playlists…",nil];
-  [playlistActions_ showFromBarButtonItem:self.navigationItem.rightBarButtonItem animated:YES];
+  [playlistActions_ showFromBarButtonItem:[[self navigationItem] rightBarButtonItem] animated:YES];
 }
 - (void)actionSheet:(UIActionSheet *)sheet didDismissWithButtonIndex:(NSInteger)index;
 {
   if(sheet!=playlistActions_) return;
-  BOOL cancelled=index==sheet.cancelButtonIndex || index<0;
-  playlistActions_.delegate=nil; [playlistActions_ release]; playlistActions_=nil;
+  BOOL cancelled=index==[sheet cancelButtonIndex] || index<0;
+  [playlistActions_ setDelegate:nil]; [playlistActions_ release]; playlistActions_=nil;
   if(cancelled) return;
   switch(index) {
     case 0: [self addVideo:nil]; break;
@@ -179,9 +179,9 @@
 - (void)settings:(id)sender;
 {
   (void)sender;
-  if(mode_==RDLPScreenSettings || self.navigationController.presentedViewController || alert_ || playlistActions_) return;
+  if(mode_==RDLPScreenSettings || [[self navigationController] presentedViewController] || alert_ || playlistActions_) return;
   RDLPSettingsViewController *settings=[[[RDLPSettingsViewController alloc] initWithLibrary:library_] autorelease];
   UINavigationController *modal=[[[UINavigationController alloc] initWithRootViewController:settings] autorelease];
-  [self.navigationController presentViewController:modal animated:YES completion:nil];
+  [[self navigationController] presentViewController:modal animated:YES completion:nil];
 }
 @end

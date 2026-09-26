@@ -6,27 +6,27 @@
 {
   self=[super initWithStyle:UITableViewStyleGrouped]; if(!self) return nil;
   library_=[library retain]; model_=[[RDLPLibrarySections alloc] initWithLibrary:library];
-  self.title=@"Settings";
-  self.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(dismissSettings:)] autorelease];
+  [self setTitle:@"Settings"];
+  [[self navigationItem] setRightBarButtonItem:[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(dismissSettings:)] autorelease]];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library];
   return self;
 }
 - (void)dealloc;
 {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
-  alert_.delegate=nil; [alert_ dismissWithClickedButtonIndex:0 animated:NO];
+  [alert_ setDelegate:nil]; [alert_ dismissWithClickedButtonIndex:0 animated:NO];
   [alert_ release]; [request_ release]; [sections_ release]; [model_ release]; [library_ release];
   [super dealloc];
 }
 - (void)viewDidLoad;
 { [super viewDidLoad]; [RDLPUIKit configureContentEdges:self]; [self refresh:nil]; }
 - (void)viewWillAppear:(BOOL)animated;
-{ [super viewWillAppear:animated]; [self.navigationController setToolbarHidden:YES animated:animated]; [self refresh:nil]; }
+{ [super viewWillAppear:animated]; [[self navigationController] setToolbarHidden:YES animated:animated]; [self refresh:nil]; }
 - (void)refresh:(id)sender;
 {
   (void)sender; if(![self isViewLoaded]) return;
   NSArray *sections=[model_ sectionsForScreen:RDLPScreenSettings playlist:nil video:nil collapsed:nil];
-  [sections_ release]; sections_=[sections copy]; [self.tableView reloadData];
+  [sections_ release]; sections_=[sections copy]; [[self tableView] reloadData];
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table;
 { (void)table; return (NSInteger)[sections_ count]; }
@@ -35,7 +35,7 @@
 - (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section;
 { (void)table; return [[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"title"]; }
 - (NSDictionary *)rowAtIndex:(NSIndexPath *)index;
-{ return [[[sections_ objectAtIndex:(NSUInteger)index.section] objectForKey:@"rows"] objectAtIndex:(NSUInteger)index.row]; }
+{ return [[[sections_ objectAtIndex:(NSUInteger)[index section]] objectForKey:@"rows"] objectAtIndex:(NSUInteger)[index row]]; }
 - (BOOL)enabled:(NSString *)action;
 {
   if([action isEqualToString:@"import"]) return ![library_ isBusy] && ![[library_ cookieStatus] isEqualToString:@"Imported"];
@@ -49,11 +49,11 @@
   NSString *identifier=subtitle?@"format":@"setting";
   UITableViewCell *cell=[table dequeueReusableCellWithIdentifier:identifier];
   if(!cell) cell=[[[UITableViewCell alloc] initWithStyle:subtitle?UITableViewCellStyleSubtitle:UITableViewCellStyleDefault reuseIdentifier:identifier] autorelease];
-  cell.textLabel.text=[row objectForKey:@"title"]; cell.detailTextLabel.text=[row objectForKey:@"detail"];
+  [[cell textLabel] setText:[row objectForKey:@"title"]]; [[cell detailTextLabel] setText:[row objectForKey:@"detail"]];
   BOOL enabled=[self enabled:action];
-  cell.textLabel.enabled=enabled; cell.detailTextLabel.enabled=enabled;
-  cell.selectionStyle=enabled?UITableViewCellSelectionStyleBlue:UITableViewCellSelectionStyleNone;
-  cell.accessoryType=[[row objectForKey:@"checked"] boolValue]?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone;
+  [[cell textLabel] setEnabled:enabled]; [[cell detailTextLabel] setEnabled:enabled];
+  [cell setSelectionStyle:enabled?UITableViewCellSelectionStyleBlue:UITableViewCellSelectionStyleNone];
+  [cell setAccessoryType:[[row objectForKey:@"checked"] boolValue]?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone];
   return cell;
 }
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index;
@@ -67,9 +67,9 @@
   request_=[request copy];
   alert_=[[UIAlertView alloc] initWithTitle:title message:detail delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:button,nil];
   if(input) {
-    alert_.alertViewStyle=UIAlertViewStylePlainTextInput;
-    UITextField *field=[alert_ textFieldAtIndex:0]; field.text=input;
-    field.autocapitalizationType=UITextAutocapitalizationTypeNone; field.autocorrectionType=UITextAutocorrectionTypeNo;
+    [alert_ setAlertViewStyle:UIAlertViewStylePlainTextInput];
+    UITextField *field=[alert_ textFieldAtIndex:0]; [field setText:input];
+    [field setAutocapitalizationType:UITextAutocapitalizationTypeNone]; [field setAutocorrectionType:UITextAutocorrectionTypeNo];
   }
   [alert_ show];
 }
@@ -103,8 +103,8 @@
 {
   if(alert!=alert_) return;
   NSDictionary *request=[[request_ retain] autorelease];
-  NSString *text=alert.alertViewStyle==UIAlertViewStylePlainTextInput?[[[alert textFieldAtIndex:0].text copy] autorelease]:nil;
-  alert_.delegate=nil; [alert_ release]; alert_=nil; [request_ release]; request_=nil;
+  NSString *text=[alert alertViewStyle]==UIAlertViewStylePlainTextInput?[[[[alert textFieldAtIndex:0] text] copy] autorelease]:nil;
+  [alert_ setDelegate:nil]; [alert_ release]; alert_=nil; [request_ release]; request_=nil;
   if(index==0) return;
   NSString *operation=[request objectForKey:@"operation"];
   if([operation isEqualToString:@"quality"]) {
@@ -114,5 +114,5 @@
   [self refresh:nil];
 }
 - (void)dismissSettings:(id)sender;
-{ (void)sender; [self.navigationController dismissViewControllerAnimated:YES completion:nil]; }
+{ (void)sender; [[self navigationController] dismissViewControllerAnimated:YES completion:nil]; }
 @end

@@ -64,7 +64,7 @@ static void pump(void) { [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWi
 @implementation RDLPOfflineNavigationController
 @synthesize lastToolbarChangeAnimated=lastToolbarChangeAnimated_;
 - (void)setToolbarHidden:(BOOL)hidden animated:(BOOL)animated {
-  if(hidden!=self.toolbarHidden) lastToolbarChangeAnimated_=animated;
+  if(hidden!=[self isToolbarHidden]) lastToolbarChangeAnimated_=animated;
   [super setToolbarHidden:hidden animated:animated];
 }
 @end
@@ -91,13 +91,13 @@ static UIControl *editingControl(UIView *view,NSString *classPart) {
     if([NSStringFromClass([view class]) rangeOfString:classPart].location!=NSNotFound) return (UIControl *)view;
     if([classPart isEqualToString:@"DeleteConfirmation"] &&
        (([view isKindOfClass:[UIButton class]] && [[(UIButton *)view currentTitle] isEqualToString:@"Delete"]) ||
-        [view.accessibilityLabel isEqualToString:@"Delete"])) return (UIControl *)view;
+        [[view accessibilityLabel] isEqualToString:@"Delete"])) return (UIControl *)view;
   }
-  for(UIView *child in view.subviews) { UIControl *found=editingControl(child,classPart); if(found) return found; }
+  for(UIView *child in [view subviews]) { UIControl *found=editingControl(child,classPart); if(found) return found; }
   return nil;
 }
 static void nativeDelete(UITableViewController *controller,NSIndexPath *index) {
-  UITableView *table=controller.tableView;
+  UITableView *table=[controller tableView];
   [table setEditing:YES animated:NO]; pump();
   [table scrollToRowAtIndexPath:index atScrollPosition:UITableViewScrollPositionNone animated:NO];
   UITableViewCell *cell=[table cellForRowAtIndexPath:index];
@@ -118,13 +118,13 @@ static void confirmAt(id controller,BOOL accept,int line) {
 #define confirm(controller,accept) confirmAt(controller,accept,__LINE__)
 static void choose(id controller,NSString *title) {
   UIAlertView *alert=[controller valueForKey:@"alert_"]; require(alert!=nil,@"Expected job actions"); [alert retain]; pump();
-  NSInteger index=0; for(NSInteger i=1;i<alert.numberOfButtons;++i) if([[alert buttonTitleAtIndex:i] isEqualToString:title]) index=i;
+  NSInteger index=0; for(NSInteger i=1;i<[alert numberOfButtons];++i) if([[alert buttonTitleAtIndex:i] isEqualToString:title]) index=i;
   require(index>0,[NSString stringWithFormat:@"Missing action %@",title]);
   [controller alertView:alert clickedButtonAtIndex:index]; [alert dismissWithClickedButtonIndex:index animated:NO]; [alert release]; pump(); pump();
 }
 static void screenshot(UIWindow *window,NSString *path) {
-  UIGraphicsBeginImageContextWithOptions(window.bounds.size,NO,0);
-  [window.layer renderInContext:UIGraphicsGetCurrentContext()];
+  UIGraphicsBeginImageContextWithOptions([window bounds].size,NO,0);
+  [[window layer] renderInContext:UIGraphicsGetCurrentContext()];
   [UIImagePNGRepresentation(UIGraphicsGetImageFromCurrentImageContext()) writeToFile:path atomically:YES]; UIGraphicsEndImageContext();
 }
 static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
@@ -140,75 +140,75 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
   [library savePlaybackSeconds:10 forVideo:@"AAAAAAAAAAA"];
   NSDictionary *job=[NSDictionary dictionaryWithObjectsAndKeys:@"fixture.mp4",@"path",@"AAAAAAAAAAA",@"video_id",
     @"Native playback",@"title",@"Example Channel",@"channel",nil];
-  UIViewController *owner=window.rootViewController;
+  UIViewController *owner=[window rootViewController];
   [RDLPUIKit presentPlayer:owner library:library job:job];
   pump(); pump();
-  RDLPDownloadedPlayerViewController *controller=(id)owner.presentedViewController;
+  RDLPDownloadedPlayerViewController *controller=(id)[owner presentedViewController];
   require([controller isKindOfClass:[RDLPDownloadedPlayerViewController class]],@"Downloaded videos use the AVFoundation player");
-  RDLPPlayerViewController *presentation=controller.playerViewController;
+  RDLPPlayerViewController *presentation=[controller playerViewController];
   require(![controller isKindOfClass:[RDLPPlayerViewController class]] &&
-    [presentation class]==[RDLPPlayerViewController class] && presentation.parentViewController==controller &&
-    controller.topViewController==presentation && presentation.player==controller.queue.player,
+    [presentation class]==[RDLPPlayerViewController class] && [presentation parentViewController]==controller &&
+    [controller topViewController]==presentation && [presentation player]==[[controller queue] player],
     @"Session contains an ordinary player controller sharing the queue's AVPlayer");
   playbackWait(controller);
-  require(controller.queue.playlist.count==1 && controller.queue.currentIndex==0,@"Presentation creates a one-item playlist");
-  require(controller.player.rate==1 && CMTimeGetSeconds(controller.player.currentTime)>=9 && CMTimeGetSeconds(controller.player.currentTime)<14,@"Playback starts at the saved checkpoint");
+  require([[[controller queue] playlist] count]==1 && [[controller queue] currentIndex]==0,@"Presentation creates a one-item playlist");
+  require([[controller player] rate]==1 && CMTimeGetSeconds([[controller player] currentTime])>=9 && CMTimeGetSeconds([[controller player] currentTime])<14,@"Playback starts at the saved checkpoint");
   RDLPPlayerControls *controls=[presentation valueForKey:@"controls"];
-  require(!controls.previousButton.enabled && !controls.nextButton.enabled,@"One-item presentation disables previous and next");
-  require([presentation.title isEqualToString:@"Native playback"] && presentation.navigationItem.leftBarButtonItem==controls.audioButton && presentation.navigationItem.rightBarButtonItem==controls.doneButton,@"Title, headphones, and Done occupy the native navigation bar");
+  require(![[controls previousButton] isEnabled] && ![[controls nextButton] isEnabled],@"One-item presentation disables previous and next");
+  require([[presentation title] isEqualToString:@"Native playback"] && [[presentation navigationItem] leftBarButtonItem]==[controls audioButton] && [[presentation navigationItem] rightBarButtonItem]==[controls doneButton],@"Title, headphones, and Done occupy the native navigation bar");
   require([[playbackNowPlayingInfo() objectForKey:MPMediaItemPropertyTitle] isEqualToString:@"Native playback"],@"App adapter supplies title metadata");
   screenshot(window,[directory stringByAppendingPathComponent:@"playing.png"]);
   UINavigationController *playerNavigation=controller;
   UIViewController *playlistScreen=[[[UIViewController alloc] init] autorelease];
   [playerNavigation pushViewController:playlistScreen animated:NO]; pump();
-  require(controller.player.rate==1 && ![[controller valueForKey:@"stopped"] boolValue],@"Pushing a player screen preserves the playback session");
-  require(!playerNavigation.navigationBarHidden && playerNavigation.toolbarHidden,@"Pushed screens get navigation back without playback controls");
-  presentation.showsPlaybackControls=NO;
-  require(!playerNavigation.navigationBarHidden,@"Offscreen player does not hide another screen's navigation bar");
-  presentation.showsPlaybackControls=YES;
+  require([[controller player] rate]==1 && ![[controller valueForKey:@"stopped"] boolValue],@"Pushing a player screen preserves the playback session");
+  require(![playerNavigation isNavigationBarHidden] && [playerNavigation isToolbarHidden],@"Pushed screens get navigation back without playback controls");
+  [presentation setShowsPlaybackControls:NO];
+  require(![playerNavigation isNavigationBarHidden],@"Offscreen player does not hide another screen's navigation bar");
+  [presentation setShowsPlaybackControls:YES];
   [playerNavigation popViewControllerAnimated:NO]; pump();
-  require(controller.player.rate==1 && !playerNavigation.toolbarHidden,@"Returning restores controls and keeps playback running");
-  [controls.playButton.target performSelector:controls.playButton.action withObject:controls.playButton]; pump();
-  require(controller.player.rate==0 && [controls.playButton.accessibilityLabel isEqualToString:@"Play"],@"Pause button pauses playback and changes its artwork");
+  require([[controller player] rate]==1 && ![playerNavigation isToolbarHidden],@"Returning restores controls and keeps playback running");
+  [[[controls playButton] target] performSelector:[[controls playButton] action] withObject:[controls playButton]]; pump();
+  require([[controller player] rate]==0 && [[[controls playButton] accessibilityLabel] isEqualToString:@"Play"],@"Pause button pauses playback and changes its artwork");
   require([[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyPlaybackRate] doubleValue]==0,@"Pause freezes Now Playing time");
   screenshot(window,[directory stringByAppendingPathComponent:@"paused.png"]);
-  [controls.slider sendActionsForControlEvents:UIControlEventTouchDown];
-  controls.slider.value=1.0f/3.0f;
-  [controls.slider sendActionsForControlEvents:UIControlEventValueChanged];
+  [[controls slider] sendActionsForControlEvents:UIControlEventTouchDown];
+  [[controls slider] setValue:1.0f/3.0f];
+  [[controls slider] sendActionsForControlEvents:UIControlEventValueChanged];
   pump(); pump();
-  require(fabs(CMTimeGetSeconds(controller.player.currentTime)-20)<1,@"Dragging scrubs the actual video before releasing the slider");
-  require(controller.player.rate==0,@"Scrubbing a paused video preserves pause");
-  [controls.slider sendActionsForControlEvents:UIControlEventTouchUpInside]; pump(); pump();
-  require(fabs(CMTimeGetSeconds(controller.player.currentTime)-20)<1,@"Scrubber seeks the actual AVPlayer");
+  require(fabs(CMTimeGetSeconds([[controller player] currentTime])-20)<1,@"Dragging scrubs the actual video before releasing the slider");
+  require([[controller player] rate]==0,@"Scrubbing a paused video preserves pause");
+  [[controls slider] sendActionsForControlEvents:UIControlEventTouchUpInside]; pump(); pump();
+  require(fabs(CMTimeGetSeconds([[controller player] currentTime])-20)<1,@"Scrubber seeks the actual AVPlayer");
   require(fabs([[playbackNowPlayingInfo() objectForKey:MPNowPlayingInfoPropertyElapsedPlaybackTime] doubleValue]-20)<1,@"Paused scrubs update system metadata");
-  [controls.audioButton.target performSelector:controls.audioButton.action withObject:controls.audioButton]; pump();
-  require(presentation.audioOnly && controller.queue.audioOnly,@"Audio Only is wired from the visible control to the queue");
-  for(AVPlayerItemTrack *track in controller.player.currentItem.tracks)
-    if([track.assetTrack.mediaType isEqualToString:AVMediaTypeVideo]) require(!track.enabled,@"Video decoding is disabled for audio-only playback");
+  [[[controls audioButton] target] performSelector:[[controls audioButton] action] withObject:[controls audioButton]]; pump();
+  require([presentation isAudioOnly] && [[controller queue] isAudioOnly],@"Audio Only is wired from the visible control to the queue");
+  for(AVPlayerItemTrack *track in [[[controller player] currentItem] tracks])
+    if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo]) require(![track isEnabled],@"Video decoding is disabled for audio-only playback");
   screenshot(window,[directory stringByAppendingPathComponent:@"audio-only.png"]);
-  [controls.audioButton.target performSelector:controls.audioButton.action withObject:controls.audioButton]; pump();
-  for(AVPlayerItemTrack *track in controller.player.currentItem.tracks)
-    if([track.assetTrack.mediaType isEqualToString:AVMediaTypeVideo]) require(track.enabled,@"Show Video restores video tracks");
+  [[[controls audioButton] target] performSelector:[[controls audioButton] action] withObject:[controls audioButton]]; pump();
+  for(AVPlayerItemTrack *track in [[[controller player] currentItem] tracks])
+    if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo]) require([track isEnabled],@"Show Video restores video tracks");
   if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestNowPlayingHold"] boolValue]) {
     /* Device-only window for locking, headset controls, and background audio. */
-    playbackSeek(controller.player,5); [controller.player play];
+    playbackSeek([controller player],5); [[controller player] play];
     for(NSUInteger i=0;i<100;++i) pump();
   }
   [controller retain];
-  [controls.doneButton.target performSelector:controls.doneButton.action withObject:controls.doneButton]; pump(); pump();
-  require(!owner.presentedViewController && controller.player.rate==0,@"Done stops playback and returns to the library");
+  [[[controls doneButton] target] performSelector:[[controls doneButton] action] withObject:[controls doneButton]]; pump(); pump();
+  require(![owner presentedViewController] && [[controller player] rate]==0,@"Done stops playback and returns to the library");
   require(![playbackNowPlayingInfo() count],@"Done clears Now Playing metadata");
   [controller release];
   /* The session belongs to the modal container, including when its player
    * child is already offscreen and receives no further disappearance event. */
   [RDLPUIKit presentPlayer:owner library:library job:job]; pump(); pump();
-  controller=[(RDLPDownloadedPlayerViewController *)owner.presentedViewController retain];
+  controller=[(RDLPDownloadedPlayerViewController *)[owner presentedViewController] retain];
   playbackWait(controller);
   UIViewController *other=[[[UIViewController alloc] init] autorelease];
   [controller pushViewController:other animated:NO]; pump();
-  require(controller.player.rate==1,@"A pushed screen does not end the session");
+  require([[controller player] rate]==1,@"A pushed screen does not end the session");
   [owner dismissViewControllerAnimated:NO completion:nil]; pump();
-  require(controller.player.rate==0 && [[controller valueForKey:@"stopped"] boolValue] &&
+  require([[controller player] rate]==0 && [[controller valueForKey:@"stopped"] boolValue] &&
     ![controller valueForKey:@"checkpointObserver"],@"Dismissing from a pushed screen stops the container's playback and checkpoint observer");
   require(![playbackNowPlayingInfo() count],@"Container dismissal clears Now Playing even when the player child was hidden");
   [controller release];
@@ -248,25 +248,25 @@ static void testPlaylistSelection(UIWindow *window,NSString *directory) {
   [library savePlaybackSeconds:12 forVideo:@"AAAAAAAAAAA"];
   [library savePlaybackSeconds:24 forVideo:@"BBBBBBBBBBB"];
   RDLPPlaylistViewController *list=[[RDLPPlaylistViewController alloc] initWithLibrary:library playlist:[library playlistForID:pid]];
-  UIViewController *previous=[window.rootViewController retain];
+  UIViewController *previous=[[window rootViewController] retain];
   UINavigationController *navigation=[[UINavigationController alloc] initWithRootViewController:list];
-  window.rootViewController=navigation; pump();
-  [list tableView:list.tableView didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:3 inSection:0]];
+  [window setRootViewController:navigation]; pump();
+  [list tableView:[list tableView] didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:3 inSection:0]];
   pump(); pump();
-  RDLPDownloadedPlayerViewController *player=(id)list.presentedViewController;
+  RDLPDownloadedPlayerViewController *player=(id)[list presentedViewController];
   require([player isKindOfClass:[RDLPDownloadedPlayerViewController class]],@"Playlist row presents the downloaded player");
   playbackWait(player);
   NSURL *first=[NSURL fileURLWithPath:[library fileForJob:[library jobForPlaylist:pid video:@"AAAAAAAAAAA" format:@"18"]]];
   NSURL *second=[NSURL fileURLWithPath:[library fileForJob:[library jobForPlaylist:pid video:@"BBBBBBBBBBB" format:@"18"]]];
-  require([player.queue.playlist isEqualToArray:[NSArray arrayWithObjects:first,second,first,nil]] && player.queue.currentIndex==2,@"Available files retain playlist order and the tapped duplicate's exact index; missing/newer quality, queued and undownloaded entries are excluded");
-  require(player.player.rate==1 && fabs(CMTimeGetSeconds(player.player.currentTime)-12)<2,@"Tapped duplicate restores its bookmark and autoplays");
-  RDLPPlayerControls *controls=[player.playerViewController valueForKey:@"controls"];
-  require(controls.previousButton.enabled && !controls.nextButton.enabled,@"Transport availability reflects the selected playlist index");
-  [controls.previousButton.target performSelector:controls.previousButton.action withObject:controls.previousButton]; playbackWait(player);
-  require(player.queue.currentIndex==1 && player.player.rate==1 && fabs(CMTimeGetSeconds(player.player.currentTime)-24)<1,@"Visible Previous button selects the preceding available video and restores its bookmark");
+  require([[[player queue] playlist] isEqualToArray:[NSArray arrayWithObjects:first,second,first,nil]] && [[player queue] currentIndex]==2,@"Available files retain playlist order and the tapped duplicate's exact index; missing/newer quality, queued and undownloaded entries are excluded");
+  require([[player player] rate]==1 && fabs(CMTimeGetSeconds([[player player] currentTime])-12)<2,@"Tapped duplicate restores its bookmark and autoplays");
+  RDLPPlayerControls *controls=[[player playerViewController] valueForKey:@"controls"];
+  require([[controls previousButton] isEnabled] && ![[controls nextButton] isEnabled],@"Transport availability reflects the selected playlist index");
+  [[[controls previousButton] target] performSelector:[[controls previousButton] action] withObject:[controls previousButton]]; playbackWait(player);
+  require([[player queue] currentIndex]==1 && [[player player] rate]==1 && fabs(CMTimeGetSeconds([[player player] currentTime])-24)<1,@"Visible Previous button selects the preceding available video and restores its bookmark");
   screenshot(window,[directory stringByAppendingPathComponent:@"playlist-player.png"]);
   [list dismissViewControllerAnimated:NO completion:nil]; pump();
-  window.rootViewController=previous; [previous release]; [navigation release]; [list release];
+  [window setRootViewController:previous]; [previous release]; [navigation release]; [list release];
   [library shutdown]; [library release];
 }
 static void testDeletedDownloadQuality(NSString *directory) {
@@ -290,10 +290,10 @@ static void testDeletedDownloadQuality(NSString *directory) {
   [RDLPLibrary savePreferredFormat:@"136+140"];
   RDLPPlaylistViewController *list=[[RDLPPlaylistViewController alloc] initWithLibrary:library playlist:playlist]; [list view];
   NSIndexPath *index=videoIndex(list,@"AAAAAAAAAAA",nil);
-  [list tableView:list.tableView didSelectRowAtIndexPath:index];
+  [list tableView:[list tableView] didSelectRowAtIndexPath:index];
   require([[[library jobForPlaylist:[playlist objectForKey:@"id"] video:@"AAAAAAAAAAA" format:@"136+140"] objectForKey:@"state"] isEqualToString:@"queued"] &&
     [[[library jobForID:[low objectForKey:@"id"]] objectForKey:@"state"] isEqualToString:@"removed"],@"Low, delete, Medium, tap queues Medium and leaves Low removed");
-  [list tableView:list.tableView didSelectRowAtIndexPath:index];
+  [list tableView:[list tableView] didSelectRowAtIndexPath:index];
   require([[library jobsForPlaylist:nil completedOnly:NO] count]==2,@"Repeated tap does not duplicate the replacement download");
   [list release]; [library shutdown]; [library release];
   [RDLPLibrary savePreferredFormat:preference]; [preference release];
@@ -324,59 +324,59 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   NSString *otherKey=[NSString stringWithFormat:@"%lld",(long long)other];
   NSString *accountKey=[NSString stringWithFormat:@"%lld",(long long)account];
   RDLPPlaylistsViewController *root=[[RDLPPlaylistsViewController alloc] initWithLibrary:library];
-  UIViewController *previous=[window.rootViewController retain];
+  UIViewController *previous=[[window rootViewController] retain];
   UINavigationController *navigation=[[UINavigationController alloc] initWithRootViewController:root];
-  window.rootViewController=navigation; [root view]; [root refresh:nil]; pump();
+  [window setRootViewController:navigation]; [root view]; [root refresh:nil]; pump();
   NSIndexPath *index=playlistIndex(root,key);
-  require([root tableView:root.tableView canEditRowAtIndexPath:index] &&
-    [root tableView:root.tableView editingStyleForRowAtIndexPath:index]==UITableViewCellEditingStyleDelete,@"Added playlists expose swipe Delete");
-  require(![root tableView:root.tableView canEditRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]] &&
-    ![root tableView:root.tableView canEditRowAtIndexPath:playlistIndex(root,[NSString stringWithFormat:@"%lld",(long long)adhoc])],@"All Downloads and Ad-Hoc cannot be deleted");
-  [root tableView:root.tableView willBeginEditingRowAtIndexPath:index];
-  [root tableView:root.tableView didEndEditingRowAtIndexPath:index]; pump();
+  require([root tableView:[root tableView] canEditRowAtIndexPath:index] &&
+    [root tableView:[root tableView] editingStyleForRowAtIndexPath:index]==UITableViewCellEditingStyleDelete,@"Added playlists expose swipe Delete");
+  require(![root tableView:[root tableView] canEditRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]] &&
+    ![root tableView:[root tableView] canEditRowAtIndexPath:playlistIndex(root,[NSString stringWithFormat:@"%lld",(long long)adhoc])],@"All Downloads and Ad-Hoc cannot be deleted");
+  [root tableView:[root tableView] willBeginEditingRowAtIndexPath:index];
+  [root tableView:[root tableView] didEndEditingRowAtIndexPath:index]; pump();
   require([library playlistForID:key]!=nil,@"Dismissing the swipe preserves the playlist");
   index=playlistIndex(root,key);
-  [root tableView:root.tableView willBeginEditingRowAtIndexPath:index];
-  library.testBusy=YES;
-  require(![root tableView:root.tableView canEditRowAtIndexPath:index],@"Busy library disables playlist deletion");
-  [root tableView:root.tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:index]; pump();
+  [root tableView:[root tableView] willBeginEditingRowAtIndexPath:index];
+  [library setTestBusy:YES];
+  require(![root tableView:[root tableView] canEditRowAtIndexPath:index],@"Busy library disables playlist deletion");
+  [root tableView:[root tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:index]; pump();
   require([library playlistForID:key]!=nil,@"Work beginning during swipe blocks removal");
-  library.testBusy=NO; index=playlistIndex(root,key);
-  [root tableView:root.tableView willBeginEditingRowAtIndexPath:index];
+  [library setTestBusy:NO]; index=playlistIndex(root,key);
+  [root tableView:[root tableView] willBeginEditingRowAtIndexPath:index];
   [library enqueuePlaylist:key video:@"AAAAAAAAAAA" format:@"18"];
-  [root tableView:root.tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:index]; pump();
-  require([library playlistForID:key]!=nil && ![root tableView:root.tableView canEditRowAtIndexPath:playlistIndex(root,key)],@"A download queued during swipe blocks removal");
+  [root tableView:[root tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:index]; pump();
+  require([library playlistForID:key]!=nil && ![root tableView:[root tableView] canEditRowAtIndexPath:playlistIndex(root,key)],@"A download queued during swipe blocks removal");
   NSDictionary *job=[library jobForPlaylist:key video:@"AAAAAAAAAAA" format:@"18"];
   require(rdapp_store_finish(store,[[job objectForKey:@"id"] longLongValue],"complete","18",""),@"Record completed blocker");
-  require(![root tableView:root.tableView canEditRowAtIndexPath:playlistIndex(root,key)],@"Completed downloads block playlist deletion");
+  require(![root tableView:[root tableView] canEditRowAtIndexPath:playlistIndex(root,key)],@"Completed downloads block playlist deletion");
   [library removeDownload:job];
   index=playlistIndex(root,key);
-  [root tableView:root.tableView willBeginEditingRowAtIndexPath:index];
+  [root tableView:[root tableView] willBeginEditingRowAtIndexPath:index];
   NSArray *snapshot=sections(root);
   require(rdapp_store_discovered_playlist(store,"PLswipe","Promoted target"),@"Move swiped playlist to another section");
   [root refresh:nil];
   require(sections(root)==snapshot,@"Refresh preserves the swiped section and row");
-  [root tableView:root.tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:index];
+  [root tableView:[root tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:index];
   require([library playlistForID:key]!=nil,@"Deletion waits until UIKit's commit callback returns");
   pump();
   require(![library playlistForID:key] && [library playlistForID:otherKey] && [library playlistForID:accountKey],@"Delete uses playlist identity after discovery promotion");
   nativeDelete(root,playlistIndex(root,otherKey));
-  require(![library playlistForID:otherKey] && [root tableView:root.tableView numberOfRowsInSection:1]==0,@"Native Delete removes the last Added Playlists row without recursive reload");
+  require(![library playlistForID:otherKey] && [root tableView:[root tableView] numberOfRowsInSection:1]==0,@"Native Delete removes the last Added Playlists row without recursive reload");
   nativeDelete(root,playlistIndex(root,accountKey));
-  require(![library playlistForID:accountKey] && [root tableView:root.tableView numberOfRowsInSection:2]==0 && [library adhocPlaylist],@"Native Delete removes the last My Playlists row and retains Ad-Hoc");
+  require(![library playlistForID:accountKey] && [root tableView:[root tableView] numberOfRowsInSection:2]==0 && [library adhocPlaylist],@"Native Delete removes the last My Playlists row and retains Ad-Hoc");
   require(rdapp_store_discovered_playlist(store,"WL","Watch Later") && rdapp_store_discovered_playlist(store,"HL","History"),@"Discover unsupported playlist types");
   [root refresh:nil];
-  require([root tableView:root.tableView numberOfRowsInSection:3]==2 && [root tableView:root.tableView numberOfRowsInSection:2]==0,@"Unsupported playlists appear in their own table section");
+  require([root tableView:[root tableView] numberOfRowsInSection:3]==2 && [root tableView:[root tableView] numberOfRowsInSection:2]==0,@"Unsupported playlists appear in their own table section");
   NSDictionary *unsupported=[[library unsupportedPlaylists] objectAtIndex:0];
   RDLPPlaylistViewController *detail=[[RDLPPlaylistViewController alloc] initWithLibrary:library playlist:unsupported];
   [detail view]; [detail refresh:nil];
-  require(!detail.navigationItem.rightBarButtonItem.enabled,@"Unsupported playlist disables Sync");
+  require(![[[detail navigationItem] rightBarButtonItem] isEnabled],@"Unsupported playlist disables Sync");
   [detail sync:nil]; [library syncPlaylistInput:@"https://www.youtube.com/playlist?list=WL"]; [library syncAll];
   require([[library valueForKey:@"commands_"] count]==0 && ![library hasPlaylistsToSync],@"Only unsupported and Ad-Hoc playlists means no manual or automatic sync work");
-  require([root tableView:root.tableView canEditRowAtIndexPath:playlistIndex(root,[unsupported objectForKey:@"id"])],@"Unsupported playlists remain removable");
+  require([root tableView:[root tableView] canEditRowAtIndexPath:playlistIndex(root,[unsupported objectForKey:@"id"])],@"Unsupported playlists remain removable");
   [detail release];
   rdapp_store_close(store);
-  window.rootViewController=previous; [previous release]; pump();
+  [window setRootViewController:previous]; [previous release]; pump();
   [navigation release]; [root release]; [library shutdown]; [library release];
 }
 @interface RDLPIOSOfflineTest : UIResponder <UIApplicationDelegate> {
@@ -392,7 +392,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   (void)application; (void)options; [AIFontAwesome registerBundledFonts];
   documents_=[[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES) objectAtIndex:0] copy];
   window_=[[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
-  window_.rootViewController=[[[UIViewController alloc] init] autorelease]; [window_ makeKeyAndVisible];
+  [window_ setRootViewController:[[[UIViewController alloc] init] autorelease]]; [window_ makeKeyAndVisible];
   [self performSelector:@selector(run) withObject:nil afterDelay:0.5]; return YES;
 }
 - (id)show:(RDLPScreen)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;
@@ -402,19 +402,19 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     (mode==RDLPScreenDownloads?(id)[[[RDLPDownloadsViewController alloc] initWithLibrary:library_] autorelease]:
     (mode==RDLPScreenQueue?(id)[[[RDLPQueueViewController alloc] initWithLibrary:library_] autorelease]:
     [[[RDLPLibraryViewController alloc] initWithLibrary:library_ mode:mode playlist:playlist video:video] autorelease])));
-  if(navigation_.presentedViewController) {
+  if([navigation_ presentedViewController]) {
     [navigation_ dismissViewControllerAnimated:NO completion:nil]; pump(); pump();
   }
   [navigation_ setViewControllers:[NSArray arrayWithObject:controller] animated:NO]; [controller view]; [controller refresh:nil]; pump(); return controller;
 }
 - (void)run;
 {
-  if([UIApplication sharedApplication].applicationState!=UIApplicationStateActive) {
+  if([[UIApplication sharedApplication] applicationState]!=UIApplicationStateActive) {
     [self performSelector:@selector(run) withObject:nil afterDelay:0.5]; return;
   }
   /* Long timer checks must remain in the foreground on unattended devices. */
-  BOOL idleTimerDisabled=[UIApplication sharedApplication].idleTimerDisabled;
-  [UIApplication sharedApplication].idleTimerDisabled=YES;
+  BOOL idleTimerDisabled=[[UIApplication sharedApplication] isIdleTimerDisabled];
+  [[UIApplication sharedApplication] setIdleTimerDisabled:YES];
   [@"RUNNING" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSString *report=@"PASS";
   @try {
@@ -453,13 +453,13 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
       [errors importCookies:@"/synthetic-missing-cookie-file"];
       [presenter performSelector:@selector(showNextError)]; pump();
       UIAlertView *first=[presenter valueForKey:@"errorAlert_"];
-      require(first.visible && [first.title isEqualToString:@"Couldn’t import cookies"],@"Shared error becomes a native alert");
+      require([first isVisible] && [[first title] isEqualToString:@"Couldn’t import cookies"],@"Shared error becomes a native alert");
       [errors importCookies:@"/synthetic-missing-cookie-file"];
       [presenter performSelector:@selector(showNextError)];
       require([presenter valueForKey:@"errorAlert_"]==first && [errors hasErrors],@"A second error waits behind the native alert");
       [first dismissWithClickedButtonIndex:0 animated:NO]; pump(); pump();
       UIAlertView *second=[presenter valueForKey:@"errorAlert_"];
-      require(second.visible && ![errors hasErrors],@"Next error appears after dismissal");
+      require([second isVisible] && ![errors hasErrors],@"Next error appears after dismissal");
       [second dismissWithClickedButtonIndex:0 animated:NO]; pump(); pump();
       require(![presenter valueForKey:@"errorAlert_"] && [[errors status] isEqualToString:@"Downloading"],@"Alerts leave download status alone");
       [presenter release];
@@ -503,71 +503,71 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require(rdapp_store_reconcile(store,[downloads fileSystemRepresentation]),@"Reconcile offline fixture without starting a worker"); rdapp_store_close(store);
     testSharedLists(library_);
     [library_ startDownloads]; require(![library_ isPaused],@"Automatic queue startup");
-    navigation_=[[RDLPOfflineNavigationController alloc] init]; window_.rootViewController=navigation_;
+    navigation_=[[RDLPOfflineNavigationController alloc] init]; [window_ setRootViewController:navigation_];
     RDLPOfflineLibrary *emptyLibrary=[[[RDLPOfflineLibrary alloc] initWithSupportDirectory:[base stringByAppendingPathComponent:@"EmptySupport"] downloadDirectory:[base stringByAppendingPathComponent:@"EmptyDownloads"]] autorelease];
-    require(emptyLibrary!=nil,@"Open empty queue fixture"); emptyLibrary.testStatus=@"";
+    require(emptyLibrary!=nil,@"Open empty queue fixture"); [emptyLibrary setTestStatus:@""];
     RDLPQueueViewController *emptyQueue=[[[RDLPQueueViewController alloc] initWithLibrary:emptyLibrary] autorelease];
     [navigation_ setViewControllers:[NSArray arrayWithObject:emptyQueue] animated:NO]; [emptyQueue view]; [emptyQueue refresh:nil]; pump();
-    require([emptyQueue.tableView numberOfRowsInSection:0]==0 && navigation_.toolbarHidden && emptyQueue.tableView.tableFooterView==nil && ![emptyQueue respondsToSelector:@selector(tableView:titleForFooterInSection:)],@"Empty Queue has no placeholder section, footer, or idle toolbar");
+    require([[emptyQueue tableView] numberOfRowsInSection:0]==0 && [navigation_ isToolbarHidden] && [[emptyQueue tableView] tableFooterView]==nil && ![emptyQueue respondsToSelector:@selector(tableView:titleForFooterInSection:)],@"Empty Queue has no placeholder section, footer, or idle toolbar");
     [RDLPLibrary savePreferredFormat:@"137+140"];
     RDLPPlaylistsViewController *root=[self show:RDLPScreenLibrary playlist:nil video:nil];
-    testIOSIconImage(root.navigationItem.rightBarButtonItem.image,26,[[UIScreen mainScreen] scale],YES);
-    require([root isKindOfClass:[UITableViewController class]] && root.view==root.tableView,@"Fresh-launch home is a native table controller");
-    require([root.title isEqualToString:@"Playlists"] && root.tableView.style==UITableViewStylePlain,@"Plain Playlists home");
-    require([root.toolbarItems count]==5 && !navigation_.toolbarHidden,@"ENIL-style home toolbar");
-    UIBarButtonItem *queueButton=[root.toolbarItems lastObject];
-    require(queueButton.image!=nil && queueButton.action==@selector(queue:),@"Trailing Queue button");
+    testIOSIconImage([[[root navigationItem] rightBarButtonItem] image],26,[[UIScreen mainScreen] scale],YES);
+    require([root isKindOfClass:[UITableViewController class]] && [root view]==[root tableView],@"Fresh-launch home is a native table controller");
+    require([[root title] isEqualToString:@"Playlists"] && [[root tableView] style]==UITableViewStylePlain,@"Plain Playlists home");
+    require([[root toolbarItems] count]==5 && ![navigation_ isToolbarHidden],@"ENIL-style home toolbar");
+    UIBarButtonItem *queueButton=[[root toolbarItems] lastObject];
+    require([queueButton image]!=nil && [queueButton action]==@selector(queue:),@"Trailing Queue button");
     RDLPStatusBarView *bar=[root valueForKey:@"statusBar_"];
     UIProgressView *barProgress=[bar valueForKey:@"progress_"];
-    require(bar!=nil && barProgress.hidden,@"Idle status is text only");
-    CGRect homeTableFrame=root.tableView.frame;
-    library_.testProgress=[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES],@"active",@3,@"processed",@5,@"total",@1,@"failed",@1,@"cancelled",nil];
-    library_.testStatus=@"Downloading"; [root refresh:nil]; pump();
-    require(!barProgress.hidden && barProgress.progress>0.59f && barProgress.progress<0.61f && CGRectEqualToRect(homeTableFrame,root.tableView.frame),@"Toolbar progress preserves table geometry");
+    require(bar!=nil && [barProgress isHidden],@"Idle status is text only");
+    CGRect homeTableFrame=[[root tableView] frame];
+    [library_ setTestProgress:[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES],@"active",@3,@"processed",@5,@"total",@1,@"failed",@1,@"cancelled",nil]];
+    [library_ setTestStatus:@"Downloading"]; [root refresh:nil]; pump();
+    require(![barProgress isHidden] && [barProgress progress]>0.59f && [barProgress progress]<0.61f && CGRectEqualToRect(homeTableFrame,[[root tableView] frame]),@"Toolbar progress preserves table geometry");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"toolbar-progress.png"]);
     [bar setStatus:@"A very long download status that must fit beside the queue button without obscuring it" progress:[library_ activityProgress] busy:NO];
-    require(bar.frame.size.width<=bar.maximumWidth,@"Long status fits beside Queue");
-    library_.testProgress=nil; [root refresh:nil];
-    library_.testBusy=YES; [root refresh:nil];
-    require(barProgress.hidden && [[bar valueForKey:@"spinner_"] isAnimating],@"Unknown progress uses a spinner, never a fabricated percentage");
-    library_.testBusy=NO; [root refresh:nil];
+    require([bar frame].size.width<=[bar maximumWidth],@"Long status fits beside Queue");
+    [library_ setTestProgress:nil]; [root refresh:nil];
+    [library_ setTestBusy:YES]; [root refresh:nil];
+    require([barProgress isHidden] && [[bar valueForKey:@"spinner_"] isAnimating],@"Unknown progress uses a spinner, never a fabricated percentage");
+    [library_ setTestBusy:NO]; [root refresh:nil];
     [root queue:nil]; pump(); pump();
-    UINavigationController *queueModal=(UINavigationController *)navigation_.presentedViewController;
-    require([queueModal isKindOfClass:[UINavigationController class]] && navigation_.topViewController==root,@"Queue presents modally without changing home stack");
-    RDLPQueueViewController *modalQueue=(RDLPQueueViewController *)queueModal.topViewController;
-    require([modalQueue.title isEqualToString:@"Download Queue"] && modalQueue.navigationItem.rightBarButtonItem.action==@selector(dismissQueue:),@"Queue has Done dismissal");
+    UINavigationController *queueModal=(UINavigationController *)[navigation_ presentedViewController];
+    require([queueModal isKindOfClass:[UINavigationController class]] && [navigation_ topViewController]==root,@"Queue presents modally without changing home stack");
+    RDLPQueueViewController *modalQueue=(RDLPQueueViewController *)[queueModal topViewController];
+    require([[modalQueue title] isEqualToString:@"Download Queue"] && [[[modalQueue navigationItem] rightBarButtonItem] action]==@selector(dismissQueue:),@"Queue has Done dismissal");
     [root queue:nil];
-    require(navigation_.presentedViewController==queueModal,@"Repeated Queue action reuses modal");
+    require([navigation_ presentedViewController]==queueModal,@"Repeated Queue action reuses modal");
     [modalQueue showJobInQueue:[[library_ jobsForPlaylist:nil completedOnly:NO] objectAtIndex:0]];
-    require(queueModal.presentedViewController==nil,@"Reveal inside Queue does not nest another modal");
+    require([queueModal presentedViewController]==nil,@"Reveal inside Queue does not nest another modal");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"queue-modal.png"]);
     [modalQueue dismissQueue:nil]; pump(); pump();
-    require(navigation_.presentedViewController==nil && !navigation_.toolbarHidden && navigation_.topViewController==root,@"Done restores home toolbar");
+    require([navigation_ presentedViewController]==nil && ![navigation_ isToolbarHidden] && [navigation_ topViewController]==root,@"Done restores home toolbar");
     [root settings:nil]; pump(); pump();
-    UINavigationController *settingsModal=(UINavigationController *)navigation_.presentedViewController;
-    require([settingsModal isKindOfClass:[UINavigationController class]] && navigation_.topViewController==root,@"Settings presents modally");
-    RDLPSettingsViewController *modalSettings=(RDLPSettingsViewController *)settingsModal.topViewController;
-    require([modalSettings isKindOfClass:[UITableViewController class]] && modalSettings.view==modalSettings.tableView && modalSettings.tableView.tableFooterView==nil,@"Settings is a table controller without a status footer");
-    require([modalSettings.title isEqualToString:@"Settings"] && modalSettings.navigationItem.rightBarButtonItem.action==@selector(dismissSettings:),@"Settings has Done");
-    [root settings:nil]; require(navigation_.presentedViewController==settingsModal,@"Settings does not stack duplicate modals");
+    UINavigationController *settingsModal=(UINavigationController *)[navigation_ presentedViewController];
+    require([settingsModal isKindOfClass:[UINavigationController class]] && [navigation_ topViewController]==root,@"Settings presents modally");
+    RDLPSettingsViewController *modalSettings=(RDLPSettingsViewController *)[settingsModal topViewController];
+    require([modalSettings isKindOfClass:[UITableViewController class]] && [modalSettings view]==[modalSettings tableView] && [[modalSettings tableView] tableFooterView]==nil,@"Settings is a table controller without a status footer");
+    require([[modalSettings title] isEqualToString:@"Settings"] && [[[modalSettings navigationItem] rightBarButtonItem] action]==@selector(dismissSettings:),@"Settings has Done");
+    [root settings:nil]; require([navigation_ presentedViewController]==settingsModal,@"Settings does not stack duplicate modals");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"settings-modal.png"]);
     [modalSettings dismissSettings:nil]; pump(); pump();
-    require(navigation_.presentedViewController==nil && navigation_.topViewController==root && !navigation_.toolbarHidden,@"Done restores Playlists");
-    require(root.navigationItem.leftBarButtonItem.image!=nil && root.navigationItem.leftBarButtonItem.action==@selector(settings:),@"Settings gear");
-    require(root.navigationItem.rightBarButtonItem.image!=nil && root.navigationItem.rightBarButtonItem.action==@selector(showPlaylistActions:),@"Font Awesome plus opens playlist actions");
+    require([navigation_ presentedViewController]==nil && [navigation_ topViewController]==root && ![navigation_ isToolbarHidden],@"Done restores Playlists");
+    require([[[root navigationItem] leftBarButtonItem] image]!=nil && [[[root navigationItem] leftBarButtonItem] action]==@selector(settings:),@"Settings gear");
+    require([[[root navigationItem] rightBarButtonItem] image]!=nil && [[[root navigationItem] rightBarButtonItem] action]==@selector(showPlaylistActions:),@"Font Awesome plus opens playlist actions");
     require(findRow(root,@"queue")==nil && [[[sections(root) objectAtIndex:0] objectForKey:@"rows"] count]==1,@"System contains only All Downloads");
     require(findRow(root,@"settings")==nil,@"Settings moved out of playlist list");
-    require(![root respondsToSelector:@selector(tableView:viewForHeaderInSection:)] || [root tableView:root.tableView viewForHeaderInSection:0]==nil,@"Home uses standard section headers");
-    require(![root respondsToSelector:@selector(tableView:titleForFooterInSection:)] || [root tableView:root.tableView titleForFooterInSection:1]==nil,@"Home has no placeholder section footer");
-    require(![root respondsToSelector:@selector(tableView:heightForHeaderInSection:)] || [root tableView:root.tableView heightForHeaderInSection:1]==root.tableView.sectionHeaderHeight,@"Home uses default section header height");
+    require(![root respondsToSelector:@selector(tableView:viewForHeaderInSection:)] || [root tableView:[root tableView] viewForHeaderInSection:0]==nil,@"Home uses standard section headers");
+    require(![root respondsToSelector:@selector(tableView:titleForFooterInSection:)] || [root tableView:[root tableView] titleForFooterInSection:1]==nil,@"Home has no placeholder section footer");
+    require(![root respondsToSelector:@selector(tableView:heightForHeaderInSection:)] || [root tableView:[root tableView] heightForHeaderInSection:1]==[[root tableView] sectionHeaderHeight],@"Home uses default section header height");
     [root showPlaylistActions:nil]; pump();
     UIActionSheet *sheet=[root valueForKey:@"playlistActions_"];
-    require(sheet!=nil && sheet.numberOfButtons==5,@"Add commands, playlist commands and Cancel");
+    require(sheet!=nil && [sheet numberOfButtons]==5,@"Add commands, playlist commands and Cancel");
     require([[sheet buttonTitleAtIndex:0] isEqualToString:@"Add Video…"] && [[sheet buttonTitleAtIndex:1] isEqualToString:@"Add Playlist…"] && [[sheet buttonTitleAtIndex:2] isEqualToString:@"Sync All Playlists…"] && [[sheet buttonTitleAtIndex:3] isEqualToString:@"Load My Playlists…"],@"Library management commands put Add Video first");
-    [sheet dismissWithClickedButtonIndex:sheet.cancelButtonIndex animated:NO];
+    [sheet dismissWithClickedButtonIndex:[sheet cancelButtonIndex] animated:NO];
     for(NSUInteger wait=0;wait<10 && [root valueForKey:@"playlistActions_"];++wait) pump();
     pump(); pump();
-    require([root valueForKey:@"playlistActions_"]==nil && [root valueForKey:@"alert_"]==nil && navigation_.topViewController==root,@"Cancelling sheet leaves home unchanged");
+    require([root valueForKey:@"playlistActions_"]==nil && [root valueForKey:@"alert_"]==nil && [navigation_ topViewController]==root,@"Cancelling sheet leaves home unchanged");
     [root showPlaylistActions:nil]; pump();
     sheet=[root valueForKey:@"playlistActions_"];
     [sheet dismissWithClickedButtonIndex:0 animated:NO];
@@ -594,7 +594,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     RDLPDownloadPolicy *policy=[[[RDLPDownloadPolicy alloc] initWithLibrary:library_] autorelease];
     RDLPDownloadsViewController *nativeList=[self show:RDLPScreenDownloads playlist:nil video:nil];
     nativeDelete(nativeList,videoIndex(nativeList,@"AAAAAAAAAAA",@"18"));
-    require(![[NSFileManager defaultManager] fileExistsAtPath:file] && [nativeList tableView:nativeList.tableView numberOfRowsInSection:0]==0,@"UIKit confirmation deletes the last download without recursive reload or crash");
+    require(![[NSFileManager defaultManager] fileExistsAtPath:file] && [nativeList tableView:[nativeList tableView] numberOfRowsInSection:0]==0,@"UIKit confirmation deletes the last download without recursive reload or crash");
     /* Restore media for the remaining playback and state regressions. */
     require([[NSData dataWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"fixture" ofType:@"mp4"]] writeToFile:file atomically:YES],@"Restore native-delete fixture");
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open native-delete fixture");
@@ -604,66 +604,66 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     [root discover:nil]; confirm(root,NO); require(![library_ isDiscoveryPending],@"Cancelled discovery does nothing");
     [root syncAll:nil]; confirm(root,NO); require(![library_ isSyncPendingForInput:@"PLfixture"],@"Cancelled Sync All does nothing");
     [root add:nil]; confirm(root,NO); require(![library_ isSyncPendingForInput:@""],@"Cancelled Add does nothing");
-    library_.testStatus=@"";
+    [library_ setTestStatus:@""];
     [root performRow:findRow(root,@"playlist")]; pump(); pump();
-    require([navigation_.topViewController isKindOfClass:[RDLPPlaylistViewController class]] && navigation_.toolbarHidden,@"Playlist navigation opens the plain detail controller and hides home toolbar");
+    require([[navigation_ topViewController] isKindOfClass:[RDLPPlaylistViewController class]] && [navigation_ isToolbarHidden],@"Playlist navigation opens the plain detail controller and hides home toolbar");
     [navigation_ popViewControllerAnimated:NO]; pump();
-    require(!navigation_.toolbarHidden,@"Back restores the home toolbar");
+    require(![navigation_ isToolbarHidden],@"Back restores the home toolbar");
     RDLPPlaylistViewController *list=[self show:RDLPScreenPlaylist playlist:playlist video:nil];
-    require([list isKindOfClass:[UITableViewController class]] && list.view==list.tableView && list.tableView.style==UITableViewStylePlain,@"Playlist detail is a native plain table without a separate status area");
-    require([list.toolbarItems count]==5 && navigation_.toolbarHidden && list.tableView.tableFooterView==nil,@"Playlist has the parent toolbar, hidden when idle, without a table status footer");
-    require(list.navigationItem.rightBarButtonItem.image!=nil && [list.navigationItem.rightBarButtonItem.accessibilityLabel isEqualToString:@"Sync"] && list.navigationItem.rightBarButtonItem.action==@selector(sync:),@"Playlist navigation has accessible Sync icon");
+    require([list isKindOfClass:[UITableViewController class]] && [list view]==[list tableView] && [[list tableView] style]==UITableViewStylePlain,@"Playlist detail is a native plain table without a separate status area");
+    require([[list toolbarItems] count]==5 && [navigation_ isToolbarHidden] && [[list tableView] tableFooterView]==nil,@"Playlist has the parent toolbar, hidden when idle, without a table status footer");
+    require([[[list navigationItem] rightBarButtonItem] image]!=nil && [[[[list navigationItem] rightBarButtonItem] accessibilityLabel] isEqualToString:@"Sync"] && [[[list navigationItem] rightBarButtonItem] action]==@selector(sync:),@"Playlist navigation has accessible Sync icon");
     RDLPStatusBarView *playlistBar=[list valueForKey:@"statusBar_"];
-    UIBarButtonItem *playlistQueueButton=[list.toolbarItems lastObject];
-    require([[list.toolbarItems objectAtIndex:2] customView]==playlistBar && playlistQueueButton.action==@selector(queue:),@"Parent layout has centered status and trailing Queue");
-    library_.testBusy=YES;
-    library_.testProgress=[NSDictionary dictionaryWithObjectsAndKeys:@YES,@"active",@2,@"processed",@5,@"total",@0,@"failed",@0,@"cancelled",nil];
-    library_.testStatus=@"Downloading video"; pump(); pump();
+    UIBarButtonItem *playlistQueueButton=[[list toolbarItems] lastObject];
+    require([[[list toolbarItems] objectAtIndex:2] customView]==playlistBar && [playlistQueueButton action]==@selector(queue:),@"Parent layout has centered status and trailing Queue");
+    [library_ setTestBusy:YES];
+    [library_ setTestProgress:[NSDictionary dictionaryWithObjectsAndKeys:@YES,@"active",@2,@"processed",@5,@"total",@0,@"failed",@0,@"cancelled",nil]];
+    [library_ setTestStatus:@"Downloading video"]; pump(); pump();
     UIProgressView *playlistProgress=[playlistBar valueForKey:@"progress_"];
-    require(!navigation_.toolbarHidden && navigation_.lastToolbarChangeAnimated && !playlistProgress.hidden && playlistProgress.progress>0.39f && playlistProgress.progress<0.41f,@"Active status animates in the parent progress toolbar");
+    require(![navigation_ isToolbarHidden] && [navigation_ lastToolbarChangeAnimated] && ![playlistProgress isHidden] && [playlistProgress progress]>0.39f && [playlistProgress progress]<0.41f,@"Active status animates in the parent progress toolbar");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"playlist-toolbar.png"]);
-    library_.testStatus=@""; pump(); pump();
-    require(navigation_.toolbarHidden && navigation_.lastToolbarChangeAnimated,@"Empty status animates toolbar out even when progress is still active");
-    library_.testStatus=@"Downloading again"; pump(); pump();
-    library_.testStatus=@""; pump(); pump();
-    require(navigation_.toolbarHidden && navigation_.lastToolbarChangeAnimated,@"Empty status animates toolbar out");
-    library_.testStatus=@"Downloading video"; pump(); pump();
+    [library_ setTestStatus:@""]; pump(); pump();
+    require([navigation_ isToolbarHidden] && [navigation_ lastToolbarChangeAnimated],@"Empty status animates toolbar out even when progress is still active");
+    [library_ setTestStatus:@"Downloading again"]; pump(); pump();
+    [library_ setTestStatus:@""]; pump(); pump();
+    require([navigation_ isToolbarHidden] && [navigation_ lastToolbarChangeAnimated],@"Empty status animates toolbar out");
+    [library_ setTestStatus:@"Downloading video"]; pump(); pump();
     [list queue:nil]; pump(); pump();
-    UINavigationController *playlistQueue=(UINavigationController *)navigation_.presentedViewController;
-    require([playlistQueue isKindOfClass:[UINavigationController class]] && [playlistQueue.topViewController.title isEqualToString:@"Download Queue"] && navigation_.topViewController==list,@"Playlist Queue button presents the same queue modal as parent");
-    [(RDLPQueueViewController *)playlistQueue.topViewController dismissQueue:nil]; pump(); pump();
-    require(navigation_.presentedViewController==nil && !navigation_.toolbarHidden,@"Queue dismissal restores active playlist toolbar");
-    library_.testBusy=NO; library_.testProgress=nil; library_.testStatus=@"Finished playlist work";
+    UINavigationController *playlistQueue=(UINavigationController *)[navigation_ presentedViewController];
+    require([playlistQueue isKindOfClass:[UINavigationController class]] && [[[playlistQueue topViewController] title] isEqualToString:@"Download Queue"] && [navigation_ topViewController]==list,@"Playlist Queue button presents the same queue modal as parent");
+    [(RDLPQueueViewController *)[playlistQueue topViewController] dismissQueue:nil]; pump(); pump();
+    require([navigation_ presentedViewController]==nil && ![navigation_ isToolbarHidden],@"Queue dismissal restores active playlist toolbar");
+    [library_ setTestBusy:NO]; [library_ setTestProgress:nil]; [library_ setTestStatus:@"Finished playlist work"];
     NSDate *toolbarExpiry=[NSDate dateWithTimeIntervalSinceNow:10.3];
     while([toolbarExpiry timeIntervalSinceNow]>0) { [list refresh:nil]; pump(); }
     pump();
-    require(navigation_.toolbarHidden && navigation_.lastToolbarChangeAnimated,@"Expired empty status animates the whole playlist toolbar out");
-    library_.testStatus=@"";
+    require([navigation_ isToolbarHidden] && [navigation_ lastToolbarChangeAnimated],@"Expired empty status animates the whole playlist toolbar out");
+    [library_ setTestStatus:@""];
     [navigation_ setViewControllers:[NSArray arrayWithObject:root] animated:NO]; pump();
-    library_.testStatus=@"";
-    require(!navigation_.toolbarHidden,@"Offscreen playlist refresh cannot hide parent toolbar");
+    [library_ setTestStatus:@""];
+    require(![navigation_ isToolbarHidden],@"Offscreen playlist refresh cannot hide parent toolbar");
     [navigation_ setViewControllers:[NSArray arrayWithObject:list] animated:NO]; pump();
-    UITableViewCell *videoCell=[list tableView:list.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
-    require([videoCell.accessoryView isKindOfClass:[UIImageView class]] && [(UIImageView *)videoCell.accessoryView image]!=nil && videoCell.imageView.image==nil && videoCell.accessoryType==UITableViewCellAccessoryNone,@"Video status occupies the accessory with no disclosure chevron or leading image");
-    require([videoCell.accessibilityLabel rangeOfString:@"Downloaded"].location!=NSNotFound,@"Accessory status is accessible");
-    require([videoCell.detailTextLabel.text hasPrefix:@"12:34 · "] && [videoCell.detailTextLabel.text hasSuffix:@" · Low (18) · Example Channel"],@"Playlist subtitle orders duration, file size, quality, and channel");
-    require([videoCell.accessibilityLabel rangeOfString:@"12 minutes, 34 seconds"].location!=NSNotFound,@"Playlist duration is spoken as time");
+    UITableViewCell *videoCell=[list tableView:[list tableView] cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+    require([[videoCell accessoryView] isKindOfClass:[UIImageView class]] && [(UIImageView *)[videoCell accessoryView] image]!=nil && [[videoCell imageView] image]==nil && [videoCell accessoryType]==UITableViewCellAccessoryNone,@"Video status occupies the accessory with no disclosure chevron or leading image");
+    require([[videoCell accessibilityLabel] rangeOfString:@"Downloaded"].location!=NSNotFound,@"Accessory status is accessible");
+    require([[[videoCell detailTextLabel] text] hasPrefix:@"12:34 · "] && [[[videoCell detailTextLabel] text] hasSuffix:@" · Low (18) · Example Channel"],@"Playlist subtitle orders duration, file size, quality, and channel");
+    require([[videoCell accessibilityLabel] rangeOfString:@"12 minutes, 34 seconds"].location!=NSNotFound,@"Playlist duration is spoken as time");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"playlist.png"]);
     NSArray *videos=[[[[sections(list) objectAtIndex:0] objectForKey:@"rows"] copy] autorelease];
     require([videos count]==4,@"Playlist retains one row per entry regardless of quality count");
     require([[[videos objectAtIndex:0] objectForKey:@"status"] isEqualToString:@"Downloaded"] &&
       [[[[videos objectAtIndex:0] objectForKey:@"job"] objectForKey:@"format"] isEqualToString:@"18"],@"Playable quality represents video despite missing preferred quality");
-    require([videoCell.detailTextLabel.text rangeOfString:@"(18)"].location!=NSNotFound,@"Downloaded playlist subtitle shows its playable job quality");
+    require([[[videoCell detailTextLabel] text] rangeOfString:@"(18)"].location!=NSNotFound,@"Downloaded playlist subtitle shows its playable job quality");
     for(NSDictionary *row in videos)
       require([[row objectForKey:@"status"] isEqualToString:@"Downloaded"] || [[row objectForKey:@"detail"] rangeOfString:@"("].location==NSNotFound,@"Playlist omits quality when no playable download is available");
     NSIndexPath *pendingIndex=videoIndex(list,@"BBBBBBBBBBB",@"18");
-    UITableViewCell *pendingCell=[list tableView:list.tableView cellForRowAtIndexPath:pendingIndex];
-    require([pendingCell.detailTextLabel.text isEqualToString:@"0:00"],@"Zero duration is visible without claiming a playable quality");
-    require([(UIImageView *)pendingCell.accessoryView image]==[RDLPUIKit statusIcon:@"Queued"],@"Queued quality represents video ahead of failed quality");
-    UITableViewCell *originalCell=[list tableView:list.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:2 inSection:0]], *repeatedCell=[list tableView:list.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:3 inSection:0]];
-    require([(UIImageView *)originalCell.accessoryView image]==[(UIImageView *)repeatedCell.accessoryView image],@"Repeated playlist entries share representative status");
-    require([originalCell.detailTextLabel.text isEqualToString:@"Original Channel"] && ![repeatedCell.detailTextLabel.text length],@"Duplicate entries retain independent optional metadata");
-    library_.testStatus=nil;
+    UITableViewCell *pendingCell=[list tableView:[list tableView] cellForRowAtIndexPath:pendingIndex];
+    require([[[pendingCell detailTextLabel] text] isEqualToString:@"0:00"],@"Zero duration is visible without claiming a playable quality");
+    require([(UIImageView *)[pendingCell accessoryView] image]==[RDLPUIKit statusIcon:@"Queued"],@"Queued quality represents video ahead of failed quality");
+    UITableViewCell *originalCell=[list tableView:[list tableView] cellForRowAtIndexPath:[NSIndexPath indexPathForRow:2 inSection:0]], *repeatedCell=[list tableView:[list tableView] cellForRowAtIndexPath:[NSIndexPath indexPathForRow:3 inSection:0]];
+    require([(UIImageView *)[originalCell accessoryView] image]==[(UIImageView *)[repeatedCell accessoryView] image],@"Repeated playlist entries share representative status");
+    require([[[originalCell detailTextLabel] text] isEqualToString:@"Original Channel"] && ![[[repeatedCell detailTextLabel] text] length],@"Duplicate entries retain independent optional metadata");
+    [library_ setTestStatus:nil];
     NSDictionary *video=[[[videos objectAtIndex:0] objectForKey:@"video"] retain];
     require(![model canRemovePlaylist:playlist],@"Pending and completed jobs block playlist removal");
     NSArray *plan=[model missingPlanForPlaylist:[playlist objectForKey:@"id"] format:@"136+140"];
@@ -680,24 +680,24 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     [bulkActions performConfirmed:captured]; [captured release]; pump();
     require([RDLPDownloadPolicy job:[model jobForPlaylist:[playlist objectForKey:@"id"] video:@"CCCCCCCCCCC" format:@"136+140"] hasState:@"cancelled"],@"Bulk revalidation does not retry a now-stopped job");
     require([model jobForPlaylist:[playlist objectForKey:@"id"] video:@"AAAAAAAAAAA" format:@"136+140"]!=nil,@"Bulk preserves captured format");
-    if(navigation_.presentedViewController) { [navigation_ dismissViewControllerAnimated:NO completion:nil]; pump(); pump(); }
+    if([navigation_ presentedViewController]) { [navigation_ dismissViewControllerAnimated:NO completion:nil]; pump(); pump(); }
     RDLPSettingsViewController *settings=[[[RDLPSettingsViewController alloc] initWithLibrary:library_] autorelease];
     [navigation_ setViewControllers:[NSArray arrayWithObject:settings] animated:NO]; [settings view]; [settings refresh:nil]; pump();
-    require(settings.tableView.style==UITableViewStyleGrouped,@"Settings stays grouped");
-    require(![settings respondsToSelector:@selector(tableView:titleForFooterInSection:)] || ([settings tableView:settings.tableView titleForFooterInSection:0]==nil && [settings tableView:settings.tableView titleForFooterInSection:1]==nil),@"Settings has no explanatory footers");
+    require([[settings tableView] style]==UITableViewStyleGrouped,@"Settings stays grouped");
+    require(![settings respondsToSelector:@selector(tableView:titleForFooterInSection:)] || ([settings tableView:[settings tableView] titleForFooterInSection:0]==nil && [settings tableView:[settings tableView] titleForFooterInSection:1]==nil),@"Settings has no explanatory footers");
     NSDictionary *importRow=findRow(settings,@"import");
     require([[importRow objectForKey:@"title"] isEqualToString:@"Import Cookies..."] && ![[importRow objectForKey:@"detail"] length],@"Simple import label without subtitle");
     require([settings enabled:@"import"],@"Import enabled before cookies imported");
     for(NSInteger row=0;row<3;++row) {
-      UITableViewCell *cookieCell=[settings tableView:settings.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:row inSection:1]];
-      require(cookieCell.accessoryType==UITableViewCellAccessoryNone && cookieCell.accessoryView==nil,@"Cookie actions have no disclosure accessory");
+      UITableViewCell *cookieCell=[settings tableView:[settings tableView] cellForRowAtIndexPath:[NSIndexPath indexPathForRow:row inSection:1]];
+      require([cookieCell accessoryType]==UITableViewCellAccessoryNone && [cookieCell accessoryView]==nil,@"Cookie actions have no disclosure accessory");
     }
     NSUInteger count=[[library_ jobsForPlaylist:nil completedOnly:NO] count];
     [settings performRow:[[[sections(settings) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:2]];
     require([[RDLPLibrary preferredFormat] isEqualToString:@"137+140"] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==count,@"Quality choice only saves preference");
     [settings performRow:findRow(settings,@"custom")]; confirm(settings,NO);
     require([[RDLPLibrary preferredFormat] isEqualToString:@"137+140"],@"Custom cancellation preserves quality");
-    [settings performRow:findRow(settings,@"custom")]; [[settings valueForKey:@"alert_"] textFieldAtIndex:0].text=@"18"; confirm(settings,YES);
+    [settings performRow:findRow(settings,@"custom")]; [[[settings valueForKey:@"alert_"] textFieldAtIndex:0] setText:@"18"]; confirm(settings,YES);
     require([[RDLPLibrary preferredFormat] isEqualToString:@"18"] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==count,@"Custom Save does not enqueue");
     NSString *cookie=[documents_ stringByAppendingPathComponent:@"test-cookies.txt"];
     [@"# Netscape HTTP Cookie File\n.example.invalid\tTRUE\t/\tFALSE\t0\tfixture\tone\n" writeToFile:cookie atomically:YES encoding:NSUTF8StringEncoding error:NULL];
@@ -705,9 +705,9 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require(![settings enabled:@"import"],@"Imported cookies disable import even when idle");
     [settings performRow:findRow(settings,@"import")]; require([settings valueForKey:@"alert_"]==nil,@"Disabled import cannot open replacement dialog");
     require([settings requestCookieImport:cookie discover:NO],@"Replacement request accepted"); confirm(settings,NO);
-    library_.testBusy=YES; [settings refresh:nil];
+    [library_ setTestBusy:YES]; [settings refresh:nil];
     require(![settings enabled:@"import"] && ![settings enabled:@"clearCookies"],@"Cookie changes and discovery disabled while busy");
-    library_.testBusy=NO; [settings refresh:nil];
+    [library_ setTestBusy:NO]; [settings refresh:nil];
     [settings performRow:findRow(settings,@"clearCookies")]; confirm(settings,NO); require([[library_ cookieStatus] isEqualToString:@"Imported"],@"Cancelled cookie removal retains working copy");
     [settings performRow:findRow(settings,@"clearCookies")]; confirm(settings,YES); require([[library_ cookieStatus] isEqualToString:@"Not Imported"] && [[NSFileManager defaultManager] fileExistsAtPath:cookie],@"Cookie removal retains original");
     require([settings enabled:@"import"],@"Removing cookies enables import again");
@@ -715,23 +715,23 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require(findRow(detail,@"play")!=nil && findRow(detail,@"delete")!=nil,@"Completed video offers Play and confirmed Delete");
     [library_ savePlaybackSeconds:1 forVideo:[video objectForKey:@"video_id"]];
     [detail performRow:findRow(detail,@"play")]; pump();
-    UIViewController *playerController=detail.presentedViewController;
+    UIViewController *playerController=[detail presentedViewController];
     require([playerController isKindOfClass:[RDLPDownloadedPlayerViewController class]],@"Video details always present RDLPDownloadedPlayerViewController");
     /* Dismissal during the native presentation animation can be ignored. */
-    for(NSUInteger wait=0;wait<10 && playerController.isBeingPresented;++wait) pump();
-    require(!playerController.isBeingPresented,@"Native player presentation finishes before transport and dismissal");
+    for(NSUInteger wait=0;wait<10 && [playerController isBeingPresented];++wait) pump();
+    require(![playerController isBeingPresented],@"Native player presentation finishes before transport and dismissal");
     RDLPDownloadedPlayerViewController *downloaded=(id)playerController;
-    playbackWait(downloaded); [downloaded.player pause];
-    require(downloaded.queue.playlist.count==1 && CMTimeGetSeconds(downloaded.player.currentTime)>=1,@"Details restores progress in a one-item queue");
+    playbackWait(downloaded); [[downloaded player] pause];
+    require([[[downloaded queue] playlist] count]==1 && CMTimeGetSeconds([[downloaded player] currentTime])>=1,@"Details restores progress in a one-item queue");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"player.png"]);
     [detail dismissViewControllerAnimated:YES completion:nil];
-    for(NSUInteger wait=0;wait<10 && (detail.presentedViewController || navigation_.presentedViewController);++wait) pump();
-    require(!detail.presentedViewController && !navigation_.presentedViewController,@"Native player dismissal returns to library");
+    for(NSUInteger wait=0;wait<10 && ([detail presentedViewController] || [navigation_ presentedViewController]);++wait) pump();
+    require(![detail presentedViewController] && ![navigation_ presentedViewController],@"Native player dismissal returns to library");
     [detail performRow:findRow(detail,@"delete")]; confirm(detail,NO); require([[NSFileManager defaultManager] fileExistsAtPath:file],@"Cancelled delete retains file");
     RDLPQueueViewController *queue=[self show:RDLPScreenQueue playlist:nil video:nil];
-    require([queue isKindOfClass:[UITableViewController class]] && queue.view==queue.tableView && queue.tableView.style==UITableViewStylePlain,@"Queue is a native plain table controller");
-    require([sections(queue) count]==1 && queue.tableView.tableFooterView==nil,@"Flat Queue has no groups or empty footer");
-    require([queue.toolbarItems count]==5 && [[queue.toolbarItems objectAtIndex:2] customView]==[queue valueForKey:@"statusBar_"],@"Queue has centered status without a Queue button");
+    require([queue isKindOfClass:[UITableViewController class]] && [queue view]==[queue tableView] && [[queue tableView] style]==UITableViewStylePlain,@"Queue is a native plain table controller");
+    require([sections(queue) count]==1 && [[queue tableView] tableFooterView]==nil,@"Flat Queue has no groups or empty footer");
+    require([[queue toolbarItems] count]==5 && [[[queue toolbarItems] objectAtIndex:2] customView]==[queue valueForKey:@"statusBar_"],@"Queue has centered status without a Queue button");
     NSArray *queueRows=[[sections(queue) objectAtIndex:0] objectForKey:@"rows"];
     long long previousID=0; NSUInteger position=0,failedIndex=NSNotFound;
     for(NSDictionary *row in queueRows) {
@@ -743,27 +743,27 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
       require([[row objectForKey:@"detail"] rangeOfString:[job objectForKey:@"playlist_title"]].location!=NSNotFound && [[row objectForKey:@"detail"] rangeOfString:[job objectForKey:@"format"]].location!=NSNotFound,@"Subtitle identifies playlist and exact quality");
       require([row objectForKey:@"depth"]==nil && [[row objectForKey:@"action"] isEqualToString:@"job"],@"Every queue row is a download, with no outline nodes");
     }
-    [queue showJobInQueue:[model currentJob:@"2"]]; NSIndexPath *selected=queue.tableView.indexPathForSelectedRow;
-    require(failedIndex!=NSNotFound && selected.row==(NSInteger)failedIndex && selected.section==0,@"Reveal selects the exact quality in newest-first order");
-    UITableViewCell *cell=[queue.tableView cellForRowAtIndexPath:selected];
+    [queue showJobInQueue:[model currentJob:@"2"]]; NSIndexPath *selected=[[queue tableView] indexPathForSelectedRow];
+    require(failedIndex!=NSNotFound && [selected row]==(NSInteger)failedIndex && [selected section]==0,@"Reveal selects the exact quality in newest-first order");
+    UITableViewCell *cell=[[queue tableView] cellForRowAtIndexPath:selected];
     UITableViewCell *defaultCell=[[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil] autorelease];
-    require([cell.accessoryView isKindOfClass:[UIImageView class]] && cell.imageView.image==nil && cell.indentationLevel==0 && cell.textLabel.font.pointSize==defaultCell.textLabel.font.pointSize && cell.detailTextLabel.font.pointSize==defaultCell.detailTextLabel.font.pointSize,@"Queue shares native subtitle cell styling and trailing status icon");
+    require([[cell accessoryView] isKindOfClass:[UIImageView class]] && [[cell imageView] image]==nil && [cell indentationLevel]==0 && [[[cell textLabel] font] pointSize]==[[[defaultCell textLabel] font] pointSize] && [[[cell detailTextLabel] font] pointSize]==[[[defaultCell detailTextLabel] font] pointSize],@"Queue shares native subtitle cell styling and trailing status icon");
     NSArray *statuses=[NSArray arrayWithObjects:@"Queued",@"Downloading",@"Downloaded",@"Failed",@"Stopped",@"Interrupted",@"File missing",nil];
     for(NSString *status in statuses) {
       NSString *playlistStatus=[status isEqualToString:@"Stopped"]?@"Cancelled":status;
       require([UIImagePNGRepresentation([queue statusIcon:status]) isEqualToData:UIImagePNGRepresentation([RDLPUIKit statusIcon:playlistStatus])],@"Queue status icons match Playlist");
     }
-    [queue tableView:queue.tableView didSelectRowAtIndexPath:selected];
+    [queue tableView:[queue tableView] didSelectRowAtIndexPath:selected];
     UIAlertView *jobMenu=[queue valueForKey:@"alert_"];
-    require([jobMenu.message rangeOfString:@"Synthetic failure"].location!=NSNotFound,@"Queue job dialog includes full error");
-    for(NSInteger i=0;i<jobMenu.numberOfButtons;++i) require(![[jobMenu buttonTitleAtIndex:i] isEqualToString:@"Show in Queue"],@"Queue actions omit redundant navigation");
+    require([[jobMenu message] rangeOfString:@"Synthetic failure"].location!=NSNotFound,@"Queue job dialog includes full error");
+    for(NSInteger i=0;i<[jobMenu numberOfButtons];++i) require(![[jobMenu buttonTitleAtIndex:i] isEqualToString:@"Show in Queue"],@"Queue actions omit redundant navigation");
     choose(queue,@"Retry Download");
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"queued"] && [[[model currentJob:@"2"] objectForKey:@"format"] isEqualToString:@"136+140"],@"Retry uses selected quality, ignoring preference");
-    [queue tableView:queue.tableView didSelectRowAtIndexPath:selected]; choose(queue,@"Stop Download…"); confirm(queue,NO);
+    [queue tableView:[queue tableView] didSelectRowAtIndexPath:selected]; choose(queue,@"Stop Download…"); confirm(queue,NO);
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"queued"],@"Cancelled row stop does nothing");
-    [queue tableView:queue.tableView didSelectRowAtIndexPath:selected]; choose(queue,@"Stop Download…"); confirm(queue,YES);
+    [queue tableView:[queue tableView] didSelectRowAtIndexPath:selected]; choose(queue,@"Stop Download…"); confirm(queue,YES);
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"cancelled"] && [RDLPDownloadPolicy job:[model currentJob:@"3"] hasState:@"queued"] && ![library_ isPaused],@"Stopping one quality preserves other pending work");
-    require([queue.tableView.indexPathForSelectedRow isEqual:selected] && [[[[[sections(queue) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:failedIndex] objectForKey:@"status"] isEqualToString:@"Stopped"],@"Status changes preserve row position and stable selection");
+    require([[[queue tableView] indexPathForSelectedRow] isEqual:selected] && [[[[[sections(queue) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:failedIndex] objectForKey:@"status"] isEqualToString:@"Stopped"],@"Status changes preserve row position and stable selection");
     /* Deleting a job preserves the other jobs' permanent display numbers. */
     nativeDelete(queue,selected); [queue refresh:nil];
     queueRows=[[sections(queue) objectAtIndex:0] objectForKey:@"rows"];
@@ -783,101 +783,101 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     [lifecycle applicationWillEnterForeground:[UIApplication sharedApplication]]; require(![library_ isPaused] && [RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"cancelled"],@"Foreground resumes pending work without retrying stopped qualities");
     [lifecycle setValue:nil forKey:@"library_"];
     [queue refresh:nil]; screenshot(window_,[documents_ stringByAppendingPathComponent:@"queue.png"]);
-    [queue.tableView setContentOffset:CGPointZero animated:NO];
-    CGPoint browsingOffset=queue.tableView.contentOffset; [queue refresh:nil];
-    require(CGPointEqualToPoint(browsingOffset,queue.tableView.contentOffset),@"Progress refresh must not scroll back to the selected quality");
+    [[queue tableView] setContentOffset:CGPointZero animated:NO];
+    CGPoint browsingOffset=[[queue tableView] contentOffset]; [queue refresh:nil];
+    require(CGPointEqualToPoint(browsingOffset,[[queue tableView] contentOffset]),@"Progress refresh must not scroll back to the selected quality");
     RDLPStatusBarView *queueBar=[queue valueForKey:@"statusBar_"];
     UIProgressView *progress=[queueBar valueForKey:@"progress_"];
-    require(progress.hidden,@"Historical jobs do not activate progress");
-    library_.testStatus=@""; require(navigation_.toolbarHidden,@"Idle queue has no toolbar");
-    library_.testProgress=[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES],@"active",[NSNumber numberWithInt:3],@"processed",[NSNumber numberWithInt:5],@"total",[NSNumber numberWithInt:1],@"failed",[NSNumber numberWithInt:1],@"cancelled",nil];
+    require([progress isHidden],@"Historical jobs do not activate progress");
+    [library_ setTestStatus:@""]; require([navigation_ isToolbarHidden],@"Idle queue has no toolbar");
+    [library_ setTestProgress:[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES],@"active",[NSNumber numberWithInt:3],@"processed",[NSNumber numberWithInt:5],@"total",[NSNumber numberWithInt:1],@"failed",[NSNumber numberWithInt:1],@"cancelled",nil]];
     [queue refresh:nil]; pump();
-    require(navigation_.toolbarHidden && progress.hidden,@"No message means no status toolbar even if work remains active");
-    library_.testStatus=@"Downloading fixture"; pump();
-    CGRect tableFrame=queue.tableView.frame; [queue refresh:nil];
-    require(CGRectEqualToRect(tableFrame,queue.tableView.frame),@"Progress refresh keeps the native table frame stable");
+    require([navigation_ isToolbarHidden] && [progress isHidden],@"No message means no status toolbar even if work remains active");
+    [library_ setTestStatus:@"Downloading fixture"]; pump();
+    CGRect tableFrame=[[queue tableView] frame]; [queue refresh:nil];
+    require(CGRectEqualToRect(tableFrame,[[queue tableView] frame]),@"Progress refresh keeps the native table frame stable");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"progress.png"]);
-    library_.testProgress=nil; library_.testStatus=@"Queue finished"; [queue refresh:nil];
-    require(progress.hidden && !navigation_.toolbarHidden,@"Drained run leaves timed completion message");
+    [library_ setTestProgress:nil]; [library_ setTestStatus:@"Queue finished"]; [queue refresh:nil];
+    require([progress isHidden] && ![navigation_ isToolbarHidden],@"Drained run leaves timed completion message");
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:10.2]];
-    require(navigation_.toolbarHidden && navigation_.lastToolbarChangeAnimated,@"Queue completion toolbar disappears with animation after ten seconds");
-    library_.testStatus=nil;
+    require([navigation_ isToolbarHidden] && [navigation_ lastToolbarChangeAnimated],@"Queue completion toolbar disappears with animation after ten seconds");
+    [library_ setTestStatus:nil];
     RDLPStatusBarView *timedBar=[[[RDLPStatusBarView alloc] initWithFrame:CGRectZero] autorelease];
     UILabel *timedLabel=[timedBar valueForKey:@"label_"];
     [timedBar setStatus:@"Downloading" progress:nil busy:YES];
     [timedBar setStatus:@"" progress:nil busy:NO];
-    require(![timedLabel.text length],@"Renderer clears immediately when shared status expires");
+    require(![[timedLabel text] length],@"Renderer clears immediately when shared status expires");
     [timedBar setStatus:[library_ status] progress:[library_ activityProgress] busy:NO];
-    require(![timedLabel.text length],@"New view cannot resurrect expired shared status");
+    require(![[timedLabel text] length],@"New view cannot resurrect expired shared status");
     /* Exercise playlist taps after the shared queue fixtures have been tested. */
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open playlist interaction fixture");
     rdapp_entry tapEntries[]={{.video_id="AAAAAAAAAAA",.title="A playable video",.position=0},{.video_id="BBBBBBBBBBB",.title="Failed and queued video",.position=1},{.video_id="CCCCCCCCCCC",.title="Missing video",.position=2},{.video_id="CCCCCCCCCCC",.title="Repeated video",.position=3},{.video_id="DDDDDDDDDDD",.title="New video",.position=4}};
     require(rdapp_store_snapshot(store,"PLfixture","Updated Playlist",tapEntries,5,&pid),@"Add undownloaded video fixture");
     require(rdapp_store_finish(store,2,"failed","","Synthetic playlist failure"),@"Restore failed quality after queue stop tests"); rdapp_store_close(store);
-    library_.testStatus=@"";
+    [library_ setTestStatus:@""];
     list=[self show:RDLPScreenPlaylist playlist:playlist video:nil];
-    require([list.title isEqualToString:@"Updated Playlist"],@"Playlist title refreshes from library");
+    require([[list title] isEqualToString:@"Updated Playlist"],@"Playlist title refreshes from library");
     NSIndexPath *playIndex=videoIndex(list,@"AAAAAAAAAAA",@"18"), *queuedIndex=videoIndex(list,@"BBBBBBBBBBB",@"18"), *newIndex=videoIndex(list,@"DDDDDDDDDDD",nil);
     [RDLPLibrary savePreferredFormat:@"137+140"];
     [library_ savePlaybackSeconds:1 forVideo:@"AAAAAAAAAAA"];
-    [list tableView:list.tableView didSelectRowAtIndexPath:playIndex]; pump(); pump();
-    RDLPDownloadedPlayerViewController *playlistPlayer=(id)list.presentedViewController;
+    [list tableView:[list tableView] didSelectRowAtIndexPath:playIndex]; pump(); pump();
+    RDLPDownloadedPlayerViewController *playlistPlayer=(id)[list presentedViewController];
     require([playlistPlayer isKindOfClass:[RDLPDownloadedPlayerViewController class]],@"Playlist tap presents RDLPDownloadedPlayerViewController even with another preferred quality");
-    require([[playlistPlayer.queue.playlist objectAtIndex:0] isEqual:[NSURL fileURLWithPath:file]],@"Playlist plays only the tapped local file");
-    playbackWait(playlistPlayer); [playlistPlayer.player pause];
-    require(playlistPlayer.queue.playlist.count==1 && CMTimeGetSeconds(playlistPlayer.player.currentTime)>=1,@"Playlist tap restores progress");
-    playbackSeek(playlistPlayer.player,0.75);
+    require([[[[playlistPlayer queue] playlist] objectAtIndex:0] isEqual:[NSURL fileURLWithPath:file]],@"Playlist plays only the tapped local file");
+    playbackWait(playlistPlayer); [[playlistPlayer player] pause];
+    require([[[playlistPlayer queue] playlist] count]==1 && CMTimeGetSeconds([[playlistPlayer player] currentTime])>=1,@"Playlist tap restores progress");
+    playbackSeek([playlistPlayer player],0.75);
     [[NSNotificationCenter defaultCenter] postNotificationName:UIApplicationWillResignActiveNotification object:[UIApplication sharedApplication]];
     require(fabs([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]-0.75)<0.01,@"Backgrounding flushes the latest paused seek");
-    playbackSeek(playlistPlayer.player,0.5);
+    playbackSeek([playlistPlayer player],0.5);
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.7]];
     require(fabs([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]-0.5)<0.01,@"Paused seeks save while inactive after the debounce");
-    playbackSeek(playlistPlayer.player,1.5);
+    playbackSeek([playlistPlayer player],1.5);
     [list dismissViewControllerAnimated:YES completion:nil];
-    for(NSUInteger wait=0;wait<10 && (list.presentedViewController || navigation_.presentedViewController);++wait) pump();
-    require(!list.presentedViewController && navigation_.toolbarHidden,@"Movie dismissal returns to playlist without a toolbar");
+    for(NSUInteger wait=0;wait<10 && ([list presentedViewController] || [navigation_ presentedViewController]);++wait) pump();
+    require(![list presentedViewController] && [navigation_ isToolbarHidden],@"Movie dismissal returns to playlist without a toolbar");
     require(fabs([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]-1.5)<0.01,@"Dismissing an inactive player flushes its final position");
     [[NSNotificationCenter defaultCenter] postNotificationName:UIApplicationDidBecomeActiveNotification object:[UIApplication sharedApplication]];
     [library_ savePlaybackSeconds:0.75 forVideo:@"AAAAAAAAAAA"];
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.7]];
     require([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]==0.75,@"Dismissed player cannot overwrite a newer position");
-    library_.testStatus=nil;
+    [library_ setTestStatus:nil];
     NSUInteger beforeTap=[[library_ jobsForPlaylist:nil completedOnly:NO] count];
-    require(![list tableView:list.tableView canEditRowAtIndexPath:queuedIndex] && ![list tableView:list.tableView canEditRowAtIndexPath:newIndex],@"Queued and undownloaded playlist rows cannot be swiped to delete");
-    [list tableView:list.tableView didSelectRowAtIndexPath:queuedIndex];
-    require([[library_ jobsForPlaylist:nil completedOnly:NO] count]==beforeTap && [list valueForKey:@"alert_"]==nil && !navigation_.presentedViewController,@"Queued row does not enqueue or navigate");
+    require(![list tableView:[list tableView] canEditRowAtIndexPath:queuedIndex] && ![list tableView:[list tableView] canEditRowAtIndexPath:newIndex],@"Queued and undownloaded playlist rows cannot be swiped to delete");
+    [list tableView:[list tableView] didSelectRowAtIndexPath:queuedIndex];
+    require([[library_ jobsForPlaylist:nil completedOnly:NO] count]==beforeTap && [list valueForKey:@"alert_"]==nil && ![navigation_ presentedViewController],@"Queued row does not enqueue or navigate");
     [library_ cancelJob:@"3"]; [list refresh:nil];
-    [list tableView:list.tableView didSelectRowAtIndexPath:videoIndex(list,@"BBBBBBBBBBB",@"136+140")]; confirm(list,YES);
+    [list tableView:[list tableView] didSelectRowAtIndexPath:videoIndex(list,@"BBBBBBBBBBB",@"136+140")]; confirm(list,YES);
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"queued"] && [RDLPDownloadPolicy job:[model currentJob:@"3"] hasState:@"cancelled"],@"Retry targets the representative failed quality without changing its sibling");
     [library_ retryJob:@"3"];
     require([policy playable:[model currentJob:@"1"]] && videoIndex(list,@"AAAAAAAAAAA",@"18")!=nil,@"Playable quality continues to represent video with missing sibling");
     NSIndexPath *duplicateIndex=videoIndex(list,@"CCCCCCCCCCC",@"136+140");
-    [list tableView:list.tableView didSelectRowAtIndexPath:duplicateIndex]; confirm(list,YES);
+    [list tableView:[list tableView] didSelectRowAtIndexPath:duplicateIndex]; confirm(list,YES);
     NSArray *duplicateRows=[[sections(list) objectAtIndex:0] objectForKey:@"rows"];
-    NSDictionary *original=[duplicateRows objectAtIndex:(NSUInteger)duplicateIndex.row], *duplicate=[duplicateRows objectAtIndex:(NSUInteger)duplicateIndex.row+1];
+    NSDictionary *original=[duplicateRows objectAtIndex:(NSUInteger)[duplicateIndex row]], *duplicate=[duplicateRows objectAtIndex:(NSUInteger)[duplicateIndex row]+1];
     require([[original objectForKey:@"status"] isEqualToString:@"Queued"] && [[original objectForKey:@"status"] isEqualToString:[duplicate objectForKey:@"status"]] && [[[original objectForKey:@"job"] objectForKey:@"id"] isEqualToString:[[duplicate objectForKey:@"job"] objectForKey:@"id"]],@"Retry refreshes both occurrences of a repeated video to the same job and status");
-    [list tableView:list.tableView didSelectRowAtIndexPath:newIndex];
+    [list tableView:[list tableView] didSelectRowAtIndexPath:newIndex];
     NSDictionary *newJob=[model jobForPlaylist:[playlist objectForKey:@"id"] video:@"DDDDDDDDDDD" format:@"137+140"];
-    require([RDLPDownloadPolicy job:newJob hasState:@"queued"] && navigation_.topViewController==list && !navigation_.presentedViewController,@"Undownloaded row queues preferred quality and stays on playlist");
-    [list tableView:list.tableView didSelectRowAtIndexPath:newIndex];
+    require([RDLPDownloadPolicy job:newJob hasState:@"queued"] && [navigation_ topViewController]==list && ![navigation_ presentedViewController],@"Undownloaded row queues preferred quality and stays on playlist");
+    [list tableView:[list tableView] didSelectRowAtIndexPath:newIndex];
     require([[library_ jobsForPlaylist:nil completedOnly:NO] count]==beforeTap+1,@"Repeated tap does not duplicate download");
     require([UIImagePNGRepresentation([RDLPUIKit statusIcon:@"Downloading"]) isEqualToData:UIImagePNGRepresentation([RDLPUIKit statusIcon:@"Queued"])],@"Downloading and queued use the same hourglass");
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open failure fixture");
     require(rdapp_store_finish(store,[[newJob objectForKey:@"id"] longLongValue],"failed","","Synthetic playlist failure"),@"Fail tapped download"); rdapp_store_close(store);
-    [list refresh:nil]; [list tableView:list.tableView didSelectRowAtIndexPath:newIndex];
+    [list refresh:nil]; [list tableView:[list tableView] didSelectRowAtIndexPath:newIndex];
     require([[[list valueForKey:@"alert_"] message] rangeOfString:@"Synthetic playlist failure"].location!=NSNotFound,@"Retry alert explains failure");
     confirm(list,NO);
     require([RDLPDownloadPolicy job:[model currentJob:[newJob objectForKey:@"id"]] hasState:@"failed"],@"Cancelled retry leaves failure unchanged");
-    [list tableView:list.tableView didSelectRowAtIndexPath:newIndex];
+    [list tableView:[list tableView] didSelectRowAtIndexPath:newIndex];
     [RDLPLibrary savePreferredFormat:@"18"]; confirm(list,YES);
     require([RDLPDownloadPolicy job:[model currentJob:[newJob objectForKey:@"id"]] hasState:@"queued"] && [model jobForPlaylist:[playlist objectForKey:@"id"] video:@"DDDDDDDDDDD" format:@"18"]==nil,@"Confirmed retry preserves failed quality despite preference change");
     [library_ cancelJob:[newJob objectForKey:@"id"]];
-    [list tableView:list.tableView didSelectRowAtIndexPath:newIndex];
+    [list tableView:[list tableView] didSelectRowAtIndexPath:newIndex];
     [library_ retryJob:[newJob objectForKey:@"id"]]; confirm(list,YES);
     require([RDLPDownloadPolicy job:[model currentJob:[newJob objectForKey:@"id"]] hasState:@"queued"],@"Retry confirmation revalidates a job already queued elsewhere");
     [library_ cancelJob:[newJob objectForKey:@"id"]]; [library_ removeDownload:[model currentJob:[newJob objectForKey:@"id"]]];
     [RDLPLibrary savePreferredFormat:@"18"];
-    [list tableView:list.tableView didSelectRowAtIndexPath:newIndex];
+    [list tableView:[list tableView] didSelectRowAtIndexPath:newIndex];
     NSDictionary *replacementJob=[model jobForPlaylist:[playlist objectForKey:@"id"] video:@"DDDDDDDDDDD" format:@"18"];
     require([RDLPDownloadPolicy job:[model currentJob:[newJob objectForKey:@"id"]] hasState:@"removed"] && [list valueForKey:@"alert_"]==nil && [RDLPDownloadPolicy job:replacementJob hasState:@"queued"],@"Deleted playlist download uses the current quality and leaves its old job removed");
     [library_ cancelJob:[replacementJob objectForKey:@"id"]]; [library_ removeDownload:[model currentJob:[replacementJob objectForKey:@"id"]]];
@@ -887,85 +887,85 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require([[NSData dataWithContentsOfFile:file] writeToFile:highFile atomically:YES],@"Publish second local quality");
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open All Downloads fixture");
     require(rdapp_store_finish(store,4,"complete","137+140",""),@"Complete second quality"); rdapp_store_close(store);
-    library_.testStatus=@"";
+    [library_ setTestStatus:@""];
     root=[self show:RDLPScreenLibrary playlist:nil video:nil];
     [root performRow:findRow(root,@"downloads")]; pump(); pump();
-    RDLPDownloadsViewController *all=(RDLPDownloadsViewController *)navigation_.topViewController;
-    require([all isKindOfClass:[RDLPDownloadsViewController class]] && [all isKindOfClass:[UITableViewController class]] && all.view==all.tableView && all.tableView.style==UITableViewStylePlain,@"All Downloads navigation opens a native plain table controller");
-    require([all.title isEqualToString:@"All Downloads"] && all.navigationItem.rightBarButtonItem.image!=nil && all.navigationItem.rightBarButtonItem.action==@selector(addVideo:) && navigation_.toolbarHidden && !all.tableView.tableFooterView,@"All Downloads has an Add Video plus button, no separate status footer, and hides idle toolbar");
+    RDLPDownloadsViewController *all=(RDLPDownloadsViewController *)[navigation_ topViewController];
+    require([all isKindOfClass:[RDLPDownloadsViewController class]] && [all isKindOfClass:[UITableViewController class]] && [all view]==[all tableView] && [[all tableView] style]==UITableViewStylePlain,@"All Downloads navigation opens a native plain table controller");
+    require([[all title] isEqualToString:@"All Downloads"] && [[[all navigationItem] rightBarButtonItem] image]!=nil && [[[all navigationItem] rightBarButtonItem] action]==@selector(addVideo:) && [navigation_ isToolbarHidden] && ![[all tableView] tableFooterView],@"All Downloads has an Add Video plus button, no separate status footer, and hides idle toolbar");
     NSArray *downloadRows=[[sections(all) objectAtIndex:0] objectForKey:@"rows"];
     require([downloadRows count]==2,@"All Downloads keeps both completed qualities and excludes pending/failed jobs");
     NSIndexPath *lowIndex=videoIndex(all,@"AAAAAAAAAAA",@"18"), *highIndex=videoIndex(all,@"AAAAAAAAAAA",@"137+140");
-    UITableViewCell *lowCell=[all tableView:all.tableView cellForRowAtIndexPath:lowIndex], *highCell=[all tableView:all.tableView cellForRowAtIndexPath:highIndex];
+    UITableViewCell *lowCell=[all tableView:[all tableView] cellForRowAtIndexPath:lowIndex], *highCell=[all tableView:[all tableView] cellForRowAtIndexPath:highIndex];
     NSString *representativeFormat=[[[[[sections(list) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:0] objectForKey:@"job"] objectForKey:@"format"];
-    UITableViewCell *playlistComparisonCell=[list tableView:list.tableView cellForRowAtIndexPath:videoIndex(list,@"AAAAAAAAAAA",representativeFormat)];
-    UITableViewCell *matchingDownloadCell=[all tableView:all.tableView cellForRowAtIndexPath:videoIndex(all,@"AAAAAAAAAAA",representativeFormat)];
-    require([matchingDownloadCell.textLabel.text isEqualToString:playlistComparisonCell.textLabel.text] && [matchingDownloadCell.detailTextLabel.text isEqualToString:playlistComparisonCell.detailTextLabel.text] && [matchingDownloadCell.textLabel.font isEqual:playlistComparisonCell.textLabel.font] && [matchingDownloadCell.detailTextLabel.font isEqual:playlistComparisonCell.detailTextLabel.font] && all.tableView.rowHeight==list.tableView.rowHeight,@"All Downloads matches playlist title, subtitle, typography, and row height");
-    require([highCell.textLabel.text isEqualToString:lowCell.textLabel.text] && ![highCell.detailTextLabel.text isEqualToString:lowCell.detailTextLabel.text],@"Separate qualities share title and have distinct quality subtitles");
-    require([highCell.accessoryView isKindOfClass:[UIImageView class]] && highCell.accessoryType==UITableViewCellAccessoryNone && !highCell.imageView.image && [highCell.accessibilityLabel rangeOfString:@"Downloaded"].location!=NSNotFound,@"All Downloads shares accessible trailing status icon without leading image or chevron");
+    UITableViewCell *playlistComparisonCell=[list tableView:[list tableView] cellForRowAtIndexPath:videoIndex(list,@"AAAAAAAAAAA",representativeFormat)];
+    UITableViewCell *matchingDownloadCell=[all tableView:[all tableView] cellForRowAtIndexPath:videoIndex(all,@"AAAAAAAAAAA",representativeFormat)];
+    require([[[matchingDownloadCell textLabel] text] isEqualToString:[[playlistComparisonCell textLabel] text]] && [[[matchingDownloadCell detailTextLabel] text] isEqualToString:[[playlistComparisonCell detailTextLabel] text]] && [[[matchingDownloadCell textLabel] font] isEqual:[[playlistComparisonCell textLabel] font]] && [[[matchingDownloadCell detailTextLabel] font] isEqual:[[playlistComparisonCell detailTextLabel] font]] && [[all tableView] rowHeight]==[[list tableView] rowHeight],@"All Downloads matches playlist title, subtitle, typography, and row height");
+    require([[[highCell textLabel] text] isEqualToString:[[lowCell textLabel] text]] && ![[[highCell detailTextLabel] text] isEqualToString:[[lowCell detailTextLabel] text]],@"Separate qualities share title and have distinct quality subtitles");
+    require([[highCell accessoryView] isKindOfClass:[UIImageView class]] && [highCell accessoryType]==UITableViewCellAccessoryNone && ![[highCell imageView] image] && [[highCell accessibilityLabel] rangeOfString:@"Downloaded"].location!=NSNotFound,@"All Downloads shares accessible trailing status icon without leading image or chevron");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"downloads.png"]);
     for(NSString *format in [NSArray arrayWithObjects:@"18",@"137+140",nil]) {
-      [all tableView:all.tableView didSelectRowAtIndexPath:videoIndex(all,@"AAAAAAAAAAA",format)]; pump(); pump();
-      RDLPDownloadedPlayerViewController *player=(id)all.presentedViewController;
-      require([player isKindOfClass:[RDLPDownloadedPlayerViewController class]] && [[player.queue.playlist objectAtIndex:0] isEqual:[NSURL fileURLWithPath:[format isEqualToString:@"18"]?file:highFile]],@"All Downloads plays precisely the tapped quality");
-      [player.player pause]; [all dismissViewControllerAnimated:YES completion:nil];
-      for(NSUInteger wait=0;wait<10 && (all.presentedViewController || navigation_.presentedViewController);++wait) pump();
-      require(!all.presentedViewController && navigation_.toolbarHidden,@"Playback returns to All Downloads with hidden idle toolbar");
+      [all tableView:[all tableView] didSelectRowAtIndexPath:videoIndex(all,@"AAAAAAAAAAA",format)]; pump(); pump();
+      RDLPDownloadedPlayerViewController *player=(id)[all presentedViewController];
+      require([player isKindOfClass:[RDLPDownloadedPlayerViewController class]] && [[[[player queue] playlist] objectAtIndex:0] isEqual:[NSURL fileURLWithPath:[format isEqualToString:@"18"]?file:highFile]],@"All Downloads plays precisely the tapped quality");
+      [[player player] pause]; [all dismissViewControllerAnimated:YES completion:nil];
+      for(NSUInteger wait=0;wait<10 && ([all presentedViewController] || [navigation_ presentedViewController]);++wait) pump();
+      require(![all presentedViewController] && [navigation_ isToolbarHidden],@"Playback returns to All Downloads with hidden idle toolbar");
     }
     NSUInteger membershipCount=[[library_ entriesForPlaylist:[playlist objectForKey:@"id"]] count];
-    require([all tableView:all.tableView canEditRowAtIndexPath:highIndex] && [all tableView:all.tableView editingStyleForRowAtIndexPath:highIndex]==UITableViewCellEditingStyleDelete,@"Completed qualities expose native swipe Delete");
-    [all tableView:all.tableView willBeginEditingRowAtIndexPath:highIndex];
-    [all tableView:all.tableView didEndEditingRowAtIndexPath:highIndex];
+    require([all tableView:[all tableView] canEditRowAtIndexPath:highIndex] && [all tableView:[all tableView] editingStyleForRowAtIndexPath:highIndex]==UITableViewCellEditingStyleDelete,@"Completed qualities expose native swipe Delete");
+    [all tableView:[all tableView] willBeginEditingRowAtIndexPath:highIndex];
+    [all tableView:[all tableView] didEndEditingRowAtIndexPath:highIndex];
     require([[NSFileManager defaultManager] fileExistsAtPath:highFile],@"Dismissing swipe without Delete preserves the download");
-    [all tableView:all.tableView willBeginEditingRowAtIndexPath:highIndex];
+    [all tableView:[all tableView] willBeginEditingRowAtIndexPath:highIndex];
     [all refresh:nil];
-    [all tableView:all.tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:highIndex]; pump();
+    [all tableView:[all tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:highIndex]; pump();
     require(![[NSFileManager defaultManager] fileExistsAtPath:highFile] && [policy playable:[model currentJob:@"1"]] && [RDLPDownloadPolicy job:[model currentJob:@"4"] hasState:@"removed"],@"Swipe Delete removes exactly the selected completed quality and preserves its sibling");
-    require([all tableView:all.tableView numberOfRowsInSection:0]==1 && [[library_ entriesForPlaylist:[playlist objectForKey:@"id"]] count]==membershipCount,@"All Downloads drops deleted row while playlist membership is retained");
+    require([all tableView:[all tableView] numberOfRowsInSection:0]==1 && [[library_ entriesForPlaylist:[playlist objectForKey:@"id"]] count]==membershipCount,@"All Downloads drops deleted row while playlist membership is retained");
     require(videoIndex(list,@"AAAAAAAAAAA",@"18")!=nil,@"Playlist switches to its remaining playable quality after deletion");
     /* Restore the second quality for the missing-file and toolbar regressions. */
     require([[NSData dataWithContentsOfFile:file] writeToFile:highFile atomically:YES],@"Restore second local quality");
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Reopen completed fixture");
     require(rdapp_store_finish(store,4,"complete","137+140",""),@"Restore completed quality"); rdapp_store_close(store); [all refresh:nil];
-    library_.testBusy=YES; library_.testStatus=@"Downloading from All Downloads"; pump(); pump();
-    require(!navigation_.toolbarHidden && navigation_.lastToolbarChangeAnimated,@"All Downloads animates active status toolbar in");
+    [library_ setTestBusy:YES]; [library_ setTestStatus:@"Downloading from All Downloads"]; pump(); pump();
+    require(![navigation_ isToolbarHidden] && [navigation_ lastToolbarChangeAnimated],@"All Downloads animates active status toolbar in");
     [all queue:nil]; pump(); pump();
-    UINavigationController *downloadsQueue=(UINavigationController *)navigation_.presentedViewController;
-    require([downloadsQueue.topViewController.title isEqualToString:@"Download Queue"],@"All Downloads opens shared queue modal");
-    [(RDLPQueueViewController *)downloadsQueue.topViewController dismissQueue:nil]; pump(); pump();
-    require(!navigation_.presentedViewController && !navigation_.toolbarHidden,@"Queue dismissal restores All Downloads status toolbar");
-    library_.testStatus=@""; pump(); pump();
-    require(navigation_.toolbarHidden,@"All Downloads hides empty status even during active work");
-    library_.testStatus=@"Another message"; pump();
-    library_.testStatus=@""; pump(); pump();
-    require(navigation_.toolbarHidden,@"All Downloads hides empty status");
-    library_.testBusy=NO; library_.testStatus=@"Downloads finished"; pump();
-    require(!navigation_.toolbarHidden,@"New idle message shows All Downloads toolbar");
+    UINavigationController *downloadsQueue=(UINavigationController *)[navigation_ presentedViewController];
+    require([[[downloadsQueue topViewController] title] isEqualToString:@"Download Queue"],@"All Downloads opens shared queue modal");
+    [(RDLPQueueViewController *)[downloadsQueue topViewController] dismissQueue:nil]; pump(); pump();
+    require(![navigation_ presentedViewController] && ![navigation_ isToolbarHidden],@"Queue dismissal restores All Downloads status toolbar");
+    [library_ setTestStatus:@""]; pump(); pump();
+    require([navigation_ isToolbarHidden],@"All Downloads hides empty status even during active work");
+    [library_ setTestStatus:@"Another message"]; pump();
+    [library_ setTestStatus:@""]; pump(); pump();
+    require([navigation_ isToolbarHidden],@"All Downloads hides empty status");
+    [library_ setTestBusy:NO]; [library_ setTestStatus:@"Downloads finished"]; pump();
+    require(![navigation_ isToolbarHidden],@"New idle message shows All Downloads toolbar");
     NSDate *downloadsExpiry=[NSDate dateWithTimeIntervalSinceNow:10.3];
     while([downloadsExpiry timeIntervalSinceNow]>0) { [all refresh:nil]; pump(); }
     pump();
-    require(navigation_.toolbarHidden && navigation_.lastToolbarChangeAnimated,@"All Downloads animates toolbar out after ten seconds despite repeated refreshes");
-    [all refresh:nil]; pump(); require(navigation_.toolbarHidden,@"Expired All Downloads message stays hidden");
-    library_.testStatus=@"New download message"; pump(); pump();
-    require(!navigation_.toolbarHidden,@"New message reopens expired All Downloads toolbar");
-    [navigation_ popViewControllerAnimated:NO]; pump(); library_.testStatus=@"";
-    require(!navigation_.toolbarHidden,@"Offscreen All Downloads cannot hide home toolbar");
+    require([navigation_ isToolbarHidden] && [navigation_ lastToolbarChangeAnimated],@"All Downloads animates toolbar out after ten seconds despite repeated refreshes");
+    [all refresh:nil]; pump(); require([navigation_ isToolbarHidden],@"Expired All Downloads message stays hidden");
+    [library_ setTestStatus:@"New download message"]; pump(); pump();
+    require(![navigation_ isToolbarHidden],@"New message reopens expired All Downloads toolbar");
+    [navigation_ popViewControllerAnimated:NO]; pump(); [library_ setTestStatus:@""];
+    require(![navigation_ isToolbarHidden],@"Offscreen All Downloads cannot hide home toolbar");
     [navigation_ pushViewController:all animated:NO]; pump();
     require([[NSFileManager defaultManager] removeItemAtPath:highFile error:NULL],@"Remove selected quality after snapshot");
-    [all tableView:all.tableView didSelectRowAtIndexPath:highIndex];
+    [all tableView:[all tableView] didSelectRowAtIndexPath:highIndex];
     require([[[all valueForKey:@"retryRequest_"] objectForKey:@"job"] isEqualToString:@"4"],@"Stale completed row retries its missing file at the same quality");
     [RDLPLibrary savePreferredFormat:@"18"]; confirm(all,YES);
     require([RDLPDownloadPolicy job:[model currentJob:@"4"] hasState:@"queued"] && [policy playable:[model currentJob:@"1"]],@"Missing-file retry preserves selected quality and sibling download");
     require([[[sections(all) objectAtIndex:0] objectForKey:@"rows"] count]==1,@"Retried job leaves completed-only All Downloads");
     lowIndex=videoIndex(all,@"AAAAAAAAAAA",@"18");
-    [all tableView:all.tableView willBeginEditingRowAtIndexPath:lowIndex];
-    library_.testBusy=YES;
-    [all tableView:all.tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:lowIndex]; pump();
+    [all tableView:[all tableView] willBeginEditingRowAtIndexPath:lowIndex];
+    [library_ setTestBusy:YES];
+    [all tableView:[all tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:lowIndex]; pump();
     require([policy playable:[model currentJob:@"1"]],@"Work starting during a swipe prevents file removal");
-    library_.testBusy=NO;
-    [all tableView:all.tableView willBeginEditingRowAtIndexPath:lowIndex];
-    [all tableView:all.tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:lowIndex]; pump();
-    require([all tableView:all.tableView numberOfRowsInSection:0]==0 && (![all respondsToSelector:@selector(tableView:titleForFooterInSection:)] || [all tableView:all.tableView titleForFooterInSection:0]==nil),@"Empty All Downloads has no placeholder section footer");
+    [library_ setTestBusy:NO];
+    [all tableView:[all tableView] willBeginEditingRowAtIndexPath:lowIndex];
+    [all tableView:[all tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:lowIndex]; pump();
+    require([all tableView:[all tableView] numberOfRowsInSection:0]==0 && (![all respondsToSelector:@selector(tableView:titleForFooterInSection:)] || [all tableView:[all tableView] titleForFooterInSection:0]==nil),@"Empty All Downloads has no placeholder section footer");
     list=[self show:RDLPScreenPlaylist playlist:playlist video:nil];
     /* Each stopped/failed quality may retain final, video, audio, and .part files. */
     NSString *staging=[downloads stringByAppendingPathComponent:[@".staging/" stringByAppendingString:[newJob objectForKey:@"id"]]];
@@ -977,29 +977,29 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
       require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open partial fixture");
       require(rdapp_store_finish(store,[[newJob objectForKey:@"id"] longLongValue],[state UTF8String],"","Retained partial download"),@"Set partial download state"); rdapp_store_close(store);
       [list refresh:nil]; newIndex=videoIndex(list,@"DDDDDDDDDDD",@"137+140");
-      require([list tableView:list.tableView canEditRowAtIndexPath:newIndex],@"Failed, interrupted, and cancelled qualities support swipe Delete");
+      require([list tableView:[list tableView] canEditRowAtIndexPath:newIndex],@"Failed, interrupted, and cancelled qualities support swipe Delete");
       if([state isEqualToString:@"failed"]) {
-        [list tableView:list.tableView willBeginEditingRowAtIndexPath:newIndex];
+        [list tableView:[list tableView] willBeginEditingRowAtIndexPath:newIndex];
         [library_ retryJob:[newJob objectForKey:@"id"]];
-        require([[[[[sections(list) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:(NSUInteger)newIndex.row] objectForKey:@"status"] isEqualToString:@"Failed"],@"Refresh preserves the swiped row snapshot until editing ends");
-        [list tableView:list.tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:newIndex]; pump();
+        require([[[[[sections(list) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:(NSUInteger)[newIndex row]] objectForKey:@"status"] isEqualToString:@"Failed"],@"Refresh preserves the swiped row snapshot until editing ends");
+        [list tableView:[list tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:newIndex]; pump();
         require([RDLPDownloadPolicy job:[model currentJob:[newJob objectForKey:@"id"]] hasState:@"queued"] && [[NSFileManager defaultManager] fileExistsAtPath:staging],@"Delete revalidates a quality queued during the swipe and preserves its fragments");
-        require(![list tableView:list.tableView canEditRowAtIndexPath:newIndex],@"Requeued partial download disables swipe Delete");
+        require(![list tableView:[list tableView] canEditRowAtIndexPath:newIndex],@"Requeued partial download disables swipe Delete");
         require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open running fixture");
         require(rdapp_store_finish(store,[[newJob objectForKey:@"id"] longLongValue],"running","",""),@"Start partial fixture"); rdapp_store_close(store); [list refresh:nil];
-        require(![list tableView:list.tableView canEditRowAtIndexPath:newIndex],@"Running partial download disables swipe Delete");
-        [list tableView:list.tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:newIndex]; pump();
+        require(![list tableView:[list tableView] canEditRowAtIndexPath:newIndex],@"Running partial download disables swipe Delete");
+        [list tableView:[list tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:newIndex]; pump();
         require([[NSFileManager defaultManager] fileExistsAtPath:staging],@"Even a stale Delete callback cannot remove running partial files");
         require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open stopped fixture");
         require(rdapp_store_finish(store,[[newJob objectForKey:@"id"] longLongValue],"failed","","Retained partial download"),@"Stop partial fixture"); rdapp_store_close(store); [list refresh:nil];
       }
-      [list tableView:list.tableView willBeginEditingRowAtIndexPath:newIndex];
-      [list tableView:list.tableView commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:newIndex]; pump();
+      [list tableView:[list tableView] willBeginEditingRowAtIndexPath:newIndex];
+      [list tableView:[list tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:newIndex]; pump();
       require(![[NSFileManager defaultManager] fileExistsAtPath:staging] && [RDLPDownloadPolicy job:[model currentJob:[newJob objectForKey:@"id"]] hasState:@"removed"],@"Swipe Delete cleans all partial files and records removal");
-      require([[library_ entriesForPlaylist:[playlist objectForKey:@"id"]] count]==membershipCount && ![list tableView:list.tableView canEditRowAtIndexPath:newIndex],@"Deleted partial quality retains playlist row and no longer offers Delete");
+      require([[library_ entriesForPlaylist:[playlist objectForKey:@"id"]] count]==membershipCount && ![list tableView:[list tableView] canEditRowAtIndexPath:newIndex],@"Deleted partial quality retains playlist row and no longer offers Delete");
     }
     [list sync:nil];
-    require([library_ isSyncPendingForInput:@"PLfixture"] && !list.navigationItem.rightBarButtonItem.enabled,@"Sync queues playlist refresh and disables while pending");
+    require([library_ isSyncPendingForInput:@"PLfixture"] && ![[[list navigationItem] rightBarButtonItem] isEnabled],@"Sync queues playlist refresh and disables while pending");
     [playlist release]; [video release];
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open Ad-Hoc fixture");
     require(rdapp_store_add_adhoc(store,"ABCDEFGHIJK","Individual video",NULL),@"Add Ad-Hoc fixture");
@@ -1009,7 +1009,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require([systemRows count]==2 && [[[systemRows objectAtIndex:1] objectForKey:@"title"] isEqualToString:@"Ad-Hoc"],@"Ad-Hoc appears under System");
     NSDictionary *adhoc=[library_ adhocPlaylist];
     RDLPPlaylistViewController *adhocView=[self show:RDLPScreenPlaylist playlist:adhoc video:nil];
-    require(adhocView.navigationItem.rightBarButtonItem.enabled && adhocView.navigationItem.rightBarButtonItem.image!=nil && adhocView.navigationItem.rightBarButtonItem.action==@selector(addVideo:),@"Ad-Hoc has an enabled Add Video plus button");
+    require([[[adhocView navigationItem] rightBarButtonItem] isEnabled] && [[[adhocView navigationItem] rightBarButtonItem] image]!=nil && [[[adhocView navigationItem] rightBarButtonItem] action]==@selector(addVideo:),@"Ad-Hoc has an enabled Add Video plus button");
     NSUInteger commands=[[library_ valueForKey:@"commands_"] count];
     [adhocView sync:nil];
     require([[library_ valueForKey:@"commands_"] count]==commands,@"Ad-Hoc cannot enqueue sync");
@@ -1019,14 +1019,14 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     if([root valueForKey:@"alert_"]) confirm(root,NO);
     require([RDLPLibrary savePreferredFormat:@"137+140"],@"Select Add Video quality");
     [adhocView addVideo:nil];
-    [[adhocView valueForKey:@"alert_"] textFieldAtIndex:0].text=@"  YE7VzlLtp-4  "; confirm(adhocView,YES);
+    [[[adhocView valueForKey:@"alert_"] textFieldAtIndex:0] setText:@"  YE7VzlLtp-4  "]; confirm(adhocView,YES);
     NSDictionary *addedJob=[library_ jobForPlaylist:[[library_ adhocPlaylist] objectForKey:@"id"] video:@"YE7VzlLtp-4" format:@"137+140"];
     require([RDLPLibrary savePreferredFormat:@"18"],@"Change quality after adding");
     require([[addedJob objectForKey:@"state"] isEqualToString:@"queued"] &&
       [[addedJob objectForKey:@"video_id"] isEqualToString:@"YE7VzlLtp-4"] &&
       [[addedJob objectForKey:@"format"] isEqualToString:@"137+140"],@"Add Video immediately queues the selected download quality without a worker");
   } @catch(NSException *exception) { report=[NSString stringWithFormat:@"FAIL: %@\n%@",exception,[exception callStackSymbols]]; }
-  @finally { [UIApplication sharedApplication].idleTimerDisabled=idleTimerDisabled; }
+  @finally { [[UIApplication sharedApplication] setIdleTimerDisabled:idleTimerDisabled]; }
   [report writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSLog(@"%@",report);
 }
