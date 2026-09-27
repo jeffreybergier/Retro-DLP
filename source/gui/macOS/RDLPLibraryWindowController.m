@@ -838,7 +838,8 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if([self hasAttachedSheet] || confirmation_) return;
   confirmationRequest_=[request copy]; confirmation_=[[NSAlert alloc] init];
   [confirmation_ setMessageText:title]; [confirmation_ setInformativeText:detail];
-  [confirmation_ addButtonWithTitle:@"Cancel"]; [confirmation_ addButtonWithTitle:action];
+  [[confirmation_ addButtonWithTitle:action] setKeyEquivalent:@"\r"];
+  [[confirmation_ addButtonWithTitle:@"Cancel"] setKeyEquivalent:@"\033"];
   [RDLPAppKit beginAlertSheet:confirmation_ forWindow:[self actionWindow] delegate:self didEnd:@selector(confirmationDidEnd:returnCode:contextInfo:)];
   [self updateControls];
 }
@@ -847,7 +848,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   (void)context; NSDictionary *request=[[confirmationRequest_ retain] autorelease];
   [[alert window] orderOut:nil]; [confirmation_ release]; confirmation_=nil;
   [confirmationRequest_ release]; confirmationRequest_=nil;
-  if(code==NSAlertSecondButtonReturn) [self performSelector:@selector(performConfirmed:) withObject:request afterDelay:0];
+  if(code==NSAlertFirstButtonReturn) [self performSelector:@selector(performConfirmed:) withObject:request afterDelay:0];
   [self updateControls];
 }
 - (void)performConfirmed:(NSDictionary *)request;

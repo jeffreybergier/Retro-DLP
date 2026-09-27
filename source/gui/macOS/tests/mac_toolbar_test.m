@@ -227,7 +227,7 @@ static void confirm(RDLPLibraryWindowController *window,BOOL accept) {
   NSAlert *alert=[window valueForKey:@"confirmation_"];
   requireCondition(alert!=nil && [window hasAttachedSheet],@"Expected attached confirmation sheet");
   NSDictionary *request=[[[window valueForKey:@"confirmationRequest_"] copy] autorelease];
-  [[[alert buttons] objectAtIndex:accept?1:0] performClick:nil]; pump();
+  [[[alert buttons] objectAtIndex:accept?0:1] performClick:nil]; pump();
   requireCondition([window valueForKey:@"confirmation_"]==nil,@"Sheet did not dismiss");
   if(accept && [[request objectForKey:@"operation"] isEqual:@"cancel"]) {
     /* The confirmed mutation is deferred until after AppKit closes the sheet. */
