@@ -25,6 +25,7 @@
 + (NSImage *)youTubeIconForScale:(CGFloat)scale;
 + (NSString *)chooseCookieFile;
 + (void)revealInFinder:(NSString *)path;
++ (BOOL)moveFileToTrash:(NSString *)path;
 /* Saved player choice; unavailable players fall back to the system default. */
 + (NSString *)VLCApplication;
 + (NSString *)VLCVersion;

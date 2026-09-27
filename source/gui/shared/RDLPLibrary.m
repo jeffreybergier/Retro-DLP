@@ -21,6 +21,9 @@ NSString * const RDLPLibraryActivityDidChange = @"RetroDLPLibraryActivityDidChan
 NSString * const RDLPLibraryDownloadDidComplete = @"RetroDLPLibraryDownloadDidComplete";
 static NSString *string(const char *s) { NSString *v=s?[NSString stringWithUTF8String:s]:nil; return v?v:@""; }
 static long long identifier(NSString *value) { return value?strtoll([value UTF8String],NULL,10):0; }
+static const char *remove_download_file(void *context,const char *path) {
+  return [[(RDLPLibrary *)context removeDownloadFileAtPath:string(path)] UTF8String];
+}
 static BOOL entry_number(NSDictionary *entry,NSString *key,unsigned long long *value) {
   NSString *text=[entry objectForKey:key];
   if(![text length]) return NO;
@@ -587,7 +590,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   NSString *key=[job objectForKey:@"id"];
   if(busy_) { [self reportError:@"Couldn’t delete download" detail:@"Wait for the current operation to finish."]; return; }
   [lock_ lock];
-  int ok=rdapp_store_remove_file(store_,identifier(key),[root_ fileSystemRepresentation]);
+  int ok=rdapp_store_remove_file_with_callback(store_,identifier(key),[root_ fileSystemRepresentation],remove_download_file,self);
   NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy];
   [lock_ unlock]; if(error) [self reportError:@"Couldn’t delete download" detail:error]; [error release]; [self changed];
 }

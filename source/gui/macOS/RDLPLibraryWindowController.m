@@ -885,7 +885,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   if(remove?![self canRemove:job]:![self canCancel:job]) return;
   NSString *title=[NSString stringWithFormat:@"%@ ‘%@’ — %@?",remove?@"Delete download for":@"Cancel download for",[job objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
-  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:remove?@"remove":@"cancel",@"operation",[job objectForKey:@"id"],@"job",nil] title:title detail:remove?@"This deletes this download and its partial files. Playlist membership and other downloaded qualities are retained.":@"Retrying this job restarts the transfer; it does not resume from where it stopped." action:remove?@"Delete Download":@"Cancel Download"];
+  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:remove?@"remove":@"cancel",@"operation",[job objectForKey:@"id"],@"job",nil] title:title detail:remove?@"This moves this download and its partial files to the Trash. Playlist membership and other downloaded qualities are retained.":@"Retrying this job restarts the transfer; it does not resume from where it stopped." action:remove?@"Delete Download":@"Cancel Download"];
 }
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
 {

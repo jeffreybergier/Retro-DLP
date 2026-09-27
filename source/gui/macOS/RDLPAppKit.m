@@ -1,6 +1,12 @@
 #import "RDLPAppKit.h"
 #import <math.h>
 @implementation RDLPAppKit
++ (BOOL)moveFileToTrash:(NSString *)path {
+  NSInteger tag=0;
+  return [[NSWorkspace sharedWorkspace] performFileOperation:NSWorkspaceRecycleOperation
+    source:[path stringByDeletingLastPathComponent] destination:@""
+    files:[NSArray arrayWithObject:[path lastPathComponent]] tag:&tag];
+}
 /* CGFloat returns need NSInvocation across the legacy and modern ABIs.
    Mirrors ENIL's XP_backingScaleFactor; Tiger has no backing scale API. */
 + (CGFloat)backingScaleForWindow:(NSWindow *)window {

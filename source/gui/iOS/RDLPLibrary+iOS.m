@@ -24,6 +24,12 @@
 @end
 
 @implementation RDLPLibrary (Platform)
+- (NSString *)removeDownloadFileAtPath:(NSString *)path;
+{
+  NSError *error=nil;
+  if([[NSFileManager defaultManager] removeItemAtPath:path error:&error]) return nil;
+  return error?[error localizedDescription]:@"Couldn’t delete the download file.";
+}
 - (void)configurePlatformStorage;
 {
   platformStorage_=[[RDLPIOSPlaybackStorage alloc] init];

@@ -3,6 +3,8 @@
 /* Each target links its own category for platform setup and playback policy. */
 @interface RDLPLibrary (Platform)
 - (void)configurePlatformStorage;
+/* nil means success; otherwise return a user-facing error description. */
+- (NSString *)removeDownloadFileAtPath:(NSString *)path;
 @end
 
 /* Shared storage primitives. Platform code chooses when to call them. */

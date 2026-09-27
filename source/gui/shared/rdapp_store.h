@@ -74,6 +74,11 @@ int rdapp_store_remove_playlist(rdapp_store *, int64_t playlist, const char *roo
 /* XSPF and M3U8 exports (each atomically replaced), rooted in an app-owned directory. Missing files omitted. */
 int rdapp_store_reconcile(rdapp_store *, const char *root);
 int rdapp_store_remove_file(rdapp_store *, int64_t job, const char *root);
+/* Called synchronously for each existing download/partial file. Return NULL on
+   success or an error message on failure; metadata is retained on failure. */
+typedef const char *(*rdapp_remove_file_callback)(void *context, const char *path);
+int rdapp_store_remove_file_with_callback(rdapp_store *, int64_t job, const char *root,
+                                         rdapp_remove_file_callback, void *context);
 int rdapp_store_export(rdapp_store *, int64_t playlist, const char *root);
 int rdapp_make_directory(const char *path);
 void rdapp_filename(const char *text, char *out, size_t capacity);

@@ -737,7 +737,19 @@ int rdapp_store_reconcile(rdapp_store *s,const char *root) {
   }
   sqlite3_finalize(p); return ok && rc==SQLITE_DONE;
 }
+static int remove_download_file(rdapp_store *s,const char *path,rdapp_remove_file_callback remove_file,void *context) {
+  struct stat info;
+  const char *error;
+  if(!remove_file) return !unlink(path) || errno==ENOENT || failure(s,strerror(errno));
+  if(lstat(path,&info)) return errno==ENOENT || failure(s,strerror(errno));
+  if(S_ISDIR(info.st_mode)) return failure(s,"Download path is a directory");
+  error=remove_file(context,path);
+  return error?failure(s,error):1;
+}
 int rdapp_store_remove_file(rdapp_store *s,int64_t key,const char *root) {
+  return rdapp_store_remove_file_with_callback(s,key,root,NULL,NULL);
+}
+int rdapp_store_remove_file_with_callback(rdapp_store *s,int64_t key,const char *root,rdapp_remove_file_callback remove_file,void *context) {
   sqlite3_stmt *p=prepare(s,"SELECT path,playlist_id,state FROM jobs WHERE id=?");
   char path[PATH_MAX],staging[PATH_MAX]; int64_t playlist; size_t i; int n;
   const char *files[]={"video.mp4","video.mp4.part","video.mp4.video.mp4","video.mp4.video.mp4.part","video.mp4.audio.m4a","video.mp4.audio.m4a.part"};
@@ -750,11 +762,11 @@ int rdapp_store_remove_file(rdapp_store *s,int64_t key,const char *root) {
   if(!sqlite3_column_bytes(p,0)) path[0]=0;
   sqlite3_finalize(p);
   if(n<0 || (size_t)n>=sizeof(path)) return failure(s,"Download path is too long");
-  if(path[0] && unlink(path) && errno!=ENOENT) return failure(s,strerror(errno));
+  if(path[0] && !remove_download_file(s,path,remove_file,context)) return 0;
   if(snprintf(staging,sizeof(staging),"%s/.staging/%lld",root,(long long)key)>=(int)sizeof(staging)) return failure(s,"Staging path is too long");
   for(i=0;i<sizeof(files)/sizeof(files[0]);++i) {
     if(snprintf(path,sizeof(path),"%s/%s",staging,files[i])>=(int)sizeof(path)) return failure(s,"Staging path is too long");
-    if(unlink(path) && errno!=ENOENT) return failure(s,strerror(errno));
+    if(!remove_download_file(s,path,remove_file,context)) return 0;
   }
   if(rmdir(staging) && errno!=ENOENT) return failure(s,strerror(errno));
   return rdapp_store_forget_file(s,key) && rdapp_store_export(s,playlist,root);

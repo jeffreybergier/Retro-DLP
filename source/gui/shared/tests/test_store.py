@@ -44,6 +44,7 @@ METADATA_FIELDS = ('channel', 'channel_id', 'view_count_text', 'published_text',
                    'description_snippet', 'duration', 'view_count')
 ENTRY_FIELDS = {'playlist_id', 'position', 'video_id', 'title', *METADATA_FIELDS}
 CB = C.CFUNCTYPE(C.c_int, P, C.c_int, C.POINTER(S), C.POINTER(S))
+REMOVE_CB = C.CFUNCTYPE(P, P, S)
 for name, args in {
     'open':[S,C.POINTER(P)], 'open_reader':[S,C.POINTER(P)], 'close':[P], 'error':[P],
     'playback_seconds':[P,S,C.POINTER(C.c_double)],
@@ -60,6 +61,7 @@ for name, args in {
     'resolve_job':[P,I,S,S,C.c_size_t],
     'cancel':[P,I], 'forget_file':[P,I], 'reconcile_job':[P,I,S], 'remove_playlist':[P,I,S],
     'reconcile':[P,S], 'remove_file':[P,I,S],
+    'remove_file_with_callback':[P,I,S,REMOVE_CB,P],
     'export':[P,I,S], 'list':[P,C.c_int,I,CB,P],
 }.items():
     fn=getattr(lib, 'rdapp_store_'+name)
@@ -707,6 +709,43 @@ class StoreTests(unittest.TestCase):
         self.assertFalse(staging.exists())
         self.assertEqual(unrelated.read_bytes(),b'keep')
         self.assertEqual(self.rows(2)[0]['state'],'removed')
+    def test_removal_callback_preserves_files_on_failure_and_moves_media_and_tracks(self):
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
+        job=self.claim(); key=int(job['id'])
+        media=self.path/job['path']; media.parent.mkdir(parents=True)
+        media.write_bytes(b'completed media')
+        staging=self.path/'.staging'/job['id']; staging.mkdir(parents=True)
+        track=staging/'video.mp4.audio.m4a.part'; track.write_bytes(b'partial audio')
+        trash=self.path/'trash'; trash.mkdir()
+        error=C.create_string_buffer(b'Trash unavailable')
+        calls=[]
+        @REMOVE_CB
+        def refuse(context,path):
+            calls.append(path)
+            return C.addressof(error)
+        # Active jobs must never reach the filesystem callback.
+        self.assertEqual(lib.rdapp_store_remove_file_with_callback(self.db,key,os.fsencode(self.path),refuse,None),0)
+        self.assertEqual(calls,[])
+        self.check(lib.rdapp_store_finish(self.db,key,b'complete',b'18',b''))
+        self.assertEqual(lib.rdapp_store_remove_file_with_callback(self.db,key,os.fsencode(self.path),refuse,None),0)
+        self.assertEqual(lib.rdapp_store_error(self.db),b'Trash unavailable')
+        self.assertEqual(self.rows(2)[0]['state'],'complete')
+        self.assertTrue(media.exists() and track.exists())
+        @REMOVE_CB
+        def move(context,path):
+            source=Path(os.fsdecode(path))
+            source.rename(trash/source.name)
+            return None
+        self.check(lib.rdapp_store_remove_file_with_callback(self.db,key,os.fsencode(self.path),move,None))
+        self.assertEqual((trash/media.name).read_bytes(),b'completed media')
+        self.assertEqual((trash/track.name).read_bytes(),b'partial audio')
+        self.assertFalse(media.exists() or staging.exists())
+        self.assertEqual(self.rows(2)[0]['state'],'removed')
+        self.assertEqual(len(self.rows(1)),3)
+        # Retrying removal skips missing files without calling the callback.
+        calls.clear()
+        self.check(lib.rdapp_store_remove_file_with_callback(self.db,key,os.fsencode(self.path),refuse,None))
+        self.assertEqual(calls,[])
     def test_playlist_removal_cleans_cancelled_staging(self):
         self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
         job=self.claim(); staging=self.path/'.staging'/job['id']; staging.mkdir(parents=True)
