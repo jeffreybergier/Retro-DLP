@@ -838,7 +838,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     [window_ hideQueue:nil];
     [window_ showQueue:nil];
     invoke(window_,choice([queueTable menu],@"Retry"));
-    requireCondition([[[window_ valueForKey:@"queueWindow_"] window] isVisible] && [library_ isPaused],@"Explicit retry must reopen hidden Queue and preserve Pause");
+    requireCondition([[[window_ valueForKey:@"queueWindow_"] window] isVisible] && [library_ isPaused],@"Retry keeps the explicitly opened Queue visible and preserves Pause");
     selectRow(window_,@"sidebar_",0); selectRow(window_,@"queue_",1);
     download=[window_ menuForToolbarIdentifier:@"download"];
     requireCondition(menuChoice(download,@"Download Video")!=nil && [download itemWithTitle:@"Download Missing Videos"]==nil,@"Queue must retain video scope with All Downloads selected");

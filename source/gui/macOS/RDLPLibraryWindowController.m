@@ -84,7 +84,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)performConfirmed:(NSDictionary *)request;
 - (void)confirmJob:(NSDictionary *)job remove:(BOOL)remove;
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
-- (void)retryAndRevealJob:(NSDictionary *)job;
+- (void)retryDownloadJob:(NSDictionary *)job;
 - (void)enqueueSingle:(NSDictionary *)request allowRetry:(BOOL)allowRetry;
 - (void)enqueueRequest:(NSDictionary *)request;
 - (void)downloadSelectedVideo:(id)sender;
@@ -892,11 +892,11 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(!playlist || [[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] || [library_ isBusy]) return NO;
   return ![library_ hasBlockingJobsForPlaylist:[playlist objectForKey:@"id"]];
 }
-- (void)retryAndRevealJob:(NSDictionary *)job;
+- (void)retryDownloadJob:(NSDictionary *)job;
 {
   if(![self canRetry:job] && ![self canDownloadAgain:job]) return;
   NSString *key=[[[job objectForKey:@"id"] copy] autorelease];
-  [library_ retryJob:key]; [self refresh:nil]; [self showJobInQueue:[self currentJob:key]];
+  [library_ retryJob:key]; [self refresh:nil];
 }
 - (void)enqueueSingle:(NSDictionary *)request allowRetry:(BOOL)allowRetry;
 {
@@ -904,8 +904,8 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSDictionary *job=[library_ jobForPlaylist:playlist video:video format:format];
   if(!job) {
     [library_ enqueuePlaylist:playlist video:video format:format];
-    [self refresh:nil]; [self showJobInQueue:[self jobForPlaylist:playlist video:video format:format]];
-  } else if([self canDownloadAgain:job] || (allowRetry && [self canRetry:job])) [self retryAndRevealJob:job];
+    [self refresh:nil];
+  } else if([self canDownloadAgain:job] || (allowRetry && [self canRetry:job])) [self retryDownloadJob:job];
 }
 - (void)enqueueRequest:(NSDictionary *)request;
 {
@@ -913,7 +913,6 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSString *format=[request objectForKey:@"format"];
   if(![RDLPLibrary savePreferredFormat:format]) return;
   [downloadFormat_ release]; downloadFormat_=[format copy];
-  [self revealDownloads];
   [self enqueueSingle:request allowRetry:YES];
   [self refresh:nil];
 }
@@ -922,7 +921,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if([self hasAttachedSheet] || ![self hasTargetVideo]) return;
   NSDictionary *job=[self targetJob], *playlist=[self contextPlaylist];
   if([self canCancel:job]) [self cancelTarget:sender];
-  else if([self canRetry:job] || [self canDownloadAgain:job]) [self retryAndRevealJob:job];
+  else if([self canRetry:job] || [self canDownloadAgain:job]) [self retryDownloadJob:job];
   else if(playlist) {
     NSMenuItem *command=[[[NSMenuItem alloc] initWithTitle:@"" action:@selector(chooseDownload:) keyEquivalent:@""] autorelease];
     [self chooseDownload:command];
@@ -986,15 +985,15 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (void)showTargetInQueue:(id)sender; { (void)sender; [self showJobInQueue:[self targetJob]]; }
 - (void)retryTarget:(id)sender;
-{ (void)sender; NSDictionary *job=[self targetJob]; if([self canRetry:job]) [self retryAndRevealJob:job]; }
+{ (void)sender; NSDictionary *job=[self targetJob]; if([self canRetry:job]) [self retryDownloadJob:job]; }
 - (void)againTarget:(id)sender;
-{ (void)sender; NSDictionary *job=[self targetJob]; if([self canDownloadAgain:job]) [self retryAndRevealJob:job]; }
+{ (void)sender; NSDictionary *job=[self targetJob]; if([self canDownloadAgain:job]) [self retryDownloadJob:job]; }
 - (void)cancelTarget:(id)sender; { (void)sender; [self confirmJob:[self targetJob] remove:NO]; }
 - (void)removeTarget:(id)sender; { (void)sender; [self confirmJob:[self targetJob] remove:YES]; }
 - (void)retryQueueJob:(id)sender;
-{ (void)sender; NSDictionary *job=[self selectedJob]; if([self canRetry:job] || [self canDownloadAgain:job]) [self retryAndRevealJob:job]; }
+{ (void)sender; NSDictionary *job=[self selectedJob]; if([self canRetry:job] || [self canDownloadAgain:job]) [self retryDownloadJob:job]; }
 - (void)againQueueJob:(id)sender;
-{ (void)sender; NSDictionary *job=[self selectedJob]; if([self canDownloadAgain:job]) [self retryAndRevealJob:job]; }
+{ (void)sender; NSDictionary *job=[self selectedJob]; if([self canDownloadAgain:job]) [self retryDownloadJob:job]; }
 - (void)cancelQueueJob:(id)sender; { (void)sender; [self confirmJob:[self selectedJob] remove:NO]; }
 - (void)jobAction:(id)sender;
 {
