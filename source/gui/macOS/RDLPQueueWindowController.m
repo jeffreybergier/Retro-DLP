@@ -39,8 +39,8 @@
   [root setAutoresizingMask:NSViewWidthSizable|NSViewHeightSizable]; [window setContentView:root];
   NSView *queue=[[[RDLPLayoutView alloc] initWithFrame:NSMakeRect(0,32,640,368)] autorelease];
   queue_=[RDLPLibraryViews tableInView:queue frame:[queue bounds] owner:owner_
-    names:[NSArray arrayWithObjects:@"number",@"state",@"quality",@"title",@"playlist_title",nil]
-    labels:[NSArray arrayWithObjects:@"",@"",@"Quality",@"Video",@"Playlist",nil]];
+    names:[NSArray arrayWithObjects:@"number",@"state",@"quality",@"title",@"playlist_title",@"enqueueDate",@"latestDownloadDate",nil]
+    labels:[NSArray arrayWithObjects:@"",@"",@"Quality",@"Video",@"Playlist",@"Enqueued",@"Latest Download",nil]];
   NSTableColumn *numberColumn=[queue_ tableColumnWithIdentifier:@"number"];
   [numberColumn setMinWidth:36]; [numberColumn setMaxWidth:36]; [numberColumn setWidth:36];
   [numberColumn setResizingMask:NSTableColumnNoResizing];
@@ -49,11 +49,17 @@
   [queueState setMinWidth:24]; [queueState setMaxWidth:24]; [queueState setWidth:24];
   [queueState setResizingMask:NSTableColumnNoResizing];
   [queueState setDataCell:[[[RDLPStatusCell alloc] initImageCell:nil] autorelease]];
-  NSArray *textColumns=[NSArray arrayWithObjects:@"quality",@"title",@"playlist_title",nil];
+  NSDateFormatter *dateFormatter=[[[NSDateFormatter alloc] init] autorelease];
+  [dateFormatter setFormatterBehavior:NSDateFormatterBehavior10_4];
+  [dateFormatter setDateStyle:NSDateFormatterShortStyle]; [dateFormatter setTimeStyle:NSDateFormatterShortStyle];
+  NSArray *textColumns=[NSArray arrayWithObjects:@"quality",@"title",@"playlist_title",@"enqueueDate",@"latestDownloadDate",nil];
   NSEnumerator *columns=[textColumns objectEnumerator]; NSString *identifier;
   while((identifier=[columns nextObject])) {
     NSTableColumn *column=[queue_ tableColumnWithIdentifier:identifier];
     [column setWidth:[identifier isEqualToString:@"title"]?180:140]; [column setMinWidth:60];
+    if([identifier isEqualToString:@"enqueueDate"] || [identifier isEqualToString:@"latestDownloadDate"]) {
+      [column setWidth:160]; [[column dataCell] setFormatter:dateFormatter];
+    }
     [column setResizingMask:NSTableColumnUserResizingMask];
     [[column dataCell] setLineBreakMode:NSLineBreakByTruncatingTail];
   }

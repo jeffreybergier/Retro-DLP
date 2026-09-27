@@ -80,7 +80,7 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
   }
   sqlite3_busy_timeout(s->db, 5000);
   p = prepare(s, "PRAGMA user_version");
-  if (!p || sqlite3_step(p) != SQLITE_ROW || sqlite3_column_int(p,0) > 6) {
+  if (!p || sqlite3_step(p) != SQLITE_ROW || sqlite3_column_int(p,0) > 7) {
     fprintf(stderr,"RetroDLP schema version check failed: error=%s code=%d\n",sqlite3_errmsg(s->db),sqlite3_extended_errcode(s->db));
     sqlite3_finalize(p); rdapp_store_close(s); return 0;
   }
@@ -118,6 +118,10 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
         "ALTER TABLE jobs ADD COLUMN duration INTEGER;"
         "ALTER TABLE jobs ADD COLUMN view_count INTEGER;")) ||
       (version<6 && !sql(s,"ALTER TABLE videos ADD COLUMN playback_seconds REAL NOT NULL DEFAULT 0 CHECK(playback_seconds>=0);")) ||
+      /* Zero means an unknown legacy enqueue date; IDs retain legacy order. */
+      (version<7 && !sql(s,"ALTER TABLE jobs ADD COLUMN enqueueDate INTEGER NOT NULL DEFAULT 0;"
+        "ALTER TABLE jobs ADD COLUMN latestDownloadDate INTEGER;"
+        "DROP INDEX IF EXISTS jobs_queue_visible;")) ||
       !sql(s,"CREATE TABLE IF NOT EXISTS entry_thumbnails (playlist_id INTEGER NOT NULL,"
         " position INTEGER NOT NULL, thumbnail_index INTEGER NOT NULL, url TEXT NOT NULL,"
         " PRIMARY KEY(playlist_id,position,thumbnail_index),"
@@ -125,11 +129,11 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
         "CREATE INDEX IF NOT EXISTS playlists_title ON playlists(title COLLATE NOCASE,id);"
         "CREATE INDEX IF NOT EXISTS playlists_source_title ON playlists(source,title COLLATE NOCASE,id);"
         "CREATE INDEX IF NOT EXISTS jobs_playlist_id ON jobs(playlist_id,id);"
-        "CREATE INDEX IF NOT EXISTS jobs_queue_visible ON jobs(id) WHERE state<>'removed' OR error<>'';"
+        "CREATE INDEX IF NOT EXISTS jobs_queue_visible ON jobs(enqueueDate,id) WHERE state<>'removed' OR error<>'';"
         "CREATE INDEX IF NOT EXISTS jobs_video_id ON jobs(playlist_id,video_id,id);"
         "CREATE INDEX IF NOT EXISTS jobs_playlist_state ON jobs(playlist_id,state,id);"
         "CREATE INDEX IF NOT EXISTS entries_video_position ON entries(playlist_id,video_id,position);")) { rdapp_store_close(s); return 0; }
-  if((version<5 && !refresh_job_metadata(s,0)) || !sql(s,"PRAGMA user_version=6; COMMIT;")) {
+  if((version<5 && !refresh_job_metadata(s,0)) || !sql(s,"PRAGMA user_version=7; COMMIT;")) {
     rdapp_store_close(s); return 0;
   }
   *out = s; return 1;
@@ -254,7 +258,7 @@ static int query_parts(rdapp_query kind,int64_t key,const char *format,
         "jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.state='complete'"; break;
     case RDAPP_QUEUE:
       *from="jobs j JOIN playlists p ON p.id=j.playlist_id WHERE (j.state<>'removed' OR j.error<>'')";
-      *order="j.id DESC"; break;
+      *order="j.enqueueDate DESC,j.id DESC"; break;
     case RDAPP_PENDING:
       *from="jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.state='queued'"; break;
     case RDAPP_BLOCKING_JOBS:
@@ -305,7 +309,15 @@ int rdapp_store_after(rdapp_store *s,rdapp_query kind,int64_t key,const char *vi
      kind==RDAPP_ADDED_IDS || kind==RDAPP_ACCOUNT_IDS ||
      kind==RDAPP_UNSUPPORTED_IDS || kind==RDAPP_UNSUPPORTED_PLAYLISTS)
     return failure(s,"Invalid seek query");
-  snprintf(query,sizeof(query),"SELECT %s FROM %s AND %s%s?4 ORDER BY %s LIMIT 1",fields,from,
+  /* Separate tied-date and earlier-date seeks so SQLite can use both index
+     columns even when thousands of jobs share one enqueue timestamp. */
+  if(kind==RDAPP_QUEUE)
+    snprintf(query,sizeof(query),"SELECT * FROM (SELECT %s FROM %s "
+      "AND j.enqueueDate=(SELECT enqueueDate FROM jobs WHERE id=?4) AND j.id<?4 ORDER BY %s LIMIT 1) "
+      "UNION ALL SELECT * FROM (SELECT %s FROM %s "
+      "AND j.enqueueDate<(SELECT enqueueDate FROM jobs WHERE id=?4) ORDER BY %s LIMIT 1) "
+      "ORDER BY enqueueDate DESC,id DESC LIMIT 1",fields,from,order,fields,from,order);
+  else snprintf(query,sizeof(query),"SELECT %s FROM %s AND %s%s?4 ORDER BY %s LIMIT 1",fields,from,
     (kind==RDAPP_ENTRIES || kind==RDAPP_VIDEO_ENTRIES || kind==RDAPP_MISSING || kind==RDAPP_DOWNLOAD_CANDIDATES)?"e.position":"j.id",
     (kind==RDAPP_ENTRIES || kind==RDAPP_VIDEO_ENTRIES || kind==RDAPP_MISSING || kind==RDAPP_DOWNLOAD_CANDIDATES)?">":"<",order);
   p=prepare(s,query); if(!p) return 0;
@@ -332,7 +344,9 @@ int rdapp_store_index(rdapp_store *s,rdapp_query kind,int64_t key,int64_t identi
   ok=sqlite3_step(p)==SQLITE_ROW;
   if(!ok || !sqlite3_column_int64(p,0)) { sqlite3_finalize(p); return ok; }
   sqlite3_finalize(p);
-  snprintf(query,sizeof(query),"SELECT count(*) FROM %s AND %s%s?2",from,column,comparison);
+  if(kind==RDAPP_QUEUE)
+    snprintf(query,sizeof(query),"SELECT count(*) FROM %s AND (j.enqueueDate,j.id)>(SELECT enqueueDate,id FROM jobs WHERE id=?2)",from);
+  else snprintf(query,sizeof(query),"SELECT count(*) FROM %s AND %s%s?2",from,column,comparison);
   p=prepare(s,query); if(!p) return 0;
   sqlite3_bind_int64(p,1,key); sqlite3_bind_int64(p,2,identity);
   ok=sqlite3_step(p)==SQLITE_ROW;
@@ -459,7 +473,7 @@ int rdapp_store_add_adhoc_download(rdapp_store *s,const char *video_id,const cha
   return add_adhoc(s,video_id,title,format,key);
 }
 int rdapp_store_enqueue(rdapp_store *s,int64_t key,const char *video,const char *format) {
-  sqlite3_stmt *p=prepare(s,"INSERT OR IGNORE INTO jobs(playlist_id,video_id,title,format," RDAPP_METADATA_COLUMNS ") SELECT playlist_id,video_id,title,?," RDAPP_METADATA_COLUMNS " FROM entries WHERE playlist_id=? AND (?='' OR video_id=?) ORDER BY position");
+  sqlite3_stmt *p=prepare(s,"INSERT OR IGNORE INTO jobs(playlist_id,video_id,title,format,enqueueDate," RDAPP_METADATA_COLUMNS ") SELECT playlist_id,video_id,title,?,strftime('%s','now')," RDAPP_METADATA_COLUMNS " FROM entries WHERE playlist_id=? AND (?='' OR video_id=?) ORDER BY position");
   if(!p) return 0;
   bind_text(p,1,format); sqlite3_bind_int64(p,2,key); bind_text(p,3,video); bind_text(p,4,video); return done(s,p);
 }
@@ -516,7 +530,10 @@ rollback:
   sqlite3_exec(s->db,"ROLLBACK",NULL,NULL,NULL); return 0;
 }
 int rdapp_store_finish(rdapp_store *s,int64_t key,const char *state,const char *format,const char *message) {
-  sqlite3_stmt *p=prepare(s,"UPDATE jobs SET state=?,actual_format=?,error=? WHERE id=?");
+  /* Only ending a running attempt sets its date, not file reconciliation. */
+  sqlite3_stmt *p=prepare(s,"UPDATE jobs SET state=?1,actual_format=?2,error=?3, latestDownloadDate="
+    "CASE WHEN state='running' AND ?1 IN ('complete','failed','cancelled','interrupted') "
+    "THEN CAST(strftime('%s','now') AS INTEGER) ELSE latestDownloadDate END WHERE id=?4");
   if(!p) return 0;
   bind_text(p,1,state); bind_text(p,2,format); bind_text(p,3,message); sqlite3_bind_int64(p,4,key); return done(s,p);
 }

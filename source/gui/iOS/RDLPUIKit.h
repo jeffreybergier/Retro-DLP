@@ -5,6 +5,7 @@
 + (void)configurePlayerFullScreenLayout:(UIViewController *)controller;
 + (void)setBorderedStyleForBarButtonItem:(UIBarButtonItem *)item;
 + (void)centerTextInLabel:(UILabel *)label;
++ (void)truncateMiddleInLabel:(UILabel *)label;
 + (BOOL)legacyStatusBarHidden;
 + (void)setLegacyStatusBarHidden:(BOOL)hidden;
 + (void)registerDownloadNotificationsForApplication:(UIApplication *)application;

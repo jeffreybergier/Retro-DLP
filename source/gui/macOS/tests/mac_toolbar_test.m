@@ -678,9 +678,9 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([queueTable isKindOfClass:[NSTableView class]] && ![queueTable isKindOfClass:[NSOutlineView class]],@"Queue must be a flat native table");
     requireCondition(NSEqualRects([queueScroll frame],[[queueScroll superview] bounds]),@"Queue scroll view fills its pane");
     NSArray *queueColumns=[queueTable tableColumns];
-    NSArray *identifiers=[NSArray arrayWithObjects:@"number",@"state",@"quality",@"title",@"playlist_title",nil];
-    NSArray *headings=[NSArray arrayWithObjects:@"",@"",@"Quality",@"Video",@"Playlist",nil];
-    requireCondition([queueColumns count]==5,@"Queue has exactly five columns");
+    NSArray *identifiers=[NSArray arrayWithObjects:@"number",@"state",@"quality",@"title",@"playlist_title",@"enqueueDate",@"latestDownloadDate",nil];
+    NSArray *headings=[NSArray arrayWithObjects:@"",@"",@"Quality",@"Video",@"Playlist",@"Enqueued",@"Latest Download",nil];
+    requireCondition([queueColumns count]==7,@"Queue ends with enqueue and latest download date columns");
     NSUInteger columnIndex;
     for(columnIndex=0;columnIndex<[identifiers count];++columnIndex) {
       NSTableColumn *column=[queueColumns objectAtIndex:columnIndex];

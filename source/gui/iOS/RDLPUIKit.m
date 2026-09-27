@@ -50,6 +50,11 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   /* Center is 1 in both the iOS 5 and iOS 6 alignment enums. */
   [label setTextAlignment:(__typeof__([label textAlignment]))1];
 }
++ (void)truncateMiddleInLabel:(UILabel *)label;
+{
+  /* Middle truncation is 5 in both the iOS 5 and iOS 6 line-break enums. */
+  [label setLineBreakMode:(__typeof__([label lineBreakMode]))5];
+}
 + (BOOL)legacyStatusBarHidden;
 {
   return [[UIApplication sharedApplication] isStatusBarHidden];

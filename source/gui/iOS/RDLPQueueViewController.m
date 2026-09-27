@@ -42,6 +42,8 @@
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index;
 {
   UITableViewCell *cell=[super tableView:table cellForRowAtIndexPath:index];
+  [[cell detailTextLabel] setNumberOfLines:1];
+  [RDLPUIKit truncateMiddleInLabel:[cell detailTextLabel]];
   [cell setAccessibilityHint:@"Show download details and actions"];
   return cell;
 }

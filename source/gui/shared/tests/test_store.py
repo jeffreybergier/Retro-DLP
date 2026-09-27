@@ -5,6 +5,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import tempfile
+import time
 import unittest
 from urllib.parse import quote, unquote, urljoin, urlsplit
 import xml.etree.ElementTree as ET
@@ -246,7 +247,9 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.page(1,key=adhoc.value)[0]['title'],'Resolved / title')
         self.check(lib.rdapp_store_finish(self.db,int(first['id']),b'complete',b'18',b''))
         self.check(lib.rdapp_store_add_adhoc_download(self.db,b'ABCDEFGHIJK',None,b'18',C.byref(adhoc)))
-        self.assertEqual(self.page(10,key=int(first['id']))[0],dict(resolved,state='complete',actual_format='18'))
+        completed=self.page(10,key=int(first['id']))[0]
+        self.assertGreater(int(completed['latestDownloadDate']),0)
+        self.assertEqual(completed,dict(resolved,state='complete',actual_format='18',latestDownloadDate=completed['latestDownloadDate']))
         self.check(lib.rdapp_store_add_adhoc_download(self.db,b'ABCDEFGHIJK',None,b'137+140',C.byref(adhoc)))
         second=self.claim()
         self.assertEqual(second['title'],'Resolved / title')
@@ -294,6 +297,75 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.page(9,video=b'abcdefghijk',format=b'18')[0]['id'],jobs[2]['id'])
         self.assertEqual(self.page(10,key=int(jobs[1]['id']))[0]['error'],'Missing file')
         self.assertEqual(self.page(11)[0]['service_id'],'PLtest')
+
+    @staticmethod
+    def remove_job_dates(db):
+        db.executescript('DROP INDEX jobs_queue_visible; ALTER TABLE jobs DROP COLUMN enqueueDate; '
+                         'ALTER TABLE jobs DROP COLUMN latestDownloadDate; '
+                         "CREATE INDEX jobs_queue_visible ON jobs(id) WHERE state<>'removed' OR error<>'';")
+
+    def test_version_six_migration_preserves_jobs_and_unknown_dates(self):
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,None,b'18'))
+        self.check(lib.rdapp_store_finish(self.db,1,b'complete',b'18',b''))
+        jobs=self.rows(6)
+        lib.rdapp_store_close(self.db); self.db=P()
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            self.remove_job_dates(db)
+            db.execute('PRAGMA user_version=6')
+        for reopen in range(2):
+            self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
+            for job in jobs:
+                job['enqueueDate']='0'
+                job['latestDownloadDate']=''
+            self.assertEqual(self.rows(6),jobs)
+            lib.rdapp_store_close(self.db); self.db=P()
+        self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,None,b'22'))
+        self.assertGreater(int(self.rows(6)[0]['enqueueDate']),0)
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],7)
+            self.assertEqual([r[2] for r in db.execute('PRAGMA index_info(jobs_queue_visible)')],['enqueueDate','id'])
+
+    def test_queue_dates_track_attempts_without_reordering_retries(self):
+        before=int(time.time())
+        self.check(lib.rdapp_store_add_adhoc_download(self.db,b'ABCDEFGHIJK',b'Video',b'18',C.byref(I())))
+        job=self.rows(6)[0]; identity=int(job['id']); enqueued=job['enqueueDate']
+        self.assertGreaterEqual(int(enqueued),before)
+        self.assertLessEqual(int(enqueued),int(time.time()))
+        self.assertEqual(job['latestDownloadDate'],'')
+        self.check(lib.rdapp_store_cancel(self.db,identity))
+        self.assertEqual(self.rows(6)[0]['latestDownloadDate'],'')
+        for outcome in (b'failed',b'complete',b'cancelled',b'interrupted'):
+            self.check(lib.rdapp_store_retry(self.db,identity))
+            self.assertEqual(self.claim()['id'],str(identity))
+            with sqlite3.connect(self.path/'db.sqlite') as db:
+                db.execute('UPDATE jobs SET latestDownloadDate=123 WHERE id=?',(identity,))
+            before=int(time.time())
+            self.check(lib.rdapp_store_finish(self.db,identity,outcome,b'18',b''))
+            finished=self.rows(6)[0]
+            self.assertEqual(finished['enqueueDate'],enqueued)
+            self.assertGreaterEqual(int(finished['latestDownloadDate']),before)
+            self.assertLessEqual(int(finished['latestDownloadDate']),int(time.time()))
+            self.check(lib.rdapp_store_forget_file(self.db,identity))
+            self.check(lib.rdapp_store_add_adhoc_download(self.db,b'ABCDEFGHIJK',b'Video',b'18',C.byref(I())))
+            retried=self.rows(6)[0]
+            self.assertEqual(retried['id'],str(identity))
+            self.assertEqual(retried['enqueueDate'],enqueued)
+            self.assertEqual(retried['latestDownloadDate'],finished['latestDownloadDate'])
+
+    def test_queue_date_order_paging_seek_and_selection_with_ties(self):
+        self.check(self.snapshot([(b'abcdefghijk',b'First',0),(b'lmnopqrstuv',b'Second',1)]))
+        for quality in range(12):
+            self.check(lib.rdapp_store_enqueue(self.db,self.key,None,str(quality).encode()))
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.execute('UPDATE jobs SET enqueueDate=CASE WHEN id IN (1,10,20) THEN 300 WHEN id%2=0 THEN 200 ELSE 100 END')
+        expected=sorted(range(1,25),key=lambda n:(300 if n in (1,10,20) else 200 if n%2==0 else 100,n),reverse=True)
+        self.assertEqual([int(r['id']) for r in self.rows(6)],expected)
+        for position,identity in enumerate(expected):
+            self.assertEqual(int(self.page(6,offset=position)[0]['id']),identity)
+            self.assertEqual(self.index(6,identity),position)
+            self.assertEqual([int(r['id']) for r in self.page(6,after=identity)],expected[position+1:position+2])
+        self.assertEqual(self.claim()['id'],'1','Display dates must not change FIFO processing')
 
     def test_queue_newest_first_paging_selection_and_fifo_processing(self):
         self.check(self.snapshot([(b'abcdefghijk',b'First',0),(b'lmnopqrstuv',b'Second',1)]))
@@ -360,6 +432,15 @@ class StoreTests(unittest.TestCase):
                 self.assertEqual(self.page(1)[0]['title'],'Changed')
         finally:
             lib.rdapp_store_close(reader)
+
+    def test_large_queue_date_seek_uses_index_for_tied_dates(self):
+        size=50000
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.executemany('INSERT INTO jobs(playlist_id,video_id,title,format,enqueueDate) VALUES(?,?,?,?,?)',
+                ((self.key.value,'abcdefghijk','Video',str(i),100) for i in range(size)))
+        lib.rdapp_test_measure(self.db)
+        self.assertEqual(self.page(6,after=3)[0]['id'],'2')
+        self.assertLess(lib.rdapp_test_steps(),1000,'Date ties must not scan earlier queue rows')
 
     def test_large_list_reads_only_requested_payloads(self):
         size=50000
@@ -476,8 +557,10 @@ class StoreTests(unittest.TestCase):
         with sqlite3.connect(self.path/'db.sqlite') as db:
             for field in METADATA_FIELDS: db.execute('ALTER TABLE jobs DROP COLUMN '+field)
             db.execute('ALTER TABLE videos DROP COLUMN playback_seconds')
+            self.remove_job_dates(db)
             db.execute('PRAGMA user_version=4')
         self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
+        for job in jobs: job['enqueueDate']='0'
         self.assertEqual(self.rows(2),jobs)
 
     def test_metadata_numeric_limits_and_rollback(self):
@@ -806,9 +889,11 @@ class StoreTests(unittest.TestCase):
         entries,jobs=self.rows(1),self.rows(2)
         lib.rdapp_store_close(self.db); self.db=P()
         with sqlite3.connect(self.path/'db.sqlite') as db:
+            self.remove_job_dates(db)
             db.executescript('ALTER TABLE videos DROP COLUMN playback_seconds; PRAGMA user_version=5;')
         self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
         self.assertEqual(self.rows(1),entries)
+        for job in jobs: job['enqueueDate']='0'
         self.assertEqual(self.rows(2),jobs)
         self.assertEqual(self.playback(),0)
 
@@ -821,7 +906,7 @@ class StoreTests(unittest.TestCase):
         lib.rdapp_store_close(other)
         with sqlite3.connect(path) as db:
             self.assertEqual(db.execute('SELECT id,service_id,directory,synced_at,source FROM playlists').fetchone(),(7,'PLold','Playlists/Old',42,'added'))
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],6)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],7)
             self.assertEqual(db.execute('SELECT count(*) FROM entry_thumbnails').fetchone()[0],0)
 
     def test_version_two_migration_preserves_entries_and_jobs(self):
@@ -830,12 +915,14 @@ class StoreTests(unittest.TestCase):
         lib.rdapp_store_close(self.db)
         self.db=P()
         with sqlite3.connect(self.path/'db.sqlite') as db:
+            self.remove_job_dates(db)
             db.executescript('DROP TABLE entry_thumbnails; ALTER TABLE videos DROP COLUMN playback_seconds; PRAGMA user_version=2;')
             for field in METADATA_FIELDS:
                 db.execute('ALTER TABLE entries DROP COLUMN '+field)
                 db.execute('ALTER TABLE jobs DROP COLUMN '+field)
         self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
         self.assertEqual(self.rows(1),entries)
+        for job in jobs: job['enqueueDate']='0'
         self.assertEqual(self.rows(2),jobs)
         self.assertEqual(self.thumbnails(),[])
         urls=(S*1)(b'https://img.example/new.jpg')
@@ -844,6 +931,7 @@ class StoreTests(unittest.TestCase):
         self.db=P()
         self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
         self.assertEqual(self.thumbnails(),[(0,0,urls[0].decode())])
+        for job in jobs: job['enqueueDate']='0'
         self.assertEqual(self.rows(2),jobs)
 
     def test_rejects_path_injection_and_future_schema(self):
@@ -865,10 +953,12 @@ class StoreTests(unittest.TestCase):
                 db.execute('ALTER TABLE entries DROP COLUMN '+field)
                 db.execute('ALTER TABLE jobs DROP COLUMN '+field)
             db.execute('ALTER TABLE videos DROP COLUMN playback_seconds')
+            self.remove_job_dates(db)
             db.execute('PRAGMA user_version=3')
         self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
         self.assertEqual(self.thumbnails(),[(0,0,urls[0].decode())])
         self.assertTrue(all(self.rows(1)[0][f]=='' for f in METADATA_FIELDS))
+        for job in jobs: job['enqueueDate']='0'
         self.assertEqual(self.rows(2),jobs)
 
 if __name__=='__main__': unittest.main()

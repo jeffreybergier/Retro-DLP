@@ -86,8 +86,14 @@
     [row setObject:item forKey:@"playlist"]; return row;
   }
   if(screen==RDLPScreenQueue) {
-    NSString *title=[NSString stringWithFormat:@"%@) %@",[item objectForKey:@"id"],[item objectForKey:@"title"]];
-    NSString *detail=[NSString stringWithFormat:@"%@ · %@",[RDLPLibrary qualityLabelForFormat:[item objectForKey:@"format"]],[item objectForKey:@"playlist_title"]];
+    NSString *title=[item objectForKey:@"title"];
+    NSTimeInterval enqueued=[[item objectForKey:@"enqueueDate"] doubleValue];
+    NSString *detail=[NSString stringWithFormat:@"%@ · %@",[item objectForKey:@"playlist_title"],[RDLPLibrary qualityLabelForFormat:[item objectForKey:@"format"]]];
+    if(enqueued>0) {
+      NSString *date=[NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:enqueued]
+        dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterNoStyle];
+      detail=[NSString stringWithFormat:@"%@ · %@",date,detail];
+    }
     NSMutableDictionary *row=[self row:title detail:detail action:@"job"];
     NSString *status=[policy_ statusForJob:item];
     [row setObject:[status isEqualToString:@"Cancelled"]?@"Stopped":status forKey:@"status"];

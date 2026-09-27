@@ -739,8 +739,14 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
       if([[job objectForKey:@"id"] isEqualToString:@"2"]) failedIndex=position-1;
       require(position==1 || [[job objectForKey:@"id"] longLongValue]<previousID,@"Queue shows newest items first");
       previousID=[[job objectForKey:@"id"] longLongValue];
-      require([[row objectForKey:@"title"] isEqualToString:[NSString stringWithFormat:@"%@) %@",[job objectForKey:@"id"],[job objectForKey:@"title"]]],@"Queue uses permanent database job IDs and video titles");
-      require([[row objectForKey:@"detail"] rangeOfString:[job objectForKey:@"playlist_title"]].location!=NSNotFound && [[row objectForKey:@"detail"] rangeOfString:[job objectForKey:@"format"]].location!=NSNotFound,@"Subtitle identifies playlist and exact quality");
+      require([[row objectForKey:@"title"] isEqualToString:[job objectForKey:@"title"]],@"Queue shows video titles without ID prefixes");
+      NSTimeInterval enqueued=[[job objectForKey:@"enqueueDate"] doubleValue];
+      NSString *expectedDetail=[NSString stringWithFormat:@"%@ · %@",[job objectForKey:@"playlist_title"],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
+      if(enqueued>0) {
+        NSString *date=[NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:enqueued] dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterNoStyle];
+        expectedDetail=[NSString stringWithFormat:@"%@ · %@",date,expectedDetail];
+      }
+      require([[row objectForKey:@"detail"] isEqualToString:expectedDetail],@"Queue subtitle orders known enqueue date, playlist, and quality, omitting unknown dates");
       require([row objectForKey:@"depth"]==nil && [[row objectForKey:@"action"] isEqualToString:@"job"],@"Every queue row is a download, with no outline nodes");
     }
     [queue showJobInQueue:[model currentJob:@"2"]]; NSIndexPath *selected=[[queue tableView] indexPathForSelectedRow];
@@ -748,6 +754,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     UITableViewCell *cell=[[queue tableView] cellForRowAtIndexPath:selected];
     UITableViewCell *defaultCell=[[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil] autorelease];
     require([[cell accessoryView] isKindOfClass:[UIImageView class]] && [[cell imageView] image]==nil && [cell indentationLevel]==0 && [[[cell textLabel] font] pointSize]==[[[defaultCell textLabel] font] pointSize] && [[[cell detailTextLabel] font] pointSize]==[[[defaultCell detailTextLabel] font] pointSize],@"Queue shares native subtitle cell styling and trailing status icon");
+    require([[cell detailTextLabel] numberOfLines]==1 && [[cell detailTextLabel] lineBreakMode]==5,@"Queue subtitle truncates in the middle on one line");
     NSArray *statuses=[NSArray arrayWithObjects:@"Queued",@"Downloading",@"Downloaded",@"Failed",@"Stopped",@"Interrupted",@"File missing",nil];
     for(NSString *status in statuses) {
       NSString *playlistStatus=[status isEqualToString:@"Stopped"]?@"Cancelled":status;
@@ -764,13 +771,13 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     [queue tableView:[queue tableView] didSelectRowAtIndexPath:selected]; choose(queue,@"Stop Download…"); confirm(queue,YES);
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"cancelled"] && [RDLPDownloadPolicy job:[model currentJob:@"3"] hasState:@"queued"] && ![library_ isPaused],@"Stopping one quality preserves other pending work");
     require([[[queue tableView] indexPathForSelectedRow] isEqual:selected] && [[[[[sections(queue) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:failedIndex] objectForKey:@"status"] isEqualToString:@"Stopped"],@"Status changes preserve row position and stable selection");
-    /* Deleting a job preserves the other jobs' permanent display numbers. */
+    /* Deleting a job preserves the other jobs' identities and titles. */
     nativeDelete(queue,selected); [queue refresh:nil];
     queueRows=[[sections(queue) objectAtIndex:0] objectForKey:@"rows"];
     require([queueRows count]+1==position,@"Deleting a job removes exactly one queue row");
     for(NSDictionary *row in queueRows) {
       NSString *jobID=[[row objectForKey:@"job"] objectForKey:@"id"];
-      require(![jobID isEqualToString:@"2"] && [[row objectForKey:@"title"] hasPrefix:[NSString stringWithFormat:@"%@) ",jobID]],@"Deleted jobs are hidden without renumbering the remaining jobs");
+      require(![jobID isEqualToString:@"2"] && [[row objectForKey:@"title"] isEqualToString:[[row objectForKey:@"job"] objectForKey:@"title"]],@"Deleted jobs are hidden and remaining titles have no ID prefixes");
     }
     BOOL hasMissing=NO; for(NSDictionary *row in queueRows) if([[row objectForKey:@"status"] isEqualToString:@"File missing"]) hasMissing=YES;
     require(hasMissing,@"Missing files remain visible for retry");

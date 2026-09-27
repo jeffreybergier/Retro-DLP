@@ -785,6 +785,10 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSDictionary *job=entry;
   if(!queue && ![key isEqualToString:@"state"]) return [entry objectForKey:key];
   if(queue && [key isEqualToString:@"number"]) return [job objectForKey:@"id"];
+  if(queue && ([key isEqualToString:@"enqueueDate"] || [key isEqualToString:@"latestDownloadDate"])) {
+    NSTimeInterval seconds=[[job objectForKey:key] doubleValue];
+    return seconds>0?[NSDate dateWithTimeIntervalSince1970:seconds]:nil;
+  }
   if(queue && [key isEqualToString:@"quality"]) {
     NSString *format=[job objectForKey:@"format"], *actual=[job objectForKey:@"actual_format"];
     NSString *label=[RDLPLibrary qualityLabelForFormat:format];
@@ -815,6 +819,8 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(view==table_) return [entry objectForKey:[[column identifier] isEqualToString:@"title"]?@"tooltip":([[column identifier] isEqualToString:@"state"]?@"status_tooltip":[column identifier])];
   if(![[column identifier] isEqualToString:@"state"]) {
     id value=[self tableView:view objectValueForTableColumn:column row:row];
+    NSFormatter *formatter=[[column dataCell] formatter];
+    if(formatter) return value?[formatter stringForObjectValue:value]:nil;
     return [value isKindOfClass:[NSString class]]?value:[value description];
   }
   NSDictionary *job=entry;

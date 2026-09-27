@@ -40,7 +40,7 @@ int rdapp_store_page(rdapp_store *, rdapp_query, int64_t key, const char *video,
 /* Indexed seek for sequential scrolling; playlists continue to use offsets. */
 int rdapp_store_after(rdapp_store *, rdapp_query, int64_t key, const char *video,
                       const char *format, int64_t identity, rdapp_row_callback, void *);
-/* Position in ENTRIES (by position), DOWNLOADS or QUEUE (by job ID), -1 if absent. */
+/* Position for an entry position or job ID in display order; -1 if absent. */
 int rdapp_store_index(rdapp_store *, rdapp_query, int64_t playlist, int64_t identity, int64_t *index);
 int rdapp_store_playlist(rdapp_store *, const char *id, const char *title, int64_t *key);
 int rdapp_store_discovered_playlist(rdapp_store *, const char *id, const char *title);
@@ -57,6 +57,9 @@ int rdapp_store_add_adhoc_download(rdapp_store *, const char *video_id,
 /* Seconds are shared by video ID across playlists and downloaded qualities. */
 int rdapp_store_playback_seconds(rdapp_store *, const char *video_id, double *seconds);
 int rdapp_store_save_playback_seconds(rdapp_store *, const char *video_id, double seconds);
+/* Job dates are Unix seconds: enqueueDate is immutable (0 for legacy unknown),
+   latestDownloadDate is NULL until an attempt ends. Queue display orders by
+   enqueueDate descending, then numeric ID descending for ties. */
 int rdapp_store_enqueue(rdapp_store *, int64_t playlist, const char *video_id,
                         const char *format); /* NULL video means whole playlist */
 int rdapp_store_claim(rdapp_store *, rdapp_row_callback, void *);
