@@ -156,6 +156,20 @@ static void testIOSPlaybackProgress(NSString *directory) {
   [controller saveProgress]; [controller saveProgress];
   playbackRequire(library.writes==writes+1,@"An unchanged paused position is not written repeatedly");
   [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+  playbackRequire([[controller queue] isAudioOnly] && [[controller playerViewController] isAudioOnly] &&
+    [[controller player] rate]==0,@"Inactivity enters Audio Only without starting paused playback");
+  [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+  [center postNotificationName:UIApplicationDidEnterBackgroundNotification object:nil];
+  [center postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+  playbackRequire(![[controller queue] isAudioOnly] && ![[controller playerViewController] isAudioOnly] &&
+    [[controller player] rate]==0,@"Repeated inactivity notifications preserve automatic video restoration and paused state");
+  [controller playerViewController:[controller playerViewController] didRequestAudioOnly:YES];
+  [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+  [center postNotificationName:UIApplicationDidEnterBackgroundNotification object:nil];
+  [center postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+  playbackRequire([[controller queue] isAudioOnly],@"User-selected Audio Only survives a background/foreground cycle");
+  [controller playerViewController:[controller playerViewController] didRequestAudioOnly:NO];
+  [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
   [controller.player play]; playbackSeek(controller.player,30); [controller saveProgress];
   playbackRequire(fabs([library playbackSecondsForVideo:video]-30)<1,@"Background playback advances the bookmark");
   [controller playerViewController:controller.playerViewController didRequestAudioOnly:YES];
@@ -229,8 +243,9 @@ static void testIOSPlaylistPlayback(NSString *directory) {
   playbackRemote(controller,UIEventSubtypeRemoteControlPreviousTrack); playbackWait(controller);
   playbackRequire(controller.queue.currentIndex==1 && controller.player.rate==0 &&
     fabs(CMTimeGetSeconds(controller.player.currentTime)-30)<0.1,@"Rapid navigation ignores stale seek completions");
-  [controller playerViewController:controller.playerViewController didRequestAudioOnly:YES];
   [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+  [center postNotificationName:UIApplicationDidEnterBackgroundNotification object:nil];
+  playbackRequire([[controller queue] isAudioOnly],@"Backgrounding selects Audio Only before automatic advancement");
   playbackSeek(controller.player,59.8); playbackRemote(controller,UIEventSubtypeRemoteControlPlay);
   NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:10];
   while((controller.queue.currentIndex!=2 || ![[controller valueForKey:@"ready"] boolValue]) && [deadline timeIntervalSinceNow]>0) playbackPump();
@@ -241,6 +256,17 @@ static void testIOSPlaylistPlayback(NSString *directory) {
   playbackRequire(controller.playerViewController.audioOnly && controller.queue.audioOnly,@"Audio-only mode survives item transitions");
   for(AVPlayerItemTrack *track in controller.player.currentItem.tracks)
     if([track.assetTrack.mediaType isEqualToString:AVMediaTypeVideo]) playbackRequire(!track.enabled,@"Next item's video tracks stay disabled");
+  [center postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+  playbackRequire(![[controller queue] isAudioOnly] && ![[controller playerViewController] isAudioOnly] &&
+    [[controller player] rate]==1,@"Foreground restores video after inactive playlist advancement without pausing");
+  for(AVPlayerItemTrack *track in [[[controller player] currentItem] tracks])
+    if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo])
+      playbackRequire([track isEnabled],@"The advanced item's current video track is restored");
+  [controller playerViewController:[controller playerViewController] didRequestAudioOnly:YES];
+  [controller playerViewController:[controller playerViewController] didRequestAudioOnly:NO];
+  for(AVPlayerItemTrack *track in [[[controller player] currentItem] tracks])
+    if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo])
+      playbackRequire([track isEnabled],@"Manual Audio Only round trip also restores the advanced item");
   [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.1]];
   playbackRequire([[[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo objectForKey:MPMediaItemPropertyTitle] isEqualToString:@"CCCCCCCCCCC"],@"Now Playing follows the current playlist item");
   playbackSeek(controller.player,59.8);

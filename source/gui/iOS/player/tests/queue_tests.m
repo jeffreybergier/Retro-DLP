@@ -111,10 +111,10 @@ static void Check(BOOL value, NSString *message) {
     if((_phase%2)==0 && [item status]==AVPlayerItemStatusReadyToPlay) {
       Check([_queue currentIndex]==_phase/2,@"Playlist advances in order, including duplicate URLs");
       [self checkTracks:item];
-      if(_phase==0) {
+      {
         [_queue setAudioOnly:NO];
         for(AVPlayerItemTrack *track in [item tracks])
-          if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo]) Check([track isEnabled],@"Video restored when leaving audio-only mode");
+          if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo]) Check([track isEnabled],@"Video restored on every entry, including after native advancement");
         [_queue setAudioOnly:YES];
       }
       double duration=CMTimeGetSeconds([item duration]);

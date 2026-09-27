@@ -3,17 +3,17 @@
 NSString *const RDLPPlayerQueueDidChangeNotification=@"RDLPPlayerQueueDidChangeNotification";
 static void *RDLPQueueObservation=&RDLPQueueObservation;
 
-/* Private bookkeeping for at most two loaded entries. Keep track objects we
- * disabled so switching back to video does not enable other, inactive tracks. */
+/* Private bookkeeping for at most two loaded entries. Track IDs survive
+ * replacement of AVPlayerItemTrack objects during preparation/advancement. */
 @interface RDLPQueuedItem : NSObject {
 @public
   AVPlayerItem *item;
   NSUInteger index;
-  NSMutableArray *disabledTracks;
+  NSMutableSet *disabledVideoTrackIDs;
 }
 @end
 @implementation RDLPQueuedItem
-- (void)dealloc { [item release]; [disabledTracks release]; [super dealloc]; }
+- (void)dealloc { [item release]; [disabledVideoTrackIDs release]; [super dealloc]; }
 @end
 
 @interface RDLPPlayerQueue () {
@@ -106,7 +106,7 @@ static void *RDLPQueueObservation=&RDLPQueueObservation;
   RDLPQueuedItem *entry=[[RDLPQueuedItem alloc] init];
   entry->index=index;
   entry->item=[[AVPlayerItem alloc] initWithURL:[_playlist objectAtIndex:index]];
-  entry->disabledTracks=[[NSMutableArray alloc] init];
+  entry->disabledVideoTrackIDs=[[NSMutableSet alloc] init];
   [_entries addObject:entry];
   [entry->item addObserver:self forKeyPath:@"status" options:0 context:RDLPQueueObservation];
   [entry->item addObserver:self forKeyPath:@"tracks" options:0 context:RDLPQueueObservation];
@@ -137,17 +137,22 @@ static void *RDLPQueueObservation=&RDLPQueueObservation;
 }
 - (void)applyAudioMode {
   for(RDLPQueuedItem *entry in _entries) {
-    if(_audioOnly) {
-      for(AVPlayerItemTrack *track in [entry->item tracks]) {
-        if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo] && [track isEnabled]) {
-          if(![entry->disabledTracks containsObject:track]) [entry->disabledTracks addObject:track];
-          [track setEnabled:NO];
-        }
+    for(AVPlayerItemTrack *track in [entry->item tracks]) {
+      AVAssetTrack *assetTrack=[track assetTrack];
+      if(![[assetTrack mediaType] isEqualToString:AVMediaTypeVideo]) continue;
+      NSNumber *trackID=[NSNumber numberWithInt:[assetTrack trackID]];
+      if(_audioOnly) {
+        /* A prepared/replacement track may already be disabled. Remember the
+         * source's default video as well as tracks we disabled explicitly. */
+        if([track isEnabled] || [assetTrack isEnabled])
+          [entry->disabledVideoTrackIDs addObject:trackID];
+        if([track isEnabled]) [track setEnabled:NO];
+      } else if([entry->disabledVideoTrackIDs containsObject:trackID] && ![track isEnabled]) {
+        [track setEnabled:YES];
       }
-    } else {
-      for(AVPlayerItemTrack *track in entry->disabledTracks) [track setEnabled:YES];
-      [entry->disabledTracks removeAllObjects];
     }
+    /* Keep IDs until the item leaves the queue: tracks may change again after
+     * returning to video mode, and the new objects also need restoration. */
   }
 }
 - (void)observeValueForKeyPath:(NSString *)key ofObject:(id)object change:(NSDictionary *)change context:(void *)context {

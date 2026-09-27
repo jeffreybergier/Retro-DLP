@@ -24,6 +24,7 @@ static double RDLPResumePosition(double seconds,double duration) {
   float _observedRate;
   BOOL _started, _stopped, _ready, _preparing, _finished, _observingRate;
   BOOL _wantsPlay, _resumeAfterInterruption, _selecting, _changingItem;
+  BOOL _restoreVideoWhenActive;
 }
 - (void)refreshPlayback;
 - (void)playbackRateChanged;
@@ -152,6 +153,7 @@ static double RDLPResumePosition(double seconds,double duration) {
 - (void)stop {
   if(_stopped) return;
   [self saveProgress]; _stopped=YES; _wantsPlay=NO; _resumeAfterInterruption=NO;
+  _restoreVideoWhenActive=NO;
   if(_checkpointObserver) {
     [[self player] removeTimeObserver:_checkpointObserver]; [_checkpointObserver release]; _checkpointObserver=nil;
   }
@@ -253,11 +255,30 @@ static double RDLPResumePosition(double seconds,double duration) {
   if([notification object]!=_item) return;
   [self scheduleProgressSave]; [self updateNowPlaying];
 }
-- (void)applicationInactive:(NSNotification *)notification { (void)notification; [self saveProgress]; [self updateNowPlaying]; }
-- (void)applicationActive:(NSNotification *)notification { (void)notification; [self updateNowPlaying]; }
+- (void)applicationInactive:(NSNotification *)notification {
+  (void)notification;
+  if(!_started || _stopped) return;
+  if(![_queue isAudioOnly]) {
+    /* Use the same transition as the button, before iOS 6 locks/suspends video.
+     * Repeated resign/background notifications must not lose this flag. */
+    [self playerViewController:_playerViewController didRequestAudioOnly:YES];
+    _restoreVideoWhenActive=YES;
+  }
+  [self saveProgress]; [self updateNowPlaying];
+}
+- (void)applicationActive:(NSNotification *)notification {
+  (void)notification;
+  if(!_started || _stopped) return;
+  if(_restoreVideoWhenActive)
+    [self playerViewController:_playerViewController didRequestAudioOnly:NO];
+  [self updateNowPlaying];
+}
 - (void)applicationTerminating:(NSNotification *)notification { (void)notification; [self stop]; }
 - (void)playerViewController:(RDLPPlayerViewController *)controller didRequestAudioOnly:(BOOL)audioOnly {
-  (void)controller; [_queue setAudioOnly:audioOnly];
+  (void)controller;
+  if(_stopped) return;
+  _restoreVideoWhenActive=NO; // An explicit choice supersedes automatic restoration.
+  [_queue setAudioOnly:audioOnly];
 }
 - (void)selectIndex:(NSUInteger)index {
   if(_stopped || index>=[_jobs count] || index==[_queue currentIndex]) return;
