@@ -29,6 +29,7 @@
   NSDictionary *downloadRequest_;
   int mode_, context_;
   BOOL refreshing_, addingVideo_;
+  BOOL bulkAvailabilityValid_, bulkCanDownload_, bulkCanRemove_;
   BOOL didRestoreWindowFrame_;
 }
 - (id)initWithLibrary:(RDLPLibrary *)library;

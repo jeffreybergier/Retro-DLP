@@ -236,6 +236,8 @@ static void confirm(RDLPLibraryWindowController *window,BOOL accept) {
     while([[[library jobForID:[request objectForKey:@"job"]] objectForKey:@"state"] isEqual:@"queued"] && [deadline timeIntervalSinceNow]>0) pump();
   }
 }
+#import "mac_bulk_selection_test.h"
+
 static NSArray *titles(NSMenu *menu) {
   NSMutableArray *result=[NSMutableArray array]; NSEnumerator *e=[[menu itemArray] objectEnumerator]; NSMenuItem *item;
   while((item=[e nextObject])) { [result addObject:[item title]]; if([item submenu]) [result addObject:titles([item submenu])]; }
@@ -587,11 +589,17 @@ static void testQueueWindow(RDLPLibrary *library) {
       [@"PASS: two-pane library, brushed-metal queue window, queue toolbar actions and sheets, exact-job targeting, independent close/reopen, continued queue management with library closed, and frame persistence" writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
       [library_ shutdown]; [NSApp terminate:nil]; return;
     }
+    if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDBulkSelectionTestOnly"]) {
+      testBulkSelection();
+      [@"PASS: multiple selection, bulk download and deletion, duplicates, selection preservation, cancellation, and current-state rechecks" writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [library_ shutdown]; [NSApp terminate:nil]; return;
+    }
     testSharedStatus(@"/tmp/retrodlp-toolbar-fixture/Status");
     requireCondition([[library_ playlists] count]==1 && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Use a fresh fixture");
     testSharedLists(library_);
     testSharedMetadata();
     testSharedVideoRows(@"/tmp/retrodlp-toolbar-fixture/Rows");
+    testBulkSelection();
     RDLPDownloadPolicy *policy=[[[RDLPDownloadPolicy alloc] initWithLibrary:library_] autorelease];
     requireCondition(![policy playable:nil] && ![policy canRetry:nil] && ![policy canCancel:nil] &&
       ![policy canDownloadAgain:nil] && ![policy canRemove:nil],@"No selection must enable no job actions");

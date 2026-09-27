@@ -51,6 +51,11 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)refresh:(id)sender;
 - (void)tableWasUsed:(NSTableView *)view;
 - (BOOL)hasTargetVideo;
+- (BOOL)hasMultipleTargetVideos;
+- (NSArray *)selectedRequestsForRemoval:(BOOL)remove firstOnly:(BOOL)firstOnly;
+- (void)updateBulkAvailability;
+- (void)downloadSelectedVideos;
+- (void)removeSelectedVideos;
 - (NSDictionary *)targetJob;
 - (NSDictionary *)targetPlaylist;
 - (NSString *)targetVideoID;
@@ -158,10 +163,16 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   }
   [table_ setColumnAutoresizingStyle:NSTableViewNoColumnAutoresizing];
   [table_ setAllowsColumnReordering:NO];
+  [table_ setAllowsMultipleSelection:YES];
   [[table_ enclosingScrollView] setHasHorizontalScroller:YES];
   [[table_ enclosingScrollView] setAutohidesScrollers:YES];
   [[table_ enclosingScrollView] setBorderType:NSNoBorder];
   [table_ setTarget:self]; [table_ setDoubleAction:@selector(openVideo:)];
+  NSMenu *videoMenu=[[[NSMenu alloc] initWithTitle:@"videos"] autorelease];
+  [videoMenu setDelegate:(id)self];
+  [RDLPLibraryMenus addItemToMenu:videoMenu title:@"Download Video" action:@selector(chooseDownload:) target:self];
+  [RDLPLibraryMenus addItemToMenu:videoMenu title:@"Delete Download…" action:@selector(removeTarget:) target:self];
+  [table_ setMenu:videoMenu];
   downloadFormat_=[[RDLPLibrary preferredFormat] copy];
   [split_ addSubview:detail];
   queueWindow_=[[RDLPQueueWindowController alloc] initWithLibrary:library_ owner:self];
@@ -361,9 +372,12 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [RDLPLibraryMenus updateMenu:menu target:self];
 }
 - (NSDictionary *)contextPlaylist;
-{ return [self hasTargetVideo]?[self targetPlaylist]:(context_==2?[self targetPlaylist]:[self selectedPlaylist]); }
+{
+  if([self hasMultipleTargetVideos]) return mode_==0?[self selectedPlaylist]:nil;
+  return [self hasTargetVideo]?[self targetPlaylist]:(context_==2?[self targetPlaylist]:[self selectedPlaylist]);
+}
 - (NSString *)selectionPlayFile;
-{ return [self hasTargetVideo]?([self playable:[self targetJob]]?[library_ fileForJob:[self targetJob]]:nil):[self playFileForPlaylist:[self contextPlaylist]]; }
+{ return [self hasMultipleTargetVideos]?nil:([self hasTargetVideo]?([self playable:[self targetJob]]?[library_ fileForJob:[self targetJob]]:nil):[self playFileForPlaylist:[self contextPlaylist]]); }
 - (void)playSelection:(id)sender;
 {
   NSString *path=[self selectionPlayFile]; if(!path) return;
@@ -396,6 +410,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSUInteger index=(NSUInteger)[sender tag];
   if(index>0 && index<4) { [self saveDownloadQuality:[[RDLPLibrary qualityFormats] objectAtIndex:index-1]]; return; }
   if(index==0) {
+    if([self hasMultipleTargetVideos]) { [self downloadSelectedVideos]; return; }
     NSDictionary *playlist=[self contextPlaylist];
     NSMutableDictionary *request=[NSMutableDictionary dictionaryWithObjectsAndKeys:[playlist objectForKey:@"id"],@"playlist",[playlist objectForKey:@"title"],@"title",downloadFormat_,@"format",nil];
     [request setObject:[self targetVideoID] forKey:@"video"];
@@ -483,7 +498,17 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   (void)sender; if(refreshing_) return; refreshing_=YES;
   NSString *key=mode_==0?@"position":@"id";
-  NSString *selection=[[[self selectedRow] objectForKey:key] copy];
+  NSMutableArray *selection=[[NSMutableArray alloc] init];
+  NSIndexSet *selectedIndexes=[table_ selectedRowIndexes];
+  NSUInteger selectedIndex=[selectedIndexes firstIndex];
+  while(selectedIndex!=NSNotFound) {
+    NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+    if(selectedIndex<[rows_ count]) {
+      NSString *identity=[[rows_ objectAtIndex:selectedIndex] objectForKey:key];
+      if(identity) [selection addObject:identity];
+    }
+    [pool drain]; selectedIndex=[selectedIndexes indexGreaterThanIndex:selectedIndex];
+  }
   NSString *queueSelection=[[[self selectedJob] objectForKey:@"id"] copy];
   NSString *oldGroup=selectedPlaylist_?[RDLPLibraryViews groupForPlaylist:[self selectedPlaylist]]:nil;
   [playlists_ release]; playlists_=[[library_ playlists] copy];
@@ -506,9 +531,15 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSInteger selectedSidebar=[sidebar_ rowForItem:selectedItem];
   if(selectedSidebar>=0) [sidebar_ selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)selectedSidebar] byExtendingSelection:NO];
   else [sidebar_ deselectAll:nil];
-  [RDLPLibraryViews restoreSelection:table_ rows:rows_ key:mode_==0?@"position":@"id" value:selection];
+  NSMutableIndexSet *restored=[NSMutableIndexSet indexSet];
+  NSEnumerator *identities=[selection objectEnumerator]; NSString *identity;
+  while((identity=[identities nextObject])) {
+    NSUInteger index=[(RDLPLibraryRows *)rows_ indexForIdentity:identity];
+    if(index!=NSNotFound) [restored addIndex:index];
+  }
+  [table_ selectRowIndexes:restored byExtendingSelection:NO];
   [RDLPLibraryViews restoreSelection:queue_ rows:queueRows_ key:@"id" value:queueSelection];
-  [selection release]; [queueSelection release]; refreshing_=NO; [self updateCustomSummary]; [self updateControls];
+  [selection release]; [queueSelection release]; refreshing_=NO; bulkAvailabilityValid_=NO; [self updateCustomSummary]; [self updateControls];
 }
 - (void)tableWasUsed:(NSTableView *)view;
 {
@@ -519,8 +550,10 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (BOOL)hasTargetVideo;
 { return context_==2?[self selectedJob]!=nil:(context_==1 && [self selectedRow]!=nil); }
+- (BOOL)hasMultipleTargetVideos;
+{ return context_==1 && [table_ numberOfSelectedRows]>1; }
 - (NSDictionary *)targetJob;
-{ return context_==2?[self selectedJob]:(context_==1?(mode_==0?[self jobForEntry:[self selectedRow]]:[self selectedRow]):nil); }
+{ return [self hasMultipleTargetVideos]?nil:(context_==2?[self selectedJob]:(context_==1?(mode_==0?[self jobForEntry:[self selectedRow]]:[self selectedRow]):nil)); }
 - (NSDictionary *)targetPlaylist;
 {
   NSDictionary *job=[self targetJob];
@@ -557,6 +590,74 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(![[NSFileManager defaultManager] fileExistsAtPath:path]) return nil;
   /* Recovery/export maintains this file. Toolbar validation only needs a count. */
   return [[library_ jobsForPlaylist:[playlist objectForKey:@"id"] completedOnly:YES] count]?path:nil;
+}
+/* Snapshot selected rows only. Duplicate playlist occurrences share one job;
+   All Downloads rows identify exact jobs and qualities. */
+- (NSArray *)selectedRequestsForRemoval:(BOOL)remove firstOnly:(BOOL)firstOnly;
+{
+  if(remove && [library_ isBusy]) return [NSArray array];
+  NSMutableArray *requests=[NSMutableArray array];
+  NSMutableSet *seen=[NSMutableSet set];
+  NSIndexSet *indexes=[table_ selectedRowIndexes];
+  NSUInteger index=[indexes firstIndex];
+  while(index!=NSNotFound) {
+    NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+    if(index<[rows_ count]) {
+      NSDictionary *row=[rows_ objectAtIndex:index];
+      NSString *playlist=mode_==0?selectedPlaylist_:[row objectForKey:@"playlist_id"];
+      if(remove) {
+        NSDictionary *job=mode_==0?[self jobForEntry:row]:[self currentJob:[row objectForKey:@"id"]];
+        NSString *key=[job objectForKey:@"id"];
+        if([self canRemove:job] && ![seen containsObject:key]) {
+          [seen addObject:key]; [requests addObject:key];
+        }
+      } else if(playlist) {
+        NSString *video=[row objectForKey:@"video_id"];
+        NSString *key=[NSString stringWithFormat:@"%@/%@",playlist,video];
+        NSDictionary *job=[self jobForPlaylist:playlist video:video format:downloadFormat_];
+        if((!job || [self canRetry:job] || [self canDownloadAgain:job]) && ![seen containsObject:key]) {
+          [seen addObject:key];
+          [requests addObject:[NSDictionary dictionaryWithObjectsAndKeys:playlist,@"playlist",video,@"video",downloadFormat_,@"format",nil]];
+        }
+      }
+    }
+    [pool drain];
+    if(firstOnly && [requests count]) break;
+    index=[indexes indexGreaterThanIndex:index];
+  }
+  return requests;
+}
+- (void)updateBulkAvailability;
+{
+  if(bulkAvailabilityValid_) return;
+  bulkCanDownload_=[[self selectedRequestsForRemoval:NO firstOnly:YES] count]>0;
+  bulkCanRemove_=[[self selectedRequestsForRemoval:YES firstOnly:YES] count]>0;
+  bulkAvailabilityValid_=YES;
+}
+- (void)downloadSelectedVideos;
+{
+  if([self hasAttachedSheet] || ![self hasMultipleTargetVideos]) return;
+  NSArray *requests=[[self selectedRequestsForRemoval:NO firstOnly:NO] retain];
+  /* Mutations notify synchronously. Refresh once, preserving the original
+     snapshot and selection until all selected requests have been processed. */
+  refreshing_=YES;
+  NSEnumerator *e=[requests objectEnumerator]; NSDictionary *request;
+  while((request=[e nextObject])) {
+    NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+    [self enqueueSingle:request allowRetry:YES]; [pool drain];
+  }
+  refreshing_=NO; [requests release]; [self refresh:nil];
+}
+- (void)removeSelectedVideos;
+{
+  if([self hasAttachedSheet] || ![self hasMultipleTargetVideos]) return;
+  NSArray *keys=[self selectedRequestsForRemoval:YES firstOnly:NO];
+  if(![keys count]) return;
+  NSString *noun=[keys count]==1?@"download":@"downloads";
+  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"removeMany",@"operation",keys,@"jobs",nil]
+    title:[NSString stringWithFormat:@"Move %lu %@ to the Trash?",(unsigned long)[keys count],noun]
+    detail:@"This moves the selected downloads and their partial files to the Trash. Playlist membership and other downloaded qualities are retained."
+    action:[NSString stringWithFormat:@"Delete %lu %@",(unsigned long)[keys count],[noun capitalizedString]]];
 }
 - (NSString *)targetPlaylistFolder;
 {
@@ -599,17 +700,20 @@ static const CGFloat RDLPStatusBarHeight=32.0;
      the library's own selection. Queue focus must not change its buttons. */
   NSDictionary *row=[self selectedRow];
   BOOL video=libraryContext_==1 && row!=nil;
-  NSDictionary *job=video?(mode_==0?[self jobForEntry:row]:row):nil;
+  BOOL multiple=video && [table_ numberOfSelectedRows]>1;
+  if(multiple) [self updateBulkAvailability];
+  NSDictionary *job=video && !multiple?(mode_==0?[self jobForEntry:row]:row):nil;
   NSDictionary *playlist=job?[library_ playlistForID:[job objectForKey:@"playlist_id"]]:[self selectedPlaylist];
   [self setToolbarItem:@"library" title:@"Library" tip:@"Add videos and playlists, or sync your library" icon:[RDLPLibraryViews toolbarIcon:(AIFontAwesomeIcon)0x2b window:[self window]] enabled:YES];
   BOOL cancellable=video && [self canCancel:job];
   BOOL retry=video && ([self canRetry:job] || [self canDownloadAgain:job]);
-  NSDictionary *matching=video?[self jobForPlaylist:[playlist objectForKey:@"id"] video:[row objectForKey:@"video_id"] format:downloadFormat_]:nil;
-  BOOL canDownload=video && (!matching || [self canRetry:matching] || [self canDownloadAgain:matching]);
+  NSDictionary *matching=video && !multiple?[self jobForPlaylist:[playlist objectForKey:@"id"] video:[row objectForKey:@"video_id"] format:downloadFormat_]:nil;
+  BOOL canDownload=multiple?bulkCanDownload_:(video && (!matching || [self canRetry:matching] || [self canDownloadAgain:matching]));
   NSString *quality=[RDLPLibrary qualityLabelForFormat:retry?[job objectForKey:@"format"]:downloadFormat_];
   NSString *downloadTip=cancellable?@"Cancel the selected download…":[NSString stringWithFormat:@"%@ — %@",retry?@"Retry the selected download":@"Download the selected video",quality];
+  if(multiple) downloadTip=[NSString stringWithFormat:@"Download selected videos — %@",quality];
   [self setToolbarItem:@"download" title:@"Download" tip:downloadTip icon:[RDLPLibraryViews toolbarIcon:cancellable?AIFAOctagon:AIFADownload window:[self window]] enabled:cancellable || retry || canDownload];
-  [self setToolbarItem:@"remove" title:@"Remove" tip:@"Delete the selected download or remove the selected playlist…" icon:[RDLPLibraryViews toolbarIcon:AIFATrash window:[self window]] enabled:video?[self canRemove:job]:[self canRemovePlaylist:playlist]];
+  [self setToolbarItem:@"remove" title:@"Remove" tip:multiple?@"Move selected downloads to the Trash…":@"Delete the selected download or remove the selected playlist…" icon:[RDLPLibraryViews toolbarIcon:AIFATrash window:[self window]] enabled:multiple?bulkCanRemove_:(video?[self canRemove:job]:[self canRemovePlaylist:playlist])];
   NSString *path=video?([self playable:job]?[library_ fileForJob:job]:nil):[self playFileForPlaylist:playlist];
   [self setToolbarItem:@"play" title:@"Play" tip:@"Play the selected video or playlist" icon:[RDLPAppKit youTubeIconForScale:[RDLPAppKit backingScaleForWindow:[self window]]] enabled:[RDLPAppKit preferredPlaybackApplication:path]!=nil];
   [self setToolbarItem:@"cookies" title:@"Cookies" tip:@"Manage cookies and view the export guide" icon:[RDLPLibraryViews toolbarIcon:AIFACookie window:[self window]] enabled:YES];
@@ -720,6 +824,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)tableViewSelectionDidChange:(NSNotification *)notification;
 {
   if(refreshing_) return;
+  bulkAvailabilityValid_=NO;
   context_=[notification object]==sidebar_?0:([notification object]==queue_?2:1);
   if(context_!=2) libraryContext_=context_;
   if([notification object]==sidebar_) {
@@ -736,6 +841,10 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (BOOL)validateMenuItem:(NSMenuItem *)item;
 {
   SEL visibilityAction=[item action];
+  BOOL multiple=[self hasMultipleTargetVideos];
+  if(visibilityAction==@selector(downloadFromMenu:) || (visibilityAction==@selector(chooseDownload:) && [item tag]==0))
+    [item setTitle:multiple?@"Download Selected Videos":@"Download Video"];
+  if(visibilityAction==@selector(removeTarget:)) [item setTitle:multiple?@"Delete Selected Downloads…":([[[item menu] title] isEqualToString:@"remove"]?@"Delete Download":@"Delete Download…")];
   if(visibilityAction==@selector(togglePlaylists:)) [item setTitle:[self isSidebarCollapsed]?@"Show Playlists":@"Hide Playlists"];
   if([[item menu] title] && [[[item menu] title] isEqualToString:@"File"]) {
     NSString *object=[self hasTargetVideo]?@"Video":@"Playlist";
@@ -769,6 +878,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
       return YES;
     }
     [item setState:NSOffState];
+    if(multiple) { [self updateBulkAvailability]; return bulkCanDownload_; }
     playlist=[self contextPlaylist];
     if(!playlist || ![self hasTargetVideo]) return NO;
     NSString *format=downloadFormat_;
@@ -778,7 +888,10 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(action==@selector(retryTarget:)) return [self canRetry:job];
   if(action==@selector(againTarget:)) return [self canDownloadAgain:job];
   if(action==@selector(cancelTarget:)) return [self canCancel:job];
-  if(action==@selector(removeTarget:)) return [self canRemove:job];
+  if(action==@selector(removeTarget:)) {
+    if(multiple) { [self updateBulkAvailability]; return bulkCanRemove_; }
+    return [self canRemove:job];
+  }
   if(action==@selector(showTargetInQueue:)) return job!=nil;
   if(action==@selector(playSelection:)) return [RDLPAppKit preferredPlaybackApplication:[self selectionPlayFile]]!=nil;
   if(action==@selector(revealSelection:)) return [self hasTargetVideo]?[self playable:job]:([self contextPlaylist]!=nil && [self targetPlaylistFolder]!=nil);
@@ -795,7 +908,10 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(action==@selector(cancelQueueJob:)) return [self canCancel:queued];
   if(action==@selector(removeJob:)) return [self canRemove:queued];
   if(action==@selector(openJob:)) return [self playable:queued] && [RDLPAppKit preferredPlaybackApplication:[library_ fileForJob:queued]]!=nil;
-  if(action==@selector(removeDownload:)) return [self canRemove:mode_==0?[self jobForEntry:[self selectedRow]]:[self selectedRow]];
+  if(action==@selector(removeDownload:)) {
+    if(multiple) { [self updateBulkAvailability]; return bulkCanRemove_; }
+    return [self canRemove:mode_==0?[self jobForEntry:[self selectedRow]]:[self selectedRow]];
+  }
   if(action==@selector(removePlaylist:)) return [self canRemovePlaylist:[self contextPlaylist]];
   if(action==@selector(playPlaylist:)) return [RDLPAppKit preferredPlaybackApplication:[self playFileForPlaylist:[self selectedPlaylist]]]!=nil;
   return YES;
@@ -854,7 +970,17 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)performConfirmed:(NSDictionary *)request;
 {
   NSString *op=[request objectForKey:@"operation"];
-  if([op isEqualToString:@"syncAll"]) {
+  if([op isEqualToString:@"removeMany"]) {
+    refreshing_=YES;
+    NSEnumerator *e=[[request objectForKey:@"jobs"] objectEnumerator]; NSString *key;
+    while((key=[e nextObject])) {
+      NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+      NSDictionary *job=[self currentJob:key];
+      if([self canRemove:job]) [library_ removeDownload:job];
+      [pool drain];
+    }
+    refreshing_=NO;
+  } else if([op isEqualToString:@"syncAll"]) {
     NSEnumerator *e=[[request objectForKey:@"inputs"] objectEnumerator]; NSString *input;
     while((input=[e nextObject])) [library_ syncPlaylistInput:input];
   } else if([op isEqualToString:@"discover"]) {
@@ -919,6 +1045,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)downloadSelectedVideo:(id)sender;
 {
   if([self hasAttachedSheet] || ![self hasTargetVideo]) return;
+  if([self hasMultipleTargetVideos]) { [self downloadSelectedVideos]; return; }
   NSDictionary *job=[self targetJob], *playlist=[self contextPlaylist];
   if([self canCancel:job]) [self cancelTarget:sender];
   else if([self canRetry:job] || [self canDownloadAgain:job]) [self retryDownloadJob:job];
@@ -989,7 +1116,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)againTarget:(id)sender;
 { (void)sender; NSDictionary *job=[self targetJob]; if([self canDownloadAgain:job]) [self retryDownloadJob:job]; }
 - (void)cancelTarget:(id)sender; { (void)sender; [self confirmJob:[self targetJob] remove:NO]; }
-- (void)removeTarget:(id)sender; { (void)sender; [self confirmJob:[self targetJob] remove:YES]; }
+- (void)removeTarget:(id)sender; { (void)sender; if([self hasMultipleTargetVideos]) [self removeSelectedVideos]; else [self confirmJob:[self targetJob] remove:YES]; }
 - (void)retryQueueJob:(id)sender;
 { (void)sender; NSDictionary *job=[self selectedJob]; if([self canRetry:job] || [self canDownloadAgain:job]) [self retryDownloadJob:job]; }
 - (void)againQueueJob:(id)sender;
@@ -1002,7 +1129,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   else if([self canDownloadAgain:job]) [self againQueueJob:sender]; else [self retryQueueJob:sender];
 }
 - (void)removeDownload:(id)sender;
-{ (void)sender; [self confirmJob:mode_==0?[self jobForEntry:[self selectedRow]]:[self selectedRow] remove:YES]; }
+{ [self removeTarget:sender]; }
 - (void)removeJob:(id)sender; { (void)sender; [self confirmJob:[self selectedJob] remove:YES]; }
 - (void)removePlaylist:(id)sender;
 {
@@ -1020,7 +1147,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)openDownloadsFolder:(id)sender;
 { (void)sender; [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:[library_ downloadsDirectory]]]; }
 - (void)openVideo:(id)sender;
-{ (void)sender; NSDictionary *job=mode_==0?[self jobForEntry:[self selectedRow]]:[self selectedRow]; if([self playable:job]) [RDLPAppKit openPreferredPlayback:[library_ fileForJob:job]]; }
+{ (void)sender; if([table_ numberOfSelectedRows]!=1) return; NSDictionary *job=mode_==0?[self jobForEntry:[self selectedRow]]:[self selectedRow]; if([self playable:job]) [RDLPAppKit openPreferredPlayback:[library_ fileForJob:job]]; }
 - (void)openJob:(id)sender;
 { (void)sender; if([self playable:[self selectedJob]]) [RDLPAppKit openPreferredPlayback:[library_ fileForJob:[self selectedJob]]]; }
 - (void)playPlaylist:(id)sender;

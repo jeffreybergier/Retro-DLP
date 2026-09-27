@@ -2,6 +2,7 @@
 
 @protocol RDLPLibraryMenuContext
 - (BOOL)hasTargetVideo;
+- (BOOL)hasMultipleTargetVideos;
 - (NSDictionary *)contextPlaylist;
 - (NSDictionary *)targetJob;
 - (BOOL)canRetry:(NSDictionary *)job;

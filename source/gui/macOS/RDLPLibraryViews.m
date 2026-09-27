@@ -52,7 +52,7 @@
   }
 }
 @end
-/* A context menu acts on the row under the pointer, not an older selection. */
+/* Keep a selected group when opening its menu; an unselected row stands alone. */
 
 @implementation RDLPTableView
 - (void)mouseDown:(NSEvent *)event;
@@ -71,8 +71,10 @@
 {
   [[self delegate] performSelector:@selector(tableWasUsed:) withObject:self];
   NSInteger row=[self rowAtPoint:[self convertPoint:[event locationInWindow] fromView:nil]];
-  if(row>=0) [self selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)row] byExtendingSelection:NO];
-  else [self deselectAll:nil];
+  if(row>=0) {
+    if(![[self selectedRowIndexes] containsIndex:(NSUInteger)row])
+      [self selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)row] byExtendingSelection:NO];
+  } else [self deselectAll:nil];
   return [super menuForEvent:event];
 }
 @end

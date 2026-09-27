@@ -91,6 +91,7 @@
   if(!library && !download && !removal && ![[menu title] isEqualToString:@"play"]) return;
   while([menu numberOfItems]) [menu removeItemAtIndex:0];
   BOOL video=[target hasTargetVideo];
+  BOOL multiple=[target hasMultipleTargetVideos];
   NSDictionary *job=[target targetJob];
   if(library) {
     [self addItemToMenu:menu title:@"Add Video…" action:@selector(addVideo:) target:target];
@@ -100,7 +101,7 @@
     [self addItemToMenu:menu title:@"Sync Current Playlist" action:@selector(sync:) target:target];
     [self addItemToMenu:menu title:@"Sync All Playlists…" action:@selector(syncAll:) target:target];
   } else if(download) {
-    [self addItemToMenu:menu title:@"Download Video" action:@selector(chooseDownload:) target:target];
+    [self addItemToMenu:menu title:multiple?@"Download Selected Videos":@"Download Video" action:@selector(chooseDownload:) target:target];
     if(video && ([target canRetry:job] || [target canDownloadAgain:job])) {
       [self addItemToMenu:menu title:[NSString stringWithFormat:@"Retry Download — %@",[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]] action:[target canRetry:job]?@selector(retryTarget:):@selector(againTarget:) target:target];
     }
@@ -110,7 +111,7 @@
     [quality setSubmenu:[self menuForMenuBarTitle:@"Download Quality" target:target]];
   } else if(removal) {
     if(video) {
-      [self addItemToMenu:menu title:@"Delete Download" action:@selector(removeTarget:) target:target];
+      [self addItemToMenu:menu title:multiple?@"Delete Selected Downloads…":@"Delete Download" action:@selector(removeTarget:) target:target];
     } else {
       NSDictionary *playlist=[target contextPlaylist];
       NSString *title=playlist?[NSString stringWithFormat:@"Remove Playlist — ‘%@’…",[playlist objectForKey:@"title"]]:@"Remove Playlist…";
