@@ -96,11 +96,11 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
             source=ROOT/'source/gui/iOS/Resources'
             assert icons=={p.name for p in source.glob('AppIcon*.png')}
             assert plist['CFBundleIconFile']=='AppIcon57x57.png'
-            assert plist['UIPrerenderedIcon'] is False
+            assert plist['UIPrerenderedIcon'] is True
             for key in ('CFBundleIcons','CFBundleIcons~ipad'):
                 primary=plist[key]['CFBundlePrimaryIcon']
                 assert set(primary['CFBundleIconFiles']) <= icons
-                assert primary['UIPrerenderedIcon'] is False
+                assert primary['UIPrerenderedIcon'] is True
             for filename in icons:
                 data=(source/filename).read_bytes()
                 match=re.fullmatch(r'AppIcon([\d.]+)x([\d.]+)(?:@(\d)x)?(?:~ipad)?\.png',filename)
