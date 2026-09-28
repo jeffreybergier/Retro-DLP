@@ -21,8 +21,8 @@
 }
 @end
 
-static UIBarButtonItem *RDLPImageButton(NSString *name, NSString *label) {
-  UIImage *image=[UIImage imageNamed:[@"RDLPPlayer.bundle/" stringByAppendingString:name]];
+static UIBarButtonItem *RDLPImageButton(RDLPPlayerIcon icon, NSString *label) {
+  UIImage *image=[RDLPUIKit playerIcon:icon];
   UIBarButtonItem *item=[[UIBarButtonItem alloc] initWithImage:image style:UIBarButtonItemStylePlain target:nil action:NULL];
   [item setAccessibilityLabel:label];
   return item;
@@ -50,15 +50,15 @@ static NSString *RDLPTimeText(double seconds) {
   self=[super initWithFrame:frame]; if(!self) return nil;
   [self setUserInteractionEnabled:NO];
   _doneButton=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:nil action:NULL];
-  _audioButton=RDLPImageButton(@"headphones.png",@"Use audio only");
+  _audioButton=RDLPImageButton(RDLPPlayerIconHeadphones,@"Use audio only");
   [RDLPUIKit setBorderedStyleForBarButtonItem:_audioButton];
-  _previousButton=RDLPImageButton(@"backward-fast.png",@"Previous item");
-  _nextButton=RDLPImageButton(@"forward-fast.png",@"Next item");
+  _previousButton=RDLPImageButton(RDLPPlayerIconPrevious,@"Previous item");
+  _nextButton=RDLPImageButton(RDLPPlayerIconNext,@"Next item");
   [_previousButton setWidth:32]; [_nextButton setWidth:32];
   /* Align the plain artwork with the neighboring bordered play button. */
   [_previousButton setImageInsets:UIEdgeInsetsMake(2,0,-2,0)]; [_nextButton setImageInsets:UIEdgeInsetsMake(2,0,-2,0)];
   [_previousButton setLandscapeImagePhoneInsets:UIEdgeInsetsMake(2,0,-2,0)]; [_nextButton setLandscapeImagePhoneInsets:UIEdgeInsetsMake(2,0,-2,0)];
-  _playButton=RDLPImageButton(@"play.png",@"Play");
+  _playButton=RDLPImageButton(RDLPPlayerIconPlay,@"Play");
   [RDLPUIKit setBorderedStyleForBarButtonItem:_playButton];
   _timeline=[[RDLPPlayerTimeline alloc] initWithFrame:CGRectMake(0,0,164,40)];
   [_timeline setContinuous:YES];

@@ -1,6 +1,16 @@
 #import <UIKit/UIKit.h>
 @class RDLPStatusBarView, RDLPLibrary;
+typedef enum {
+  RDLPPlayerIconHeadphones,
+  RDLPPlayerIconPrevious,
+  RDLPPlayerIconNext,
+  RDLPPlayerIconPlay,
+  RDLPPlayerIconPause,
+  RDLPPlayerIconBack,
+  RDLPPlayerIconForward
+} RDLPPlayerIcon;
 @interface RDLPUIKit : NSObject
++ (UIImage *)playerIcon:(RDLPPlayerIcon)icon;
 + (void)configureContentEdges:(UIViewController *)controller;
 + (void)configurePlayerFullScreenLayout:(UIViewController *)controller;
 + (void)setBorderedStyleForBarButtonItem:(UIBarButtonItem *)item;

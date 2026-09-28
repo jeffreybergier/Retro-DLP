@@ -1,6 +1,7 @@
 #import "RDLPPlayerViewController.h"
 #import "RDLPPlayerNavigationController.h"
 #import "RDLPPlayerControls.h"
+#import "../../RDLPUIKit.h"
 #import "queue_tests.h"
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
@@ -20,10 +21,13 @@ static NSUInteger controllersReleased;
 @public
   BOOL useTestTime;
   CMTime testTime;
+  BOOL useTestDuration;
+  CMTime testDuration;
 }
 @end
 @implementation TestItem
 - (CMTime)currentTime { return useTestTime?testTime:[super currentTime]; }
+- (CMTime)duration { return useTestDuration?testDuration:[super duration]; }
 @end
 
 /* Real readiness, with controllable seek completions for race regressions. */
@@ -115,8 +119,8 @@ static NSUInteger controllersReleased;
   Require(![[_controller navigationItem] leftBarButtonItem],@"Headphones require an audio-only delegate");
   Require(![[controls previousButton] isEnabled] && ![[controls nextButton] isEnabled],@"Navigation is initially disabled");
   for(UIBarButtonItem *button in [NSArray arrayWithObjects:[controls playButton],[controls previousButton],[controls nextButton],[controls audioButton],nil])
-    Require([button image]!=nil,@"Font Awesome artwork loads from resource bundle");
-  [self pass:@"Defaults, resource loading, and ready state"];
+    Require([button image]!=nil,@"Font Awesome artwork renders in code");
+  [self pass:@"Defaults, rendered icons, and ready state"];
 
   [_controller setDelegate:self];
   [_controller setCanSkipToPreviousItem:YES];
@@ -263,6 +267,65 @@ static NSUInteger controllersReleased;
   Require(_queue->seekCalls==7 && ![_controller valueForKey:@"scrubItem"],@"Old drag events and completions cannot seek the next item");
   _queue->holdSeeks=NO;
   [self pass:@"Continuous, coalesced scrubbing, no release snap-back, VoiceOver, cancellation, and stale-item completion"];
+
+  TestItem *navigationItem=(TestItem *)[_queue currentItem];
+  NSDate *readyDeadline=[NSDate dateWithTimeIntervalSinceNow:5];
+  while([navigationItem status]!=AVPlayerItemStatusReadyToPlay && [readyDeadline timeIntervalSinceNow]>0)
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+  Require([navigationItem status]==AVPlayerItemStatusReadyToPlay,@"Navigation fixture becomes ready");
+  _queue->holdSeeks=YES;
+  navigationItem->useTestTime=YES;
+  NSUInteger previousRequests=_previous, nextRequests=_next;
+  UIBarButtonItem *back=[controls previousButton], *forward=[controls nextButton];
+  for(NSNumber *seconds in [NSArray arrayWithObjects:@4.9,@5,nil]) {
+    navigationItem->testTime=CMTimeMakeWithSeconds([seconds doubleValue],600);
+    [_controller performSelector:@selector(buttonPressed:) withObject:back];
+  }
+  Require(_previous==previousRequests+2,@"Short content at or before five seconds requests previous");
+  [_controller setCanSkipToPreviousItem:NO];
+  navigationItem->testTime=CMTimeMakeWithSeconds(5.1,600);
+  [_controller performSelector:@selector(refreshTime)];
+  Require([back isEnabled],@"First short item can restart after five seconds");
+  [_controller performSelector:@selector(buttonPressed:) withObject:back];
+  Require(CMTimeGetSeconds(_queue->requestedTime)==0 && _previous==previousRequests+2,@"Short back restarts instead of selecting previous");
+  [_queue completeSeek:YES];
+  Require(![back isEnabled],@"At the start, back is disabled without a previous item");
+  [_controller performSelector:@selector(buttonPressed:) withObject:forward];
+  Require(_next==nextRequests+1,@"Short forward still requests next");
+
+  navigationItem->useTestDuration=YES; navigationItem->testDuration=CMTimeMake(600,1);
+  navigationItem->testTime=CMTimeMake(100,1);
+  [_controller setCanSkipToNextItem:NO];
+  [_controller performSelector:@selector(refreshTime)];
+  Require([back isEnabled] && [forward isEnabled] &&
+    [back image]==[RDLPUIKit playerIcon:RDLPPlayerIconBack] &&
+    [forward image]==[RDLPUIKit playerIcon:RDLPPlayerIconForward],@"Long content gets rotate icons and seeks without playlist neighbors");
+  Require([[back accessibilityLabel] isEqualToString:@"Back 30 seconds"] &&
+    [[forward accessibilityLabel] isEqualToString:@"Forward 60 seconds"],@"Time jumps have descriptive accessibility labels");
+  [_controller performSelector:@selector(buttonPressed:) withObject:back];
+  Require(CMTimeGetSeconds(_queue->requestedTime)==70,@"Long back seeks thirty seconds");
+  [_queue completeSeek:YES];
+  [_controller performSelector:@selector(buttonPressed:) withObject:forward];
+  [_controller performSelector:@selector(buttonPressed:) withObject:forward];
+  [_queue completeSeek:YES];
+  Require(CMTimeGetSeconds(_queue->requestedTime)==190,@"Rapid forward taps accumulate from the pending destination");
+  [_queue completeSeek:YES];
+  navigationItem->testTime=CMTimeMake(10,1);
+  [_controller performSelector:@selector(buttonPressed:) withObject:back];
+  Require(CMTimeGetSeconds(_queue->requestedTime)==0,@"Backward jump clamps at the start");
+  [_queue completeSeek:YES];
+  navigationItem->testTime=CMTimeMake(590,1);
+  [_controller performSelector:@selector(buttonPressed:) withObject:forward];
+  Require(CMTimeGetSeconds(_queue->requestedTime)==600,@"Forward jump clamps at the end");
+  [_queue completeSeek:YES];
+  Require(_previous==previousRequests+2 && _next==nextRequests+1 &&
+    _queue->playCalls==0 && _queue->pauseCalls==0,@"Time jumps preserve item selection and playback state");
+  navigationItem->useTestDuration=NO; navigationItem->useTestTime=NO;
+  _queue->holdSeeks=NO;
+  [_controller performSelector:@selector(refreshTime)];
+  Require([back image]==[RDLPUIKit playerIcon:RDLPPlayerIconPrevious] &&
+    [forward image]==[RDLPUIKit playerIcon:RDLPPlayerIconNext],@"Short content restores the original icons");
+  [self pass:@"Duration-sensitive navigation, five-second boundary, clamping, and rapid time jumps"];
 
   NSNotificationCenter *center=[NSNotificationCenter defaultCenter];
   [center postNotificationName:UIApplicationWillResignActiveNotification object:[UIApplication sharedApplication]];

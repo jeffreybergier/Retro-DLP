@@ -55,7 +55,7 @@
 
 /** Current item duration exceeds eight minutes. NO until its duration is known.
  * Computed from the current item, including while the UI is inactive.
- * This classification adds no visible controls or labels.
+ * Long content uses backward/forward time jumps in the transport controls.
  */
 @property(nonatomic,readonly) BOOL longContent;
 
@@ -76,9 +76,12 @@
 
 /**
  * Both default NO. The owner updates these as the playlist position changes.
- * A button is enabled only when its flag is YES, player is non-nil, and the
- * delegate implements the corresponding request. These mean playlist item
- * navigation, not fast-forward/rewind or seeking within the current item.
+ * These flags enable playlist navigation for short content when the delegate
+ * implements the corresponding request. Back restarts short content after
+ * five seconds, even without a previous item. At five seconds or earlier it
+ * requests the previous item. Forward requests the next item.
+ * Long content instead seeks back 30 or forward 60 seconds, regardless of
+ * playlist neighbors. Seeks clamp to the item bounds and preserve play/pause.
  */
 @property(nonatomic,assign) BOOL canSkipToPreviousItem;
 @property(nonatomic,assign) BOOL canSkipToNextItem;

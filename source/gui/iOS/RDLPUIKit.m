@@ -141,6 +141,24 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
 + (UIImage *)queueActionIcon:(BOOL)stop;
 { return RDLPFontAwesomeImage(stop?AIFAPause:AIFARotateRight,14,20,RDLPMainScreenScale(),[UIColor whiteColor]); }
 
++ (UIImage *)playerIcon:(RDLPPlayerIcon)icon;
+{
+  static const AIFontAwesomeIcon glyphs[]={AIFAHeadphones,AIFABackwardFast,AIFAForwardFast,
+    AIFAPlay,AIFAPause,AIFARotateLeft,AIFARotateRight};
+  if((NSUInteger)icon>=sizeof(glyphs)/sizeof(glyphs[0])) return nil;
+  /* Transport state refreshes frequently; render each glyph once per scale. */
+  static NSMutableDictionary *images=nil;
+  if(!images) images=[[NSMutableDictionary alloc] init];
+  CGFloat scale=RDLPMainScreenScale();
+  NSArray *key=[NSArray arrayWithObjects:[NSNumber numberWithInt:icon],[NSNumber numberWithDouble:scale],nil];
+  UIImage *image=[images objectForKey:key];
+  if(!image) {
+    image=RDLPFontAwesomeImage(glyphs[icon],20,26,scale,[UIColor whiteColor]);
+    if(image) [images setObject:image forKey:key];
+  }
+  return image;
+}
+
 + (UIImage *)settingsIcon;
 { return RDLPFontAwesomeImageWithOffset(AIFAGear,18,26,RDLPMainScreenScale(),[UIColor whiteColor],-1); }
 

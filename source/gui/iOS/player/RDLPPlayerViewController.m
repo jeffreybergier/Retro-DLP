@@ -22,6 +22,9 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
 - (void)configure;
 - (void)refresh;
 - (void)refreshTime;
+- (void)refreshNavigation;
+- (double)navigationTime;
+- (void)seekFromNavigationTo:(double)seconds;
 - (void)updatePresentation;
 - (void)removeVideoLayer;
 - (void)startObserving;
@@ -316,10 +319,8 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   if(failed) [self resetScrubbing];
   BOOL ready=item && [item status]==AVPlayerItemStatusReadyToPlay && !failed;
   [[_controls playButton] setEnabled:ready];
-  [[_controls playButton] setImage:[UIImage imageNamed:[_player rate]!=0?@"RDLPPlayer.bundle/pause.png":@"RDLPPlayer.bundle/play.png"]];
+  [[_controls playButton] setImage:[RDLPUIKit playerIcon:[_player rate]!=0?RDLPPlayerIconPause:RDLPPlayerIconPlay]];
   [[_controls playButton] setAccessibilityLabel:[_player rate]!=0?@"Pause":@"Play"];
-  [[_controls previousButton] setEnabled:_player && _canSkipToPreviousItem && [_delegate respondsToSelector:@selector(playerViewControllerDidRequestPreviousItem:)]];
-  [[_controls nextButton] setEnabled:_player && _canSkipToNextItem && [_delegate respondsToSelector:@selector(playerViewControllerDidRequestNextItem:)]];
   BOOL audio=[_delegate respondsToSelector:@selector(playerViewController:didRequestAudioOnly:)];
   [[_controls audioButton] setEnabled:_player!=nil];
   [[_controls audioButton] setAccessibilityLabel:_audioOnly?@"Show video":@"Use audio only"];
@@ -336,6 +337,7 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   if([_player rate]==0 || failed) [self showControls]; else [self scheduleHide];
 }
 - (void)refreshTime {
+  [self refreshNavigation];
   if(!_controls || _scrubItem) return;
   AVPlayerItem *item=[_player currentItem];
   double duration=item?CMTimeGetSeconds([item duration]):NAN;
@@ -344,6 +346,42 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
                            [_player status]!=AVPlayerStatusFailed && isfinite(duration) && duration>0];
   [[_controls slider] setValue:[[_controls slider] isEnabled] && isfinite(elapsed)?(float)MAX(0,MIN(1,elapsed/duration)):0];
   [_controls setElapsedTime:elapsed duration:duration];
+}
+- (double)navigationTime {
+  if(_scrubItem==[_player currentItem] && _scrubItem && CMTIME_IS_VALID(_scrubTime))
+    return CMTimeGetSeconds(_scrubTime);
+  return [_player currentItem]?CMTimeGetSeconds([[_player currentItem] currentTime]):NAN;
+}
+- (void)refreshNavigation {
+  if(!_controls) return;
+  AVPlayerItem *item=[_player currentItem];
+  BOOL ready=item && [item status]==AVPlayerItemStatusReadyToPlay &&
+    [_player status]!=AVPlayerStatusFailed && !_failedToEnd;
+  double seconds=[self navigationTime];
+  BOOL longContent=[self longContent], restart=!longContent && isfinite(seconds) && seconds>5;
+  BOOL canSeek=ready && isfinite(seconds);
+  [[_controls previousButton] setImage:[RDLPUIKit playerIcon:longContent?RDLPPlayerIconBack:RDLPPlayerIconPrevious]];
+  [[_controls nextButton] setImage:[RDLPUIKit playerIcon:longContent?RDLPPlayerIconForward:RDLPPlayerIconNext]];
+  [[_controls previousButton] setAccessibilityLabel:longContent?@"Back 30 seconds":(restart?@"Restart item":@"Previous item")];
+  [[_controls nextButton] setAccessibilityLabel:longContent?@"Forward 60 seconds":@"Next item"];
+  [[_controls previousButton] setEnabled:(longContent || restart)?canSeek:
+    (_player && _canSkipToPreviousItem && [_delegate respondsToSelector:@selector(playerViewControllerDidRequestPreviousItem:)])];
+  [[_controls nextButton] setEnabled:longContent?canSeek:
+    (_player && _canSkipToNextItem && [_delegate respondsToSelector:@selector(playerViewControllerDidRequestNextItem:)])];
+}
+- (void)seekFromNavigationTo:(double)seconds {
+  AVPlayerItem *item=[_player currentItem];
+  double duration=CMTimeGetSeconds([item duration]);
+  if(!item || [item status]!=AVPlayerItemStatusReadyToPlay || !isfinite(seconds) ||
+     !isfinite(duration) || duration<=0) return;
+  if(!_scrubItem) _scrubItem=[item retain];
+  _scrubbing=NO;
+  _scrubTime=CMTimeMakeWithSeconds(MAX(0,MIN(duration,seconds)),600);
+  [[_controls slider] setValue:(float)(CMTimeGetSeconds(_scrubTime)/duration)];
+  /* Share the scrubber's serialized seeks so rapid taps accumulate and stale
+   * completions cannot seek a replacement item. Do not change playback rate. */
+  [self refreshNavigation];
+  if(!_seeking) [self seekToScrubTime];
 }
 
 - (void)cancelHide { [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(hideControls) object:nil]; }
@@ -392,6 +430,7 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
 }
 
 - (void)buttonPressed:(UIBarButtonItem *)button {
+  if(button==[_controls previousButton] || button==[_controls nextButton]) [self refreshNavigation];
   if(![button isEnabled] || !_visible || !_active) return;
   if(button!=[_controls doneButton] && ![[self view] isUserInteractionEnabled]) return;
   [self scheduleHide];
@@ -403,10 +442,16 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
       if(isfinite(duration) && duration>0 && CMTimeGetSeconds([_player currentTime])>=duration) [_player seekToTime:kCMTimeZero];
       [_player play];
     }
-  } else if(button==[_controls previousButton] && [_delegate respondsToSelector:@selector(playerViewControllerDidRequestPreviousItem:)]) {
-    [_delegate playerViewControllerDidRequestPreviousItem:self];
-  } else if(button==[_controls nextButton] && [_delegate respondsToSelector:@selector(playerViewControllerDidRequestNextItem:)]) {
-    [_delegate playerViewControllerDidRequestNextItem:self];
+  } else if(button==[_controls previousButton]) {
+    double seconds=[self navigationTime];
+    if([self longContent]) [self seekFromNavigationTo:seconds-30];
+    else if(isfinite(seconds) && seconds>5) [self seekFromNavigationTo:0];
+    else if(_canSkipToPreviousItem && [_delegate respondsToSelector:@selector(playerViewControllerDidRequestPreviousItem:)])
+      [_delegate playerViewControllerDidRequestPreviousItem:self];
+  } else if(button==[_controls nextButton]) {
+    if([self longContent]) [self seekFromNavigationTo:[self navigationTime]+60];
+    else if(_canSkipToNextItem && [_delegate respondsToSelector:@selector(playerViewControllerDidRequestNextItem:)])
+      [_delegate playerViewControllerDidRequestNextItem:self];
   } else if(button==[_controls audioButton] && [_delegate respondsToSelector:@selector(playerViewController:didRequestAudioOnly:)]) {
     [_delegate playerViewController:self didRequestAudioOnly:!_audioOnly];
   } else if(button==[_controls doneButton]) {
