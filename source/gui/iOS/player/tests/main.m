@@ -107,7 +107,7 @@ static NSUInteger controllersReleased;
 - (void)pass:(NSString *)message { [_report appendFormat:@"PASS: %@\n",message]; }
 - (void)runTests {
   RDLPPlayerControls *controls=[_controller valueForKey:@"controls"];
-  AVPlayerLayer *layer=(AVPlayerLayer *)[[_controller view] layer];
+  AVPlayerLayer *layer=[_controller valueForKey:@"videoLayer"];
   Require([_controller showsPlaybackControls] && ![_controller isAudioOnly],@"Default control and audio mode");
   Require([[_controller videoGravity] isEqualToString:AVLayerVideoGravityResizeAspect],@"Default aspect fit");
   Require([layer player]==_queue && [[controls playButton] isEnabled],@"Ready player attaches to presentation");
@@ -129,9 +129,25 @@ static NSUInteger controllersReleased;
   [[[controls doneButton] target] performSelector:[[controls doneButton] action] withObject:[controls doneButton]];
   Require(_previous==1 && _next==1 && _audio==1 && _dismiss==1,@"Each request reaches the owner once");
   Require(_requestedAudioOnly && ![_controller isAudioOnly] && [_queue currentItem]==original,@"Requests do not mutate session state");
+  [layer retain]; // Keep the removed instance alive only to verify replacement.
+  [_controller setVideoGravity:AVLayerVideoGravityResizeAspectFill];
   [_controller setAudioOnly:YES];
-  Require([layer player]==nil && ([[controls audioButton] accessibilityTraits]&UIAccessibilityTraitSelected),@"Audio-only presentation detaches video and selects headphones");
+  Require([layer player]==nil && [layer superlayer]==nil && ![_controller valueForKey:@"videoLayer"] &&
+          ([[controls audioButton] accessibilityTraits]&UIAccessibilityTraitSelected),@"Audio-only presentation removes its video layer and selects headphones");
+  [_controller setAudioOnly:YES];
+  Require(![_controller valueForKey:@"videoLayer"],@"Repeated audio-only updates do not recreate video presentation");
   [_controller setAudioOnly:NO];
+  AVPlayerLayer *replacement=[_controller valueForKey:@"videoLayer"];
+  Require(replacement && replacement!=layer && [replacement superlayer]==[[_controller view] layer] &&
+          [[[[_controller view] layer] sublayers] objectAtIndex:0]==replacement &&
+          [[replacement videoGravity] isEqualToString:AVLayerVideoGravityResizeAspectFill],@"Video mode creates a fresh layer below controls and preserves gravity");
+  [layer release]; layer=replacement;
+  [_controller setAudioOnly:NO];
+  Require([_controller valueForKey:@"videoLayer"]==layer && [_queue currentItem]==original &&
+          [_controller valueForKey:@"controls"]==controls,@"Repeated video updates preserve the layer, current item, and controls");
+  [_controller viewDidLayoutSubviews];
+  Require(CGRectEqualToRect([layer frame],[[_controller view] bounds]),@"Video layer follows the presentation bounds");
+  [_controller setVideoGravity:AVLayerVideoGravityResizeAspect];
   Require([layer player]==_queue && _audio==1,@"Programmatic mode change does not send another request");
   Require(_queue->playCalls==0 && _queue->pauseCalls==0,@"Mode changes preserve playback state");
   [self pass:@"Delegate requests and audio-only presentation"];

@@ -4,19 +4,13 @@
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
 
-/* A backing layer resizes with the view without a separate layout observer. */
-@interface RDLPPlayerSurface : UIView
-@end
-@implementation RDLPPlayerSurface
-+ (Class)layerClass { return [AVPlayerLayer class]; }
-@end
-
 static void *RDLPPlayerObservation=&RDLPPlayerObservation;
 static NSArray *RDLPPlayerKeys(void) { return [NSArray arrayWithObjects:@"currentItem",@"rate",@"status",nil]; }
 static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",@"duration",nil]; }
 
 @interface RDLPPlayerViewController () <UIGestureRecognizerDelegate> {
   RDLPPlayerControls *_controls;
+  AVPlayerLayer *_videoLayer;
   AVPlayerItem *_observedItem, *_scrubItem;
   id _timeObserver;
   BOOL _visible, _active, _observing, _chromeVisible, _failedToEnd;
@@ -28,6 +22,7 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
 - (void)refresh;
 - (void)refreshTime;
 - (void)updatePresentation;
+- (void)removeVideoLayer;
 - (void)startObserving;
 - (void)stopObserving;
 - (void)observeCurrentItem;
@@ -70,12 +65,13 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   [NSObject cancelPreviousPerformRequestsWithTarget:self];
   [self stopObserving];
+  [self removeVideoLayer];
   [_player release]; [_videoGravity release]; [_controls release];
   [super dealloc];
 }
 
 - (void)loadView {
-  UIView *surface=[[RDLPPlayerSurface alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+  UIView *surface=[[UIView alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
   [surface setBackgroundColor:[UIColor blackColor]];
   [surface setClipsToBounds:YES];
   [self setView:surface];
@@ -138,6 +134,10 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
 }
 - (void)viewDidLayoutSubviews {
   [super viewDidLayoutSubviews];
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  [_videoLayer setFrame:[[self view] bounds]];
+  [CATransaction commit];
   [self layoutToolbar];
 }
 - (void)layoutToolbar {
@@ -158,6 +158,7 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
 - (void)viewDidUnload {
   [self cancelHide];
   [self stopObserving];
+  [self removeVideoLayer];
   [[self navigationItem] setTitleView:nil];
   [[self navigationItem] setLeftBarButtonItem:nil];
   [[self navigationItem] setRightBarButtonItem:nil];
@@ -209,18 +210,33 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   _canSkipToNextItem=canSkip; [self refresh];
 }
 
+- (void)removeVideoLayer {
+  [_videoLayer setPlayer:nil];
+  [_videoLayer removeFromSuperlayer];
+  [_videoLayer release]; _videoLayer=nil;
+}
 - (void)updatePresentation {
+  if(_audioOnly) {
+    /* Release the rendering surface as well as its player connection so the
+     * next video presentation starts with a fresh layer after backgrounding. */
+    [self removeVideoLayer];
+    return;
+  }
   if(![self isViewLoaded]) return;
-  AVPlayerLayer *layer=(AVPlayerLayer *)[[self view] layer];
-  BOOL display=_visible && _active && !_audioOnly;
-  [layer setPlayer:display?_player:nil];
-  [layer setVideoGravity:_videoGravity];
+  if(!_videoLayer) {
+    _videoLayer=[[AVPlayerLayer alloc] init];
+    [_videoLayer setFrame:[[self view] bounds]];
+    /* Keep the persistent controls above the replaceable video layer. */
+    [[[self view] layer] insertSublayer:_videoLayer atIndex:0];
+  }
+  [_videoLayer setVideoGravity:_videoGravity];
+  [_videoLayer setPlayer:(_visible && _active)?_player:nil];
 }
 - (void)willResignActive:(NSNotification *)notification {
   (void)notification;
   _active=NO;
   /* Detach before backgrounding; no forced pause/resume on lifecycle changes. */
-  if([self isViewLoaded]) [(AVPlayerLayer *)[[self view] layer] setPlayer:nil];
+  [_videoLayer setPlayer:nil];
   [self cancelHide];
   [self stopObserving];
 }

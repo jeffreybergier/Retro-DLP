@@ -55,8 +55,9 @@
 
 /**
  * Default NO. The current session's audio-only mode, supplied by its owner.
- * YES detaches video presentation and shows an audio-only placeholder while
- * retaining transport controls. NO allows video presentation while visible
+ * YES removes and releases the video layer and shows an audio-only placeholder
+ * while retaining transport controls. NO creates a fresh video layer for
+ * presentation while visible
  * and in the foreground. Neither value changes the player's time or rate.
  *
  * This is presentation state: the owner must also disable/enable video tracks
