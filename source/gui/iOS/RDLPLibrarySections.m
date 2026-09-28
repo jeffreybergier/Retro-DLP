@@ -56,8 +56,7 @@
 }
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
 {
-  if(!playlist || [[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] || [library_ isBusy]) return NO;
-  return ![library_ hasBlockingJobsForPlaylist:[playlist objectForKey:@"id"]];
+  return [library_ canRemovePlaylist:playlist];
 }
 - (NSArray *)actionsForJob:(NSDictionary *)job;
 {

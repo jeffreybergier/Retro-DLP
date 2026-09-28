@@ -594,16 +594,26 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy];
   [lock_ unlock]; if(error) [self reportError:@"Couldn’t delete download" detail:error]; [error release]; [self changed];
 }
+- (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
+{
+  if(!playlist || [[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID]) return NO;
+  /* Downloads only need the retained parent. Serialize removal against sync
+     commands, which could otherwise restore membership after removal. */
+  if(busy_ && ![[activeCommand_ objectForKey:@"type"] isEqualToString:@"download"]) return NO;
+  NSEnumerator *e=[commands_ objectEnumerator]; NSDictionary *command;
+  while((command=[e nextObject])) if([[command objectForKey:@"type"] isEqualToString:@"sync"]) return NO;
+  return YES;
+}
 - (void)removePlaylist:(NSDictionary *)playlist;
 {
-  if(busy_) { [self reportError:@"Couldn’t remove playlist" detail:@"Wait for the current operation to finish."]; return; }
+  if(![self canRemovePlaylist:playlist]) { [self reportError:@"Couldn’t remove playlist" detail:@"Wait for playlist operations to finish. Ad-Hoc cannot be removed."]; return; }
   [lock_ lock]; int ok=rdapp_store_remove_playlist(store_,identifier([playlist objectForKey:@"id"]),[root_ fileSystemRepresentation]);
   NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy]; [lock_ unlock];
   if(ok) {
     NSString *directory=[root_ stringByAppendingPathComponent:[playlist objectForKey:@"directory"]];
     unlink([[directory stringByAppendingPathComponent:@"Playlist.xspf"] fileSystemRepresentation]);
     unlink([[directory stringByAppendingPathComponent:@"Playlist.m3u8"] fileSystemRepresentation]);
-    rmdir([directory fileSystemRepresentation]);
+    /* An active transfer may already have prepared this destination folder. */
   }
   if(error) [self reportError:@"Couldn’t remove playlist" detail:error]; [error release]; [self changed];
 }

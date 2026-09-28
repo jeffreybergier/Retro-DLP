@@ -68,5 +68,27 @@ static void testSharedVideoRows(NSString *base) {
   metadataRequire(![policy playable:[first objectForKey:@"job"]],@"A directory is not a playable local file");
   [[NSFileManager defaultManager] removeItemAtPath:highPath error:NULL];
   metadataRequire([[RDLPLibrary fileSizeLabelForBytes:0] isEqualToString:@"0 KB"] && [[RDLPLibrary fileSizeLabelForBytes:1] isEqualToString:@"1 KB"] && [[RDLPLibrary fileSizeLabelForBytes:999999] isEqualToString:@"1000 KB"] && [[RDLPLibrary fileSizeLabelForBytes:1000000] isEqualToString:@"1.0 MB"] && [[RDLPLibrary fileSizeLabelForBytes:5000000000ULL] isEqualToString:@"5000.0 MB"],@"Size labels preserve zero, unit boundaries, and 64-bit values");
+  NSDictionary *parent=[library playlistForID:pid];
+  metadataRequire([library canRemovePlaylist:parent],@"Completed downloads permit playlist removal");
+  [library setValue:[NSDictionary dictionaryWithObject:@"download" forKey:@"type"] forKey:@"activeCommand_"];
+  [library setValue:[NSNumber numberWithBool:YES] forKey:@"busy_"];
+  metadataRequire([library canRemovePlaylist:parent],@"Active transfers permit playlist removal");
+  [library setValue:[NSDictionary dictionaryWithObject:@"sync" forKey:@"type"] forKey:@"activeCommand_"];
+  metadataRequire(![library canRemovePlaylist:parent],@"Active sync serializes playlist removal");
+  [library setValue:[NSDictionary dictionaryWithObject:@"download" forKey:@"type"] forKey:@"activeCommand_"];
+  [library removePlaylist:parent];
+  [library setValue:nil forKey:@"activeCommand_"];
+  [library setValue:[NSNumber numberWithBool:NO] forKey:@"busy_"];
+  metadataRequire([library playlistForID:pid]==nil && [[library entriesForPlaylist:pid] count]==0,@"Removal hides playlist and clears membership");
+  metadataRequire([[library jobsForPlaylist:nil completedOnly:YES] count]==2,@"Removal retains every completed quality in All Downloads");
+  metadataRequire([policy playable:[complete objectAtIndex:1]],@"Retained completed download remains playable");
+  metadataRequire(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open empty destination fixture");
+  metadataRequire(rdapp_store_snapshot(store,"PLempty","Empty",NULL,0,&key),@"Save empty destination playlist");
+  rdapp_store_close(store);
+  parent=[library playlistForID:[NSString stringWithFormat:@"%lld",(long long)key]];
+  NSString *emptyDirectory=[downloads stringByAppendingPathComponent:[parent objectForKey:@"directory"]];
+  metadataRequire(rdapp_make_directory([emptyDirectory fileSystemRepresentation]),@"Prepare download destination");
+  [library removePlaylist:parent];
+  metadataRequire([[NSFileManager defaultManager] fileExistsAtPath:emptyDirectory],@"Removal preserves empty destination needed for file publication");
   [library shutdown]; [library release]; [pool drain];
 }

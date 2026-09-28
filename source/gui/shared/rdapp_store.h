@@ -73,6 +73,8 @@ int rdapp_store_retry(rdapp_store *, int64_t job);
 int rdapp_store_reconcile_job(rdapp_store *, int64_t job, const char *root);
 int rdapp_store_cancel(rdapp_store *, int64_t job);
 int rdapp_store_forget_file(rdapp_store *, int64_t job);
+/* Hides the playlist and clears membership atomically; keeps all jobs/files.
+   Discovery leaves it hidden; an explicit snapshot restores it. */
 int rdapp_store_remove_playlist(rdapp_store *, int64_t playlist, const char *root);
 /* XSPF and M3U8 exports (each atomically replaced), rooted in an app-owned directory. Missing files omitted. */
 int rdapp_store_reconcile(rdapp_store *, const char *root);

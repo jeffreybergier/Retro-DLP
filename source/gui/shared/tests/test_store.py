@@ -311,6 +311,7 @@ class StoreTests(unittest.TestCase):
         lib.rdapp_store_close(self.db); self.db=P()
         with sqlite3.connect(self.path/'db.sqlite') as db:
             self.remove_job_dates(db)
+            db.execute('ALTER TABLE playlists DROP COLUMN removed')
             db.execute('PRAGMA user_version=6')
         for reopen in range(2):
             self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
@@ -323,7 +324,7 @@ class StoreTests(unittest.TestCase):
         self.check(lib.rdapp_store_enqueue(self.db,self.key,None,b'22'))
         self.assertGreater(int(self.rows(6)[0]['enqueueDate']),0)
         with sqlite3.connect(self.path/'db.sqlite') as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],7)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],8)
             self.assertEqual([r[2] for r in db.execute('PRAGMA index_info(jobs_queue_visible)')],['enqueueDate','id'])
 
     def test_queue_dates_track_attempts_without_reordering_retries(self):
@@ -558,6 +559,7 @@ class StoreTests(unittest.TestCase):
             for field in METADATA_FIELDS: db.execute('ALTER TABLE jobs DROP COLUMN '+field)
             db.execute('ALTER TABLE videos DROP COLUMN playback_seconds')
             self.remove_job_dates(db)
+            db.execute('ALTER TABLE playlists DROP COLUMN removed')
             db.execute('PRAGMA user_version=4')
         self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
         for job in jobs: job['enqueueDate']='0'
@@ -758,15 +760,87 @@ class StoreTests(unittest.TestCase):
         self.check(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)))
         self.assertEqual(ET.parse(path.parent/'Playlist.xspf').findall(XSPF+'trackList/'+XSPF+'track'),[])
         self.assertTrue(path.exists())
-    def test_playlist_removal_requires_explicit_download_cleanup(self):
+    def test_playlist_removal_preserves_jobs_in_every_state(self):
+        for state in ('queued','running','complete','failed','cancelled','interrupted','removed'):
+            with self.subTest(state=state):
+                self.check(self.snapshot())
+                self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
+                job=self.rows(2)[0]
+                self.check(lib.rdapp_store_finish(self.db,int(job['id']),state.encode(),b'18',b'keep error'))
+                before=self.rows(2)
+                self.check(lib.rdapp_store_remove_playlist(self.db,self.key,os.fsencode(self.path)))
+                self.assertEqual(self.rows(0),[])
+                self.assertEqual(self.rows(1),[])
+                self.assertEqual(self.rows(2),before)
+                self.assertEqual(len(self.rows(3)),int(state=='complete'))
+                with sqlite3.connect(self.path/'db.sqlite') as db:
+                    self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
+
+    def test_removed_playlist_jobs_can_finish_retry_and_delete(self):
         self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
-        self.assertEqual(lib.rdapp_store_remove_playlist(self.db,self.key,os.fsencode(self.path)),0)
-        job=self.claim()
-        self.check(lib.rdapp_store_finish(self.db,int(job['id']),b'complete',b'18',b''))
-        self.assertEqual(lib.rdapp_store_remove_playlist(self.db,self.key,os.fsencode(self.path)),0)
-        self.check(lib.rdapp_store_forget_file(self.db,int(job['id'])))
         self.check(lib.rdapp_store_remove_playlist(self.db,self.key,os.fsencode(self.path)))
+        job=self.claim()  # A queued orphan remains runnable.
+        self.check(lib.rdapp_store_finish(self.db,int(job['id']),b'failed',b'18',b'Network error'))
+        self.check(lib.rdapp_store_retry(self.db,int(job['id'])))
+        retried=self.claim()
+        self.assertEqual(retried['id'],job['id'])
+        self.assertEqual(retried['path'],job['path'])
+        path=self.path/job['path']; path.parent.mkdir(parents=True); path.write_bytes(b'video')
+        self.check(lib.rdapp_store_finish(self.db,int(job['id']),b'complete',b'18',b''))
+        self.assertEqual(self.count(3,key=0),1)
+        self.check(lib.rdapp_store_remove_file(self.db,int(job['id']),os.fsencode(self.path)))
+        self.assertFalse(path.exists())
+        self.assertEqual(self.count(3,key=0),0)
         self.assertEqual(self.rows(0),[])
+
+    def test_playlist_removal_rollback_keeps_membership_and_jobs(self):
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
+        before=[self.rows(kind) for kind in (0,1,2)]
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.execute("CREATE TRIGGER block_removal BEFORE DELETE ON entries BEGIN SELECT RAISE(ABORT,'Removal blocked'); END")
+        self.assertEqual(lib.rdapp_store_remove_playlist(self.db,self.key,os.fsencode(self.path)),0)
+        self.assertEqual([self.rows(kind) for kind in (0,1,2)],before)
+
+    def test_version_seven_migration_and_removed_playlist_reopen(self):
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
+        entries=self.rows(1); jobs=self.rows(2)
+        lib.rdapp_store_close(self.db); self.db=P()
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.execute('ALTER TABLE playlists DROP COLUMN removed')
+            db.execute('PRAGMA user_version=7')
+        self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
+        self.assertEqual(len(self.rows(0)),1)
+        self.assertEqual(self.rows(1),entries)
+        self.assertEqual(self.rows(2),jobs)
+        self.check(lib.rdapp_store_remove_playlist(self.db,self.key,os.fsencode(self.path)))
+        lib.rdapp_store_close(self.db); self.db=P()
+        self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
+        self.assertEqual(self.rows(0),[])
+        self.assertEqual(self.rows(1),[])
+        self.assertEqual(self.rows(2),jobs)
+
+    def test_removed_playlist_stays_hidden_until_explicit_sync(self):
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
+        job=self.claim(); key=self.key.value
+        path=self.path/job['path']; path.parent.mkdir(parents=True); path.write_bytes(b'video')
+        self.check(lib.rdapp_store_finish(self.db,int(job['id']),b'complete',b'18',b''))
+        before=self.rows(2)
+        self.check(lib.rdapp_store_remove_playlist(self.db,self.key,os.fsencode(self.path)))
+        self.check(lib.rdapp_store_discovered_playlist(self.db,b'PLtest',b'My / playlist'))
+        for kind in (0,4,5,11,14,15,16,18,19):
+            self.assertEqual(self.rows(kind),[],kind)
+        self.check(lib.rdapp_store_reconcile(self.db,os.fsencode(self.path)))
+        self.assertEqual(self.rows(2),before)
+        self.assertTrue(path.exists())
+        self.assertFalse((path.parent/'Playlist.xspf').exists())
+        self.check(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)))
+        self.assertFalse((path.parent/'Playlist.m3u8').exists())
+        self.check(self.snapshot())
+        self.assertEqual(self.key.value,key)
+        self.assertEqual(self.rows(2),before)
+        self.assertEqual(len(self.rows(0)),1)
+        self.assertEqual(len(self.rows(1)),3)
+
     def test_published_file_recovered_after_crash_and_missing_file_retried(self):
         self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
         job=self.claim(); path=self.path/job['path']; path.parent.mkdir(parents=True); path.write_bytes(b'completed media')
@@ -829,13 +903,14 @@ class StoreTests(unittest.TestCase):
         calls.clear()
         self.check(lib.rdapp_store_remove_file_with_callback(self.db,key,os.fsencode(self.path),refuse,None))
         self.assertEqual(calls,[])
-    def test_playlist_removal_cleans_cancelled_staging(self):
+    def test_playlist_removal_preserves_cancelled_staging(self):
         self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
         job=self.claim(); staging=self.path/'.staging'/job['id']; staging.mkdir(parents=True)
         (staging/'video.mp4.video.mp4').write_bytes(b'retained track')
         self.check(lib.rdapp_store_finish(self.db,int(job['id']),b'cancelled',b'',b'Cancelled'))
         self.check(lib.rdapp_store_remove_playlist(self.db,self.key,os.fsencode(self.path)))
-        self.assertFalse(staging.exists())
+        self.assertTrue((staging/'video.mp4.video.mp4').exists())
+        self.assertEqual(len(self.rows(2)),1)
         self.assertEqual(self.rows(0),[])
     def test_discovery_promotes_without_duplicate_or_data_loss(self):
         self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
@@ -890,7 +965,7 @@ class StoreTests(unittest.TestCase):
         lib.rdapp_store_close(self.db); self.db=P()
         with sqlite3.connect(self.path/'db.sqlite') as db:
             self.remove_job_dates(db)
-            db.executescript('ALTER TABLE videos DROP COLUMN playback_seconds; PRAGMA user_version=5;')
+            db.executescript('ALTER TABLE playlists DROP COLUMN removed; ALTER TABLE videos DROP COLUMN playback_seconds; PRAGMA user_version=5;')
         self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
         self.assertEqual(self.rows(1),entries)
         for job in jobs: job['enqueueDate']='0'
@@ -906,7 +981,7 @@ class StoreTests(unittest.TestCase):
         lib.rdapp_store_close(other)
         with sqlite3.connect(path) as db:
             self.assertEqual(db.execute('SELECT id,service_id,directory,synced_at,source FROM playlists').fetchone(),(7,'PLold','Playlists/Old',42,'added'))
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],7)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],8)
             self.assertEqual(db.execute('SELECT count(*) FROM entry_thumbnails').fetchone()[0],0)
 
     def test_version_two_migration_preserves_entries_and_jobs(self):
@@ -916,7 +991,7 @@ class StoreTests(unittest.TestCase):
         self.db=P()
         with sqlite3.connect(self.path/'db.sqlite') as db:
             self.remove_job_dates(db)
-            db.executescript('DROP TABLE entry_thumbnails; ALTER TABLE videos DROP COLUMN playback_seconds; PRAGMA user_version=2;')
+            db.executescript('DROP TABLE entry_thumbnails; ALTER TABLE playlists DROP COLUMN removed; ALTER TABLE videos DROP COLUMN playback_seconds; PRAGMA user_version=2;')
             for field in METADATA_FIELDS:
                 db.execute('ALTER TABLE entries DROP COLUMN '+field)
                 db.execute('ALTER TABLE jobs DROP COLUMN '+field)
@@ -954,6 +1029,7 @@ class StoreTests(unittest.TestCase):
                 db.execute('ALTER TABLE jobs DROP COLUMN '+field)
             db.execute('ALTER TABLE videos DROP COLUMN playback_seconds')
             self.remove_job_dates(db)
+            db.execute('ALTER TABLE playlists DROP COLUMN removed')
             db.execute('PRAGMA user_version=3')
         self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
         self.assertEqual(self.thumbnails(),[(0,0,urls[0].decode())])

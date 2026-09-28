@@ -174,7 +174,7 @@
   if([plan count]) [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:@"bulk",@"operation",plan,@"plan",nil] title:[NSString stringWithFormat:@"Download %lu missing videos?",(unsigned long)[plan count]] detail:[NSString stringWithFormat:@"Quality: %@. Existing failed, interrupted and stopped downloads are not retried.",[RDLPLibrary qualityLabelForFormat:format]] button:@"Download"];
 }
 - (void)removePlaylist:(id)sender;
-{ (void)sender; if([model_ canRemovePlaylist:playlist_]) [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:@"removePlaylist",@"operation",playlist_,@"playlist",nil] title:@"Remove playlist?" detail:@"Removes only the local library entry. Your YouTube playlist is unchanged." button:@"Remove"]; }
+{ (void)sender; if([model_ canRemovePlaylist:playlist_]) [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:@"removePlaylist",@"operation",playlist_,@"playlist",nil] title:@"Remove playlist?" detail:@"Removes the playlist from your library. Downloads and unfinished jobs are retained. Your YouTube playlist is unchanged." button:@"Remove"]; }
 - (void)queue:(id)sender; { (void)sender; [self showJobInQueue:nil]; }
 - (void)settings:(id)sender;
 {

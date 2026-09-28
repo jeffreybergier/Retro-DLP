@@ -1021,8 +1021,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
 {
-  if(!playlist || [[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] || [library_ isBusy]) return NO;
-  return ![library_ hasBlockingJobsForPlaylist:[playlist objectForKey:@"id"]];
+  return [library_ canRemovePlaylist:playlist];
 }
 - (void)retryDownloadJob:(NSDictionary *)job;
 {
@@ -1140,7 +1139,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)removePlaylist:(id)sender;
 {
   (void)sender; NSDictionary *playlist=[self contextPlaylist]; if(![self canRemovePlaylist:playlist]) return;
-  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"removePlaylist",@"operation",playlist,@"playlist",nil] title:[NSString stringWithFormat:@"Remove ‘%@’ from the library?",[playlist objectForKey:@"title"]] detail:@"Remove local playlist metadata and remaining partial files. This does not delete the playlist from YouTube." action:@"Remove Playlist"];
+  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"removePlaylist",@"operation",playlist,@"playlist",nil] title:[NSString stringWithFormat:@"Remove ‘%@’ from the library?",[playlist objectForKey:@"title"]] detail:@"Removes the playlist from your library. Downloads and unfinished jobs are retained. Your YouTube playlist is unchanged." action:@"Remove Playlist"];
 }
 - (void)playTargetVideo:(id)sender;
 { (void)sender; NSDictionary *job=[self targetJob]; if([self playable:job]) [RDLPAppKit openPreferredPlayback:[library_ fileForJob:job]]; }

@@ -335,7 +335,7 @@ static void testFixedToolbar(RDLPLibraryWindowController *owner,RDLPLibrary *lib
     NSMenu *libraryMenu=[toolbarButton(owner,@"library") menu];
     [owner performSelector:@selector(menuNeedsUpdate:) withObject:libraryMenu];
     requireCondition([libraryMenu numberOfItems]==6 && ![libraryMenu itemWithTitle:@"Show Download Queue"],@"Library contains only add, discovery and sync commands");
-    requireCondition([toolbarButton(owner,@"remove") isDefaultEnabled]==(scope>=2),@"Remove follows the video or removable playlist and never All Downloads");
+    requireCondition([toolbarButton(owner,@"remove") isDefaultEnabled]==(scope>=1),@"Remove follows the video or removable playlist and never All Downloads");
     invoke(owner,choice(libraryMenu,@"Add Video…"));
     requireCondition([[[owner valueForKey:@"addSheet_"] title] isEqualToString:@"Add Video"],@"Library’s Add Video command opens its sheet in every selection");
     [NSApp endSheet:[owner valueForKey:@"addSheet_"] returnCode:0]; pump();

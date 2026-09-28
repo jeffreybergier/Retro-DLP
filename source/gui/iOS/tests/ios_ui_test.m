@@ -665,7 +665,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require([[[originalCell detailTextLabel] text] isEqualToString:@"Original Channel"] && ![[[repeatedCell detailTextLabel] text] length],@"Duplicate entries retain independent optional metadata");
     [library_ setTestStatus:nil];
     NSDictionary *video=[[[videos objectAtIndex:0] objectForKey:@"video"] retain];
-    require(![model canRemovePlaylist:playlist],@"Pending and completed jobs block playlist removal");
+    require([model canRemovePlaylist:playlist],@"Pending and completed jobs allow playlist removal");
     NSArray *plan=[model missingPlanForPlaylist:[playlist objectForKey:@"id"] format:@"136+140"];
     require([plan count]==2,@"Bulk deduplicates membership and skips failed quality");
     /* Keep the shared bulk-command regression independent of playlist UI. */

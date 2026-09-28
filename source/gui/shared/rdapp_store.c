@@ -80,7 +80,7 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
   }
   sqlite3_busy_timeout(s->db, 5000);
   p = prepare(s, "PRAGMA user_version");
-  if (!p || sqlite3_step(p) != SQLITE_ROW || sqlite3_column_int(p,0) > 7) {
+  if (!p || sqlite3_step(p) != SQLITE_ROW || sqlite3_column_int(p,0) > 8) {
     fprintf(stderr,"RetroDLP schema version check failed: error=%s code=%d\n",sqlite3_errmsg(s->db),sqlite3_extended_errcode(s->db));
     sqlite3_finalize(p); rdapp_store_close(s); return 0;
   }
@@ -122,6 +122,7 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
       (version<7 && !sql(s,"ALTER TABLE jobs ADD COLUMN enqueueDate INTEGER NOT NULL DEFAULT 0;"
         "ALTER TABLE jobs ADD COLUMN latestDownloadDate INTEGER;"
         "DROP INDEX IF EXISTS jobs_queue_visible;")) ||
+      (version<8 && !sql(s,"ALTER TABLE playlists ADD COLUMN removed INTEGER NOT NULL DEFAULT 0;")) ||
       !sql(s,"CREATE TABLE IF NOT EXISTS entry_thumbnails (playlist_id INTEGER NOT NULL,"
         " position INTEGER NOT NULL, thumbnail_index INTEGER NOT NULL, url TEXT NOT NULL,"
         " PRIMARY KEY(playlist_id,position,thumbnail_index),"
@@ -133,7 +134,7 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
         "CREATE INDEX IF NOT EXISTS jobs_video_id ON jobs(playlist_id,video_id,id);"
         "CREATE INDEX IF NOT EXISTS jobs_playlist_state ON jobs(playlist_id,state,id);"
         "CREATE INDEX IF NOT EXISTS entries_video_position ON entries(playlist_id,video_id,position);")) { rdapp_store_close(s); return 0; }
-  if((version<5 && !refresh_job_metadata(s,0)) || !sql(s,"PRAGMA user_version=7; COMMIT;")) {
+  if((version<5 && !refresh_job_metadata(s,0)) || !sql(s,"PRAGMA user_version=8; COMMIT;")) {
     rdapp_store_close(s); return 0;
   }
   *out = s; return 1;
@@ -227,21 +228,21 @@ static int query_parts(rdapp_query kind,int64_t key,const char *format,
   switch(kind) {
     case RDAPP_UNSUPPORTED_IDS:
       *fields="p.id";
-      *from="playlists p WHERE p.service_id<>'adhoc' AND NOT rdapp_can_sync(p.service_id)";
+      *from="playlists p WHERE p.removed=0 AND p.service_id<>'adhoc' AND NOT rdapp_can_sync(p.service_id)";
       *order="p.title COLLATE NOCASE,p.id"; break;
     case RDAPP_UNSUPPORTED_PLAYLISTS:
       *fields="p.*, (SELECT count(*) FROM entries e WHERE e.playlist_id=p.id) AS count";
-      *from="playlists p WHERE p.service_id<>'adhoc' AND NOT rdapp_can_sync(p.service_id)";
+      *from="playlists p WHERE p.removed=0 AND p.service_id<>'adhoc' AND NOT rdapp_can_sync(p.service_id)";
       *order="p.title COLLATE NOCASE,p.id"; break;
     case RDAPP_ADDED_IDS: case RDAPP_ACCOUNT_IDS:
       *fields="p.id";
-      *from=kind==RDAPP_ADDED_IDS?"playlists p WHERE p.source='added' AND rdapp_can_sync(p.service_id)":"playlists p WHERE p.source='account' AND rdapp_can_sync(p.service_id)";
+      *from=kind==RDAPP_ADDED_IDS?"playlists p WHERE p.removed=0 AND p.source='added' AND rdapp_can_sync(p.service_id)":"playlists p WHERE p.removed=0 AND p.source='account' AND rdapp_can_sync(p.service_id)";
       *order="p.title COLLATE NOCASE,p.id"; break;
     case RDAPP_PLAYLISTS: case RDAPP_ADDED_PLAYLISTS: case RDAPP_ACCOUNT_PLAYLISTS: case RDAPP_PLAYLIST: case RDAPP_PLAYLIST_INPUT:
       *fields="p.*, (SELECT count(*) FROM entries e WHERE e.playlist_id=p.id) AS count";
-      *from=kind==RDAPP_ADDED_PLAYLISTS?"playlists p WHERE p.source='added' AND rdapp_can_sync(p.service_id)":
-        (kind==RDAPP_ACCOUNT_PLAYLISTS?"playlists p WHERE p.source='account' AND rdapp_can_sync(p.service_id)":
-        (kind==RDAPP_PLAYLIST?"playlists p WHERE p.id=?1":(kind==RDAPP_PLAYLIST_INPUT?"playlists p WHERE p.service_id=?2":"playlists p WHERE 1")));
+      *from=kind==RDAPP_ADDED_PLAYLISTS?"playlists p WHERE p.removed=0 AND p.source='added' AND rdapp_can_sync(p.service_id)":
+        (kind==RDAPP_ACCOUNT_PLAYLISTS?"playlists p WHERE p.removed=0 AND p.source='account' AND rdapp_can_sync(p.service_id)":
+        (kind==RDAPP_PLAYLIST?"playlists p WHERE p.removed=0 AND p.id=?1":(kind==RDAPP_PLAYLIST_INPUT?"playlists p WHERE p.removed=0 AND p.service_id=?2":"playlists p WHERE p.removed=0")));
       *order="p.title COLLATE NOCASE,p.id"; break;
     case RDAPP_MISSING: case RDAPP_DOWNLOAD_CANDIDATES:
       *fields="e.*,j.id AS job_id,j.state,j.path";
@@ -422,7 +423,7 @@ int rdapp_store_snapshot(rdapp_store *s,const char *id,const char *title,const r
     }
   }
   if(!refresh_job_metadata(s,k)) goto rollback;
-  p=prepare(s,"UPDATE playlists SET synced_at=strftime('%s','now') WHERE id=?"); if(!p) goto rollback;
+  p=prepare(s,"UPDATE playlists SET removed=0, synced_at=strftime('%s','now') WHERE id=?"); if(!p) goto rollback;
   sqlite3_bind_int64(p,1,k); if(!done(s,p)) goto rollback;
   if(!sql(s,"COMMIT")) goto rollback;
   if(key) *key=k;
@@ -550,24 +551,15 @@ int rdapp_store_forget_file(rdapp_store *s,int64_t key) {
   return by_id(s,"UPDATE jobs SET state='removed',actual_format='',error='' WHERE id=? AND state<>'running'",key);
 }
 int rdapp_store_remove_playlist(rdapp_store *s,int64_t key,const char *root) {
-  sqlite3_stmt *p=prepare(s,"SELECT count(*) FROM jobs WHERE playlist_id=? AND state IN ('running','queued','complete')"); int blocked;
-  if(!p) return 0;
-  sqlite3_bind_int64(p,1,key); blocked=sqlite3_step(p)!=SQLITE_ROW || sqlite3_column_int(p,0)!=0; sqlite3_finalize(p);
-  if(blocked) return failure(s,"Cancel queued jobs and remove downloaded files before removing this playlist.");
-  /* Failed/cancelled jobs can retain mux inputs. Remove those before deleting
-     their ledger rows so no staging files become orphaned. */
-  p=prepare(s,"SELECT id FROM jobs WHERE playlist_id=?");
-  if(!p) return 0;
-  sqlite3_bind_int64(p,1,key);
-  {
-    int rc;
-    while((rc=sqlite3_step(p))==SQLITE_ROW) {
-      if(!rdapp_store_remove_file(s,sqlite3_column_int64(p,0),root)) { sqlite3_finalize(p); return 0; }
-    }
-    sqlite3_finalize(p); if(rc!=SQLITE_DONE) return failure(s,sqlite3_errmsg(s->db));
-  }
+  (void)root;
+  /* Removal is an empty membership snapshot plus a hidden playlist. Keep the
+     parent and every job intact, including failed jobs' retry files. */
   if(!sql(s,"BEGIN IMMEDIATE")) return 0;
-  if(by_id(s,"DELETE FROM jobs WHERE playlist_id=?",key) && by_id(s,"DELETE FROM playlists WHERE id=?",key) && sql(s,"COMMIT")) return 1;
+  if(!by_id(s,"UPDATE playlists SET removed=1 WHERE id=? AND service_id<>'adhoc'",key)) goto rollback;
+  if(sqlite3_changes(s->db)!=1) { failure(s,"Playlist cannot be removed"); goto rollback; }
+  if(!by_id(s,"DELETE FROM entries WHERE playlist_id=?",key)) goto rollback;
+  if(sql(s,"COMMIT")) return 1;
+rollback:
   sqlite3_exec(s->db,"ROLLBACK",NULL,NULL,NULL); return 0;
 }
 /* Stream valid UTF-8, escaping XML text or flattening M3U metadata lines. */
@@ -624,9 +616,10 @@ static void xspf_meta(FILE *f,const char *name,const char *value) {
 }
 int rdapp_store_export(rdapp_store *s,int64_t key,const char *root) {
   sqlite3_stmt *p; char dir[PATH_MAX],path[PATH_MAX],temp[PATH_MAX],legacy[PATH_MAX],legacy_temp[PATH_MAX]; FILE *f,*m; int fd,mfd,rc; struct stat st;
-  p=prepare(s,"SELECT directory,title,service_id,source FROM playlists WHERE id=?"); if(!p) return 0;
+  p=prepare(s,"SELECT directory,title,service_id,source,removed FROM playlists WHERE id=?"); if(!p) return 0;
   sqlite3_bind_int64(p,1,key);
   if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); return failure(s,"Playlist does not exist"); }
+  if(sqlite3_column_int(p,4)) { sqlite3_finalize(p); return 1; }
   rc=snprintf(dir,sizeof(dir),"%s/%s",root,sqlite3_column_text(p,0));
   if(rc<0 || (size_t)rc>=sizeof(dir) || !rdapp_make_directory(dir)) { sqlite3_finalize(p); return failure(s,"Cannot create playlist directory"); }
   if(snprintf(path,sizeof(path),"%s/Playlist.xspf",dir)>=(int)sizeof(path) ||
@@ -747,7 +740,7 @@ int rdapp_store_reconcile(rdapp_store *s,const char *root) {
   }
   sqlite3_finalize(p);
   if(!ok || rc!=SQLITE_DONE) return 0;
-  p=prepare(s,"SELECT id FROM playlists");
+  p=prepare(s,"SELECT id FROM playlists WHERE removed=0");
   if(!p) return 0;
   while((rc=sqlite3_step(p))==SQLITE_ROW) {
     if(!rdapp_store_export(s,sqlite3_column_int64(p,0),root)) { ok=0; break; }
