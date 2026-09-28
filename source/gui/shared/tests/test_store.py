@@ -203,6 +203,7 @@ class StoreTests(unittest.TestCase):
                          [('ABCDEFGHIJK','Renamed ad-hoc','0'),('LMNOPQRSTUV','Second ad-hoc','1')])
         self.assertEqual(self.count(14,video=b'adhoc',key=0),1)
         self.assertEqual(self.page(14,video=b'adhoc',key=0)[0]['source'],'system')
+        self.assertEqual(self.page(14,video=b'adhoc',key=0)[0]['title'],'Added Videos')
         self.assertEqual(self.count(4,key=0),1)  # Only the ordinary fixture playlist.
         self.assertEqual(self.count(5,key=0),0)
         self.assertEqual(self.count(2,key=adhoc.value),1)

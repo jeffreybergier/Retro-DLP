@@ -134,7 +134,8 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
         "CREATE INDEX IF NOT EXISTS jobs_video_id ON jobs(playlist_id,video_id,id);"
         "CREATE INDEX IF NOT EXISTS jobs_playlist_state ON jobs(playlist_id,state,id);"
         "CREATE INDEX IF NOT EXISTS entries_video_position ON entries(playlist_id,video_id,position);")) { rdapp_store_close(s); return 0; }
-  if((version<5 && !refresh_job_metadata(s,0)) || !sql(s,"PRAGMA user_version=8; COMMIT;")) {
+  if((version<5 && !refresh_job_metadata(s,0)) || !sql(s,"UPDATE playlists SET title='Added Videos' WHERE service_id='adhoc' AND title<>'Added Videos';"
+    "PRAGMA user_version=8; COMMIT;")) {
     rdapp_store_close(s); return 0;
   }
   *out = s; return 1;
@@ -436,7 +437,7 @@ static int add_adhoc(rdapp_store *s,const char *video_id,const char *title,const
   if(!video_id || strlen(video_id)!=11 || strspn(video_id,"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")!=11 || (title && !*title))
     return failure(s,"Invalid video");
   if(!sql(s,"BEGIN IMMEDIATE")) return 0;
-  if(!rdapp_store_playlist(s,RDAPP_ADHOC_PLAYLIST_ID,"Ad-Hoc",&k)) goto rollback;
+  if(!rdapp_store_playlist(s,RDAPP_ADHOC_PLAYLIST_ID,"Added Videos",&k)) goto rollback;
   p=prepare(s,"UPDATE playlists SET source='system', synced_at=strftime('%s','now') WHERE id=?"); if(!p) goto rollback;
   sqlite3_bind_int64(p,1,k); if(!done(s,p)) goto rollback;
   p=prepare(s,title?"INSERT OR REPLACE INTO videos(id,title,playback_seconds) VALUES(?1,?2,coalesce((SELECT playback_seconds FROM videos WHERE id=?1),0))":"INSERT OR IGNORE INTO videos(id,title) VALUES(?,?)"); if(!p) goto rollback;

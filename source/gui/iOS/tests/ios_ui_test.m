@@ -1013,7 +1013,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     rdapp_store_close(store);
     root=[self show:RDLPScreenLibrary playlist:nil video:nil];
     NSArray *systemRows=[[sections(root) objectAtIndex:0] objectForKey:@"rows"];
-    require([systemRows count]==2 && [[[systemRows objectAtIndex:1] objectForKey:@"title"] isEqualToString:@"Ad-Hoc"],@"Ad-Hoc appears under System");
+    require([systemRows count]==2 && [[[systemRows objectAtIndex:1] objectForKey:@"title"] isEqualToString:@"Added Videos"],@"Added Videos appears under System");
     NSDictionary *adhoc=[library_ adhocPlaylist];
     RDLPPlaylistViewController *adhocView=[self show:RDLPScreenPlaylist playlist:adhoc video:nil];
     require([[[adhocView navigationItem] rightBarButtonItem] isEnabled] && [[[adhocView navigationItem] rightBarButtonItem] image]!=nil && [[[adhocView navigationItem] rightBarButtonItem] action]==@selector(addVideo:),@"Ad-Hoc has an enabled Add Video plus button");

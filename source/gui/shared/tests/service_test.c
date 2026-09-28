@@ -117,7 +117,7 @@ int main(int argc,char **argv) {
     memset(&local,0,sizeof(local)); local.download_root=argv[1];
     memset(&added,0,sizeof(added)); added.format="137+140"; /* Unavailable download preference must not block adding metadata. */
     require(rdapp_service_run(s,&local,RDAPP_ADD_VIDEO,"https://youtu.be/YE7VzlLtp-4",&added,message,sizeof(message)),message);
-    assert(f.requests==before && strstr(message,"Ad-Hoc")); /* Adding never resolves or fetches metadata. */
+    assert(f.requests==before && strstr(message,"Added Videos")); /* Adding never resolves or fetches metadata. */
     claim(s,&c); assert(!strcmp(c.format,"137+140") && !strcmp(c.video,"YE7VzlLtp-4") && c.job.playlist_id!=key);
     assert(rdapp_service_run(s,&config,RDAPP_DOWNLOAD,NULL,&c.job,message,sizeof(message))==RDLP_ERROR_FORMAT_UNAVAILABLE);
     /* A supported quality must download through the normal queue after Add,

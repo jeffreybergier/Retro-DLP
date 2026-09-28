@@ -606,7 +606,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 }
 - (void)removePlaylist:(NSDictionary *)playlist;
 {
-  if(![self canRemovePlaylist:playlist]) { [self reportError:@"Couldn’t remove playlist" detail:@"Wait for playlist operations to finish. Ad-Hoc cannot be removed."]; return; }
+  if(![self canRemovePlaylist:playlist]) { [self reportError:@"Couldn’t remove playlist" detail:@"Wait for playlist operations to finish. Added Videos cannot be removed."]; return; }
   [lock_ lock]; int ok=rdapp_store_remove_playlist(store_,identifier([playlist objectForKey:@"id"]),[root_ fileSystemRepresentation]);
   NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy]; [lock_ unlock];
   if(ok) {

@@ -84,7 +84,7 @@ static rdlp_error_code add_video(rdapp_store *s,const rdapp_service_config *c,
   if(!job || !rdlp_format_expression_valid(job->format)) return RDLP_ERROR_INVALID_ARGUMENT;
   code=rdlp_parse_video_id(input,video_id,error); if(code!=RDLP_OK) return code;
   lock_store(c); ok=rdapp_store_add_adhoc_download(s,video_id,NULL,job->format,NULL); unlock_store(c);
-  if(ok) snprintf(message,cap,"Queued %s in Ad-Hoc",video_id);
+  if(ok) snprintf(message,cap,"Queued %s in Added Videos",video_id);
   else { snprintf(error->message,sizeof(error->message),"%s",rdapp_store_error(s)); code=RDLP_ERROR_STORAGE_IO; }
   return code;
 }

@@ -109,7 +109,7 @@
     [rows addObject:[self row:@"All Downloads" detail:@"" action:@"downloads"]];
     NSDictionary *adhoc=[library_ adhocPlaylist];
     if(adhoc) {
-      NSMutableDictionary *row=[self row:@"Ad-Hoc" detail:[NSString stringWithFormat:@"%@ videos",[adhoc objectForKey:@"count"]] action:@"playlist"];
+      NSMutableDictionary *row=[self row:@"Added Videos" detail:[NSString stringWithFormat:@"%@ videos",[adhoc objectForKey:@"count"]] action:@"playlist"];
       [row setObject:adhoc forKey:@"playlist"]; [rows addObject:row];
     }
     [sections addObject:[self section:@"System" rows:rows]];
