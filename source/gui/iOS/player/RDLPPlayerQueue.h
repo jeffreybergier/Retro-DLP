@@ -28,10 +28,10 @@ extern NSString *const RDLPPlayerQueueDidChangeNotification;
 @property(nonatomic,readonly) BOOL canSkipToPreviousItem;
 @property(nonatomic,readonly) BOOL canSkipToNextItem;
 
-/** Default NO. Disables video tracks on current and upcoming file-based items
- * as their tracks load, without pausing audio or seeking. Restores only the
- * video tracks this queue disabled when switched off. Reflect this value in
- * RDLPPlayerViewController.audioOnly to detach its video presentation too. */
+/** Default NO. Session presentation preference, preserved across item changes.
+ * Experimental layer-only audio mode leaves all track enablement untouched.
+ * Reflect this value in RDLPPlayerViewController.audioOnly to remove its video
+ * layer. Changing this preference does not pause or seek the player. */
 @property(nonatomic,assign,getter=isAudioOnly) BOOL audioOnly;
 
 /** Replaces the playlist and prepares the chosen entry, paused at its start.

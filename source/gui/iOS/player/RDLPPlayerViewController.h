@@ -14,7 +14,7 @@
  * Set the inherited title property to the current video's display title.
  *
  * A persistent playback owner (such as RDLPPlayerQueue) retains the player
- * independently and manages its playlist and audio-only track selection.
+ * independently and manages its playlist and audio-only preference.
  * Audio-session setup, remote controls, Now Playing metadata, and saved
  * progress remain app responsibilities. This view controller
  * supplies video presentation, play/pause, scrubbing, and double-tap fit/fill.
@@ -66,8 +66,8 @@
  * presentation while visible
  * and in the foreground. Neither value changes the player's time or rate.
  *
- * This is presentation state: the owner must also disable/enable video tracks
- * on the current and subsequent items. Setting it does not call the delegate.
+ * This is presentation state; video track enablement remains unchanged.
+ * Setting it does not call the delegate.
  * The Audio Only button requests a change through the delegate below; the
  * owner applies the playback change and updates this property. Backgrounding
  * detaches presentation independently and does not change this preference.
@@ -106,7 +106,7 @@
 
 /**
  * Requests the new mode. The owner may decline by leaving audioOnly unchanged.
- * Apply track selection in the persistent playback owner so it also takes
+ * Store the preference in the persistent playback owner so it also takes
  * effect when the queue advances while this view controller is dismissed.
  */
 - (void)playerViewController:(RDLPPlayerViewController *)playerViewController

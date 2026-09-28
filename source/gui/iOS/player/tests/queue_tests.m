@@ -93,7 +93,7 @@ static void Check(BOOL value, NSString *message) {
   BOOL videoFound=NO, audioFound=NO;
   for(AVPlayerItemTrack *track in [item tracks]) {
     if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo]) {
-      videoFound=YES; Check(![track isEnabled],@"Video track disabled on this playlist entry");
+      videoFound=YES; Check([track isEnabled],@"Audio-only mode leaves video enabled on this playlist entry");
     }
     if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeAudio]) {
       audioFound=YES; Check([track isEnabled],@"Audio remains enabled");
@@ -114,7 +114,7 @@ static void Check(BOOL value, NSString *message) {
       {
         [_queue setAudioOnly:NO];
         for(AVPlayerItemTrack *track in [item tracks])
-          if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo]) Check([track isEnabled],@"Video restored on every entry, including after native advancement");
+          if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo]) Check([track isEnabled],@"Video remains enabled on every entry, including after native advancement");
         [_queue setAudioOnly:YES];
       }
       double duration=CMTimeGetSeconds([item duration]);

@@ -3,17 +3,15 @@
 NSString *const RDLPPlayerQueueDidChangeNotification=@"RDLPPlayerQueueDidChangeNotification";
 static void *RDLPQueueObservation=&RDLPQueueObservation;
 
-/* Private bookkeeping for at most two loaded entries. Track IDs survive
- * replacement of AVPlayerItemTrack objects during preparation/advancement. */
+/* Private bookkeeping for at most two loaded entries. */
 @interface RDLPQueuedItem : NSObject {
 @public
   AVPlayerItem *item;
   NSUInteger index;
-  NSMutableSet *disabledVideoTrackIDs;
 }
 @end
 @implementation RDLPQueuedItem
-- (void)dealloc { [item release]; [disabledVideoTrackIDs release]; [super dealloc]; }
+- (void)dealloc { [item release]; [super dealloc]; }
 @end
 
 @interface RDLPPlayerQueue () {
@@ -24,7 +22,6 @@ static void *RDLPQueueObservation=&RDLPQueueObservation;
 - (void)appendItemAtIndex:(NSUInteger)index;
 - (void)prepareIndex:(NSUInteger)index rate:(float)rate;
 - (void)synchronize;
-- (void)applyAudioMode;
 - (void)publishChange;
 @end
 
@@ -81,8 +78,9 @@ static void *RDLPQueueObservation=&RDLPQueueObservation;
 - (void)removeAllItems { [self setPlaylist:nil startingAtIndex:0]; }
 - (void)setAudioOnly:(BOOL)audioOnly {
   if(_audioOnly==audioOnly) return;
+  /* Experiment: leave track enablement untouched, including on preloaded
+   * items. The UI removes its video layer while this mode is enabled. */
   _audioOnly=audioOnly;
-  [self applyAudioMode];
   [self publishChange];
 }
 
@@ -97,7 +95,6 @@ static void *RDLPQueueObservation=&RDLPQueueObservation;
     if(index+1<[_playlist count]) [self appendItemAtIndex:index+1];
   }
   [_player setActionAtItemEnd:[self canSkipToNextItem]?AVPlayerActionAtItemEndAdvance:AVPlayerActionAtItemEndPause];
-  [self applyAudioMode];
   if(index!=NSNotFound) [_player setRate:rate];
   _changing=NO;
   [self publishChange];
@@ -106,7 +103,6 @@ static void *RDLPQueueObservation=&RDLPQueueObservation;
   RDLPQueuedItem *entry=[[RDLPQueuedItem alloc] init];
   entry->index=index;
   entry->item=[[AVPlayerItem alloc] initWithURL:[_playlist objectAtIndex:index]];
-  entry->disabledVideoTrackIDs=[[NSMutableSet alloc] init];
   [_entries addObject:entry];
   [entry->item addObserver:self forKeyPath:@"status" options:0 context:RDLPQueueObservation];
   [entry->item addObserver:self forKeyPath:@"tracks" options:0 context:RDLPQueueObservation];
@@ -131,29 +127,8 @@ static void *RDLPQueueObservation=&RDLPQueueObservation;
   if(selected!=NSNotFound && [_entries count]<2 && [self canSkipToNextItem])
     [self appendItemAtIndex:selected+1];
   [_player setActionAtItemEnd:[self canSkipToNextItem]?AVPlayerActionAtItemEndAdvance:AVPlayerActionAtItemEndPause];
-  [self applyAudioMode];
   _changing=NO;
   if(changed) [self publishChange];
-}
-- (void)applyAudioMode {
-  for(RDLPQueuedItem *entry in _entries) {
-    for(AVPlayerItemTrack *track in [entry->item tracks]) {
-      AVAssetTrack *assetTrack=[track assetTrack];
-      if(![[assetTrack mediaType] isEqualToString:AVMediaTypeVideo]) continue;
-      NSNumber *trackID=[NSNumber numberWithInt:[assetTrack trackID]];
-      if(_audioOnly) {
-        /* A prepared/replacement track may already be disabled. Remember the
-         * source's default video as well as tracks we disabled explicitly. */
-        if([track isEnabled] || [assetTrack isEnabled])
-          [entry->disabledVideoTrackIDs addObject:trackID];
-        if([track isEnabled]) [track setEnabled:NO];
-      } else if([entry->disabledVideoTrackIDs containsObject:trackID] && ![track isEnabled]) {
-        [track setEnabled:YES];
-      }
-    }
-    /* Keep IDs until the item leaves the queue: tracks may change again after
-     * returning to video mode, and the new objects also need restoration. */
-  }
 }
 - (void)observeValueForKeyPath:(NSString *)key ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
   if(context!=RDLPQueueObservation) { [super observeValueForKeyPath:key ofObject:object change:change context:context]; return; }

@@ -179,7 +179,7 @@ static void testIOSPlaybackProgress(NSString *directory) {
   [controller playerViewController:controller.playerViewController didRequestAudioOnly:YES];
   playbackRequire(controller.playerViewController.audioOnly && controller.queue.audioOnly && controller.player.rate==1,@"Audio Only changes presentation and queue without pausing");
   for(AVPlayerItemTrack *track in controller.player.currentItem.tracks)
-    if([track.assetTrack.mediaType isEqualToString:AVMediaTypeVideo]) playbackRequire(!track.enabled,@"Audio Only disables video tracks");
+    if([track.assetTrack.mediaType isEqualToString:AVMediaTypeVideo]) playbackRequire([track isEnabled],@"Audio Only leaves video tracks enabled");
   [controller playerViewController:controller.playerViewController didRequestAudioOnly:NO];
   [controller.player pause];
   double positions[]={50,60,60.1,539.9,540,550};
@@ -278,7 +278,7 @@ static void testIOSPlaylistPlayback(NSString *directory) {
     [library playbackSecondsForVideo:@"AAAAAAAAAAA"]==120,@"Completion resets only the outgoing video's bookmark");
   playbackRequire(controller.playerViewController.audioOnly && controller.queue.audioOnly,@"Audio-only mode survives item transitions");
   for(AVPlayerItemTrack *track in controller.player.currentItem.tracks)
-    if([track.assetTrack.mediaType isEqualToString:AVMediaTypeVideo]) playbackRequire(!track.enabled,@"Next item's video tracks stay disabled");
+    if([track.assetTrack.mediaType isEqualToString:AVMediaTypeVideo]) playbackRequire([track isEnabled],@"Next item's video tracks stay enabled");
   [center postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
   playbackRequire(![[controller queue] isAudioOnly] && ![[controller playerViewController] isAudioOnly] &&
     [[controller player] rate]==1,@"Foreground restores video after inactive playlist advancement without pausing");
