@@ -77,10 +77,10 @@
 /**
  * Both default NO. The owner updates these as the playlist position changes.
  * These flags enable playlist navigation for short content when the delegate
- * implements the corresponding request. Back restarts short content after
+ * implements the corresponding request. The owner restarts short content after
  * five seconds, even without a previous item. At five seconds or earlier it
- * requests the previous item. Forward requests the next item.
- * Long content instead seeks back 30 or forward 60 seconds, regardless of
+ * selects the previous item. Forward selects the next item.
+ * For long content the owner seeks back 30 or forward 60 seconds, regardless of
  * playlist neighbors. Seeks clamp to the item bounds and preserve play/pause.
  */
 @property(nonatomic,assign) BOOL canSkipToPreviousItem;
@@ -101,8 +101,9 @@
 @protocol RDLPPlayerViewControllerDelegate <NSObject>
 @optional
 
-- (void)playerViewControllerDidRequestPreviousItem:(RDLPPlayerViewController *)playerViewController;
-- (void)playerViewControllerDidRequestNextItem:(RDLPPlayerViewController *)playerViewController;
+/** Semantic button actions; the owner applies the content-dependent rules above. */
+- (void)playerViewControllerDidRequestBack:(RDLPPlayerViewController *)playerViewController;
+- (void)playerViewControllerDidRequestForward:(RDLPPlayerViewController *)playerViewController;
 
 /**
  * Requests the new mode. The owner may decline by leaving audioOnly unchanged.

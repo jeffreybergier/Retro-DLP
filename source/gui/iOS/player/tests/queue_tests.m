@@ -80,10 +80,10 @@ static void Check(BOOL value, NSString *message) {
   [_view setCanSkipToNextItem:[_queue canSkipToNextItem]];
   [_view setAudioOnly:[_queue isAudioOnly]];
 }
-- (void)playerViewControllerDidRequestPreviousItem:(RDLPPlayerViewController *)controller {
+- (void)playerViewControllerDidRequestBack:(RDLPPlayerViewController *)controller {
   (void)controller; [_queue skipToPreviousItem];
 }
-- (void)playerViewControllerDidRequestNextItem:(RDLPPlayerViewController *)controller {
+- (void)playerViewControllerDidRequestForward:(RDLPPlayerViewController *)controller {
   (void)controller; [_queue skipToNextItem];
 }
 - (void)playerViewController:(RDLPPlayerViewController *)controller didRequestAudioOnly:(BOOL)audioOnly {

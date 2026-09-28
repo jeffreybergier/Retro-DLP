@@ -32,6 +32,7 @@ static NSArray *RDLPDownloadItemKeys(void) {
 - (void)queueChanged:(NSNotification *)notification;
 - (void)unobserveItem;
 - (void)selectIndex:(NSUInteger)index;
+- (void)navigateBackward:(BOOL)backward;
 @end
 
 @implementation RDLPDownloadedPlayerViewController
@@ -286,11 +287,32 @@ static NSArray *RDLPDownloadItemKeys(void) {
   [_queue selectItemAtIndex:index];
   _selecting=NO;
 }
-- (void)playerViewControllerDidRequestPreviousItem:(RDLPPlayerViewController *)controller {
-  (void)controller; if([_queue canSkipToPreviousItem]) [self selectIndex:[_queue currentIndex]-1];
+/* Both on-screen buttons and system remote controls use these same rules. */
+- (void)navigateBackward:(BOOL)backward {
+  if(_stopped) return;
+  AVPlayer *player=[self player];
+  AVPlayerItem *item=[player currentItem];
+  if(!item) return;
+  double duration=CMTimeGetSeconds([item duration]);
+  double seconds=CMTimeGetSeconds([item currentTime]);
+  BOOL longContent=RDLPPlayerContentIsLong(duration)!=0;
+  if(longContent || (backward && isfinite(seconds) && seconds>5)) {
+    if([item status]!=AVPlayerItemStatusReadyToPlay || [player status]==AVPlayerStatusFailed ||
+       !isfinite(seconds) || !isfinite(duration) || duration<=0) return;
+    double target=longContent?seconds+(backward?-30:60):0;
+    [player seekToTime:CMTimeMakeWithSeconds(MAX(0,MIN(duration,target)),600)
+      toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+  } else if(backward) {
+    if([_queue canSkipToPreviousItem]) [self selectIndex:[_queue currentIndex]-1];
+  } else {
+    if([_queue canSkipToNextItem]) [self selectIndex:[_queue currentIndex]+1];
+  }
 }
-- (void)playerViewControllerDidRequestNextItem:(RDLPPlayerViewController *)controller {
-  (void)controller; if([_queue canSkipToNextItem]) [self selectIndex:[_queue currentIndex]+1];
+- (void)playerViewControllerDidRequestBack:(RDLPPlayerViewController *)controller {
+  (void)controller; [self navigateBackward:YES];
+}
+- (void)playerViewControllerDidRequestForward:(RDLPPlayerViewController *)controller {
+  (void)controller; [self navigateBackward:NO];
 }
 - (void)playerViewControllerDidRequestDismissal:(RDLPPlayerViewController *)controller {
   (void)controller; [self stop];
@@ -317,9 +339,9 @@ static NSArray *RDLPDownloadItemKeys(void) {
     case UIEventSubtypeRemoteControlStop:
       _wantsPlay=NO; _resumeAfterInterruption=NO; [self saveProgress]; [[self player] pause]; break;
     case UIEventSubtypeRemoteControlNextTrack:
-      if([_queue canSkipToNextItem]) [self selectIndex:[_queue currentIndex]+1]; break;
+      [self navigateBackward:NO]; break;
     case UIEventSubtypeRemoteControlPreviousTrack:
-      if([_queue canSkipToPreviousItem]) [self selectIndex:[_queue currentIndex]-1]; break;
+      [self navigateBackward:YES]; break;
     default: break;
   }
 }

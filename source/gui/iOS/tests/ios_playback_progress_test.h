@@ -4,6 +4,7 @@
 @interface RDLPDownloadedPlayerViewController (Testing)
 - (void)saveProgress;
 - (void)updateNowPlaying;
+- (void)selectIndex:(NSUInteger)index;
 @end
 @interface RDLPPlaybackTestEvent : UIEvent { UIEventSubtype _subtype; }
 - (id)initWithSubtype:(UIEventSubtype)subtype;
@@ -119,6 +120,31 @@ static void playbackSeek(AVPlayer *player,double seconds) {
   while(!done && [deadline timeIntervalSinceNow]>0) playbackPump();
   playbackRequire(done,@"Fixture seek completes");
 }
+/* Exercise the UI delegate and remote-event entry points with identical positions.
+ * The standalone UI tests separately verify that button taps invoke these delegates. */
+static void playbackCheckNavigation(RDLPDownloadedPlayerViewController *controller,BOOL longContent) {
+  AVPlayer *player=[controller player];
+  [player pause];
+  double positions[]={100,100,10,590};
+  double targets[]={70,160,0,600};
+  for(NSUInteger route=0;route<2;++route) {
+    if(route) [[NSNotificationCenter defaultCenter] postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+    for(NSUInteger i=0;i<(longContent?4:1);++i) {
+      playbackSeek(player,longContent?positions[i]:6);
+      BOOL backward=!longContent || i%2==0;
+      if(route) playbackRemote(controller,backward?UIEventSubtypeRemoteControlPreviousTrack:UIEventSubtypeRemoteControlNextTrack);
+      else if(backward) [controller playerViewControllerDidRequestBack:[controller playerViewController]];
+      else [controller playerViewControllerDidRequestForward:[controller playerViewController]];
+      double target=longContent?targets[i]:0;
+      NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:5];
+      while(fabs(CMTimeGetSeconds([player currentTime])-target)>0.1 && [deadline timeIntervalSinceNow]>0) playbackPump();
+      playbackRequire(fabs(CMTimeGetSeconds([player currentTime])-target)<0.1 && [[controller queue] currentIndex]==0,
+        @"UI and inactive remote navigation share restart, time jumps, and clamping");
+      playbackRequire([player rate]==0,@"Navigation leaves paused playback paused");
+    }
+    if(route) [[NSNotificationCenter defaultCenter] postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+  }
+}
 static RDLPDownloadedPlayerViewController *playbackControllerWithResource(RDLPPlaybackTestLibrary *library,NSDictionary *job,NSString *resource) {
   NSURL *URL=[[NSBundle mainBundle] URLForResource:resource withExtension:@"mp4"];
   RDLPDownloadedPlayerViewController *controller=[[RDLPDownloadedPlayerViewController alloc]
@@ -146,7 +172,9 @@ static void testIOSPlaybackProgress(NSString *directory) {
   playbackRequire(controller.queue.playlist.count==1 && controller.queue.currentIndex==0 &&
     !controller.queue.canSkipToNextItem && !controller.queue.canSkipToPreviousItem,@"A tap owns exactly one queue item");
   playbackRequire(controller.player.rate==1 && fabs(CMTimeGetSeconds(controller.player.currentTime)-120)<1,@"Opening restores the bookmark and starts playback");
-  playbackSeek(controller.player,200); [controller saveProgress];
+  playbackCheckNavigation(controller,YES);
+  playbackSeek([controller player],200);
+  [[controller player] play]; [controller saveProgress];
   playbackRequire(fabs([library playbackSecondsForVideo:video]-200)<1,@"Foreground playback saves its actual position");
   [controller.player pause];
   NSUInteger writes=library.writes;
@@ -217,6 +245,7 @@ static void testIOSPlaybackProgress(NSString *directory) {
   [[controller player] pause];
   [controller saveProgress];
   playbackRequire([library playbackSecondsForVideo:video]==0,@"Short content clears its old bookmark");
+  playbackCheckNavigation(controller,NO);
   NSUInteger shortWrites=[library writes];
   playbackSeek([controller player],25); [controller saveProgress];
   [controller playerViewController:[controller playerViewController] didRequestAudioOnly:YES];
@@ -250,7 +279,7 @@ static void testIOSPlaylistPlayback(NSString *directory) {
     fabs(CMTimeGetSeconds(controller.player.currentTime)-240)<1,@"Playlist snapshot starts at the tapped entry's bookmark and autoplays");
   [controller.player pause]; playbackSeek(controller.player,300);
   AVPlayerItem *old=[controller.player.currentItem retain];
-  playbackRemote(controller,UIEventSubtypeRemoteControlNextTrack); playbackWait(controller);
+  [controller selectIndex:2]; playbackWait(controller);
   playbackRequire(controller.queue.currentIndex==2 && !controller.playerViewController.canSkipToNextItem && controller.player.rate==0 &&
     fabs(CMTimeGetSeconds(controller.player.currentTime)-360)<0.1 &&
     fabs([library playbackSecondsForVideo:@"BBBBBBBBBBB"]-300)<0.1,@"Next flushes the outgoing seek and restores the next bookmark while paused");
@@ -259,11 +288,11 @@ static void testIOSPlaylistPlayback(NSString *directory) {
   [center postNotificationName:AVPlayerItemTimeJumpedNotification object:old];
   [old release];
   playbackRequire(fabs([library playbackSecondsForVideo:@"CCCCCCCCCCC"]-360)<0.1,@"Late outgoing-item events cannot overwrite the new bookmark");
-  playbackRemote(controller,UIEventSubtypeRemoteControlPreviousTrack); playbackWait(controller);
+  [controller selectIndex:1]; playbackWait(controller);
   playbackRequire(controller.queue.currentIndex==1 && fabs(CMTimeGetSeconds(controller.player.currentTime)-300)<0.1,@"Previous restores the outgoing entry's newly saved position");
   /* A second skip can arrive while the first item's resume seek is in flight. */
-  playbackRemote(controller,UIEventSubtypeRemoteControlNextTrack);
-  playbackRemote(controller,UIEventSubtypeRemoteControlPreviousTrack); playbackWait(controller);
+  [controller selectIndex:2];
+  [controller selectIndex:1]; playbackWait(controller);
   playbackRequire(controller.queue.currentIndex==1 && controller.player.rate==0 &&
     fabs(CMTimeGetSeconds(controller.player.currentTime)-300)<0.1,@"Rapid navigation ignores stale seek completions");
   [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
@@ -297,6 +326,32 @@ static void testIOSPlaylistPlayback(NSString *directory) {
   while(controller.player.rate!=0 && [deadline timeIntervalSinceNow]>0) playbackPump();
   playbackRequire(controller.queue.currentIndex==2 && controller.player.rate==0 &&
     [library playbackSecondsForVideo:@"CCCCCCCCCCC"]==0,@"Final item stops at the end without wrapping");
+  [controller stop]; [controller release];
+  URL=[[NSBundle mainBundle] URLForResource:@"playback-fixture" withExtension:@"mp4"];
+  for(NSString *video in [NSArray arrayWithObjects:@"AAAAAAAAAAA",@"BBBBBBBBBBB",@"CCCCCCCCCCC",nil])
+    [jobs addObject:[NSDictionary dictionaryWithObject:video forKey:@"video_id"]];
+  controller=[[RDLPDownloadedPlayerViewController alloc] initWithLibrary:(RDLPLibrary *)library
+    jobs:jobs URLs:[NSArray arrayWithObjects:URL,URL,URL,nil] startingAtIndex:1];
+  [controller viewWillAppear:NO]; [controller viewDidAppear:NO]; playbackWait(controller);
+  [[controller player] pause];
+  for(NSUInteger route=0;route<2;++route) {
+    if(route) [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+    for(NSNumber *position in [NSArray arrayWithObjects:@4.9,@5,@5.1,nil]) {
+      [controller selectIndex:1]; playbackWait(controller);
+      playbackSeek([controller player],[position doubleValue]);
+      if(route) playbackRemote(controller,UIEventSubtypeRemoteControlPreviousTrack);
+      else [controller playerViewControllerDidRequestBack:[controller playerViewController]];
+      playbackWait(controller);
+      playbackRequire([[controller queue] currentIndex]==([position doubleValue]>5?1:0),
+        @"Both routes restart after five seconds and select the previous short track otherwise");
+    }
+    [controller selectIndex:1]; playbackWait(controller);
+    if(route) playbackRemote(controller,UIEventSubtypeRemoteControlNextTrack);
+    else [controller playerViewControllerDidRequestForward:[controller playerViewController]];
+    playbackWait(controller);
+    playbackRequire([[controller queue] currentIndex]==2,@"Both routes select the next short track");
+    if(route) [center postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+  }
   [controller stop]; [controller release]; [library release];
   [center postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
 }

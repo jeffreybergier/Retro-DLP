@@ -287,11 +287,12 @@ static NSUInteger controllersReleased;
   [_controller performSelector:@selector(refreshTime)];
   Require([back isEnabled],@"First short item can restart after five seconds");
   [_controller performSelector:@selector(buttonPressed:) withObject:back];
-  Require(CMTimeGetSeconds(_queue->requestedTime)==0 && _previous==previousRequests+2,@"Short back restarts instead of selecting previous");
-  [_queue completeSeek:YES];
+  Require(_previous==previousRequests+3,@"Short restart is delegated to the playback owner");
+  navigationItem->testTime=kCMTimeZero;
+  [_controller performSelector:@selector(refreshTime)];
   Require(![back isEnabled],@"At the start, back is disabled without a previous item");
   [_controller performSelector:@selector(buttonPressed:) withObject:forward];
-  Require(_next==nextRequests+1,@"Short forward still requests next");
+  Require(_next==nextRequests+1,@"Short forward is delegated to the playback owner");
 
   navigationItem->useTestDuration=YES; navigationItem->testDuration=CMTimeMake(600,1);
   navigationItem->testTime=CMTimeMake(100,1);
@@ -303,29 +304,15 @@ static NSUInteger controllersReleased;
   Require([[back accessibilityLabel] isEqualToString:@"Back 30 seconds"] &&
     [[forward accessibilityLabel] isEqualToString:@"Forward 60 seconds"],@"Time jumps have descriptive accessibility labels");
   [_controller performSelector:@selector(buttonPressed:) withObject:back];
-  Require(CMTimeGetSeconds(_queue->requestedTime)==70,@"Long back seeks thirty seconds");
-  [_queue completeSeek:YES];
   [_controller performSelector:@selector(buttonPressed:) withObject:forward];
-  [_controller performSelector:@selector(buttonPressed:) withObject:forward];
-  [_queue completeSeek:YES];
-  Require(CMTimeGetSeconds(_queue->requestedTime)==190,@"Rapid forward taps accumulate from the pending destination");
-  [_queue completeSeek:YES];
-  navigationItem->testTime=CMTimeMake(10,1);
-  [_controller performSelector:@selector(buttonPressed:) withObject:back];
-  Require(CMTimeGetSeconds(_queue->requestedTime)==0,@"Backward jump clamps at the start");
-  [_queue completeSeek:YES];
-  navigationItem->testTime=CMTimeMake(590,1);
-  [_controller performSelector:@selector(buttonPressed:) withObject:forward];
-  Require(CMTimeGetSeconds(_queue->requestedTime)==600,@"Forward jump clamps at the end");
-  [_queue completeSeek:YES];
-  Require(_previous==previousRequests+2 && _next==nextRequests+1 &&
-    _queue->playCalls==0 && _queue->pauseCalls==0,@"Time jumps preserve item selection and playback state");
+  Require(_previous==previousRequests+4 && _next==nextRequests+2,
+    @"Long-content buttons delegate both actions even without playlist neighbors");
   navigationItem->useTestDuration=NO; navigationItem->useTestTime=NO;
   _queue->holdSeeks=NO;
   [_controller performSelector:@selector(refreshTime)];
   Require([back image]==[RDLPUIKit playerIcon:RDLPPlayerIconPrevious] &&
     [forward image]==[RDLPUIKit playerIcon:RDLPPlayerIconNext],@"Short content restores the original icons");
-  [self pass:@"Duration-sensitive navigation, five-second boundary, clamping, and rapid time jumps"];
+  [self pass:@"Duration-sensitive icons, availability, and delegated navigation"];
 
   NSNotificationCenter *center=[NSNotificationCenter defaultCenter];
   [center postNotificationName:UIApplicationWillResignActiveNotification object:[UIApplication sharedApplication]];
@@ -362,8 +349,8 @@ static NSUInteger controllersReleased;
   [text setEditable:NO]; [text setText:_report]; [text setFont:[UIFont systemFontOfSize:16]];
   [_window addSubview:text]; [text release];
 }
-- (void)playerViewControllerDidRequestPreviousItem:(RDLPPlayerViewController *)controller { (void)controller; _previous++; }
-- (void)playerViewControllerDidRequestNextItem:(RDLPPlayerViewController *)controller { (void)controller; _next++; }
+- (void)playerViewControllerDidRequestBack:(RDLPPlayerViewController *)controller { (void)controller; _previous++; }
+- (void)playerViewControllerDidRequestForward:(RDLPPlayerViewController *)controller { (void)controller; _next++; }
 - (void)playerViewController:(RDLPPlayerViewController *)controller didRequestAudioOnly:(BOOL)audioOnly {
   (void)controller; _audio++; _requestedAudioOnly=audioOnly;
 }
