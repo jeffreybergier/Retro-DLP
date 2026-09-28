@@ -128,7 +128,7 @@ static rdlp_error_code download_job(rdapp_store *s,const rdapp_service_config *c
   if(c->change_callback) c->change_callback(c->status_context);
   if(c->status_callback) {
     char status[1024];
-    snprintf(status,sizeof(status),"Format: %s · %dx%d",rdlp_selection_format_id(selection),
+    snprintf(status,sizeof(status),"Format: %s·%dx%d",rdlp_selection_format_id(selection),
       rdlp_selection_media_width(selection,0),rdlp_selection_media_height(selection,0));
     c->status_callback(status,c->status_context);
     snprintf(status,sizeof(status),"File: %s",strrchr(destination,'/')+1);

@@ -71,7 +71,7 @@
 - (NSDictionary *)jobRow:(NSDictionary *)job;
 {
   NSString *status=[policy_ statusForJob:job];
-  NSString *detail=[NSString stringWithFormat:@"%@ · %@\n%@",status,[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")];
+  NSString *detail=[NSString stringWithFormat:@"%@·%@\n%@",status,[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")];
   NSMutableDictionary *row=[self row:[job objectForKey:@"title"] detail:detail action:@"job"];
   [row setObject:job forKey:@"job"]; [row setObject:status forKey:@"status"]; return row;
 }
@@ -87,11 +87,11 @@
   if(screen==RDLPScreenQueue) {
     NSString *title=[item objectForKey:@"title"];
     NSTimeInterval enqueued=[[item objectForKey:@"enqueueDate"] doubleValue];
-    NSString *detail=[NSString stringWithFormat:@"%@ · %@",[item objectForKey:@"playlist_title"],[RDLPLibrary qualityLabelForFormat:[item objectForKey:@"format"]]];
+    NSString *detail=[NSString stringWithFormat:@"%@·%@",[item objectForKey:@"playlist_title"],[RDLPLibrary qualityLabelForFormat:[item objectForKey:@"format"]]];
     if(enqueued>0) {
       NSString *date=[NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:enqueued]
         dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterNoStyle];
-      detail=[NSString stringWithFormat:@"%@ · %@",date,detail];
+      detail=[NSString stringWithFormat:@"%@·%@",date,detail];
     }
     NSMutableDictionary *row=[self row:title detail:detail action:@"job"];
     NSString *status=[policy_ statusForJob:item];

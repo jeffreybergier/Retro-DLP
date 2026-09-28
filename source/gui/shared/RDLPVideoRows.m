@@ -33,7 +33,7 @@
     NSString *format=[[job objectForKey:@"actual_format"] length]?[job objectForKey:@"actual_format"]:[job objectForKey:@"format"];
     quality=[RDLPLibrary qualityLabelForFormat:format];
     size=[RDLPLibrary fileSizeLabelForBytes:[[file objectForKey:@"bytes"] unsignedLongLongValue]];
-    local=[quality length]?[quality stringByAppendingFormat:@" · %@",size]:size;
+    local=[quality length]?[quality stringByAppendingFormat:@"·%@",size]:size;
   }
   NSString *summary=[RDLPLibrary metadataSummaryForEntry:entry];
   NSMutableArray *details=[NSMutableArray array];
@@ -42,7 +42,7 @@
   if([size length]) [details addObject:size];
   if([quality length]) [details addObject:quality];
   if([[entry objectForKey:@"channel"] length]) [details addObject:[entry objectForKey:@"channel"]];
-  NSString *detail=[details componentsJoinedByString:@" · "];
+  NSString *detail=[details componentsJoinedByString:@"·"];
   NSMutableArray *spoken=[NSMutableArray array];
   NSString *duration=[RDLPLibrary spokenDurationForEntry:entry], *channel=[entry objectForKey:@"channel"];
   if(!channel) channel=@"";

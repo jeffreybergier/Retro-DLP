@@ -646,7 +646,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     UITableViewCell *videoCell=[list tableView:[list tableView] cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
     require([[videoCell accessoryView] isKindOfClass:[UIImageView class]] && [(UIImageView *)[videoCell accessoryView] image]!=nil && [[videoCell imageView] image]==nil && [videoCell accessoryType]==UITableViewCellAccessoryNone,@"Video status occupies the accessory with no disclosure chevron or leading image");
     require([[videoCell accessibilityLabel] rangeOfString:@"Downloaded"].location!=NSNotFound,@"Accessory status is accessible");
-    require([[[videoCell detailTextLabel] text] hasPrefix:@"12:34 · "] && [[[videoCell detailTextLabel] text] hasSuffix:@" · Low (18) · Example Channel"],@"Playlist subtitle orders duration, file size, quality, and channel");
+    require([[[videoCell detailTextLabel] text] hasPrefix:@"12:34·"] && [[[videoCell detailTextLabel] text] hasSuffix:@"·Low (18)·Example Channel"],@"Playlist subtitle orders duration, file size, quality, and channel");
     require([[videoCell accessibilityLabel] rangeOfString:@"12 minutes, 34 seconds"].location!=NSNotFound,@"Playlist duration is spoken as time");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"playlist.png"]);
     NSArray *videos=[[[[sections(list) objectAtIndex:0] objectForKey:@"rows"] copy] autorelease];
@@ -741,10 +741,10 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
       previousID=[[job objectForKey:@"id"] longLongValue];
       require([[row objectForKey:@"title"] isEqualToString:[job objectForKey:@"title"]],@"Queue shows video titles without ID prefixes");
       NSTimeInterval enqueued=[[job objectForKey:@"enqueueDate"] doubleValue];
-      NSString *expectedDetail=[NSString stringWithFormat:@"%@ · %@",[job objectForKey:@"playlist_title"],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
+      NSString *expectedDetail=[NSString stringWithFormat:@"%@·%@",[job objectForKey:@"playlist_title"],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
       if(enqueued>0) {
         NSString *date=[NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:enqueued] dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterNoStyle];
-        expectedDetail=[NSString stringWithFormat:@"%@ · %@",date,expectedDetail];
+        expectedDetail=[NSString stringWithFormat:@"%@·%@",date,expectedDetail];
       }
       require([[row objectForKey:@"detail"] isEqualToString:expectedDetail],@"Queue subtitle orders known enqueue date, playlist, and quality, omitting unknown dates");
       require([row objectForKey:@"depth"]==nil && [[row objectForKey:@"action"] isEqualToString:@"job"],@"Every queue row is a download, with no outline nodes");

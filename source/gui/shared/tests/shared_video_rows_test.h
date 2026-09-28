@@ -49,8 +49,8 @@ static void testSharedVideoRows(NSString *base) {
   RDLPCountingFilePolicy *policy=[[[RDLPCountingFilePolicy alloc] initWithLibrary:library] autorelease];
   [playlist setTestPolicy:policy];
   NSDictionary *first=[playlist objectAtIndex:0];
-  metadataRequire([[first objectForKey:@"detail"] isEqualToString:@"12:34 · 1.5 MB · High (137+140) · First channel"],@"Playlist combines metadata with representative file quality and bytes");
-  metadataRequire([first objectForKey:@"accessibility_label"]!=nil && [[first objectForKey:@"tooltip"] rangeOfString:@"Local file: High (137+140) · 1.5 MB"].location!=NSNotFound,@"Shared accessibility and tooltip include local size");
+  metadataRequire([[first objectForKey:@"detail"] isEqualToString:@"12:34·1.5 MB·High (137+140)·First channel"],@"Playlist combines metadata with representative file quality and bytes");
+  metadataRequire([first objectForKey:@"accessibility_label"]!=nil && [[first objectForKey:@"tooltip"] rangeOfString:@"Local file: High (137+140)·1.5 MB"].location!=NSNotFound,@"Shared accessibility and tooltip include local size");
   metadataRequire([playlist objectAtIndex:0]==first && policy->probes==1,@"Repeated row rendering reuses one filesystem probe");
   metadataRequire([source cachedObjectAtIndex:1]==nil,@"Displaying one row does not load the next occurrence");
   metadataRequire([[[playlist objectAtIndex:1] objectForKey:@"metadata_detail"] isEqualToString:@"Duplicate channel"],@"Duplicate occurrence metadata stays independent");

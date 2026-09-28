@@ -181,7 +181,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   NSString *duration=[self durationLabelForEntry:entry], *channel=[entry objectForKey:@"channel"];
   if([duration length]) [parts addObject:duration];
   if([channel length]) [parts addObject:channel];
-  return [parts componentsJoinedByString:@" · "];
+  return [parts componentsJoinedByString:@"·"];
 }
 + (NSString *)metadataTooltipForEntry:(NSDictionary *)entry;
 {
@@ -194,7 +194,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   if(![views length] && entry_number(entry,@"view_count",&count)) views=[NSString stringWithFormat:@"%llu views",count];
   if([views length]) [snapshot addObject:views];
   if([published length]) [snapshot addObject:[@"Published " stringByAppendingString:published]];
-  if([snapshot count]) [lines addObject:[@"At last sync: " stringByAppendingString:[snapshot componentsJoinedByString:@" · "]]];
+  if([snapshot count]) [lines addObject:[@"At last sync: " stringByAppendingString:[snapshot componentsJoinedByString:@"·"]]];
   if([snippet length]) [lines addObject:snippet];
   return [lines componentsJoinedByString:@"\n"];
 }
@@ -470,8 +470,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   NSString *message=phase;
   if(completed || expected) {
     double elapsed=now-transferStarted_;
-    NSString *speed=elapsed>0?[NSString stringWithFormat:@" · %.1f Mbps",(double)completed*8.0/elapsed/1000000.0]:@"";
-    message=expected?[NSString stringWithFormat:@"%@ · %.0f%%%@",phase,MIN(100.0,100.0*(double)completed/(double)expected),speed]:
+    NSString *speed=elapsed>0?[NSString stringWithFormat:@"·%.1f Mbps",(double)completed*8.0/elapsed/1000000.0]:@"";
+    message=expected?[NSString stringWithFormat:@"%@·%.0f%%%@",phase,MIN(100.0,100.0*(double)completed/(double)expected),speed]:
       [NSString stringWithFormat:@"%@%@",phase,speed];
   }
   NSDictionary *update=[NSDictionary dictionaryWithObjectsAndKeys:message,@"message",
@@ -701,7 +701,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   BOOL adding=[[activeCommand_ objectForKey:@"adding"] boolValue];
   rdlp_error_code code=(rdlp_error_code)[[result objectForKey:@"code"] intValue];
   NSString *status=download?@"Download complete":(discover?@"Playlists loaded":(addVideo?@"Video added":(adding?@"Playlist added":@"Playlist synced")));
-  if(download && code==RDLP_OK) status=[NSString stringWithFormat:@"Downloaded · %.1f MiB",[[result objectForKey:@"bytes"] doubleValue]/1048576.0];
+  if(download && code==RDLP_OK) status=[NSString stringWithFormat:@"Downloaded·%.1f MiB",[[result objectForKey:@"bytes"] doubleValue]/1048576.0];
   if(code==RDLP_ERROR_CANCELLED) status=download?@"Download stopped":@"Playlist operation stopped";
   else if(code!=RDLP_OK) status=download?@"Download failed":(discover?@"Error loading playlists":(addVideo?@"Error adding video":(adding?@"Error adding playlist":@"Error syncing playlist")));
   BOOL warning=[[result objectForKey:@"warning"] boolValue];
