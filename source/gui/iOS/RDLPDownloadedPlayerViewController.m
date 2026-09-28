@@ -10,13 +10,13 @@ static RDLPDownloadedPlayerViewController *RDLPActivePlayback=nil; // nonretaine
 static NSArray *RDLPDownloadItemKeys(void) {
   return [NSArray arrayWithObjects:@"status",@"duration",@"playbackBufferEmpty",nil];
 }
-@interface RDLPDownloadedPlayerViewController () {
+@interface RDLPDownloadedPlayerViewController () <RDLPPlaybackRemoteTarget> {
   RDLPLibrary *_library;
   NSArray *_jobs;
   NSString *_video;
   NSDictionary *_metadata;
   AVPlayerItem *_item;
-  id _checkpointObserver;
+  id _checkpointObserver, _remoteCommands;
   double _resume, _savedPosition;
   float _observedRate;
   BOOL _started, _stopped, _ready, _preparing, _finished, _observingRate;
@@ -136,7 +136,8 @@ static NSArray *RDLPDownloadItemKeys(void) {
   [RDLPActivePlayback stop]; RDLPActivePlayback=self;
   _started=YES; _wantsPlay=YES;
   [RDLPUIKit activatePlaybackAudioSessionForDelegate:self];
-  [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
+  _remoteCommands=[[RDLPUIKit playbackRemoteCommandsForTarget:self] retain];
+  if(!_remoteCommands) [[UIApplication sharedApplication] beginReceivingRemoteControlEvents];
   [self becomeFirstResponder];
   __block RDLPDownloadedPlayerViewController *owner=self; // MRC: observer must not retain its owner
   _checkpointObserver=[[[self player] addPeriodicTimeObserverForInterval:CMTimeMake(10,1)
@@ -160,7 +161,10 @@ static NSArray *RDLPDownloadItemKeys(void) {
     [[MPNowPlayingInfoCenter defaultCenter] setNowPlayingInfo:nil];
     RDLPActivePlayback=nil;
     [self resignFirstResponder];
-    [[UIApplication sharedApplication] endReceivingRemoteControlEvents];
+    if(_remoteCommands) {
+      [RDLPUIKit stopPlaybackRemoteCommands:_remoteCommands];
+      [_remoteCommands release]; _remoteCommands=nil;
+    } else [[UIApplication sharedApplication] endReceivingRemoteControlEvents];
     [RDLPUIKit deactivatePlaybackAudioSessionForDelegate:self];
   }
 }
@@ -205,6 +209,11 @@ static NSArray *RDLPDownloadItemKeys(void) {
 }
 - (void)updateNowPlaying {
   if(!_started || _stopped || _changingItem || RDLPActivePlayback!=self) return;
+  BOOL available=_item && [_item status]!=AVPlayerItemStatusFailed && [[self player] status]!=AVPlayerStatusFailed;
+  double commandDuration=_item?CMTimeGetSeconds([_item duration]):NAN;
+  BOOL canSeek=available && _ready && !_preparing && isfinite(commandDuration) && commandDuration>0;
+  [RDLPUIKit updatePlaybackRemoteCommands:_remoteCommands longContent:RDLPPlayerContentIsLong(commandDuration)!=0
+    available:available canSeek:canSeek canPrevious:[_queue canSkipToPreviousItem] canNext:[_queue canSkipToNextItem]];
   if(!_item || _finished || [_item status]==AVPlayerItemStatusFailed || [[self player] status]==AVPlayerStatusFailed) {
     [[MPNowPlayingInfoCenter defaultCenter] setNowPlayingInfo:nil]; return;
   }
@@ -330,7 +339,11 @@ static NSArray *RDLPDownloadItemKeys(void) {
 }
 - (void)remoteControlReceivedWithEvent:(UIEvent *)event {
   if(_stopped || [event type]!=UIEventTypeRemoteControl) return;
-  switch([event subtype]) {
+  [self handlePlaybackRemoteControl:[event subtype]];
+}
+- (BOOL)handlePlaybackRemoteControl:(UIEventSubtype)subtype {
+  if(_stopped) return NO;
+  switch(subtype) {
     case UIEventSubtypeRemoteControlPlay: [self play]; break;
     case UIEventSubtypeRemoteControlTogglePlayPause:
       if([[self player] rate]==0 && !(!_ready && _wantsPlay)) { [self play]; break; }
@@ -342,8 +355,9 @@ static NSArray *RDLPDownloadItemKeys(void) {
       [self navigateBackward:NO]; break;
     case UIEventSubtypeRemoteControlPreviousTrack:
       [self navigateBackward:YES]; break;
-    default: break;
+    default: return NO;
   }
+  return YES;
 }
 - (void)beginInterruption {
   _resumeAfterInterruption=[[self player] rate]!=0 || (!_ready && _wantsPlay);

@@ -120,19 +120,68 @@ static void playbackSeek(AVPlayer *player,double seconds) {
   while(!done && [deadline timeIntervalSinceNow]>0) playbackPump();
   playbackRequire(done,@"Fixture seek completes");
 }
+/* Feed the registered target an event with a real command object, without
+ * requiring lock-screen automation. The bridge only consumes its command. */
+@interface RDLPPlaybackCommandTestEvent : NSObject {
+  id _command;
+}
+- (id)initWithCommand:(id)command;
+- (id)command;
+@end
+@implementation RDLPPlaybackCommandTestEvent
+- (id)initWithCommand:(id)command {
+  self=[super init]; if(self) _command=[command retain]; return self;
+}
+- (id)command { return _command; }
+- (void)dealloc { [_command release]; [super dealloc]; }
+@end
+@protocol RDLPPlaybackCommandTestHandler <NSObject>
+- (NSInteger)handleCommand:(id)event;
+@end
+static id playbackCommandCenter(void) {
+  return [NSClassFromString(@"MPRemoteCommandCenter") performSelector:@selector(sharedCommandCenter)];
+}
+static void playbackModernRemote(RDLPDownloadedPlayerViewController *controller,BOOL backward) {
+  BOOL longContent=[[controller playerViewController] longContent];
+  NSString *key=longContent?(backward?@"skipBackwardCommand":@"skipForwardCommand"):
+    (backward?@"previousTrackCommand":@"nextTrackCommand");
+  id command=[playbackCommandCenter() valueForKey:key];
+  RDLPPlaybackCommandTestEvent *event=[[RDLPPlaybackCommandTestEvent alloc] initWithCommand:command];
+  id<RDLPPlaybackCommandTestHandler> registration=[controller valueForKey:@"remoteCommands"];
+  playbackRequire(registration && [registration handleCommand:event]==0,@"Registered system command reaches playback owner");
+  [event release];
+}
+static void playbackCheckCommandConfiguration(RDLPDownloadedPlayerViewController *controller,BOOL longContent) {
+  id center=playbackCommandCenter();
+  if(!center) {
+    playbackRequire(![controller valueForKey:@"remoteCommands"],@"Old iOS uses legacy remote events");
+    return;
+  }
+  playbackRequire([controller valueForKey:@"remoteCommands"]!=nil,@"Modern iOS registers system commands");
+  playbackRequire([[center valueForKeyPath:@"skipBackwardCommand.enabled"] boolValue]==longContent &&
+    [[center valueForKeyPath:@"skipForwardCommand.enabled"] boolValue]==longContent &&
+    [[center valueForKeyPath:@"previousTrackCommand.enabled"] boolValue]!=longContent &&
+    [[center valueForKeyPath:@"nextTrackCommand.enabled"] boolValue]==(!longContent && [[controller queue] canSkipToNextItem]),
+    @"System buttons switch between time jumps and track navigation");
+  playbackRequire([[center valueForKeyPath:@"skipBackwardCommand.preferredIntervals"] isEqual:[NSArray arrayWithObject:@30]] &&
+    [[center valueForKeyPath:@"skipForwardCommand.preferredIntervals"] isEqual:[NSArray arrayWithObject:@60]],
+    @"System time-jump buttons advertise thirty and sixty seconds");
+}
 /* Exercise the UI delegate and remote-event entry points with identical positions.
  * The standalone UI tests separately verify that button taps invoke these delegates. */
 static void playbackCheckNavigation(RDLPDownloadedPlayerViewController *controller,BOOL longContent) {
   AVPlayer *player=[controller player];
   [player pause];
+  playbackCheckCommandConfiguration(controller,longContent);
   double positions[]={100,100,10,590};
   double targets[]={70,160,0,600};
-  for(NSUInteger route=0;route<2;++route) {
+  for(NSUInteger route=0;route<([controller valueForKey:@"remoteCommands"]?3:2);++route) {
     if(route) [[NSNotificationCenter defaultCenter] postNotificationName:UIApplicationWillResignActiveNotification object:nil];
     for(NSUInteger i=0;i<(longContent?4:1);++i) {
       playbackSeek(player,longContent?positions[i]:6);
       BOOL backward=!longContent || i%2==0;
-      if(route) playbackRemote(controller,backward?UIEventSubtypeRemoteControlPreviousTrack:UIEventSubtypeRemoteControlNextTrack);
+      if(route==2) playbackModernRemote(controller,backward);
+      else if(route) playbackRemote(controller,backward?UIEventSubtypeRemoteControlPreviousTrack:UIEventSubtypeRemoteControlNextTrack);
       else if(backward) [controller playerViewControllerDidRequestBack:[controller playerViewController]];
       else [controller playerViewControllerDidRequestForward:[controller playerViewController]];
       double target=longContent?targets[i]:0;
@@ -222,6 +271,10 @@ static void testIOSPlaybackProgress(NSString *directory) {
   [center postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
   playbackSeek(controller.player,350);
   [controller stop];
+  playbackRequire(![controller valueForKey:@"remoteCommands"] &&
+    ![[playbackCommandCenter() valueForKeyPath:@"skipBackwardCommand.enabled"] boolValue] &&
+    ![[playbackCommandCenter() valueForKeyPath:@"playCommand.enabled"] boolValue],
+    @"Stopping playback removes the registration and disables system commands");
   playbackRequire(fabs([library playbackSecondsForVideo:video]-350)<0.1,@"Dismissal flushes a pending paused seek immediately");
   [library savePlaybackSeconds:70 forVideo:video];
   [controller saveProgress]; playbackRemote(controller,UIEventSubtypeRemoteControlPlay);
@@ -334,24 +387,31 @@ static void testIOSPlaylistPlayback(NSString *directory) {
     jobs:jobs URLs:[NSArray arrayWithObjects:URL,URL,URL,nil] startingAtIndex:1];
   [controller viewWillAppear:NO]; [controller viewDidAppear:NO]; playbackWait(controller);
   [[controller player] pause];
-  for(NSUInteger route=0;route<2;++route) {
+  for(NSUInteger route=0;route<([controller valueForKey:@"remoteCommands"]?3:2);++route) {
     if(route) [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
     for(NSNumber *position in [NSArray arrayWithObjects:@4.9,@5,@5.1,nil]) {
       [controller selectIndex:1]; playbackWait(controller);
       playbackSeek([controller player],[position doubleValue]);
-      if(route) playbackRemote(controller,UIEventSubtypeRemoteControlPreviousTrack);
+      if(route==2) playbackModernRemote(controller,YES);
+      else if(route) playbackRemote(controller,UIEventSubtypeRemoteControlPreviousTrack);
       else [controller playerViewControllerDidRequestBack:[controller playerViewController]];
       playbackWait(controller);
       playbackRequire([[controller queue] currentIndex]==([position doubleValue]>5?1:0),
         @"Both routes restart after five seconds and select the previous short track otherwise");
     }
     [controller selectIndex:1]; playbackWait(controller);
-    if(route) playbackRemote(controller,UIEventSubtypeRemoteControlNextTrack);
+    if(route==2) playbackModernRemote(controller,NO);
+    else if(route) playbackRemote(controller,UIEventSubtypeRemoteControlNextTrack);
     else [controller playerViewControllerDidRequestForward:[controller playerViewController]];
     playbackWait(controller);
     playbackRequire([[controller queue] currentIndex]==2,@"Both routes select the next short track");
     if(route) [center postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
   }
+  NSURL *longURL=[[NSBundle mainBundle] URLForResource:@"playback-long-fixture" withExtension:@"mp4"];
+  [[controller queue] setPlaylist:[NSArray arrayWithObjects:URL,longURL,URL,nil] startingAtIndex:0];
+  playbackWait(controller); playbackCheckCommandConfiguration(controller,NO);
+  [controller selectIndex:1]; playbackWait(controller); playbackCheckCommandConfiguration(controller,YES);
+  [controller selectIndex:2]; playbackWait(controller); playbackCheckCommandConfiguration(controller,NO);
   [controller stop]; [controller release]; [library release];
   [center postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
 }

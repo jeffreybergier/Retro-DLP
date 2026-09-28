@@ -5,6 +5,7 @@
 #import <AIFontAwesome.h>
 #import "RDLPDownloadedPlayerViewController.h"
 #import <AVFoundation/AVFoundation.h>
+#import <MediaPlayer/MediaPlayer.h>
 #import <math.h>
 /* Keep raster pixels and UIImage.scale tied to the same display scale.
    AIFontAwesome also accepts zero for this, but the cache needs the resolved
@@ -34,6 +35,75 @@ static UIImage *RDLPFontAwesomeImageWithOffset(AIFontAwesomeIcon icon,CGFloat si
 static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat canvas,CGFloat scale,UIColor *color) {
   return RDLPFontAwesomeImageWithOffset(icon,size,canvas,scale,color,0);
 }
+/* Instantiated only after the runtime class check below. Keep the iOS 7.1 API
+ * inside this bridge so loading the app on iOS 5/6 does not require it. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunguarded-availability"
+@interface RDLPPlaybackRemoteCommands : NSObject {
+  id<RDLPPlaybackRemoteTarget> _target; // nonretained; invalidated by the session
+  NSArray *_commands;
+}
+- (id)initWithTarget:(id<RDLPPlaybackRemoteTarget>)target;
+- (void)updateLongContent:(BOOL)longContent available:(BOOL)available canSeek:(BOOL)canSeek
+             canPrevious:(BOOL)canPrevious canNext:(BOOL)canNext;
+- (void)invalidate;
+@end
+@implementation RDLPPlaybackRemoteCommands
+- (id)initWithTarget:(id<RDLPPlaybackRemoteTarget>)target {
+  self=[super init]; if(!self) return nil;
+  _target=target;
+  MPRemoteCommandCenter *center=[NSClassFromString(@"MPRemoteCommandCenter") sharedCommandCenter];
+  _commands=[[NSArray alloc] initWithObjects:[center playCommand],[center pauseCommand],
+    [center togglePlayPauseCommand],[center stopCommand],[center previousTrackCommand],
+    [center nextTrackCommand],[center skipBackwardCommand],[center skipForwardCommand],nil];
+  [[center skipBackwardCommand] setPreferredIntervals:[NSArray arrayWithObject:@30]];
+  [[center skipForwardCommand] setPreferredIntervals:[NSArray arrayWithObject:@60]];
+  [[center seekBackwardCommand] setEnabled:NO];
+  [[center seekForwardCommand] setEnabled:NO];
+  for(MPRemoteCommand *command in _commands) {
+    [command setEnabled:NO];
+    [command addTarget:self action:@selector(handleCommand:)];
+  }
+  return self;
+}
+- (MPRemoteCommandHandlerStatus)handleCommand:(MPRemoteCommandEvent *)event {
+  if(![NSThread isMainThread]) {
+    __block MPRemoteCommandHandlerStatus status=MPRemoteCommandHandlerStatusCommandFailed;
+    dispatch_sync(dispatch_get_main_queue(), ^{ status=[self handleCommand:event]; });
+    return status;
+  }
+  NSUInteger index=[_commands indexOfObjectIdenticalTo:[event command]];
+  static const UIEventSubtype subtypes[]={UIEventSubtypeRemoteControlPlay,UIEventSubtypeRemoteControlPause,
+    UIEventSubtypeRemoteControlTogglePlayPause,UIEventSubtypeRemoteControlStop,
+    UIEventSubtypeRemoteControlPreviousTrack,UIEventSubtypeRemoteControlNextTrack,
+    UIEventSubtypeRemoteControlPreviousTrack,UIEventSubtypeRemoteControlNextTrack};
+  if(!_target || index==NSNotFound || ![[event command] isEnabled])
+    return MPRemoteCommandHandlerStatusNoSuchContent;
+  return [_target handlePlaybackRemoteControl:subtypes[index]]?
+    MPRemoteCommandHandlerStatusSuccess:MPRemoteCommandHandlerStatusCommandFailed;
+}
+- (void)updateLongContent:(BOOL)longContent available:(BOOL)available canSeek:(BOOL)canSeek
+             canPrevious:(BOOL)canPrevious canNext:(BOOL)canNext {
+  if(!_target) return;
+  for(NSUInteger i=0;i<4;++i) [[_commands objectAtIndex:i] setEnabled:available];
+  /* Keep short-content back available for restarting even the first track. */
+  [[_commands objectAtIndex:4] setEnabled:available && !longContent && (canPrevious || canSeek)];
+  [[_commands objectAtIndex:5] setEnabled:available && !longContent && canNext];
+  [[_commands objectAtIndex:6] setEnabled:available && longContent && canSeek];
+  [[_commands objectAtIndex:7] setEnabled:available && longContent && canSeek];
+}
+- (void)invalidate {
+  if(!_target) return;
+  _target=nil;
+  for(MPRemoteCommand *command in _commands) {
+    [command removeTarget:self];
+    [command setEnabled:NO];
+  }
+}
+- (void)dealloc { [self invalidate]; [_commands release]; [super dealloc]; }
+@end
+#pragma clang diagnostic pop
+
 @implementation RDLPUIKit
 + (void)configurePlayerFullScreenLayout:(UIViewController *)controller;
 {
@@ -118,6 +188,20 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
 {
   return (flags & 1U)!=0; /* iOS 5's ShouldResume flag. */
 }
++ (id)playbackRemoteCommandsForTarget:(id<RDLPPlaybackRemoteTarget>)target;
+{
+  if(!NSClassFromString(@"MPRemoteCommandCenter")) return nil;
+  return [[[RDLPPlaybackRemoteCommands alloc] initWithTarget:target] autorelease];
+}
++ (void)updatePlaybackRemoteCommands:(id)registration longContent:(BOOL)longContent
+                         available:(BOOL)available canSeek:(BOOL)canSeek
+                       canPrevious:(BOOL)canPrevious canNext:(BOOL)canNext;
+{
+  [registration updateLongContent:longContent available:available canSeek:canSeek
+    canPrevious:canPrevious canNext:canNext];
+}
++ (void)stopPlaybackRemoteCommands:(id)registration;
+{ [registration invalidate]; }
 + (void)configureContentEdges:(UIViewController *)controller;
 {
   /* iOS 7 introduced extended edges. KVC preserves the iOS 5 deployment path. */

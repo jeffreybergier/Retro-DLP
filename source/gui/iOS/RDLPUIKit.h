@@ -1,5 +1,8 @@
 #import <UIKit/UIKit.h>
 @class RDLPStatusBarView, RDLPLibrary;
+@protocol RDLPPlaybackRemoteTarget <NSObject>
+- (BOOL)handlePlaybackRemoteControl:(UIEventSubtype)subtype;
+@end
 typedef enum {
   RDLPPlayerIconHeadphones,
   RDLPPlayerIconPrevious,
@@ -24,6 +27,13 @@ typedef enum {
 + (void)activatePlaybackAudioSessionForDelegate:(id)delegate;
 + (void)deactivatePlaybackAudioSessionForDelegate:(id)delegate;
 + (BOOL)shouldResumePlaybackAfterInterruptionFlags:(NSUInteger)flags;
+/* Main-thread session registration. Returns nil before iOS 7.1. Retain the
+ * registration and stop it before releasing its nonretained target. */
++ (id)playbackRemoteCommandsForTarget:(id<RDLPPlaybackRemoteTarget>)target;
++ (void)updatePlaybackRemoteCommands:(id)registration longContent:(BOOL)longContent
+                         available:(BOOL)available canSeek:(BOOL)canSeek
+                       canPrevious:(BOOL)canPrevious canNext:(BOOL)canNext;
++ (void)stopPlaybackRemoteCommands:(id)registration;
 + (UIImage *)statusIcon:(NSString *)status;
 + (UIImage *)queueActionIcon:(BOOL)stop;
 + (UIImage *)settingsIcon;
