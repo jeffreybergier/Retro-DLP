@@ -66,17 +66,46 @@ end:
 }
 static rdlp_error_code discover(rdapp_store *s,const rdapp_service_config *c,
     rdlp_context *context,char *message,size_t cap,rdlp_error *error) {
-  rdlp_playlist_options options; rdlp_playlist_collection *p=NULL; size_t i,n; int ok=1;
-  rdlp_error_code code;
+  rdlp_playlist_options options; rdlp_playlist_collection *p=NULL; size_t i,n,synced=0,failed=0;
+  rdapp_playlist_reference *items=NULL; int ok; rdlp_error_code code,first_code=RDLP_OK;
+  char first_error[512]="";
   memset(&options,0,sizeof(options)); options.struct_size=sizeof(options); options.cookie_file=c->cookie_file;
   code=rdlp_list_playlist_collection(context,"https://www.youtube.com/feed/playlists",&options,&p,error);
   if(code!=RDLP_OK) return code;
   n=rdlp_playlist_collection_count(p);
+  if(n>SIZE_MAX/sizeof(*items)) { code=RDLP_ERROR_RESPONSE_TOO_LARGE; goto end; }
+  items=calloc(n?n:1,sizeof(*items));
+  if(!items) { code=RDLP_ERROR_OUT_OF_MEMORY; goto end; }
+  for(i=0;i<n;++i) {
+    items[i].id=rdlp_playlist_collection_id(p,i); items[i].title=rdlp_playlist_collection_title(p,i);
+  }
+  if(cancelled(c)) { code=RDLP_ERROR_CANCELLED; goto end; }
   lock_store(c);
-  for(i=0;i<n && ok;++i) ok=rdapp_store_discovered_playlist(s,rdlp_playlist_collection_id(p,i),rdlp_playlist_collection_title(p,i));
-  if(ok) snprintf(message,cap,"Found %lu playlists. Select a playlist and Sync, or Sync All.",(unsigned long)n);
-  else { snprintf(error->message,sizeof(error->message),"%s",rdapp_store_error(s)); code=RDLP_ERROR_STORAGE_IO; }
-  unlock_store(c); rdlp_playlist_collection_destroy(p); return code;
+  ok=rdapp_store_account_snapshot(s,items,n);
+  if(ok) ok=rdapp_store_export_removed(s,c->download_root);
+  if(!ok) snprintf(error->message,sizeof(error->message),"%s",rdapp_store_error(s));
+  unlock_store(c);
+  if(!ok) { code=RDLP_ERROR_STORAGE_IO; goto end; }
+  if(c->change_callback) c->change_callback(c->status_context);
+  for(i=0;i<n;++i) {
+    if(cancelled(c)) { code=RDLP_ERROR_CANCELLED; goto end; }
+    if(!rdapp_playlist_can_sync(items[i].id)) continue;
+    code=sync_playlist(s,c,context,items[i].id,message,cap,error);
+    if(code==RDLP_ERROR_CANCELLED) goto end;
+    if(code!=RDLP_OK) {
+      if(!failed) {
+        first_code=code;
+        snprintf(first_error,sizeof(first_error),"%.100s: %.380s",items[i].title,error->message[0]?error->message:rdlp_error_name(code));
+      }
+      ++failed;
+    } else ++synced;
+    if(c->change_callback) c->change_callback(c->status_context);
+  }
+  code=first_code;
+  if(failed) snprintf(error->message,sizeof(error->message),"Synced %lu playlists; %lu failed. %.180s",(unsigned long)synced,(unsigned long)failed,first_error);
+  else snprintf(message,cap,"Synced My Playlists (%lu playlists)",(unsigned long)synced);
+end:
+  free(items); rdlp_playlist_collection_destroy(p); return code;
 }
 static rdlp_error_code add_video(rdapp_store *s,const rdapp_service_config *c,
     const char *input,const rdapp_job *job,char *message,size_t cap,rdlp_error *error) {

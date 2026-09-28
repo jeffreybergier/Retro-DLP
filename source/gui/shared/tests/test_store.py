@@ -34,6 +34,9 @@ lib.rdapp_test_writable_root.restype=None
 P = C.c_void_p
 S = C.c_char_p
 I = C.c_int64
+class PlaylistReference(C.Structure):
+    _fields_ = [('id', S), ('title', S)]
+
 class Entry(C.Structure):
     _fields_ = [('video_id', S), ('title', S), ('position', C.c_int),
                 ('thumbnail_urls', C.POINTER(S)), ('thumbnail_count', C.c_size_t),
@@ -55,6 +58,7 @@ for name, args in {
     'after':[P,C.c_int,I,S,S,I,CB,P],
     'index':[P,C.c_int,I,I,C.POINTER(I)],
     'snapshot':[P,S,S,C.POINTER(Entry),C.c_size_t,C.POINTER(I)],
+    'account_snapshot':[P,C.POINTER(PlaylistReference),C.c_size_t],
     'add_adhoc':[P,S,S,C.POINTER(I)],
     'add_adhoc_download':[P,S,S,S,C.POINTER(I)],
     'discovered_playlist':[P,S,S], 'playlist':[P,S,S,C.POINTER(I)], 'enqueue':[P,I,S,S],
@@ -819,6 +823,43 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.rows(0),[])
         self.assertEqual(self.rows(1),[])
         self.assertEqual(self.rows(2),jobs)
+
+    def test_account_snapshot_removes_only_missing_account_membership(self):
+        self.check(lib.rdapp_store_discovered_playlist(self.db,b'PLtest',b'My / playlist'))
+        for quality,state in ((b'18',b'complete'),(b'22',b'failed'),(b'136+140',b'queued'),(b'137+140',b'running')):
+            self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',quality))
+            self.check(lib.rdapp_store_finish(self.db,int(self.rows(2)[0]['id']),state,b'18',b'kept'))
+        jobs=self.rows(2)
+        added=I(); adhoc=I()
+        self.check(lib.rdapp_store_playlist(self.db,b'PLadded',b'Added',C.byref(added)))
+        self.check(lib.rdapp_store_add_adhoc(self.db,b'ABCDEFGHIJK',b'Added Video',C.byref(adhoc)))
+        incoming=(PlaylistReference*1)(PlaylistReference(b'PLnew',b'New account playlist'))
+        self.check(lib.rdapp_store_account_snapshot(self.db,incoming,1))
+        self.assertEqual(self.rows(1),[])
+        self.assertEqual(self.rows(2),jobs)
+        self.assertEqual(self.count(3,key=0),1)
+        self.assertEqual({r['service_id'] for r in self.page(0,limit=10,key=0)}, {'PLadded','PLnew','adhoc'})
+        self.assertEqual({r['service_id'] for r in self.page(5,limit=10,key=0)}, {'PLnew'})
+        self.check(lib.rdapp_store_account_snapshot(self.db,None,0))
+        self.assertEqual({r['service_id'] for r in self.page(0,limit=10,key=0)}, {'PLadded','adhoc'})
+        self.assertEqual(self.rows(2),jobs)
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
+        incoming=(PlaylistReference*1)(PlaylistReference(b'PLtest',b'My / playlist'))
+        self.check(lib.rdapp_store_account_snapshot(self.db,incoming,1))
+        self.assertEqual(self.page(5,key=0)[0]['id'],str(self.key.value))
+        self.assertEqual(self.rows(2),jobs)
+
+    def test_account_snapshot_rolls_back_entire_collection(self):
+        self.check(lib.rdapp_store_discovered_playlist(self.db,b'PLtest',b'My / playlist'))
+        before=[self.rows(kind) for kind in (0,1,2)]
+        incoming=(PlaylistReference*2)(PlaylistReference(b'PLtest',b'Changed'),PlaylistReference(b'bad/id',b'Invalid'))
+        self.assertEqual(lib.rdapp_store_account_snapshot(self.db,incoming,2),0)
+        self.assertEqual([self.rows(kind) for kind in (0,1,2)],before)
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.execute("CREATE TRIGGER reject_account_removal BEFORE DELETE ON entries BEGIN SELECT RAISE(ABORT,'Removal blocked'); END")
+        self.assertEqual(lib.rdapp_store_account_snapshot(self.db,None,0),0)
+        self.assertEqual([self.rows(kind) for kind in (0,1,2)],before)
 
     def test_removed_playlist_stays_hidden_until_discovery_or_sync(self):
         self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))

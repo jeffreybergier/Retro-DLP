@@ -11,7 +11,8 @@
 #include <sqlite3.h>
 
 typedef struct {
-  const char *base; const char *media; int fail, cancel, cancel_on_progress, depth;
+  const char *base; const char *media; const char *collection_json; int fail, cancel, cancel_on_progress, depth;
+  int fail_continuation, cancel_after_collection, fail_collection_playlist, playlist_requests;
   char player[4096]; int format_seen, target_seen, requests, changes;
 } fixture;
 static const char playlist_json[] =
@@ -28,9 +29,24 @@ static rdlp_error_code send_fixture(void *ctx,const rdlp_transport_request *requ
   if(f->fail) return RDLP_ERROR_TRANSPORT_REQUEST_FAILED;
   if(strstr(request->url,"/feed/playlists")) {
     data="<script>ytcfg.set({\"LOGGED_IN\":true,\"INNERTUBE_API_KEY\":\"test\",\"INNERTUBE_CONTEXT_CLIENT_VERSION\":\"1.20260828\"});var ytInitialData={\"contents\":[{\"playlistRenderer\":{\"playlistId\":\"PLcollection\",\"title\":{\"simpleText\":\"Account playlist\"}}}]};</script>";
+    if(f->collection_json) {
+      snprintf(page,sizeof(page),"<script>ytcfg.set({\"LOGGED_IN\":true,\"INNERTUBE_API_KEY\":\"test\",\"INNERTUBE_CONTEXT_CLIENT_VERSION\":\"1.20260828\"});var ytInitialData=%s;</script>",f->collection_json);
+      data=page;
+    }
+    if(f->cancel_after_collection) f->cancel=1;
   } else if(strstr(request->url,"/playlist?")) {
+    ++f->playlist_requests;
+    assert(!strstr(request->url,"PLgone"));
+    if(f->fail_collection_playlist && strstr(request->url,"PLcollection")) return RDLP_ERROR_TRANSPORT_REQUEST_FAILED;
     snprintf(page,sizeof(page),"<script>ytcfg.set({\"INNERTUBE_API_KEY\":\"test\",\"INNERTUBE_CONTEXT_CLIENT_VERSION\":\"1.20260828\"});var ytInitialData=%s;</script>",playlist_json); data=page;
-  } else if(strstr(request->url,"/youtubei/v1/browse")) data=playlist_json;
+  } else if(strstr(request->url,"/youtubei/v1/browse")) {
+    if(request->body && strstr((const char *)request->body,"ACCOUNT_NEXT")) {
+      if(f->fail_continuation) return RDLP_ERROR_TRANSPORT_REQUEST_FAILED;
+      data="{\"contents\":[{\"continuationItemRenderer\":{\"continuationEndpoint\":{\"continuationCommand\":{\"token\":\"ACCOUNT_FINAL\"}}}}]}";
+    } else if(request->body && strstr((const char *)request->body,"ACCOUNT_FINAL")) {
+      data="{\"contents\":[{\"playlistRenderer\":{\"playlistId\":\"PLsecond\",\"title\":{\"simpleText\":\"Second account playlist\"}}}]}";
+    } else data=playlist_json;
+  }
   else if(strstr(request->url,"/watch")) data="{\"INNERTUBE_CONTEXT_CLIENT_VERSION\":\"2.20260708\",\"STS\":12345,\"jsUrl\":\"/s/player/test/base.js\"}";
   else if(strstr(request->url,"/youtubei/v1/player")) {
     snprintf(f->player,sizeof(f->player),"{\"playabilityStatus\":{\"status\":\"OK\"},\"videoDetails\":{\"videoId\":\"YE7VzlLtp-4\",\"title\":\"One video\"},\"streamingData\":{\"formats\":[{\"itag\":18,\"url\":\"%s/%s\",\"mimeType\":\"video/mp4; codecs=\\\"avc1.42001E, mp4a.40.2\\\"\",\"width\":640,\"height\":360}]}}",f->base,f->media); data=f->player;
@@ -151,6 +167,64 @@ int main(int argc,char **argv) {
   fputs("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t4102444800\tLOGIN_INFO\tfixture\n.youtube.com\tTRUE\t/\tTRUE\t4102444800\tSAPISID\tfixture\n",output); fclose(output); config.cookie_file=cookies;
   require(rdapp_service_run(s,&config,RDAPP_DISCOVER,NULL,NULL,message,sizeof(message)),message);
   memset(&c,0,sizeof(c)); assert(rdapp_store_list(s,RDAPP_PLAYLISTS,0,collect,&c)); assert(c.count==3 && c.account_count==1); config.cookie_file=NULL;
+  {
+    int64_t account=0,gone=0,count=0; int before;
+    rdapp_entry entry; memset(&entry,0,sizeof(entry)); entry.video_id="YE7VzlLtp-4"; entry.title="Retained";
+    config.cookie_file=cookies;
+    assert(rdapp_store_playlist(s,"PLcollection","Account playlist",&account));
+    assert(rdapp_store_count(s,RDAPP_ENTRIES,account,NULL,NULL,&count) && count==1); /* Discovery also synced videos. */
+    assert(rdapp_store_snapshot(s,"PLgone","Gone",&entry,1,&gone));
+    assert(rdapp_store_discovered_playlist(s,"PLgone","Gone"));
+    assert(rdapp_store_enqueue(s,gone,NULL,"18"));
+    claim(s,&c); assert(c.job.playlist_id==gone);
+    assert(rdapp_store_finish(s,c.job.id,"failed","18","Keep failed job"));
+    assert(rdapp_store_export(s,gone,argv[1]));
+    snprintf(export,sizeof(export),"%s/Playlists/Gone [PLgone]/Playlist.xspf",argv[1]);
+    assert(stat(export,&st)==0);
+    /* Neither failed fetches nor cancellation may reconcile the account. */
+    config.cookie_file=NULL;
+    assert(rdapp_service_run(s,&config,RDAPP_DISCOVER,NULL,NULL,message,sizeof(message))!=RDLP_OK);
+    assert(rdapp_store_count(s,RDAPP_ENTRIES,gone,NULL,NULL,&count) && count==1);
+    config.cookie_file=cookies;
+    f.fail=1;
+    assert(rdapp_service_run(s,&config,RDAPP_DISCOVER,NULL,NULL,message,sizeof(message))!=RDLP_OK); f.fail=0;
+    assert(rdapp_store_count(s,RDAPP_ENTRIES,gone,NULL,NULL,&count) && count==1);
+    f.cancel_after_collection=1;
+    assert(rdapp_service_run(s,&config,RDAPP_DISCOVER,NULL,NULL,message,sizeof(message))==RDLP_ERROR_CANCELLED);
+    f.cancel_after_collection=0; f.cancel=0;
+    assert(rdapp_store_count(s,RDAPP_ENTRIES,gone,NULL,NULL,&count) && count==1);
+    f.collection_json="{\"contents\":[{\"playlistRenderer\":{\"playlistId\":\"PLcollection\",\"title\":{\"simpleText\":\"Account playlist\"}}},{\"continuationItemRenderer\":{\"continuationEndpoint\":{\"continuationCommand\":{\"token\":\"ACCOUNT_NEXT\"}}}}]}";
+    f.fail_continuation=1;
+    assert(rdapp_service_run(s,&config,RDAPP_DISCOVER,NULL,NULL,message,sizeof(message))!=RDLP_OK);
+    assert(rdapp_store_count(s,RDAPP_ENTRIES,gone,NULL,NULL,&count) && count==1);
+    f.fail_continuation=0; before=f.playlist_requests;
+    /* A failed individual playlist does not stop later playlists syncing. */
+    f.fail_collection_playlist=1;
+    assert(rdapp_service_run(s,&config,RDAPP_DISCOVER,NULL,NULL,message,sizeof(message))!=RDLP_OK);
+    assert(strstr(message,"1 failed") && f.playlist_requests==before+2);
+    assert(rdapp_store_count(s,RDAPP_ACCOUNT_PLAYLISTS,0,NULL,NULL,&count) && count==2);
+    assert(rdapp_store_count(s,RDAPP_ENTRIES,gone,NULL,NULL,&count) && count==0);
+    assert(rdapp_store_count(s,RDAPP_JOBS,gone,NULL,NULL,&count) && count==1);
+    assert(stat(export,&st)!=0); /* Removed playlist exports disappear; jobs survive. */
+    f.fail_collection_playlist=0;
+    assert(rdapp_store_playlist(s,"PLsecond","Second account playlist",&account));
+    assert(rdapp_store_count(s,RDAPP_ENTRIES,account,NULL,NULL,&count) && count==1);
+    f.collection_json="{}";
+    assert(rdapp_service_run(s,&config,RDAPP_DISCOVER,NULL,NULL,message,sizeof(message))!=RDLP_OK);
+    assert(rdapp_store_count(s,RDAPP_ACCOUNT_PLAYLISTS,0,NULL,NULL,&count) && count==2);
+    f.collection_json="{\"contents\":[{\"playlistRenderer\":{\"playlistId\":\"PLcollection\"}},{\"continuationItemRenderer\":{\"continuationEndpoint\":{\"continuationCommand\":{\"token\":\"\"}}}}]}";
+    assert(rdapp_service_run(s,&config,RDAPP_DISCOVER,NULL,NULL,message,sizeof(message))!=RDLP_OK);
+    assert(rdapp_store_count(s,RDAPP_ACCOUNT_PLAYLISTS,0,NULL,NULL,&count) && count==2);
+    /* A known empty account response hides the final account playlists only. */
+    f.collection_json="{\"contents\":{\"twoColumnBrowseResultsRenderer\":{\"tabs\":[{\"tabRenderer\":{\"selected\":true,\"content\":{\"richGridRenderer\":{\"contents\":[]}}}}]}}}";
+    before=f.playlist_requests;
+    require(rdapp_service_run(s,&config,RDAPP_DISCOVER,NULL,NULL,message,sizeof(message)),message);
+    assert(f.playlist_requests==before);
+    assert(rdapp_store_count(s,RDAPP_ACCOUNT_PLAYLISTS,0,NULL,NULL,&count) && count==0);
+    assert(rdapp_store_count(s,RDAPP_ADDED_PLAYLISTS,0,NULL,NULL,&count) && count==1);
+    assert(rdapp_store_count(s,RDAPP_JOBS,gone,NULL,NULL,&count) && count==1);
+    config.cookie_file=NULL; f.collection_json=NULL;
+  }
   assert(rdapp_store_enqueue(s,key,NULL,"18")); claim(s,&c);
   require(rdapp_service_run(s,&config,RDAPP_DOWNLOAD,NULL,&c.job,message,sizeof(message)),message);
   snprintf(file,sizeof(file),"%s/%s",argv[1],c.path); assert(stat(file,&st)==0 && st.st_size>0);

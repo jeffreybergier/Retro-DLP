@@ -563,7 +563,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     [root showPlaylistActions:nil]; pump();
     UIActionSheet *sheet=[root valueForKey:@"playlistActions_"];
     require(sheet!=nil && [sheet numberOfButtons]==5,@"Add commands, playlist commands and Cancel");
-    require([[sheet buttonTitleAtIndex:0] isEqualToString:@"Add Video…"] && [[sheet buttonTitleAtIndex:1] isEqualToString:@"Add Playlist…"] && [[sheet buttonTitleAtIndex:2] isEqualToString:@"Sync All Playlists…"] && [[sheet buttonTitleAtIndex:3] isEqualToString:@"Load My Playlists…"],@"Library management commands put Add Video first");
+    require([[sheet buttonTitleAtIndex:0] isEqualToString:@"Add Video…"] && [[sheet buttonTitleAtIndex:1] isEqualToString:@"Add Playlist…"] && [[sheet buttonTitleAtIndex:2] isEqualToString:@"Sync Added Playlists…"] && [[sheet buttonTitleAtIndex:3] isEqualToString:@"Sync My Playlists…"],@"Library management commands put Add Video first");
     [sheet dismissWithClickedButtonIndex:[sheet cancelButtonIndex] animated:NO];
     for(NSUInteger wait=0;wait<10 && [root valueForKey:@"playlistActions_"];++wait) pump();
     pump(); pump();

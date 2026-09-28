@@ -385,6 +385,25 @@ int rdapp_store_discovered_playlist(rdapp_store *s,const char *id,const char *ti
 rollback:
   sql(s,"ROLLBACK"); return 0;
 }
+int rdapp_store_account_snapshot(rdapp_store *s,const rdapp_playlist_reference *items,size_t count) {
+  sqlite3_stmt *p; size_t i;
+  if(count && !items) return failure(s,"Missing account playlists");
+  if(!sql(s,"BEGIN IMMEDIATE")) return 0;
+  if(!sql(s,"CREATE TEMP TABLE IF NOT EXISTS account_snapshot (id TEXT PRIMARY KEY); DELETE FROM account_snapshot;")) goto rollback;
+  for(i=0;i<count;++i) {
+    if(!items[i].id || !strcmp(items[i].id,RDAPP_ADHOC_PLAYLIST_ID)) { failure(s,"Invalid account playlist"); goto rollback; }
+    if(!rdapp_store_playlist(s,items[i].id,items[i].title,NULL)) goto rollback;
+    p=prepare(s,"INSERT OR IGNORE INTO account_snapshot(id) VALUES(?)"); if(!p) goto rollback;
+    bind_text(p,1,items[i].id); if(!done(s,p)) goto rollback;
+  }
+  if(!sql(s,"UPDATE playlists SET source='account',removed=0 WHERE service_id IN (SELECT id FROM account_snapshot);"
+    "UPDATE playlists SET removed=1 WHERE source='account' AND service_id NOT IN (SELECT id FROM account_snapshot);"
+    "DELETE FROM entries WHERE playlist_id IN (SELECT id FROM playlists WHERE source='account' AND removed=1);"
+    "DELETE FROM account_snapshot; COMMIT;")) goto rollback;
+  return 1;
+rollback:
+  sqlite3_exec(s->db,"ROLLBACK",NULL,NULL,NULL); return 0;
+}
 int rdapp_store_snapshot(rdapp_store *s,const char *id,const char *title,const rdapp_entry *entries,size_t count,int64_t *key) {
   int64_t k; size_t i,j; sqlite3_stmt *p;
   if(!sql(s,"BEGIN IMMEDIATE")) return 0;
@@ -620,13 +639,18 @@ int rdapp_store_export(rdapp_store *s,int64_t key,const char *root) {
   p=prepare(s,"SELECT directory,title,service_id,source,removed FROM playlists WHERE id=?"); if(!p) return 0;
   sqlite3_bind_int64(p,1,key);
   if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); return failure(s,"Playlist does not exist"); }
-  if(sqlite3_column_int(p,4)) { sqlite3_finalize(p); return 1; }
   rc=snprintf(dir,sizeof(dir),"%s/%s",root,sqlite3_column_text(p,0));
-  if(rc<0 || (size_t)rc>=sizeof(dir) || !rdapp_make_directory(dir)) { sqlite3_finalize(p); return failure(s,"Cannot create playlist directory"); }
+  if(rc<0 || (size_t)rc>=sizeof(dir)) { sqlite3_finalize(p); return failure(s,"Cannot create playlist directory"); }
   if(snprintf(path,sizeof(path),"%s/Playlist.xspf",dir)>=(int)sizeof(path) ||
      snprintf(legacy,sizeof(legacy),"%s/Playlist.m3u8",dir)>=(int)sizeof(legacy) ||
      snprintf(temp,sizeof(temp),"%s/.playlist-XXXXXX",dir)>=(int)sizeof(temp) ||
      snprintf(legacy_temp,sizeof(legacy_temp),"%s/.playlist-XXXXXX",dir)>=(int)sizeof(legacy_temp)) { sqlite3_finalize(p); return failure(s,"Playlist path is too long"); }
+  if(sqlite3_column_int(p,4)) {
+    sqlite3_finalize(p);
+    if((unlink(path) && errno!=ENOENT) || (unlink(legacy) && errno!=ENOENT)) return failure(s,"Cannot remove playlist exports");
+    return 1;
+  }
+  if(!rdapp_make_directory(dir)) { sqlite3_finalize(p); return failure(s,"Cannot create playlist directory"); }
   fd=mkstemp(temp); if(fd<0) { sqlite3_finalize(p); return failure(s,strerror(errno)); }
   f=fdopen(fd,"w"); if(!f) { sqlite3_finalize(p); close(fd); unlink(temp); return failure(s,strerror(errno)); }
   mfd=mkstemp(legacy_temp);
@@ -720,6 +744,13 @@ int rdapp_store_reconcile_job(rdapp_store *s,int64_t key,const char *root) {
       ok=rdapp_store_finish(s,key,"complete",format,"Recovered completed download after interruption.");
   } else if(rc!=SQLITE_DONE) ok=failure(s,sqlite3_errmsg(s->db));
   sqlite3_finalize(p); return ok;
+}
+int rdapp_store_export_removed(rdapp_store *s,const char *root) {
+  sqlite3_stmt *p=prepare(s,"SELECT id FROM playlists WHERE removed=1"); int rc,ok=1;
+  if(!p) return 0;
+  while((rc=sqlite3_step(p))==SQLITE_ROW)
+    if(!rdapp_store_export(s,sqlite3_column_int64(p,0),root)) { ok=0; break; }
+  sqlite3_finalize(p); return ok && rc==SQLITE_DONE;
 }
 int rdapp_store_reconcile(rdapp_store *s,const char *root) {
   sqlite3_stmt *p=prepare(s,"SELECT id,path,state,actual_format FROM jobs WHERE state IN ('complete','interrupted')");

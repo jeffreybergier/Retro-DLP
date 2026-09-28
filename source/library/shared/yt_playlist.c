@@ -808,18 +808,64 @@ static const char *find_entry_continuation(cJSON *node, int *malformed) {
   return NULL;
 }
 
-static const char *find_playlist_continuation(cJSON *node) {
+/* YouTube can return a page containing only another continuation.
+   Upstream handling: yt-dlp/yt-dlp#12933 and _tab.py at 51bab8a0116f4d8004c315706d809782607d5847.
+   https://github.com/yt-dlp/yt-dlp/issues/12933 */
+static int only_playlist_continuations(cJSON *node) {
+  cJSON *child;
+  if (!cJSON_IsArray(node) || cJSON_GetArraySize(node) == 0)
+    return 0;
+  cJSON_ArrayForEach(child, node)
+    if (!cJSON_IsObject(cJSON_GetObjectItemCaseSensitive(child, "continuationItemRenderer")))
+      return 0;
+  return 1;
+}
+
+static const char *find_playlist_continuation(cJSON *node, int *malformed) {
   cJSON *child;
   const char *token;
-  int malformed = 0;
-  if (cJSON_IsArray(node) && contains_direct_playlist(node))
-    return continuation_in_node(node, &malformed);
+  if (cJSON_IsArray(node) && (contains_direct_playlist(node) || only_playlist_continuations(node))) {
+    token = continuation_in_node(node, malformed);
+    if (token == NULL && only_playlist_continuations(node))
+      *malformed = 1;
+    return token;
+  }
   cJSON_ArrayForEach(child, node) {
-    token = find_playlist_continuation(child);
-    if (token != NULL)
+    token = find_playlist_continuation(child, malformed);
+    if (token != NULL || *malformed)
       return token;
   }
   return NULL;
+}
+
+/* An authenticated, explicitly empty content container is a valid empty
+   collection. Unrecognized documents must not look like account deletions.
+   Known tab containers match YoutubeTabBaseInfoExtractor._entries in the
+   upstream revision cited above. */
+static int empty_collection_contents(cJSON *node) {
+  cJSON *child, *container, *items;
+  const char *renderers[] = {"richGridRenderer", "gridRenderer", "sectionListRenderer"};
+  size_t i;
+  if (cJSON_IsArray(node))
+    return cJSON_GetArraySize(node) == 0;
+  if (!cJSON_IsObject(node))
+    return 0;
+  for (i = 0; i < sizeof(renderers) / sizeof(renderers[0]); ++i) {
+    container = cJSON_GetObjectItemCaseSensitive(node, renderers[i]);
+    items = cJSON_GetObjectItemCaseSensitive(container, i == 1 ? "items" : "contents");
+    if (cJSON_IsArray(items) && cJSON_GetArraySize(items) == 0)
+      return 1;
+  }
+  container = cJSON_GetObjectItemCaseSensitive(node, "twoColumnBrowseResultsRenderer");
+  if (!container)
+    container = cJSON_GetObjectItemCaseSensitive(node, "singleColumnBrowseResultsRenderer");
+  items = cJSON_GetObjectItemCaseSensitive(container, "tabs");
+  cJSON_ArrayForEach(child, items) {
+    container = cJSON_GetObjectItemCaseSensitive(child, "tabRenderer");
+    if (cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(container, "selected")))
+      return empty_collection_contents(cJSON_GetObjectItemCaseSensitive(container, "content"));
+  }
+  return 0;
 }
 
 YTStatus yt_playlist_collect_entries(cJSON *document, YTPlaylist *playlist,
@@ -998,6 +1044,7 @@ YTStatus yt_list_account_playlists(
   char *visitor_data = NULL;
   char *updated_visitor;
   size_t page;
+  int empty = 0, malformed = 0;
   YTStatus status;
   if (session == NULL || input == NULL || collection == NULL ||
       !yt_is_playlist_collection_url(input))
@@ -1047,8 +1094,11 @@ YTStatus yt_list_account_playlists(
     status = YT_ERR_AUTH_COOKIES_INVALID;
     goto pagination_finished;
   }
+  empty = empty_collection_contents(cJSON_GetObjectItemCaseSensitive(document, "contents"));
   status = collect_playlist_references(document, collection);
-  token = find_playlist_continuation(document);
+  token = find_playlist_continuation(document, &malformed);
+  if (malformed)
+    status = YT_ERR_INVALID_RESPONSE;
   continuation = yt_copy_string(token);
   if (token != NULL && continuation == NULL)
     status = YT_ERR_OUT_OF_MEMORY;
@@ -1074,7 +1124,11 @@ YTStatus yt_list_account_playlists(
     status = collect_playlist_references(document, collection);
     if (status != YT_OK)
       break;
-    token = find_playlist_continuation(document);
+    token = find_playlist_continuation(document, &malformed);
+    if (malformed) {
+      status = YT_ERR_INVALID_RESPONSE;
+      break;
+    }
     next_continuation = yt_copy_string(token);
     if (token != NULL && next_continuation == NULL) {
       status = YT_ERR_OUT_OF_MEMORY;
@@ -1092,7 +1146,7 @@ YTStatus yt_list_account_playlists(
   }
   if (status == YT_OK && continuation != NULL)
     status = YT_ERR_INVALID_RESPONSE;
-  if (status == YT_OK && collection->playlist_count == 0)
+  if (status == YT_OK && collection->playlist_count == 0 && !empty)
     status = YT_ERR_INVALID_RESPONSE;
 
 pagination_finished:

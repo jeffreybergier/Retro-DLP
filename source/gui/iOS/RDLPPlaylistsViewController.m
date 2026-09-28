@@ -201,9 +201,9 @@
   if([library_ isBusy] || alert_) { [RDLPUIKit showMessage:@"Finish the current operation or dialog before importing cookies."]; return NO; }
   NSDictionary *request=[NSDictionary dictionaryWithObjectsAndKeys:@"import",@"operation",path,@"path",[NSNumber numberWithBool:discover],@"discover",nil];
   if(![[library_ cookieStatus] isEqualToString:@"Not Imported"])
-    [self confirm:request title:discover?@"Replace cookies and load playlists?":@"Replace imported cookies?" detail:@"Replace the working cookie copy. Your original export is retained." button:discover?@"Replace and Load":@"Replace"];
+    [self confirm:request title:discover?@"Replace cookies and sync playlists?":@"Replace imported cookies?" detail:@"Replace the working cookie copy. Your original export is retained." button:discover?@"Replace and Sync":@"Replace"];
   else if([[NSFileManager defaultManager] fileExistsAtPath:path]) [self performConfirmed:request];
-  else { [RDLPUIKit showMessage:@"Copy cookies.txt into RetroDLP with iTunes File Sharing, or open your exported text file in RetroDLP. Then use Load My Playlists again."]; return NO; }
+  else { [RDLPUIKit showMessage:@"Copy cookies.txt into RetroDLP with iTunes File Sharing, or open your exported text file in RetroDLP. Then use Sync My Playlists again."]; return NO; }
   return YES;
 }
 /* UIActionSheet keeps the playlist menu available on iOS 5 and 6. Dispatch
@@ -213,7 +213,7 @@
   (void)sender; if(playlistActions_ || alert_) return;
   playlistActions_=[[UIActionSheet alloc] initWithTitle:nil delegate:self
     cancelButtonTitle:@"Cancel" destructiveButtonTitle:nil
-    otherButtonTitles:@"Add Video…",@"Add Playlist…",@"Sync All Playlists…",@"Load My Playlists…",nil];
+    otherButtonTitles:@"Add Video…",@"Add Playlist…",@"Sync Added Playlists…",@"Sync My Playlists…",nil];
   [playlistActions_ showFromBarButtonItem:[[self navigationItem] rightBarButtonItem] animated:YES];
 }
 - (void)actionSheet:(UIActionSheet *)sheet didDismissWithButtonIndex:(NSInteger)index;
@@ -235,11 +235,11 @@
 - (void)addVideo:(id)sender;
 { (void)sender; [self showAlert:@"Add Video" detail:@"YouTube video URL or ID" request:[NSDictionary dictionaryWithObject:@"addVideo" forKey:@"operation"] buttons:[NSArray arrayWithObject:@"Add"] input:@""]; }
 - (void)discover:(id)sender;
-{ (void)sender; if([self enabled:@"discover"]) [self confirm:[NSDictionary dictionaryWithObject:@"discover" forKey:@"operation"] title:@"Load My Playlists?" detail:@"Discover your YouTube account playlists and save their metadata. Cookies are required. No videos will be downloaded." button:@"Load Playlists"]; }
+{ (void)sender; if([self enabled:@"discover"]) [self confirm:[NSDictionary dictionaryWithObject:@"discover" forKey:@"operation"] title:@"Sync My Playlists?" detail:@"Refresh your account playlists and their videos. Playlists no longer in your account are removed locally; downloads and unfinished jobs are retained. Cookies are required. No videos will be downloaded." button:@"Sync My Playlists"]; }
 - (void)syncAll:(id)sender;
 {
   (void)sender; NSMutableArray *inputs=[NSMutableArray array];
-  for(NSDictionary *playlist in [library_ playlists]) if([RDLPLibrary canSyncPlaylist:playlist] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) [inputs addObject:[playlist objectForKey:@"service_id"]];
-  if([inputs count]) [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:@"syncAll",@"operation",inputs,@"inputs",nil] title:@"Sync all playlists?" detail:@"Refresh playlist metadata from YouTube. Local downloads are retained." button:@"Sync All"];
+  for(NSDictionary *playlist in [library_ playlistsFromAccount:NO]) if([RDLPLibrary canSyncPlaylist:playlist] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) [inputs addObject:[playlist objectForKey:@"service_id"]];
+  if([inputs count]) [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:@"syncAll",@"operation",inputs,@"inputs",nil] title:@"Sync Added Playlists?" detail:@"Refresh your manually added playlists and their videos from YouTube. Local downloads are retained. No videos will be downloaded." button:@"Sync Added Playlists"];
 }
 @end

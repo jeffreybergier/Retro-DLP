@@ -44,6 +44,11 @@ int rdapp_store_after(rdapp_store *, rdapp_query, int64_t key, const char *video
 int rdapp_store_index(rdapp_store *, rdapp_query, int64_t playlist, int64_t identity, int64_t *index);
 int rdapp_store_playlist(rdapp_store *, const char *id, const char *title, int64_t *key);
 int rdapp_store_discovered_playlist(rdapp_store *, const char *id, const char *title);
+typedef struct { const char *id, *title; } rdapp_playlist_reference;
+/* Atomically replaces account membership after a complete successful fetch.
+   Missing account playlists become empty/hidden; jobs and added playlists stay. */
+int rdapp_store_account_snapshot(rdapp_store *, const rdapp_playlist_reference *, size_t count);
+int rdapp_store_export_removed(rdapp_store *, const char *root);
 int rdapp_store_snapshot(rdapp_store *, const char *id, const char *title,
                          const rdapp_entry *, size_t count, int64_t *key);
 /* Adds or refreshes one locally-added video without replacing other Ad-Hoc rows. */

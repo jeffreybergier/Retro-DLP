@@ -904,7 +904,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     NSMenuItem *unsupportedSyncItem=[[[NSMenuItem alloc] initWithTitle:@"Sync" action:@selector(sync:) keyEquivalent:@""] autorelease];
     requireCondition(![window_ validateMenuItem:unsupportedSyncItem],@"Unsupported playlist disables manual Sync");
     NSArray *syncInputs=[window_ performSelector:@selector(syncPlan)];
-    requireCondition([syncInputs count]==1 && ![syncInputs containsObject:@"WL"] && ![syncInputs containsObject:@"HL"],@"Bulk sync skips unsupported types");
+    requireCondition([syncInputs count]==0,@"Sync Added Playlists excludes account and unsupported playlists");
     NSUInteger commandsBefore=[[library_ valueForKey:@"commands_"] count];
     [library_ syncPlaylistInput:@"WL"]; [library_ syncPlaylistInput:@"https://www.youtube.com/playlist?list=HL"];
     requireCondition([[library_ valueForKey:@"commands_"] count]==commandsBefore && ![library_ isBusy],@"Direct and automatic submissions cannot schedule unsupported syncs");

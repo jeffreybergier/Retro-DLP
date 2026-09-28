@@ -668,7 +668,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (NSArray *)syncPlan;
 {
-  NSMutableArray *inputs=[NSMutableArray array]; NSEnumerator *e=[playlists_ objectEnumerator]; NSDictionary *playlist;
+  NSMutableArray *inputs=[NSMutableArray array]; NSEnumerator *e=[[library_ playlistsFromAccount:NO] objectEnumerator]; NSDictionary *playlist;
   while((playlist=[e nextObject])) if([RDLPLibrary canSyncPlaylist:playlist] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) [inputs addObject:[playlist objectForKey:@"service_id"]];
   return inputs;
 }
@@ -994,7 +994,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     if(![[library_ cookieStatus] isEqualToString:@"Imported"]) {
       NSString *path=[RDLPAppKit chooseCookieFile]; if(!path) return;
       if(![[library_ cookieStatus] isEqualToString:@"Not Imported"]) {
-        [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"import",@"operation",path,@"path",@"yes",@"discover",nil] title:@"Replace cookies and load playlists?" detail:@"Replace the app’s working cookie copy, then discover your account playlists. No videos will be downloaded." action:@"Replace and Load"]; return;
+        [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"import",@"operation",path,@"path",@"yes",@"discover",nil] title:@"Replace cookies and sync playlists?" detail:@"Replace the app’s working cookie copy, then sync your account playlists. Local downloads are retained. No videos will be downloaded." action:@"Replace and Sync"]; return;
       }
       if(![library_ importCookies:path]) return;
     }
@@ -1064,12 +1064,12 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)syncAll:(id)sender;
 {
   (void)sender; NSArray *inputs=[self syncPlan]; if(![inputs count]) return;
-  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"syncAll",@"operation",inputs,@"inputs",nil] title:[NSString stringWithFormat:@"Sync %lu playlists?",(unsigned long)[inputs count]] detail:@"Refresh playlist metadata from YouTube. This does not download videos." action:[NSString stringWithFormat:@"Sync %lu Playlists",(unsigned long)[inputs count]]];
+  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"syncAll",@"operation",inputs,@"inputs",nil] title:[NSString stringWithFormat:@"Sync %lu added playlists?",(unsigned long)[inputs count]] detail:@"Refresh your manually added playlists and their videos from YouTube. Local downloads are retained. This does not download videos." action:[NSString stringWithFormat:@"Sync %lu Added Playlists",(unsigned long)[inputs count]]];
 }
 - (void)discover:(id)sender;
 {
   (void)sender; if([library_ isBusy] || [library_ isDiscoveryPending]) return;
-  [self confirmRequest:[NSDictionary dictionaryWithObject:@"discover" forKey:@"operation"] title:@"Load your account playlists?" detail:@"Discover playlists from YouTube and save their metadata locally. You will be asked to import cookies if needed. No videos will be downloaded." action:@"Load Playlists"];
+  [self confirmRequest:[NSDictionary dictionaryWithObject:@"discover" forKey:@"operation"] title:@"Sync My Playlists?" detail:@"Refresh your account playlists and their videos. Playlists no longer in your account are removed locally; downloads and unfinished jobs are retained. You will be asked to import cookies if needed. No videos will be downloaded." action:@"Sync My Playlists"];
 }
 - (void)openCookieExportGuide:(id)sender;
 {

@@ -90,5 +90,18 @@ static void testSharedVideoRows(NSString *base) {
   metadataRequire(rdapp_make_directory([emptyDirectory fileSystemRepresentation]),@"Prepare download destination");
   [library removePlaylist:parent];
   metadataRequire([[NSFileManager defaultManager] fileExistsAtPath:emptyDirectory],@"Removal preserves empty destination needed for file publication");
+  metadataRequire(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open sync scope fixture");
+  metadataRequire(rdapp_store_snapshot(store,"PLmanual","Manual",NULL,0,NULL),@"Add manual sync fixture");
+  metadataRequire(rdapp_store_discovered_playlist(store,"PLaccount","Account"),@"Add account sync fixture");
+  rdapp_store_close(store);
+  [library setValue:[NSNumber numberWithBool:YES] forKey:@"operationsSuspended_"];
+  NSMutableArray *commands=[library valueForKey:@"commands_"]; [commands removeAllObjects];
+  metadataRequire([library hasPlaylistsToSync],@"Added playlists enable scoped sync");
+  [library syncAll];
+  metadataRequire([commands count]==1 && [[[[commands objectAtIndex:0] objectForKey:@"input"] description] isEqualToString:@"PLmanual"],@"Sync Added Playlists queues only manual inputs");
+  metadataRequire(![library hasPlaylistsToSync],@"Pending added sync disables duplicate bulk work");
+  [commands removeAllObjects];
+  [library discoverPlaylists]; [library discoverPlaylists];
+  metadataRequire([commands count]==1 && [[[commands objectAtIndex:0] objectForKey:@"type"] isEqualToString:@"discover"],@"Sync My Playlists queues one account refresh before individual syncing");
   [library shutdown]; [library release]; [pool drain];
 }

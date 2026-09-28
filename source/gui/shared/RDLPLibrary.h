@@ -112,7 +112,9 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
 - (void)syncPlaylistInput:(NSString *)input;
 - (void)addPlaylistInput:(NSString *)input;
 - (void)addVideoInput:(NSString *)input;
+/* Sync only manually added playlists; account sync discovers membership first. */
 - (void)syncAll;
+/* Reconcile account membership, then sync each current account playlist. */
 - (void)discoverPlaylists;
 - (void)enqueuePlaylist:(NSString *)key video:(NSString *)video format:(NSString *)format;
 - (void)retryJob:(NSString *)key;

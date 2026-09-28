@@ -94,7 +94,7 @@
   if([library_ isBusy] || alert_) { [RDLPUIKit showMessage:@"Finish the current operation or dialog before importing cookies."]; return NO; }
   NSDictionary *request=[NSDictionary dictionaryWithObjectsAndKeys:@"import",@"operation",path,@"path",[NSNumber numberWithBool:discover],@"discover",nil];
   if(![[library_ cookieStatus] isEqualToString:@"Not Imported"])
-    [self showAlert:discover?@"Replace cookies and load playlists?":@"Replace imported cookies?" detail:@"Replace the working cookie copy. Your original export is retained." request:request button:discover?@"Replace and Load":@"Replace" input:nil];
+    [self showAlert:discover?@"Replace cookies and sync playlists?":@"Replace imported cookies?" detail:@"Replace the working cookie copy. Your original export is retained." request:request button:discover?@"Replace and Sync":@"Replace" input:nil];
   else if([[NSFileManager defaultManager] fileExistsAtPath:path]) [self importRequest:request];
   else { [RDLPUIKit showMessage:@"Copy cookies.txt into RetroDLP with iTunes File Sharing, or open your exported text file in RetroDLP. Then use Import Cookies again."]; return NO; }
   return YES;

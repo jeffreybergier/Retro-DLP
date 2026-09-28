@@ -11,10 +11,10 @@
   if([title isEqualToString:@"File"]) {
     [self addItemToMenu:menu title:@"Add Video…" action:@selector(addVideo:) target:target];
     [self addItemToMenu:menu title:@"Add Playlist…" action:@selector(addPlaylist:) target:target];
-    [self addItemToMenu:menu title:@"Load My Playlists…" action:@selector(discover:) target:target];
+    [self addItemToMenu:menu title:@"Sync My Playlists…" action:@selector(discover:) target:target];
     [menu addItem:[NSMenuItem separatorItem]];
     [self addItemToMenu:menu title:@"Sync Current Playlist" action:@selector(sync:) target:target];
-    [self addItemToMenu:menu title:@"Sync All Playlists…" action:@selector(syncAll:) target:target];
+    [self addItemToMenu:menu title:@"Sync Added Playlists…" action:@selector(syncAll:) target:target];
     [menu addItem:[NSMenuItem separatorItem]];
     [self addItemToMenu:menu title:@"Download Video" action:@selector(downloadFromMenu:) target:target];
     [self addItemToMenu:menu title:@"Cancel Download…" action:@selector(cancelTarget:) target:target];
@@ -96,10 +96,10 @@
   if(library) {
     [self addItemToMenu:menu title:@"Add Video…" action:@selector(addVideo:) target:target];
     [self addItemToMenu:menu title:@"Add Playlist…" action:@selector(addPlaylist:) target:target];
-    [self addItemToMenu:menu title:@"Load My Playlists…" action:@selector(discover:) target:target];
+    [self addItemToMenu:menu title:@"Sync My Playlists…" action:@selector(discover:) target:target];
     [menu addItem:[NSMenuItem separatorItem]];
     [self addItemToMenu:menu title:@"Sync Current Playlist" action:@selector(sync:) target:target];
-    [self addItemToMenu:menu title:@"Sync All Playlists…" action:@selector(syncAll:) target:target];
+    [self addItemToMenu:menu title:@"Sync Added Playlists…" action:@selector(syncAll:) target:target];
   } else if(download) {
     [self addItemToMenu:menu title:multiple?@"Download Selected Videos":@"Download Video" action:@selector(chooseDownload:) target:target];
     if(video && ([target canRetry:job] || [target canDownloadAgain:job])) {

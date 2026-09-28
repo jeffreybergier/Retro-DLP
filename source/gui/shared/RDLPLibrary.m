@@ -390,7 +390,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 { return [[self rows:RDAPP_BLOCKING_JOBS playlist:key] count]>0; }
 - (BOOL)hasPlaylistsToSync;
 {
-  NSUInteger total=[[self playlistIDsFromAccount:NO] count]+[[self playlistIDsFromAccount:YES] count];
+  NSUInteger total=[[self playlistIDsFromAccount:NO] count];
   if(!total) return NO;
   NSMutableSet *pending=[NSMutableSet set];
   if([[activeCommand_ objectForKey:@"type"] isEqualToString:@"sync"])
@@ -400,8 +400,10 @@ static void download_callback(const rdlp_download_event *event,void *context) {
     [pending addObject:[command objectForKey:@"input"]];
   if(total>[pending count]) return YES;
   NSUInteger matched=0; e=[pending objectEnumerator]; NSString *input;
-  while((input=[e nextObject])) if(rdapp_playlist_can_sync([input UTF8String]))
-    matched+=[[self rows:RDAPP_PLAYLIST_INPUT playlist:nil video:input format:nil] count];
+  while((input=[e nextObject])) if(rdapp_playlist_can_sync([input UTF8String])) {
+    NSArray *rows=[self rows:RDAPP_PLAYLIST_INPUT playlist:nil video:input format:nil];
+    if([rows count] && [[[rows objectAtIndex:0] objectForKey:@"source"] isEqualToString:@"added"]) ++matched;
+  }
   return total>matched;
 }
 - (BOOL)hasMissingEntriesForPlaylist:(NSString *)key format:(NSString *)format;
@@ -442,7 +444,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 {
   NSString *command=[activeCommand_ objectForKey:@"type"], *phase=nil;
   if(![command isEqualToString:@"download"] && ![command isEqualToString:@"addVideo"]) {
-    phase=[command isEqualToString:@"discover"]?@"Loading playlists…":
+    phase=[command isEqualToString:@"discover"]?@"Syncing My Playlists…":
       ([[activeCommand_ objectForKey:@"adding"] boolValue]?@"Adding playlist…":@"Syncing playlist…");
   } else switch(type) {
     case RDLP_EVENT_AUTHENTICATING: phase=@"Reading cookies…"; break;
@@ -522,7 +524,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 }
 - (void)syncAll;
 {
-  NSArray *rows=[self playlists]; unsigned int i;
+  NSArray *rows=[self playlistsFromAccount:NO]; unsigned int i;
   for(i=0;i<[rows count];++i) if([RDLPLibrary canSyncPlaylist:[rows objectAtIndex:i]] && ![self isSyncPendingForInput:[[rows objectAtIndex:i] objectForKey:@"service_id"]]) [commands_ addObject:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",[[rows objectAtIndex:i] objectForKey:@"service_id"],@"input",nil]];
   [self startNext];
 }
@@ -657,7 +659,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   [lastPhase_ release]; lastPhase_=nil;
   NSString *type=[command objectForKey:@"type"];
   if(![type isEqualToString:@"reconcile"]) [self showStatus:[type isEqualToString:@"download"]?@"Resolving video…":
-    ([type isEqualToString:@"discover"]?@"Loading playlists…":([type isEqualToString:@"addVideo"]?@"Adding video…":([[command objectForKey:@"adding"] boolValue]?@"Adding playlist…":@"Syncing playlist…")))];
+    ([type isEqualToString:@"discover"]?@"Syncing My Playlists…":([type isEqualToString:@"addVideo"]?@"Adding video…":([[command objectForKey:@"adding"] boolValue]?@"Adding playlist…":@"Syncing playlist…")))];
   [self changed];
   /* QuickJS permits 1 MiB of stack; the default 512 KiB worker stack can
      hit its guard page before QuickJS detects overflow. Leave native headroom. */
@@ -700,10 +702,10 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   BOOL download=[type isEqualToString:@"download"], discover=[type isEqualToString:@"discover"], addVideo=[type isEqualToString:@"addVideo"];
   BOOL adding=[[activeCommand_ objectForKey:@"adding"] boolValue];
   rdlp_error_code code=(rdlp_error_code)[[result objectForKey:@"code"] intValue];
-  NSString *status=download?@"Download complete":(discover?@"Playlists loaded":(addVideo?@"Video added":(adding?@"Playlist added":@"Playlist synced")));
+  NSString *status=download?@"Download complete":(discover?@"My Playlists synced":(addVideo?@"Video added":(adding?@"Playlist added":@"Playlist synced")));
   if(download && code==RDLP_OK) status=[NSString stringWithFormat:@"Downloaded·%.1f MiB",[[result objectForKey:@"bytes"] doubleValue]/1048576.0];
   if(code==RDLP_ERROR_CANCELLED) status=download?@"Download stopped":@"Playlist operation stopped";
-  else if(code!=RDLP_OK) status=download?@"Download failed":(discover?@"Error loading playlists":(addVideo?@"Error adding video":(adding?@"Error adding playlist":@"Error syncing playlist")));
+  else if(code!=RDLP_OK) status=download?@"Download failed":(discover?@"Error syncing My Playlists":(addVideo?@"Error adding video":(adding?@"Error adding playlist":@"Error syncing playlist")));
   BOOL warning=[[result objectForKey:@"warning"] boolValue];
   if(warning) status=@"Download needs attention";
   if((code!=RDLP_OK && code!=RDLP_ERROR_CANCELLED) || warning) {
