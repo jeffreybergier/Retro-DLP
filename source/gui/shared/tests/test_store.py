@@ -819,14 +819,13 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.rows(1),[])
         self.assertEqual(self.rows(2),jobs)
 
-    def test_removed_playlist_stays_hidden_until_explicit_sync(self):
+    def test_removed_playlist_stays_hidden_until_discovery_or_sync(self):
         self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
         job=self.claim(); key=self.key.value
         path=self.path/job['path']; path.parent.mkdir(parents=True); path.write_bytes(b'video')
         self.check(lib.rdapp_store_finish(self.db,int(job['id']),b'complete',b'18',b''))
         before=self.rows(2)
         self.check(lib.rdapp_store_remove_playlist(self.db,self.key,os.fsencode(self.path)))
-        self.check(lib.rdapp_store_discovered_playlist(self.db,b'PLtest',b'My / playlist'))
         for kind in (0,4,5,11,14,15,16,18,19):
             self.assertEqual(self.rows(kind),[],kind)
         self.check(lib.rdapp_store_reconcile(self.db,os.fsencode(self.path)))
@@ -835,6 +834,16 @@ class StoreTests(unittest.TestCase):
         self.assertFalse((path.parent/'Playlist.xspf').exists())
         self.check(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)))
         self.assertFalse((path.parent/'Playlist.m3u8').exists())
+        self.check(lib.rdapp_store_discovered_playlist(self.db,b'PLtest',b'My / playlist'))
+        for kind in (0,5,11,16):
+            self.assertEqual(len(self.rows(kind)),1,kind)
+            self.assertEqual(int(self.rows(kind)[0]['id']),key)
+        self.assertEqual(self.rows(1),[])  # Discovery restores visibility; sync loads entries.
+        self.assertEqual(self.rows(2),before)
+        self.assertTrue(path.exists())
+        self.check(lib.rdapp_store_discovered_playlist(self.db,b'PLtest',b'My / playlist'))
+        self.assertEqual(len(self.rows(0)),1)  # Repeated discovery never duplicates the parent.
+        self.check(lib.rdapp_store_remove_playlist(self.db,self.key,os.fsencode(self.path)))
         self.check(self.snapshot())
         self.assertEqual(self.key.value,key)
         self.assertEqual(self.rows(2),before)

@@ -377,7 +377,7 @@ int rdapp_store_discovered_playlist(rdapp_store *s,const char *id,const char *ti
   sqlite3_stmt *p;
   if(!sql(s,"BEGIN IMMEDIATE")) return 0;
   if(!rdapp_store_playlist(s,id,title,NULL)) goto rollback;
-  p=prepare(s,"UPDATE playlists SET source='account' WHERE service_id=?");
+  p=prepare(s,"UPDATE playlists SET source='account', removed=0 WHERE service_id=?");
   if(!p) goto rollback;
   bind_text(p,1,id); if(!done(s,p)) goto rollback;
   if(sql(s,"COMMIT")) return 1;
