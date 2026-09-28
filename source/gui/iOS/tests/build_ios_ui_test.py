@@ -30,6 +30,13 @@ if not playback_fixture.exists():
                     '-i', str(fixture), '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono',
                     '-c:v', 'copy', '-c:a', 'aac', '-t', '60', str(playback_fixture)], check=True)
 shutil.copyfile(playback_fixture, app / 'playback-fixture.mp4')
+long_fixture = root / 'build/apps/tests/ios-playback-long-audio-fixture.mp4'
+if not long_fixture.exists():
+    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-stream_loop', '199',
+                    '-i', str(fixture), '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono',
+                    '-c:v', 'copy', '-c:a', 'aac', '-t', '600',
+                    str(long_fixture)], check=True)
+shutil.copyfile(long_fixture, app / 'playback-long-fixture.mp4')
 plist = app / 'Info.plist'
 info = plistlib.loads(plist.read_bytes())
 info.update(CFBundleExecutable='RetroDLPIOSOfflineTest',

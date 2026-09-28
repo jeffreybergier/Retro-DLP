@@ -1,6 +1,7 @@
 #import "RDLPDownloadedPlayerViewController.h"
 #import "RDLPLibrary.h"
 #import "RDLPUIKit.h"
+#import "player/RDLPPlayerContent.h"
 #import <MediaPlayer/MediaPlayer.h>
 #import <math.h>
 
@@ -8,10 +9,6 @@ static void *RDLPDownloadObservation=&RDLPDownloadObservation;
 static RDLPDownloadedPlayerViewController *RDLPActivePlayback=nil; // nonretained
 static NSArray *RDLPDownloadItemKeys(void) {
   return [NSArray arrayWithObjects:@"status",@"duration",@"playbackBufferEmpty",nil];
-}
-static double RDLPResumePosition(double seconds,double duration) {
-  if(isfinite(duration) && duration>0 && (seconds<=duration*0.1 || seconds>=duration*0.9)) return 0;
-  return seconds;
 }
 @interface RDLPDownloadedPlayerViewController () {
   RDLPLibrary *_library;
@@ -170,7 +167,7 @@ static double RDLPResumePosition(double seconds,double duration) {
   if(!_started || _stopped || _changingItem || _item!=[[self player] currentItem]) return;
   if(!_ready && !_preparing && [_item status]==AVPlayerItemStatusReadyToPlay) {
     double duration=CMTimeGetSeconds([_item duration]);
-    _resume=RDLPResumePosition(_resume,duration);
+    _resume=RDLPPlayerResumePosition(_resume,duration);
     _preparing=YES;
     /* Prevent a Play tap or scrub racing the single initial resume seek. */
     [[_playerViewController view] setUserInteractionEnabled:NO];
@@ -234,7 +231,8 @@ static double RDLPResumePosition(double seconds,double duration) {
   if(!_ready || _preparing || _stopped || _changingItem || [_item status]!=AVPlayerItemStatusReadyToPlay) return;
   double seconds=CMTimeGetSeconds([_item currentTime]), duration=CMTimeGetSeconds([_item duration]);
   if(!isfinite(seconds) || seconds<0) return;
-  seconds=RDLPResumePosition(seconds,duration);
+  /* Classify the item being saved, which may be the outgoing queue item. */
+  seconds=RDLPPlayerResumePosition(seconds,duration);
   if(seconds==_savedPosition) return;
   _savedPosition=seconds;
   [_library savePlaybackSeconds:seconds forVideo:_video];

@@ -1,5 +1,6 @@
 #import "RDLPPlayerViewController.h"
 #import "RDLPPlayerControls.h"
+#import "RDLPPlayerContent.h"
 #import "../RDLPUIKit.h"
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
@@ -202,6 +203,10 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   [self updatePresentation];
   [self refresh];
   [self showControls];
+}
+- (BOOL)longContent {
+  AVPlayerItem *item=[_player currentItem];
+  return item && RDLPPlayerContentIsLong(CMTimeGetSeconds([item duration]));
 }
 - (void)setCanSkipToPreviousItem:(BOOL)canSkip {
   _canSkipToPreviousItem=canSkip; [self refresh];

@@ -14,6 +14,10 @@ player = Path(__file__).resolve().parents[1]
 root = player.parents[3]
 output = root / 'build/apps/tests/player'
 output.mkdir(parents=True, exist_ok=True)
+content_test = output / 'content-tests'
+subprocess.run([os.environ.get('CC', 'cc'), '-std=c99', '-Wall', '-Wextra', '-Werror',
+                str(player / 'tests/content_tests.c'), '-lm', '-o', str(content_test)], check=True)
+subprocess.run([str(content_test)], check=True)
 clang = os.environ.get('CLANG', '/usr/bin/clang')
 sdk = os.environ.get('IOS_SDK', '/osxcross/modern/SDK/iPhoneOS8.4.sdk')
 bin_dir = os.environ.get('IOS_BIN', '/osxcross/modern/bin')

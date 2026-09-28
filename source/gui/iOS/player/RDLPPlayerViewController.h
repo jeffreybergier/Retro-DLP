@@ -53,6 +53,12 @@
 
 /* Retro-DLP extensions. These properties reflect the playback owner's state. */
 
+/** Current item duration exceeds eight minutes. NO until its duration is known.
+ * Computed from the current item, including while the UI is inactive.
+ * This classification adds no visible controls or labels.
+ */
+@property(nonatomic,readonly) BOOL longContent;
+
 /**
  * Default NO. The current session's audio-only mode, supplied by its owner.
  * YES removes and releases the video layer and shows an audio-only placeholder
