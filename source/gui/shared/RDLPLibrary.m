@@ -78,7 +78,7 @@ static int collect(void *context,int count,const char *const *names,const char *
     if([cache_ count]>=128) [cache_ removeAllObjects];
     [cache_ setObject:row forKey:key];
   }
-  lastIndex_=index; lastIdentity_=identifier([row objectForKey:(query_==RDAPP_ENTRIES || query_==RDAPP_VIDEO_ENTRIES || query_==RDAPP_MISSING || query_==RDAPP_DOWNLOAD_CANDIDATES)?@"position":@"id"]);
+  lastIndex_=index; lastIdentity_=identifier([row objectForKey:(query_==RDAPP_ENTRIES || query_==RDAPP_ADDED_VIDEOS || query_==RDAPP_VIDEO_ENTRIES || query_==RDAPP_MISSING || query_==RDAPP_DOWNLOAD_CANDIDATES)?@"position":@"id"]);
   return [[row retain] autorelease];
 }
 - (id)cachedObjectAtIndex:(NSUInteger)index;
@@ -90,11 +90,13 @@ static int collect(void *context,int count,const char *const *names,const char *
   if(!rdapp_store_page(reader_,RDAPP_PLAYLIST,identifier(key),NULL,NULL,0,1,collect,rows)) return nil;
   return [rows count]?[rows objectAtIndex:0]:nil;
 }
-- (NSUInteger)downloadsSince:(NSDate *)date;
+- (NSUInteger)rowsSinceDate:(NSDate *)date;
 {
   int64_t count=0;
-  if(query_!=RDAPP_ALL_DOWNLOADS || !rdapp_store_downloads_since(reader_,(int64_t)[date timeIntervalSince1970],&count))
-    [owner_ reportError:@"Couldn’t read download sections" detail:string(rdapp_store_error(reader_))];
+  int64_t timestamp=(int64_t)[date timeIntervalSince1970];
+  int ok=query_==RDAPP_ADDED_VIDEOS?rdapp_store_added_videos_since(reader_,key_,timestamp,&count):
+    (query_==RDAPP_ALL_DOWNLOADS && rdapp_store_downloads_since(reader_,timestamp,&count));
+  if(!ok) [owner_ reportError:@"Couldn’t read date sections" detail:string(rdapp_store_error(reader_))];
   return (NSUInteger)count;
 }
 - (NSUInteger)indexForIdentity:(NSString *)identity;
@@ -390,6 +392,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (NSArray *)entriesForPlaylist:(NSString *)key; { return [self rows:RDAPP_ENTRIES playlist:key]; }
 - (NSArray *)jobsForPlaylist:(NSString *)key completedOnly:(BOOL)completed;
 { return [self rows:completed?RDAPP_DOWNLOADS:RDAPP_JOBS playlist:key]; }
+- (RDLPLibraryRows *)addedVideos;
+{ return [self rows:RDAPP_ADDED_VIDEOS playlist:[[self adhocPlaylist] objectForKey:@"id"] video:nil format:nil]; }
 - (RDLPLibraryRows *)allDownloads;
 { return [self rows:RDAPP_ALL_DOWNLOADS playlist:nil video:nil format:nil]; }
 - (RDLPLibraryRows *)queueRows;

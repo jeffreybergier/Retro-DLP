@@ -1,12 +1,38 @@
 #import "RDLPPlaylistViewController.h"
 #import "RDLPUIKit.h"
+#import "RDLP_Foundation.h"
 
 @implementation RDLPPlaylistViewController
 - (id)initWithLibrary:(RDLPLibrary *)library playlist:(NSDictionary *)playlist;
-{ self=[super initWithLibrary:library title:[playlist objectForKey:@"title"]]; if(self) playlist_=[playlist copy]; return self; }
+{
+  self=[super initWithLibrary:library title:[playlist objectForKey:@"title"]];
+  if(self) {
+    playlist_=[playlist copy];
+    if([[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID]) {
+      [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPDateBoundariesDidChange object:nil];
+      [NSCalendar RDLP_monitorDateBoundaries];
+    }
+  }
+  return self;
+}
 - (void)dealloc; { [playlist_ release]; [super dealloc]; }
 - (NSArray *)listSections;
 { return [model_ sectionsForScreen:RDLPScreenPlaylist playlist:playlist_ video:nil collapsed:nil]; }
+- (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section;
+{
+  (void)table;
+  return [[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID]?
+    [[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"title"]:nil;
+}
+- (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index;
+{
+  UITableViewCell *cell=[super tableView:table cellForRowAtIndexPath:index];
+  if([[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID]) {
+    [[cell detailTextLabel] setNumberOfLines:1];
+    [RDLPUIKit truncateMiddleInLabel:[cell detailTextLabel]];
+  }
+  return cell;
+}
 - (BOOL)containsEntryForRetry:(NSDictionary *)entry;
 { return [library_ playlist:[playlist_ objectForKey:@"id"] containsVideo:[entry objectForKey:@"video_id"]]; }
 - (void)playJob:(NSDictionary *)job entry:(NSDictionary *)entry;

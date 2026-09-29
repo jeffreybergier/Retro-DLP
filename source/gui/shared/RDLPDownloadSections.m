@@ -82,7 +82,7 @@
       NSDate *start=[starts objectAtIndex:i];
       /* A week can start in the preceding month/year. Earlier buckets win. */
       if(!earliest || [start compare:earliest]==NSOrderedAscending) earliest=start;
-      end=[rows downloadsSince:earliest];
+      end=[rows rowsSinceDate:earliest];
     }
     if(end>offset) [sections addObject:[NSDictionary dictionaryWithObjectsAndKeys:
       [titles objectAtIndex:i],@"title",[NSNumber numberWithUnsignedLong:offset],@"offset",

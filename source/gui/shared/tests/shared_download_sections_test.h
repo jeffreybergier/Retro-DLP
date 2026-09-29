@@ -7,14 +7,14 @@
   NSArray *dates;
   NSUInteger reads;
 }
-- (NSUInteger)downloadsSince:(NSDate *)date;
+- (NSUInteger)rowsSinceDate:(NSDate *)date;
 - (NSUInteger)indexForIdentity:(NSString *)identity;
 - (id)cachedObjectAtIndex:(NSUInteger)index;
 @end
 @implementation RDLPSectionFixture
 - (void)dealloc; { [dates release]; [super dealloc]; }
 - (NSUInteger)count; { return [dates count]; }
-- (NSUInteger)downloadsSince:(NSDate *)date;
+- (NSUInteger)rowsSinceDate:(NSDate *)date;
 {
   NSUInteger i, count=0;
   for(i=0;i<[dates count];++i) if([(NSDate *)[dates objectAtIndex:i] compare:date]!=NSOrderedAscending) ++count;

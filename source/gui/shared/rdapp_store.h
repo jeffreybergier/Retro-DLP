@@ -20,7 +20,7 @@ typedef enum { RDAPP_PLAYLISTS, RDAPP_ENTRIES, RDAPP_JOBS, RDAPP_DOWNLOADS,
   RDAPP_BLOCKING_JOBS, RDAPP_VIDEO_JOBS, RDAPP_JOB, RDAPP_PLAYLIST,
   RDAPP_MISSING, RDAPP_DOWNLOAD_CANDIDATES, RDAPP_PLAYLIST_INPUT,
   RDAPP_ADDED_IDS, RDAPP_ACCOUNT_IDS, RDAPP_VIDEO_ENTRIES,
-  RDAPP_UNSUPPORTED_PLAYLISTS, RDAPP_UNSUPPORTED_IDS, RDAPP_ALL_DOWNLOADS } rdapp_query;
+  RDAPP_UNSUPPORTED_PLAYLISTS, RDAPP_UNSUPPORTED_IDS, RDAPP_ALL_DOWNLOADS, RDAPP_ADDED_VIDEOS } rdapp_query;
 /* Offline capability check using the library parser, including canonical IDs
    extracted from URLs. Ad-Hoc is local and is never syncable. */
 int rdapp_playlist_can_sync(const char *input);
@@ -42,8 +42,11 @@ int rdapp_store_after(rdapp_store *, rdapp_query, int64_t key, const char *video
                       const char *format, int64_t identity, rdapp_row_callback, void *);
 /* Position for an entry position or job ID in display order; -1 if absent. */
 int rdapp_store_index(rdapp_store *, rdapp_query, int64_t playlist, int64_t identity, int64_t *index);
-/* Count date prefixes in the same read snapshot as the lazily fetched rows. */
+/* Count date prefixes in the same read snapshot as the lazily fetched rows.
+   Added Videos uses entries.enqueueDate: the maximum persisted job enqueueDate
+   across that video's qualities, updated atomically when enqueueing. */
 int rdapp_store_downloads_since(rdapp_store *, int64_t timestamp, int64_t *count);
+int rdapp_store_added_videos_since(rdapp_store *, int64_t playlist, int64_t timestamp, int64_t *count);
 int rdapp_store_playlist(rdapp_store *, const char *id, const char *title, int64_t *key);
 int rdapp_store_discovered_playlist(rdapp_store *, const char *id, const char *title);
 typedef struct { const char *id, *title; } rdapp_playlist_reference;

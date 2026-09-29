@@ -324,7 +324,8 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   }
   NSMutableArray *jobs=[NSMutableArray array], *URLs=[NSMutableArray array];
   NSUInteger selected=NSNotFound;
-  NSArray *entries=[library entriesForPlaylist:playlist];
+  BOOL added=[[[library playlistForID:playlist] objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID];
+  NSArray *entries=added?[library addedVideos]:[library entriesForPlaylist:playlist];
   index=0; count=[entries count];
   while(index<count) {
     NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];

@@ -1040,6 +1040,14 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     [adhocView addVideo:nil];
     [[[adhocView valueForKey:@"alert_"] textFieldAtIndex:0] setText:@"  YE7VzlLtp-4  "]; confirm(adhocView,YES);
     NSDictionary *addedJob=[library_ jobForPlaylist:[[library_ adhocPlaylist] objectForKey:@"id"] video:@"YE7VzlLtp-4" format:@"137+140"];
+    require([sections(adhocView) count]==2 && [[[sections(adhocView) objectAtIndex:0] objectForKey:@"title"] isEqual:@"Today"] &&
+      [[[sections(adhocView) objectAtIndex:1] objectForKey:@"title"] isEqual:@"Older"],@"Added Videos groups new and undated entries");
+    NSIndexPath *addedIndex=videoIndex(adhocView,@"YE7VzlLtp-4",@"137+140");
+    require([addedIndex section]==0 && [addedIndex row]==0,@"Latest enqueued video appears first");
+    UITableViewCell *addedCell=[adhocView tableView:[adhocView tableView] cellForRowAtIndexPath:addedIndex];
+    NSString *addedDate=[NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:[[addedJob objectForKey:@"enqueueDate"] doubleValue]] dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterNoStyle];
+    require([[[addedCell detailTextLabel] text] isEqual:[NSString stringWithFormat:@"%@·Added Videos·%@",addedDate,[RDLPLibrary qualityLabelForFormat:@"137+140"]]],@"Added Videos subtitle matches Queue with enqueue date");
+    require([[adhocView tableView:[adhocView tableView] titleForHeaderInSection:0] isEqual:@"Today"],@"Native Added Videos table exposes date headers");
     require([RDLPLibrary savePreferredFormat:@"18"],@"Change quality after adding");
     require([[addedJob objectForKey:@"state"] isEqualToString:@"queued"] &&
       [[addedJob objectForKey:@"video_id"] isEqualToString:@"YE7VzlLtp-4"] &&

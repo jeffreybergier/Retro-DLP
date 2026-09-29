@@ -80,8 +80,10 @@
 { return [[[RDLPSectionRows alloc] initWithRows:rows model:self screen:screen playlist:playlist] autorelease]; }
 - (NSString *)subtitleForJob:(NSDictionary *)job dateKey:(NSString *)key;
 {
-  NSString *detail=[NSString stringWithFormat:@"%@·%@",[job objectForKey:@"playlist_title"],
-    [RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
+  NSMutableArray *parts=[NSMutableArray array];
+  if([[job objectForKey:@"playlist_title"] length]) [parts addObject:[job objectForKey:@"playlist_title"]];
+  if([[job objectForKey:@"format"] length]) [parts addObject:[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
+  NSString *detail=[parts componentsJoinedByString:@"·"];
   NSTimeInterval seconds=[[job objectForKey:key] doubleValue];
   if(seconds>0) detail=[NSString stringWithFormat:@"%@·%@",
     [NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:seconds]
@@ -90,9 +92,20 @@
 }
 - (NSDictionary *)displayRow:(NSDictionary *)item screen:(RDLPScreen)screen playlist:(NSString *)playlist;
 {
-  if(screen==RDLPScreenDownloads) {
+  if(screen==RDLPScreenDownloads || screen==RDLPScreenPlaylist) {
     NSMutableDictionary *row=[[item mutableCopy] autorelease];
-    NSString *detail=[self subtitleForJob:[item objectForKey:@"job"] dateKey:@"latestDownloadDate"];
+    NSDictionary *job=[item objectForKey:@"job"];
+    if(screen==RDLPScreenPlaylist) {
+      /* Added Videos has one row per occurrence, not per downloaded quality.
+         Its date is the latest enqueue across qualities, independent of which
+         playable job supplies the row's actions and quality label. */
+      NSMutableDictionary *subtitle=[NSMutableDictionary dictionaryWithDictionary:job?job:[NSDictionary dictionary]];
+      NSDictionary *entry=[item objectForKey:@"video"];
+      [subtitle setObject:[entry objectForKey:@"enqueueDate"] forKey:@"enqueueDate"];
+      [subtitle setObject:[entry objectForKey:@"playlist_title"] forKey:@"playlist_title"];
+      job=subtitle;
+    }
+    NSString *detail=[self subtitleForJob:job dateKey:screen==RDLPScreenDownloads?@"latestDownloadDate":@"enqueueDate"];
     [row setObject:detail forKey:@"detail"]; [row setObject:detail forKey:@"spoken_detail"];
     [row setObject:[NSString stringWithFormat:@"%@, %@, %@",[row objectForKey:@"title"],detail,[row objectForKey:@"status"]] forKey:@"accessibility_label"];
     return row;
@@ -145,11 +158,12 @@
     if(screen==RDLPScreenQueue)
       return [NSArray arrayWithObject:[self section:@"" rows:[self displayRows:[library_ queueRows] screen:screen playlist:nil]]];
     if(screen==RDLPScreenPlaylist || screen==RDLPScreenDownloads) {
-      NSArray *source=screen==RDLPScreenPlaylist?[library_ entriesForPlaylist:pid]:[library_ allDownloads];
-      if(screen==RDLPScreenDownloads) {
+      BOOL added=screen==RDLPScreenPlaylist && [[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID];
+      NSArray *source=added?[library_ addedVideos]:(screen==RDLPScreenPlaylist?[library_ entriesForPlaylist:pid]:[library_ allDownloads]);
+      if(screen==RDLPScreenDownloads || added) {
         RDLPDownloadSections *groups=[[[RDLPDownloadSections alloc] initWithRows:(RDLPLibraryRows *)source date:[NSDate date] calendar:[NSCalendar currentCalendar]] autorelease];
-        NSArray *videos=[[[RDLPVideoRows alloc] initWithRows:source library:library_ playlist:nil] autorelease];
-        return [groups sectionsWithRows:[self displayRows:videos screen:screen playlist:nil]];
+        NSArray *videos=[[[RDLPVideoRows alloc] initWithRows:source library:library_ playlist:added?pid:nil] autorelease];
+        return [groups sectionsWithRows:[self displayRows:videos screen:screen playlist:added?pid:nil]];
       }
       return [NSArray arrayWithObject:[self section:screen==RDLPScreenPlaylist?@"Videos":@"Downloads" rows:[[[RDLPVideoRows alloc] initWithRows:source library:library_ playlist:screen==RDLPScreenPlaylist?pid:nil] autorelease]]];
     } else {

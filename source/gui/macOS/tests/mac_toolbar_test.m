@@ -988,6 +988,19 @@ static void testQueueWindow(RDLPLibrary *library) {
     [NSApp endSheet:[window_ valueForKey:@"addSheet_"] returnCode:1]; pump();
     NSDictionary *addedJob=[library_ jobForPlaylist:[adhoc objectForKey:@"id"] video:@"LMNOPQRSTUV" format:[RDLPLibrary preferredFormat]];
     requireCondition([[addedJob objectForKey:@"state"] isEqualToString:@"queued"] && [[addedJob objectForKey:@"title"] isEqualToString:@"LMNOPQRSTUV"],@"Mac Add Video sheet queues immediately without network access");
+    NSTableView *addedTable=[window_ valueForKey:@"table_"];
+    NSArray *addedRows=[window_ valueForKey:@"rows_"];
+    requireCondition([addedTable numberOfRows]==4 && [addedRows isSectionAtIndex:0] && [addedRows isSectionAtIndex:2],@"Added Videos has Today and Older headers on Tiger and Leopard");
+    requireCondition([[[addedRows objectAtIndex:1] objectForKey:@"video_id"] isEqual:@"LMNOPQRSTUV"],@"Added Videos puts the latest enqueue first");
+    [addedTable selectRowIndexes:[NSIndexSet indexSetWithIndex:3] byExtendingSelection:NO];
+    NSString *addedPosition=[[[addedRows objectAtIndex:3] objectForKey:@"position"] copy];
+    [library_ enqueuePlaylist:[adhoc objectForKey:@"id"] video:@"ABCDEFGHIJK" format:@"22"];
+    [window_ refresh:nil];
+    addedRows=[window_ valueForKey:@"rows_"];
+    requireCondition([addedTable selectedRow]>=0 && [[[[addedRows objectAtIndex:(NSUInteger)[addedTable selectedRow]] objectForKey:@"position"] description] isEqual:addedPosition],@"Added Videos selection follows occurrence identity when its date section changes");
+    [addedPosition release];
+    [addedTable selectAll:nil];
+    requireCondition([addedTable numberOfSelectedRows]==2,@"Added Videos Select All excludes date headers");
     testMacErrorAlert(window_);
     report=@"PASS: Ad-Hoc grouping and disabled sync, Add Video sheet, shared status expiry, native error alerts, saved VLC/QuickTime/Default App preference and unavailable-player fallback, download policy, textured window, flat five-column queue, exact-quality menu actions, selection stability, transfer progress, queue accounting and local failures, sidebar outline groups, discovery promotion, fixed toolbar labels, six toolbar responsibilities, download/stop states and separate removal, contextual menus, cancellation and retry; no network requests.";
 

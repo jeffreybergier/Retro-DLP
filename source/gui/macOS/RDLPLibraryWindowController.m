@@ -502,7 +502,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (BOOL)playable:(NSDictionary *)job;
 { return [downloadPolicy_ playable:job]; }
 - (void)downloadDateChanged:(id)sender;
-{ if(mode_!=0) [self refresh:sender]; }
+{ if(mode_!=0 || [selectedPlaylist_ isEqualToString:[adhocPlaylist_ objectForKey:@"id"]]) [self refresh:sender]; }
 - (void)refresh:(id)sender;
 {
   (void)sender; if(refreshing_) return; refreshing_=YES;
@@ -526,8 +526,9 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [unsupportedPlaylists_ release]; unsupportedPlaylists_=[[library_ unsupportedPlaylistIDs] copy];
   [adhocPlaylist_ release]; adhocPlaylist_=[[library_ adhocPlaylist] retain];
   if(mode_==0 && ![self selectedPlaylist]) { mode_=1; [selectedPlaylist_ release]; selectedPlaylist_=nil; [selection release]; selection=nil; }
-  [rows_ release]; rows_=[(mode_==0?[library_ entriesForPlaylist:selectedPlaylist_]:[library_ allDownloads]) copy];
-  if(mode_!=0) {
+  BOOL added=mode_==0 && [selectedPlaylist_ isEqualToString:[adhocPlaylist_ objectForKey:@"id"]];
+  [rows_ release]; rows_=[(added?[library_ addedVideos]:(mode_==0?[library_ entriesForPlaylist:selectedPlaylist_]:[library_ allDownloads])) copy];
+  if(mode_!=0 || added) {
     RDLPDownloadSections *groups=[[[RDLPDownloadSections alloc] initWithRows:(RDLPLibraryRows *)rows_ date:[NSDate date] calendar:[NSCalendar currentCalendar]] autorelease];
     NSArray *grouped=[[groups tableRows:rows_] retain]; [rows_ release]; rows_=grouped;
   }

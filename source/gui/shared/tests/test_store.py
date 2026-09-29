@@ -46,7 +46,7 @@ class Entry(C.Structure):
                 ('has_duration', C.c_int), ('has_view_count', C.c_int)]
 METADATA_FIELDS = ('channel', 'channel_id', 'view_count_text', 'published_text',
                    'description_snippet', 'duration', 'view_count')
-ENTRY_FIELDS = {'playlist_id', 'position', 'video_id', 'title', *METADATA_FIELDS}
+ENTRY_FIELDS = {'playlist_id', 'position', 'video_id', 'title', 'enqueueDate', *METADATA_FIELDS}
 CB = C.CFUNCTYPE(C.c_int, P, C.c_int, C.POINTER(S), C.POINTER(S))
 REMOVE_CB = C.CFUNCTYPE(P, P, S)
 for name, args in {
@@ -55,6 +55,7 @@ for name, args in {
     'save_playback_seconds':[P,S,C.c_double],
     'count':[P,C.c_int,I,S,S,C.POINTER(I)],
     'downloads_since':[P,I,C.POINTER(I)],
+    'added_videos_since':[P,I,I,C.POINTER(I)],
     'page':[P,C.c_int,I,S,S,I,I,CB,P],
     'after':[P,C.c_int,I,S,S,I,CB,P],
     'index':[P,C.c_int,I,I,C.POINTER(I)],
@@ -305,7 +306,12 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.page(11)[0]['service_id'],'PLtest')
 
     @staticmethod
+    def remove_entry_dates(db):
+        db.executescript('DROP INDEX entries_enqueue; DROP INDEX jobs_video_enqueue; ALTER TABLE entries DROP COLUMN enqueueDate;')
+
+    @staticmethod
     def remove_job_dates(db):
+        StoreTests.remove_entry_dates(db)
         db.executescript('DROP INDEX jobs_download_date; DROP INDEX jobs_queue_visible; ALTER TABLE jobs DROP COLUMN enqueueDate; '
                          'ALTER TABLE jobs DROP COLUMN latestDownloadDate; '
                          "CREATE INDEX jobs_queue_visible ON jobs(id) WHERE state<>'removed' OR error<>'';")
@@ -330,7 +336,7 @@ class StoreTests(unittest.TestCase):
         self.check(lib.rdapp_store_enqueue(self.db,self.key,None,b'22'))
         self.assertGreater(int(self.rows(6)[0]['enqueueDate']),0)
         with sqlite3.connect(self.path/'db.sqlite') as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],8)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],9)
             self.assertEqual([r[2] for r in db.execute('PRAGMA index_info(jobs_queue_visible)')],['enqueueDate','id'])
 
     def test_queue_dates_track_attempts_without_reordering_retries(self):
@@ -359,6 +365,94 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(retried['id'],str(identity))
             self.assertEqual(retried['enqueueDate'],enqueued)
             self.assertEqual(retried['latestDownloadDate'],finished['latestDownloadDate'])
+
+    def test_added_videos_latest_enqueue_order_and_snapshot(self):
+        key=I()
+        for video in (b'AAAAAAAAAAA',b'BBBBBBBBBBB',b'CCCCCCCCCCC'):
+            self.check(lib.rdapp_store_add_adhoc_download(self.db,video,video,b'18',C.byref(key)))
+        self.check(lib.rdapp_store_add_adhoc(self.db,b'DDDDDDDDDDD',b'Never queued',None))
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.execute("UPDATE jobs SET enqueueDate=CASE video_id WHEN 'AAAAAAAAAAA' THEN 100 WHEN 'BBBBBBBBBBB' THEN 200 ELSE 0 END")
+        for video in (b'AAAAAAAAAAA',b'BBBBBBBBBBB',b'CCCCCCCCCCC'):
+            self.check(lib.rdapp_store_enqueue(self.db,key,video,b'18'))
+        rows=self.page(21,key=key.value,limit=-1)
+        self.assertEqual([r['position'] for r in rows],['1','0','3','2'])
+        self.assertEqual([r['enqueueDate'] for r in rows],['200','100','','0'])
+        self.assertEqual(self.count(21,key=key.value),4)
+        self.assertEqual(self.count(21),0,'Normal playlists must not acquire date grouping')
+        for position,row in enumerate(rows):
+            identity=int(row['position'])
+            self.assertEqual(self.index(21,identity,key=key.value),position)
+            self.assertEqual(self.page(21,key=key.value,offset=position)[0],row)
+            self.assertEqual(self.page(21,key=key.value,after=identity),rows[position+1:position+2])
+        reader=P()
+        self.check(lib.rdapp_store_open_reader(os.fsencode(self.path/'db.sqlite'),C.byref(reader)))
+        try:
+            self.assertEqual(self.count(21,key=key.value,store=reader),4)
+            # Retry does not change the original job date or entry date.
+            job=self.page(9,key=key.value,video=b'AAAAAAAAAAA')[0]
+            self.check(lib.rdapp_store_finish(self.db,int(job['id']),b'failed',b'',b''))
+            self.check(lib.rdapp_store_add_adhoc_download(self.db,b'AAAAAAAAAAA',None,b'18',None))
+            self.assertEqual(self.page(21,key=key.value,offset=1)[0]['enqueueDate'],'100')
+            # New quality moves the one video row up, without duplicating it.
+            self.check(lib.rdapp_store_add_adhoc_download(self.db,b'AAAAAAAAAAA',None,b'22',None))
+            changed=self.page(21,key=key.value,limit=-1)
+            self.assertEqual(changed[0]['position'],'0')
+            self.assertEqual(len(changed),4)
+            self.assertGreater(int(changed[0]['enqueueDate']),200)
+            count=I()
+            self.check(lib.rdapp_store_added_videos_since(reader,key,150,C.byref(count)))
+            self.assertEqual(count.value,1)
+            self.assertEqual(self.page(21,key=key.value,limit=-1,store=reader),rows)
+            self.check(lib.rdapp_store_added_videos_since(self.db,key,150,C.byref(count)))
+            self.assertEqual(count.value,2)
+        finally:
+            lib.rdapp_store_close(reader)
+
+    def test_added_video_date_update_is_atomic_with_enqueue(self):
+        key=I()
+        self.check(lib.rdapp_store_add_adhoc_download(self.db,b'AAAAAAAAAAA',b'A',b'18',C.byref(key)))
+        before=self.page(21,key=key.value,limit=-1)
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.execute("CREATE TRIGGER block_date BEFORE UPDATE OF enqueueDate ON entries BEGIN SELECT RAISE(ABORT,'Date unavailable'); END")
+        self.assertEqual(lib.rdapp_store_enqueue(self.db,key,b'AAAAAAAAAAA',b'22'),0)
+        self.assertEqual(self.page(9,key=key.value,video=b'AAAAAAAAAAA',format=b'22'),[])
+        self.assertEqual(self.page(21,key=key.value,limit=-1),before)
+
+    def test_version_eight_migration_backfills_latest_added_video_dates(self):
+        key=I()
+        self.check(lib.rdapp_store_add_adhoc_download(self.db,b'AAAAAAAAAAA',b'A',b'18',C.byref(key)))
+        self.check(lib.rdapp_store_add_adhoc_download(self.db,b'AAAAAAAAAAA',b'A',b'22',None))
+        self.check(lib.rdapp_store_add_adhoc(self.db,b'BBBBBBBBBBB',b'Unqueued',None))
+        self.check(lib.rdapp_store_add_adhoc_download(self.db,b'CCCCCCCCCCC',b'Legacy',b'18',None))
+        lib.rdapp_store_close(self.db); self.db=P()
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.execute("UPDATE jobs SET enqueueDate=CASE WHEN video_id='CCCCCCCCCCC' THEN 0 WHEN format='18' THEN 300 ELSE 100 END")
+            self.remove_entry_dates(db)
+            db.execute('PRAGMA user_version=8')
+        for reopen in range(2):
+            self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
+            rows=self.page(21,key=key.value,limit=-1)
+            self.assertEqual([r['enqueueDate'] for r in rows],['300','0',''])
+            self.assertEqual([r['position'] for r in rows],['0','2','1'])
+            lib.rdapp_store_close(self.db); self.db=P()
+        self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
+
+    def test_added_video_sequential_reads_remain_bounded(self):
+        key=I()
+        self.check(lib.rdapp_store_add_adhoc(self.db,b'AAAAAAAAAAA',b'A',C.byref(key)))
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.execute('DELETE FROM entries WHERE playlist_id=?',(key.value,))
+            db.executemany("INSERT INTO entries(playlist_id,position,video_id,title,enqueueDate) VALUES(?,?,'AAAAAAAAAAA','Video',?)",
+                           ((key.value,i,100 if i<10000 else None) for i in range(20000)))
+            plan=' '.join(str(r) for r in db.execute("EXPLAIN QUERY PLAN SELECT count(*) FROM entries WHERE playlist_id=? AND coalesce(enqueueDate,0)>=100",(key.value,)))
+            self.assertIn('entries_enqueue',plan)
+            self.assertIn('SEARCH',plan)
+        for identity in (9999,5000,0,19999,15000):
+            lib.rdapp_test_measure(self.db)
+            row=self.page(21,key=key.value,after=identity)[0]
+            self.assertEqual(int(row['position']),identity-1 if identity else 19999)
+            self.assertLess(lib.rdapp_test_steps(),500)
 
     def test_all_downloads_date_order_sections_snapshot_and_seek(self):
         self.check(self.snapshot([(b'abcdefghijk',b'First',0),(b'lmnopqrstuv',b'Second',1)]))
@@ -671,6 +765,28 @@ class StoreTests(unittest.TestCase):
         self.check(lib.rdapp_store_export(self.db,self.key,os.fsencode(self.path)))
         self.assertEqual(ET.parse(export).findall(XSPF+'trackList/'+XSPF+'track'),[])
         self.assertMatchingPlaylists(export)
+    def test_added_video_exports_follow_latest_enqueue_order(self):
+        key=I()
+        for video,title in [(b'AAAAAAAAAAA',b'First'),(b'BBBBBBBBBBB',b'Second')]:
+            self.check(lib.rdapp_store_add_adhoc_download(self.db,video,title,b'18',C.byref(key)))
+        for _ in range(2):
+            job=self.claim(); path=self.path/job['path']
+            path.parent.mkdir(parents=True,exist_ok=True); path.write_bytes(b'video')
+            self.check(lib.rdapp_store_finish(self.db,int(job['id']),b'complete',b'18',b''))
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.execute("UPDATE jobs SET enqueueDate=CASE video_id WHEN 'AAAAAAAAAAA' THEN 100 ELSE 200 END")
+        self.check(lib.rdapp_store_enqueue(self.db,key,None,b'18'))
+        self.check(lib.rdapp_store_export(self.db,key,os.fsencode(self.path)))
+        export=path.parent/'Playlist.xspf'
+        def titles():
+            return [t.findtext(XSPF+'title') for t in ET.parse(export).findall(XSPF+'trackList/'+XSPF+'track')]
+        self.assertEqual(titles(),['Second','First'])
+        self.assertMatchingPlaylists(export)
+        self.check(lib.rdapp_store_add_adhoc_download(self.db,b'AAAAAAAAAAA',None,b'22',None))
+        self.check(lib.rdapp_store_export(self.db,key,os.fsencode(self.path)))
+        self.assertEqual(titles(),['First','Second'])
+        self.assertMatchingPlaylists(export)
+
     def assertMatchingPlaylists(self,export):
         playlist=ET.parse(export).getroot()
         tracks=playlist.findall(XSPF+'trackList/'+XSPF+'track')
@@ -853,6 +969,7 @@ class StoreTests(unittest.TestCase):
         lib.rdapp_store_close(self.db); self.db=P()
         with sqlite3.connect(self.path/'db.sqlite') as db:
             db.execute('ALTER TABLE playlists DROP COLUMN removed')
+            self.remove_entry_dates(db)
             db.execute('PRAGMA user_version=7')
         self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
         self.assertEqual(len(self.rows(0)),1)
@@ -1073,7 +1190,7 @@ class StoreTests(unittest.TestCase):
         lib.rdapp_store_close(other)
         with sqlite3.connect(path) as db:
             self.assertEqual(db.execute('SELECT id,service_id,directory,synced_at,source FROM playlists').fetchone(),(7,'PLold','Playlists/Old',42,'added'))
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],8)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],9)
             self.assertEqual(db.execute('SELECT count(*) FROM entry_thumbnails').fetchone()[0],0)
 
     def test_version_two_migration_preserves_entries_and_jobs(self):
