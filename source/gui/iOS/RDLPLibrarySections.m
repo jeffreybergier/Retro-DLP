@@ -1,5 +1,6 @@
 #import "RDLPLibrarySections.h"
 #import "RDLPVideoRows.h"
+#import "RDLPDownloadSections.h"
 
 /* Formatting belongs to row access, never to section/count construction. */
 @interface RDLPLibrarySections (Rows)
@@ -77,8 +78,25 @@
 }
 - (NSArray *)displayRows:(NSArray *)rows screen:(RDLPScreen)screen playlist:(NSString *)playlist;
 { return [[[RDLPSectionRows alloc] initWithRows:rows model:self screen:screen playlist:playlist] autorelease]; }
+- (NSString *)subtitleForJob:(NSDictionary *)job dateKey:(NSString *)key;
+{
+  NSString *detail=[NSString stringWithFormat:@"%@·%@",[job objectForKey:@"playlist_title"],
+    [RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
+  NSTimeInterval seconds=[[job objectForKey:key] doubleValue];
+  if(seconds>0) detail=[NSString stringWithFormat:@"%@·%@",
+    [NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:seconds]
+      dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterNoStyle],detail];
+  return detail;
+}
 - (NSDictionary *)displayRow:(NSDictionary *)item screen:(RDLPScreen)screen playlist:(NSString *)playlist;
 {
+  if(screen==RDLPScreenDownloads) {
+    NSMutableDictionary *row=[[item mutableCopy] autorelease];
+    NSString *detail=[self subtitleForJob:[item objectForKey:@"job"] dateKey:@"latestDownloadDate"];
+    [row setObject:detail forKey:@"detail"]; [row setObject:detail forKey:@"spoken_detail"];
+    [row setObject:[NSString stringWithFormat:@"%@, %@, %@",[row objectForKey:@"title"],detail,[row objectForKey:@"status"]] forKey:@"accessibility_label"];
+    return row;
+  }
   if(screen==RDLPScreenLibrary) {
     NSMutableDictionary *row=[self row:[item objectForKey:@"title"] detail:[[item objectForKey:@"synced_at"] length]?[NSString stringWithFormat:@"%@ videos",[item objectForKey:@"count"]]:@"Not synced" action:@"playlist"];
     if(![[item objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![RDLPLibrary canSyncPlaylist:item]) [row setObject:@"This playlist type cannot be synced" forKey:@"detail"];
@@ -86,13 +104,7 @@
   }
   if(screen==RDLPScreenQueue) {
     NSString *title=[item objectForKey:@"title"];
-    NSTimeInterval enqueued=[[item objectForKey:@"enqueueDate"] doubleValue];
-    NSString *detail=[NSString stringWithFormat:@"%@·%@",[item objectForKey:@"playlist_title"],[RDLPLibrary qualityLabelForFormat:[item objectForKey:@"format"]]];
-    if(enqueued>0) {
-      NSString *date=[NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:enqueued]
-        dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterNoStyle];
-      detail=[NSString stringWithFormat:@"%@·%@",date,detail];
-    }
+    NSString *detail=[self subtitleForJob:item dateKey:@"enqueueDate"];
     NSMutableDictionary *row=[self row:title detail:detail action:@"job"];
     NSString *status=[policy_ statusForJob:item];
     [row setObject:[status isEqualToString:@"Cancelled"]?@"Stopped":status forKey:@"status"];
@@ -133,7 +145,12 @@
     if(screen==RDLPScreenQueue)
       return [NSArray arrayWithObject:[self section:@"" rows:[self displayRows:[library_ queueRows] screen:screen playlist:nil]]];
     if(screen==RDLPScreenPlaylist || screen==RDLPScreenDownloads) {
-      NSArray *source=screen==RDLPScreenPlaylist?[library_ entriesForPlaylist:pid]:[library_ jobsForPlaylist:nil completedOnly:YES];
+      NSArray *source=screen==RDLPScreenPlaylist?[library_ entriesForPlaylist:pid]:[library_ allDownloads];
+      if(screen==RDLPScreenDownloads) {
+        RDLPDownloadSections *groups=[[[RDLPDownloadSections alloc] initWithRows:(RDLPLibraryRows *)source date:[NSDate date] calendar:[NSCalendar currentCalendar]] autorelease];
+        NSArray *videos=[[[RDLPVideoRows alloc] initWithRows:source library:library_ playlist:nil] autorelease];
+        return [groups sectionsWithRows:[self displayRows:videos screen:screen playlist:nil]];
+      }
       return [NSArray arrayWithObject:[self section:screen==RDLPScreenPlaylist?@"Videos":@"Downloads" rows:[[[RDLPVideoRows alloc] initWithRows:source library:library_ playlist:screen==RDLPScreenPlaylist?pid:nil] autorelease]]];
     } else {
       NSArray *jobs=[library_ jobsForPlaylist:pid video:[video objectForKey:@"video_id"]];

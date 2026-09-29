@@ -54,6 +54,7 @@ for name, args in {
     'playback_seconds':[P,S,C.POINTER(C.c_double)],
     'save_playback_seconds':[P,S,C.c_double],
     'count':[P,C.c_int,I,S,S,C.POINTER(I)],
+    'downloads_since':[P,I,C.POINTER(I)],
     'page':[P,C.c_int,I,S,S,I,I,CB,P],
     'after':[P,C.c_int,I,S,S,I,CB,P],
     'index':[P,C.c_int,I,I,C.POINTER(I)],
@@ -305,7 +306,7 @@ class StoreTests(unittest.TestCase):
 
     @staticmethod
     def remove_job_dates(db):
-        db.executescript('DROP INDEX jobs_queue_visible; ALTER TABLE jobs DROP COLUMN enqueueDate; '
+        db.executescript('DROP INDEX jobs_download_date; DROP INDEX jobs_queue_visible; ALTER TABLE jobs DROP COLUMN enqueueDate; '
                          'ALTER TABLE jobs DROP COLUMN latestDownloadDate; '
                          "CREATE INDEX jobs_queue_visible ON jobs(id) WHERE state<>'removed' OR error<>'';")
 
@@ -358,6 +359,46 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(retried['id'],str(identity))
             self.assertEqual(retried['enqueueDate'],enqueued)
             self.assertEqual(retried['latestDownloadDate'],finished['latestDownloadDate'])
+
+    def test_all_downloads_date_order_sections_snapshot_and_seek(self):
+        self.check(self.snapshot([(b'abcdefghijk',b'First',0),(b'lmnopqrstuv',b'Second',1)]))
+        for quality in range(8):
+            self.check(lib.rdapp_store_enqueue(self.db,self.key,None,str(quality).encode()))
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.execute("UPDATE jobs SET state='complete',latestDownloadDate=CASE WHEN id%4=0 THEN NULL WHEN id%4=1 THEN 300 WHEN id%4=2 THEN 200 ELSE 100 END")
+            db.execute("UPDATE jobs SET state='failed' WHERE id=3")
+        expected=sorted((i for i in range(1,17) if i!=3),key=lambda i:({0:0,1:300,2:200,3:100}[i%4],i),reverse=True)
+        self.assertEqual([int(r['id']) for r in self.rows(20)],expected)
+        for position,identity in enumerate(expected):
+            self.assertEqual(int(self.page(20,offset=position)[0]['id']),identity)
+            self.assertEqual(self.index(20,identity),position)
+            self.assertEqual([int(r['id']) for r in self.page(20,after=identity)],expected[position+1:position+2])
+        self.assertEqual(self.index(20,3),-1)
+        reader=P()
+        self.check(lib.rdapp_store_open_reader(os.fsencode(self.path/'db.sqlite'),C.byref(reader)))
+        try:
+            self.assertEqual(self.count(20,store=reader),15)
+            with sqlite3.connect(self.path/'db.sqlite') as db:
+                db.execute("UPDATE jobs SET latestDownloadDate=400 WHERE id=4")
+            for boundary,total in [(400,0),(300,4),(200,8),(100,11),(1,11)]:
+                count=I()
+                self.check(lib.rdapp_store_downloads_since(reader,boundary,C.byref(count)))
+                self.assertEqual(count.value,total)
+        finally:
+            lib.rdapp_store_close(reader)
+
+    def test_all_downloads_seeks_remain_bounded_with_large_date_ties(self):
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.executemany("INSERT INTO jobs(playlist_id,video_id,title,format,state,latestDownloadDate) VALUES(?, 'abcdefghijk','Video',?,'complete',?)",
+                           ((self.key.value,str(i),100 if i<10000 else None) for i in range(20000)))
+            plan=' '.join(str(r) for r in db.execute("EXPLAIN QUERY PLAN SELECT count(*) FROM jobs WHERE state='complete' AND coalesce(latestDownloadDate,0)>=100"))
+            self.assertIn('jobs_download_date',plan)
+            self.assertIn('SEARCH',plan)
+        for identity in (9999,5000,1,19999,15000):
+            lib.rdapp_test_measure(self.db)
+            result=self.page(20,after=identity)
+            self.assertEqual(int(result[0]['id']),identity-1 if identity!=1 else 20000)
+            self.assertLess(lib.rdapp_test_steps(),500,'Sequential reads must seek, not scan a date bucket')
 
     def test_queue_date_order_paging_seek_and_selection_with_ties(self):
         self.check(self.snapshot([(b'abcdefghijk',b'First',0),(b'lmnopqrstuv',b'Second',1)]))

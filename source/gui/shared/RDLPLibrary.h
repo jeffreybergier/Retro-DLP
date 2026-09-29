@@ -16,6 +16,7 @@
   long long lastIdentity_;
   NSMutableDictionary *cache_;
 }
+- (NSUInteger)downloadsSince:(NSDate *)date;
 - (NSUInteger)indexForIdentity:(NSString *)identity;
 - (id)cachedObjectAtIndex:(NSUInteger)index;
 /* Resolve a playlist within this list's snapshot, preserving sidebar selection. */
@@ -74,6 +75,7 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
 - (NSDictionary *)jobForID:(NSString *)key;
 - (NSArray *)jobsForPlaylist:(NSString *)key video:(NSString *)video;
 - (NSDictionary *)jobForPlaylist:(NSString *)key video:(NSString *)video format:(NSString *)format;
+- (RDLPLibraryRows *)allDownloads;
 - (RDLPLibraryRows *)queueRows;
 - (NSUInteger)queuedCount;
 - (BOOL)hasBlockingJobsForPlaylist:(NSString *)key;

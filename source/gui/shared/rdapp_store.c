@@ -129,6 +129,7 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
         " FOREIGN KEY(playlist_id,position) REFERENCES entries(playlist_id,position) ON DELETE CASCADE);"
         "CREATE INDEX IF NOT EXISTS playlists_title ON playlists(title COLLATE NOCASE,id);"
         "CREATE INDEX IF NOT EXISTS playlists_source_title ON playlists(source,title COLLATE NOCASE,id);"
+        "CREATE INDEX IF NOT EXISTS jobs_download_date ON jobs(state,coalesce(latestDownloadDate,0),id);"
         "CREATE INDEX IF NOT EXISTS jobs_playlist_id ON jobs(playlist_id,id);"
         "CREATE INDEX IF NOT EXISTS jobs_queue_visible ON jobs(enqueueDate,id) WHERE state<>'removed' OR error<>'';"
         "CREATE INDEX IF NOT EXISTS jobs_video_id ON jobs(playlist_id,video_id,id);"
@@ -255,6 +256,9 @@ static int query_parts(rdapp_query kind,int64_t key,const char *format,
       *fields="e.*"; *from="entries e WHERE e.playlist_id=?1 AND e.video_id=?2"; *order="e.position"; break;
     case RDAPP_ENTRIES:
       *fields="e.*"; *from="entries e WHERE e.playlist_id=?1"; *order="e.position"; break;
+    case RDAPP_ALL_DOWNLOADS:
+      *from="jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.state='complete'";
+      *order="coalesce(j.latestDownloadDate,0) DESC,j.id DESC"; break;
     case RDAPP_DOWNLOADS:
       *from=key?"jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.state='complete' AND j.playlist_id=?1":
         "jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.state='complete'"; break;
@@ -319,6 +323,12 @@ int rdapp_store_after(rdapp_store *s,rdapp_query kind,int64_t key,const char *vi
       "UNION ALL SELECT * FROM (SELECT %s FROM %s "
       "AND j.enqueueDate<(SELECT enqueueDate FROM jobs WHERE id=?4) ORDER BY %s LIMIT 1) "
       "ORDER BY enqueueDate DESC,id DESC LIMIT 1",fields,from,order,fields,from,order);
+  else if(kind==RDAPP_ALL_DOWNLOADS)
+    snprintf(query,sizeof(query),"SELECT * FROM (SELECT * FROM (SELECT %s FROM %s "
+      "AND coalesce(j.latestDownloadDate,0)=(SELECT coalesce(latestDownloadDate,0) FROM jobs WHERE id=?4) "
+      "AND j.id<?4 ORDER BY j.id DESC LIMIT 1) UNION ALL SELECT * FROM (SELECT %s FROM %s "
+      "AND coalesce(j.latestDownloadDate,0)<(SELECT coalesce(latestDownloadDate,0) FROM jobs WHERE id=?4) "
+      "ORDER BY %s LIMIT 1)) ORDER BY coalesce(latestDownloadDate,0) DESC,id DESC LIMIT 1",fields,from,fields,from,order);
   else snprintf(query,sizeof(query),"SELECT %s FROM %s AND %s%s?4 ORDER BY %s LIMIT 1",fields,from,
     (kind==RDAPP_ENTRIES || kind==RDAPP_VIDEO_ENTRIES || kind==RDAPP_MISSING || kind==RDAPP_DOWNLOAD_CANDIDATES)?"e.position":"j.id",
     (kind==RDAPP_ENTRIES || kind==RDAPP_VIDEO_ENTRIES || kind==RDAPP_MISSING || kind==RDAPP_DOWNLOAD_CANDIDATES)?">":"<",order);
@@ -337,7 +347,7 @@ int rdapp_store_list(rdapp_store *s,rdapp_query kind,int64_t key,rdapp_row_callb
 int rdapp_store_index(rdapp_store *s,rdapp_query kind,int64_t key,int64_t identity,int64_t *index) {
   const char *fields,*from,*order,*column,*comparison; char query[2048]; sqlite3_stmt *p; int ok;
   *index=-1;
-  if(kind!=RDAPP_ENTRIES && kind!=RDAPP_DOWNLOADS && kind!=RDAPP_QUEUE) return failure(s,"Invalid indexed list");
+  if(kind!=RDAPP_ENTRIES && kind!=RDAPP_DOWNLOADS && kind!=RDAPP_ALL_DOWNLOADS && kind!=RDAPP_QUEUE) return failure(s,"Invalid indexed list");
   if(!query_parts(kind,key,NULL,&fields,&from,&order)) return failure(s,"Invalid indexed list");
   column=kind==RDAPP_ENTRIES?"e.position":"j.id"; comparison=kind==RDAPP_ENTRIES?"<":">";
   snprintf(query,sizeof(query),"SELECT count(*) FROM %s AND %s=?2",from,column);
@@ -348,11 +358,22 @@ int rdapp_store_index(rdapp_store *s,rdapp_query kind,int64_t key,int64_t identi
   sqlite3_finalize(p);
   if(kind==RDAPP_QUEUE)
     snprintf(query,sizeof(query),"SELECT count(*) FROM %s AND (j.enqueueDate,j.id)>(SELECT enqueueDate,id FROM jobs WHERE id=?2)",from);
+  else if(kind==RDAPP_ALL_DOWNLOADS)
+    snprintf(query,sizeof(query),"SELECT count(*) FROM %s AND (coalesce(j.latestDownloadDate,0),j.id)>"
+      "(SELECT coalesce(latestDownloadDate,0),id FROM jobs WHERE id=?2)",from);
   else snprintf(query,sizeof(query),"SELECT count(*) FROM %s AND %s%s?2",from,column,comparison);
   p=prepare(s,query); if(!p) return 0;
   sqlite3_bind_int64(p,1,key); sqlite3_bind_int64(p,2,identity);
   ok=sqlite3_step(p)==SQLITE_ROW;
   if(ok) *index=sqlite3_column_int64(p,0); else failure(s,sqlite3_errmsg(s->db));
+  sqlite3_finalize(p); return ok;
+}
+int rdapp_store_downloads_since(rdapp_store *s,int64_t timestamp,int64_t *count) {
+  sqlite3_stmt *p=prepare(s,"SELECT count(*) FROM jobs WHERE state='complete' AND coalesce(latestDownloadDate,0)>=?1");
+  int ok;
+  if(!p) return 0;
+  sqlite3_bind_int64(p,1,timestamp); ok=sqlite3_step(p)==SQLITE_ROW;
+  if(ok) *count=sqlite3_column_int64(p,0); else failure(s,sqlite3_errmsg(s->db));
   sqlite3_finalize(p); return ok;
 }
 int rdapp_store_playlist(rdapp_store *s,const char *id,const char *title,int64_t *key) {

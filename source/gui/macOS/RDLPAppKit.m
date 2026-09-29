@@ -190,3 +190,24 @@
     [RDLPAppKit showAlert:@"Could not open this file in its default app. Check that the download exists and choose an app in Finder’s Open With settings."];
 }
 @end
+
+@interface NSObject (RDLPSectionDelegate)
+- (BOOL)tableView:(NSTableView *)table RDLP_isSectionRow:(NSInteger)row;
+@end
+@implementation NSTableView (RDLPAppKit)
+- (BOOL)RDLP_supportsGroupRows;
+{ return [self respondsToSelector:@selector(setSelectionHighlightStyle:)]; }
+- (BOOL)RDLP_drawLegacySectionRow:(NSInteger)row;
+{
+  id delegate=[self delegate];
+  if([self RDLP_supportsGroupRows] || ![delegate respondsToSelector:@selector(tableView:RDLP_isSectionRow:)] ||
+     ![delegate tableView:self RDLP_isSectionRow:row]) return NO;
+  NSRect frame=[self rectOfRow:row];
+  [[NSColor controlColor] set]; NSRectFill(frame);
+  NSTableColumn *column=[self tableColumnWithIdentifier:@"title"];
+  NSString *title=[[self dataSource] tableView:self objectValueForTableColumn:column row:row];
+  [title drawInRect:NSInsetRect(frame,6,1) withAttributes:[NSDictionary dictionaryWithObjectsAndKeys:
+    [NSFont boldSystemFontOfSize:12],NSFontAttributeName,[NSColor controlTextColor],NSForegroundColorAttributeName,nil]];
+  return YES;
+}
+@end

@@ -42,3 +42,9 @@
 + (void)openInQuickTime:(NSString *)path;
 + (void)openDefaultApplication:(NSString *)path;
 @end
+
+@interface NSTableView (RDLPAppKit)
+- (BOOL)RDLP_supportsGroupRows;
+/* Draw the full-width group header on Tiger using the table's row delegate. */
+- (BOOL)RDLP_drawLegacySectionRow:(NSInteger)row;
+@end

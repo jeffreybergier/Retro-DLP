@@ -20,6 +20,7 @@
 { return [(RDLPLibraryRows *)source_ indexForIdentity:identity]; }
 - (NSDictionary *)displayRow:(NSDictionary *)entry;
 {
+  if([[entry objectForKey:@"action"] isEqualToString:@"section"]) return entry;
   NSDictionary *file=nil, *job=entry;
   if(playlist_) {
     NSArray *jobs=[library_ jobsForPlaylist:playlist_ video:[entry objectForKey:@"video_id"]];

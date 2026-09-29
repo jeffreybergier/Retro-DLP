@@ -54,10 +54,36 @@
 @end
 /* Keep a selected group when opening its menu; an unselected row stands alone. */
 
+@interface NSObject (RDLPTableSelection)
+- (NSIndexSet *)nonselectableRowsInTableView:(NSTableView *)view;
+@end
 @implementation RDLPTableView
+- (void)selectRowIndexes:(NSIndexSet *)indexes byExtendingSelection:(BOOL)extend;
+{
+  if([[self delegate] respondsToSelector:@selector(nonselectableRowsInTableView:)]) {
+    NSMutableIndexSet *selectable=[[indexes mutableCopy] autorelease];
+    NSIndexSet *headers=[[self delegate] nonselectableRowsInTableView:self];
+    if(headers) [selectable removeIndexes:headers];
+    [super selectRowIndexes:selectable byExtendingSelection:extend];
+  } else [super selectRowIndexes:indexes byExtendingSelection:extend];
+}
+- (void)selectAll:(id)sender;
+{
+  if([[self delegate] respondsToSelector:@selector(nonselectableRowsInTableView:)] &&
+     [[[self delegate] nonselectableRowsInTableView:self] count])
+    [self selectRowIndexes:[NSIndexSet indexSetWithIndexesInRange:NSMakeRange(0,(NSUInteger)[self numberOfRows])] byExtendingSelection:NO];
+  else [super selectAll:sender];
+}
+
+- (void)drawRow:(NSInteger)row clipRect:(NSRect)clip;
+{ if(![self RDLP_drawLegacySectionRow:row]) [super drawRow:row clipRect:clip]; }
+
 - (void)mouseDown:(NSEvent *)event;
 {
   [[self delegate] performSelector:@selector(tableWasUsed:) withObject:self];
+  NSInteger row=[self rowAtPoint:[self convertPoint:[event locationInWindow] fromView:nil]];
+  if(row>=0 && [[self delegate] respondsToSelector:@selector(tableView:shouldSelectRow:)] &&
+     ![[self delegate] tableView:self shouldSelectRow:row]) return;
   [super mouseDown:event];
   [[self delegate] performSelector:@selector(tableWasUsed:) withObject:self];
 }
@@ -72,6 +98,8 @@
   [[self delegate] performSelector:@selector(tableWasUsed:) withObject:self];
   NSInteger row=[self rowAtPoint:[self convertPoint:[event locationInWindow] fromView:nil]];
   if(row>=0) {
+    if([[self delegate] respondsToSelector:@selector(tableView:shouldSelectRow:)] &&
+       ![[self delegate] tableView:self shouldSelectRow:row]) return nil;
     if(![[self selectedRowIndexes] containsIndex:(NSUInteger)row])
       [self selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)row] byExtendingSelection:NO];
   } else [self deselectAll:nil];

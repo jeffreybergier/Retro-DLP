@@ -31,6 +31,7 @@
 #import "../../shared/tests/shared_worker_test.h"
 #import "../../shared/tests/shared_metadata_test.h"
 #import "../../shared/tests/shared_video_rows_test.h"
+#import "../../shared/tests/shared_download_sections_test.h"
 
 static void requireCondition(BOOL condition,NSString *message) {
   if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDLPTestTrace"]) NSLog(@"%@: %@",condition?@"PASS":@"FAIL",message);
@@ -196,6 +197,13 @@ static void selectRow(RDLPLibraryWindowController *window,NSString *key,NSUInteg
   if([key isEqualToString:@"queue_"]) {
     [window showJobInQueue:[[window valueForKey:@"queueRows_"] objectAtIndex:row]];
     [window tableWasUsed:table]; return;
+  }
+  if([key isEqualToString:@"table_"]) {
+    NSArray *rows=[window valueForKey:@"rows_"];
+    if([rows respondsToSelector:@selector(downloadHeaderIndexes)]) {
+      NSIndexSet *headers=[rows downloadHeaderIndexes]; NSUInteger header=[headers firstIndex];
+      while(header!=NSNotFound) { if(header<=row) ++row; header=[headers indexGreaterThanIndex:header]; }
+    }
   }
   if([table isKindOfClass:[NSOutlineView class]]) {
     NSOutlineView *outline=(NSOutlineView *)table;
@@ -598,6 +606,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([[library_ playlists] count]==1 && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Use a fresh fixture");
     testSharedLists(library_);
     testSharedMetadata();
+    testDownloadSections();
     testSharedVideoRows(@"/tmp/retrodlp-toolbar-fixture/Rows");
     testBulkSelection();
     RDLPDownloadPolicy *policy=[[[RDLPDownloadPolicy alloc] initWithLibrary:library_] autorelease];
@@ -801,10 +810,13 @@ static void testQueueWindow(RDLPLibrary *library) {
       [library_ shutdown]; [NSApp terminate:nil]; return;
     }
     selectRow(window_,@"sidebar_",0);
+    requireCondition([[window_ valueForKey:@"rows_"] isSectionAtIndex:0],@"All Downloads begins with a date section");
+    [videosTable selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+    requireCondition([videosTable selectedRow]==-1,@"Date headers cannot be selected, including on Tiger");
     requireCondition([[videosTable tableColumns] count]==5 && [videosTable tableColumnWithIdentifier:@"quality"]!=nil,@"All Downloads must retain Quality");
     requireCondition([[[videosTable tableColumns] valueForKey:@"identifier"] isEqual:videoColumnIDs],@"All Downloads shares the same column order");
-    requireCondition([[window_ tableView:videosTable objectValueForTableColumn:[videosTable tableColumnWithIdentifier:@"channel"] row:0] isEqualToString:@"Example Channel"],@"All Downloads uses persisted job metadata");
-    requireCondition([[window_ tableView:videosTable objectValueForTableColumn:[videosTable tableColumnWithIdentifier:@"size"] row:0] length]>0,@"All Downloads exposes completed file size");
+    requireCondition([[window_ tableView:videosTable objectValueForTableColumn:[videosTable tableColumnWithIdentifier:@"channel"] row:1] isEqualToString:@"Example Channel"],@"All Downloads uses persisted job metadata");
+    requireCondition([[window_ tableView:videosTable objectValueForTableColumn:[videosTable tableColumnWithIdentifier:@"size"] row:1] length]>0,@"All Downloads exposes completed file size");
     selectRow(window_,@"sidebar_",1);
     [window_ performSelector:@selector(downloadFromMenu:) withObject:fileDownload];
     invoke(window_,choice(quality,@"Low (18)"));

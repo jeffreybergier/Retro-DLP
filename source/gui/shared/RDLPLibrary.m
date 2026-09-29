@@ -90,6 +90,13 @@ static int collect(void *context,int count,const char *const *names,const char *
   if(!rdapp_store_page(reader_,RDAPP_PLAYLIST,identifier(key),NULL,NULL,0,1,collect,rows)) return nil;
   return [rows count]?[rows objectAtIndex:0]:nil;
 }
+- (NSUInteger)downloadsSince:(NSDate *)date;
+{
+  int64_t count=0;
+  if(query_!=RDAPP_ALL_DOWNLOADS || !rdapp_store_downloads_since(reader_,(int64_t)[date timeIntervalSince1970],&count))
+    [owner_ reportError:@"Couldn’t read download sections" detail:string(rdapp_store_error(reader_))];
+  return (NSUInteger)count;
+}
 - (NSUInteger)indexForIdentity:(NSString *)identity;
 {
   int64_t index=-1;
@@ -383,6 +390,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (NSArray *)entriesForPlaylist:(NSString *)key; { return [self rows:RDAPP_ENTRIES playlist:key]; }
 - (NSArray *)jobsForPlaylist:(NSString *)key completedOnly:(BOOL)completed;
 { return [self rows:completed?RDAPP_DOWNLOADS:RDAPP_JOBS playlist:key]; }
+- (RDLPLibraryRows *)allDownloads;
+{ return [self rows:RDAPP_ALL_DOWNLOADS playlist:nil video:nil format:nil]; }
 - (RDLPLibraryRows *)queueRows;
 { return [self rows:RDAPP_QUEUE playlist:nil video:nil format:nil]; }
 - (NSUInteger)queuedCount; { return [[self rows:RDAPP_PENDING playlist:nil] count]; }

@@ -19,6 +19,7 @@
 #import "ios_playback_progress_test.h"
 #import "../../shared/tests/shared_metadata_test.h"
 #import "../../shared/tests/shared_video_rows_test.h"
+#import "../../shared/tests/shared_download_sections_test.h"
 
 static void require(BOOL condition,NSString *message) {
   if(!condition) [NSException raise:@"RDLPIOSOfflineTest" format:@"%@",message];
@@ -75,12 +76,15 @@ static NSDictionary *findRow(id controller,NSString *action) {
   return nil;
 }
 static NSIndexPath *videoIndex(id controller,NSString *video,NSString *format) {
-  NSArray *rows=[[sections(controller) objectAtIndex:0] objectForKey:@"rows"];
-  for(NSUInteger i=0;i<[rows count];++i) {
-    NSDictionary *row=[rows objectAtIndex:i];
-    if([[[row objectForKey:@"video"] objectForKey:@"video_id"] isEqualToString:video] &&
-       (!format || [[[row objectForKey:@"job"] objectForKey:@"format"] isEqualToString:format]))
-      return [NSIndexPath indexPathForRow:(NSInteger)i inSection:0];
+  NSArray *groups=sections(controller);
+  for(NSUInteger section=0;section<[groups count];++section) {
+    NSArray *rows=[[groups objectAtIndex:section] objectForKey:@"rows"];
+    for(NSUInteger i=0;i<[rows count];++i) {
+      NSDictionary *row=[rows objectAtIndex:i];
+      if([[[row objectForKey:@"video"] objectForKey:@"video_id"] isEqualToString:video] &&
+         (!format || [[[row objectForKey:@"job"] objectForKey:@"format"] isEqualToString:format]))
+        return [NSIndexPath indexPathForRow:(NSInteger)i inSection:(NSInteger)section];
+    }
   }
   require(NO,[NSString stringWithFormat:@"Missing video row %@ (%@)",video,format]); return nil;
 }
@@ -440,6 +444,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
       return;
     }
     testSharedMetadata();
+    testDownloadSections();
     testSharedVideoRows([documents_ stringByAppendingPathComponent:@"RowFixture"]);
     testSharedStatus([documents_ stringByAppendingPathComponent:@"StatusFixture"]);
     testIOSLifecycle([documents_ stringByAppendingPathComponent:@"LifecycleFixture"]);
@@ -594,7 +599,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     RDLPDownloadPolicy *policy=[[[RDLPDownloadPolicy alloc] initWithLibrary:library_] autorelease];
     RDLPDownloadsViewController *nativeList=[self show:RDLPScreenDownloads playlist:nil video:nil];
     nativeDelete(nativeList,videoIndex(nativeList,@"AAAAAAAAAAA",@"18"));
-    require(![[NSFileManager defaultManager] fileExistsAtPath:file] && [nativeList tableView:[nativeList tableView] numberOfRowsInSection:0]==0,@"UIKit confirmation deletes the last download without recursive reload or crash");
+    require(![[NSFileManager defaultManager] fileExistsAtPath:file] && [nativeList numberOfSectionsInTableView:[nativeList tableView]]==0,@"UIKit confirmation deletes the last download without recursive reload or crash");
     /* Restore media for the remaining playback and state regressions. */
     require([[NSData dataWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"fixture" ofType:@"mp4"]] writeToFile:file atomically:YES],@"Restore native-delete fixture");
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open native-delete fixture");
@@ -888,7 +893,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     NSDictionary *replacementJob=[model jobForPlaylist:[playlist objectForKey:@"id"] video:@"DDDDDDDDDDD" format:@"18"];
     require([RDLPDownloadPolicy job:[model currentJob:[newJob objectForKey:@"id"]] hasState:@"removed"] && [list valueForKey:@"alert_"]==nil && [RDLPDownloadPolicy job:replacementJob hasState:@"queued"],@"Deleted playlist download uses the current quality and leaves its old job removed");
     [library_ cancelJob:[replacementJob objectForKey:@"id"]]; [library_ removeDownload:[model currentJob:[replacementJob objectForKey:@"id"]]];
-    /* All Downloads shares playlist presentation but keeps every completed quality. */
+    /* All Downloads groups exact completed qualities and uses queue-style subtitles. */
     NSDictionary *highJob=[model currentJob:@"4"];
     NSString *highFile=[library_ fileForJob:highJob];
     require([[NSData dataWithContentsOfFile:file] writeToFile:highFile atomically:YES],@"Publish second local quality");
@@ -900,14 +905,21 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     RDLPDownloadsViewController *all=(RDLPDownloadsViewController *)[navigation_ topViewController];
     require([all isKindOfClass:[RDLPDownloadsViewController class]] && [all isKindOfClass:[UITableViewController class]] && [all view]==[all tableView] && [[all tableView] style]==UITableViewStylePlain,@"All Downloads navigation opens a native plain table controller");
     require([[all title] isEqualToString:@"All Downloads"] && [[[all navigationItem] rightBarButtonItem] image]!=nil && [[[all navigationItem] rightBarButtonItem] action]==@selector(addVideo:) && [navigation_ isToolbarHidden] && ![[all tableView] tableFooterView],@"All Downloads has an Add Video plus button, no separate status footer, and hides idle toolbar");
-    NSArray *downloadRows=[[sections(all) objectAtIndex:0] objectForKey:@"rows"];
-    require([downloadRows count]==2,@"All Downloads keeps both completed qualities and excludes pending/failed jobs");
+    NSUInteger downloadCount=0;
+    for(NSDictionary *downloadSection in sections(all)) downloadCount+=[[downloadSection objectForKey:@"rows"] count];
+    require(downloadCount==2,@"All Downloads keeps both completed qualities and excludes pending/failed jobs");
     NSIndexPath *lowIndex=videoIndex(all,@"AAAAAAAAAAA",@"18"), *highIndex=videoIndex(all,@"AAAAAAAAAAA",@"137+140");
     UITableViewCell *lowCell=[all tableView:[all tableView] cellForRowAtIndexPath:lowIndex], *highCell=[all tableView:[all tableView] cellForRowAtIndexPath:highIndex];
     NSString *representativeFormat=[[[[[sections(list) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:0] objectForKey:@"job"] objectForKey:@"format"];
     UITableViewCell *playlistComparisonCell=[list tableView:[list tableView] cellForRowAtIndexPath:videoIndex(list,@"AAAAAAAAAAA",representativeFormat)];
     UITableViewCell *matchingDownloadCell=[all tableView:[all tableView] cellForRowAtIndexPath:videoIndex(all,@"AAAAAAAAAAA",representativeFormat)];
-    require([[[matchingDownloadCell textLabel] text] isEqualToString:[[playlistComparisonCell textLabel] text]] && [[[matchingDownloadCell detailTextLabel] text] isEqualToString:[[playlistComparisonCell detailTextLabel] text]] && [[[matchingDownloadCell textLabel] font] isEqual:[[playlistComparisonCell textLabel] font]] && [[[matchingDownloadCell detailTextLabel] font] isEqual:[[playlistComparisonCell detailTextLabel] font]] && [[all tableView] rowHeight]==[[list tableView] rowHeight],@"All Downloads matches playlist title, subtitle, typography, and row height");
+    require([[[matchingDownloadCell textLabel] text] isEqualToString:[[playlistComparisonCell textLabel] text]] && [[[matchingDownloadCell textLabel] font] isEqual:[[playlistComparisonCell textLabel] font]] && [[[matchingDownloadCell detailTextLabel] font] isEqual:[[playlistComparisonCell detailTextLabel] font]] && [[all tableView] rowHeight]==[[list tableView] rowHeight],@"All Downloads retains playlist title, typography, and row height");
+    NSDictionary *downloadJob=[[[sections(all) objectAtIndex:(NSUInteger)[highIndex section]] objectForKey:@"rows"] objectAtIndex:(NSUInteger)[highIndex row]];
+    downloadJob=[downloadJob objectForKey:@"job"];
+    NSString *expectedSubtitle=[NSString stringWithFormat:@"%@·%@",[downloadJob objectForKey:@"playlist_title"],[RDLPLibrary qualityLabelForFormat:[downloadJob objectForKey:@"format"]]];
+    NSTimeInterval downloadedSeconds=[[downloadJob objectForKey:@"latestDownloadDate"] doubleValue];
+    if(downloadedSeconds>0) expectedSubtitle=[NSString stringWithFormat:@"%@·%@",[NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:downloadedSeconds] dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterNoStyle],expectedSubtitle];
+    require([[[highCell detailTextLabel] text] isEqual:expectedSubtitle],@"Download subtitle uses queue layout and completion date");
     require([[[highCell textLabel] text] isEqualToString:[[lowCell textLabel] text]] && ![[[highCell detailTextLabel] text] isEqualToString:[[lowCell detailTextLabel] text]],@"Separate qualities share title and have distinct quality subtitles");
     require([[highCell accessoryView] isKindOfClass:[UIImageView class]] && [highCell accessoryType]==UITableViewCellAccessoryNone && ![[highCell imageView] image] && [[highCell accessibilityLabel] rangeOfString:@"Downloaded"].location!=NSNotFound,@"All Downloads shares accessible trailing status icon without leading image or chevron");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"downloads.png"]);
