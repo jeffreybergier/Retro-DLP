@@ -13,5 +13,7 @@
 - (BOOL)sizeForToolbar:(CGSize)size;
 - (void)setElapsedTime:(double)elapsed duration:(double)duration;
 - (void)setMessage:(NSString *)message;
+- (void)setAudioOnlyPlaceholderVisible:(BOOL)visible;
+- (void)setNoMediaPlaceholderVisible:(BOOL)visible;
 - (BOOL)isTracking;
 @end

@@ -1,6 +1,7 @@
 #import "RDLPPlayerControls.h"
 #import "../RDLPUIKit.h"
 #import <math.h>
+#import <QuartzCore/QuartzCore.h>
 
 @interface RDLPPlayerTimeline : UISlider
 @end
@@ -17,6 +18,8 @@
   RDLPPlayerTimeline *_timeline;
   UIBarButtonItem *_timelineItem;
   UILabel *_messageLabel;
+  UIView *_audioOnlyPlaceholder;
+  UIView *_noMediaPlaceholder;
   CGSize _toolbarSize;
 }
 @end
@@ -32,6 +35,34 @@ static UIBarButtonItem *RDLPToolbarSpace(BOOL flexible) {
     flexible?UIBarButtonSystemItemFlexibleSpace:UIBarButtonSystemItemFixedSpace target:nil action:NULL] autorelease];
   if(!flexible) [space setWidth:-8]; // Reduce the legacy toolbar's outer margins.
   return space;
+}
+/* Use the toolbar glyph at native display resolution as an alpha mask. A
+ * faint upper lip and a charcoal face fading downward keep the lighting
+ * above the silhouette against the black playback surface. */
+static UIView *RDLPAudioOnlyPlaceholder(void) {
+  CGRect bounds=CGRectMake(0,0,128,128);
+  UIView *view=[[[UIView alloc] initWithFrame:bounds] autorelease];
+  [view setUserInteractionEnabled:NO];
+  [view setIsAccessibilityElement:YES];
+  [view setAccessibilityLabel:@"Audio only"];
+  [view setAccessibilityTraits:UIAccessibilityTraitImage];
+  UIImage *glyph=[RDLPUIKit playerIcon:RDLPPlayerIconHeadphones size:128 canvas:128];
+  for(NSUInteger i=0;i<2;++i) {
+    CAGradientLayer *face=[CAGradientLayer layer];
+    [face setFrame:i==0?CGRectOffset(bounds,0,-1.5):bounds];
+    CGFloat top=i==0?0.32f:0.15f, bottom=i==0?0.02f:0.065f;
+    [face setColors:[NSArray arrayWithObjects:
+      (id)[[UIColor colorWithWhite:top alpha:1] CGColor],
+      (id)[[UIColor colorWithWhite:bottom alpha:1] CGColor],nil]];
+    CALayer *mask=[CALayer layer];
+    [mask setFrame:bounds];
+    [mask setContents:(id)[glyph CGImage]];
+    [mask setContentsScale:[glyph scale]];
+    [face setMask:mask];
+    [[view layer] addSublayer:face];
+  }
+  [view setHidden:YES];
+  return view;
 }
 static NSString *RDLPTimeText(double seconds) {
   if(!isfinite(seconds) || seconds<0) return @"--:--";
@@ -74,11 +105,24 @@ static NSString *RDLPTimeText(double seconds) {
   [_messageLabel setNumberOfLines:2];
   [_messageLabel setFont:[UIFont systemFontOfSize:18]];
   [self addSubview:_messageLabel];
+  _audioOnlyPlaceholder=[RDLPAudioOnlyPlaceholder() retain];
+  [self addSubview:_audioOnlyPlaceholder];
+  _noMediaPlaceholder=[[UIView alloc] initWithFrame:CGRectMake(0,0,128,128)];
+  [_noMediaPlaceholder setUserInteractionEnabled:NO];
+  [_noMediaPlaceholder setIsAccessibilityElement:YES];
+  [_noMediaPlaceholder setAccessibilityLabel:@"No media"];
+  [_noMediaPlaceholder setAccessibilityTraits:UIAccessibilityTraitImage];
+  UIImage *noMediaIcon=[RDLPUIKit playerIcon:RDLPPlayerIconVideoSlash size:128 canvas:128];
+  /* Raw contents preserve the white glyph on both legacy and template-image UIKit. */
+  [[_noMediaPlaceholder layer] setContents:(id)[noMediaIcon CGImage]];
+  [[_noMediaPlaceholder layer] setContentsScale:[noMediaIcon scale]];
+  [_noMediaPlaceholder setHidden:YES];
+  [self addSubview:_noMediaPlaceholder];
   [self setElapsedTime:0 duration:NAN];
   return self;
 }
 - (void)dealloc {
-  [_toolbarItems release]; [_timelineItem release]; [_timeline release]; [_messageLabel release];
+  [_toolbarItems release]; [_timelineItem release]; [_timeline release]; [_messageLabel release]; [_audioOnlyPlaceholder release]; [_noMediaPlaceholder release];
   [_doneButton release]; [_playButton release]; [_previousButton release]; [_nextButton release]; [_audioButton release];
   [super dealloc];
 }
@@ -97,9 +141,13 @@ static NSString *RDLPTimeText(double seconds) {
   [[self slider] setAccessibilityValue:[NSString stringWithFormat:@"%@ of %@",current,total]];
 }
 - (void)setMessage:(NSString *)message { [_messageLabel setText:message]; }
+- (void)setAudioOnlyPlaceholderVisible:(BOOL)visible { [_audioOnlyPlaceholder setHidden:!visible]; }
+- (void)setNoMediaPlaceholderVisible:(BOOL)visible { [_noMediaPlaceholder setHidden:!visible]; }
 - (BOOL)isTracking { return [[self slider] isTracking]; }
 - (void)layoutSubviews {
   [super layoutSubviews];
+  [_audioOnlyPlaceholder setCenter:CGPointMake(CGRectGetMidX([self bounds]),CGRectGetMidY([self bounds]))];
+  [_noMediaPlaceholder setCenter:[_audioOnlyPlaceholder center]];
   [_messageLabel setFrame:CGRectMake(20,([self bounds].size.height-60)/2,MAX(0,[self bounds].size.width-40),60)];
 }
 @end

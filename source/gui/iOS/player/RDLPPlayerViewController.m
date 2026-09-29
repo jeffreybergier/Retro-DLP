@@ -328,8 +328,10 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   BOOL done=[_delegate respondsToSelector:@selector(playerViewControllerDidRequestDismissal:)] || modalRoot;
   [[self navigationItem] setLeftBarButtonItem:audio?[_controls audioButton]:nil];
   [[self navigationItem] setRightBarButtonItem:done?[_controls doneButton]:nil];
-  NSString *message=failed?@"Unable to play this item":(!item?@"No media":(_audioOnly?@"Audio Only":nil));
+  NSString *message=failed?@"Unable to play this item":nil;
   [_controls setMessage:message];
+  [_controls setAudioOnlyPlaceholderVisible:_audioOnly && item && !failed];
+  [_controls setNoMediaPlaceholderVisible:!item && !failed];
   [_controls setNeedsLayout];
   [self refreshTime];
   if([_player rate]==0 || failed) [self showControls]; else [self scheduleHide];

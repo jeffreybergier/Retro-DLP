@@ -226,18 +226,22 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
 { return RDLPFontAwesomeImage(stop?AIFAPause:AIFARotateRight,14,20,RDLPMainScreenScale(),[UIColor whiteColor]); }
 
 + (UIImage *)playerIcon:(RDLPPlayerIcon)icon;
+{ return [self playerIcon:icon size:20 canvas:26]; }
+
++ (UIImage *)playerIcon:(RDLPPlayerIcon)icon size:(CGFloat)size canvas:(CGFloat)canvas;
 {
   static const AIFontAwesomeIcon glyphs[]={AIFAHeadphones,AIFABackwardFast,AIFAForwardFast,
-    AIFAPlay,AIFAPause,AIFARotateLeft,AIFARotateRight};
+    AIFAPlay,AIFAPause,AIFARotateLeft,AIFARotateRight,AIFAVideoSlash};
   if((NSUInteger)icon>=sizeof(glyphs)/sizeof(glyphs[0])) return nil;
   /* Transport state refreshes frequently; render each glyph once per scale. */
   static NSMutableDictionary *images=nil;
   if(!images) images=[[NSMutableDictionary alloc] init];
   CGFloat scale=RDLPMainScreenScale();
-  NSArray *key=[NSArray arrayWithObjects:[NSNumber numberWithInt:icon],[NSNumber numberWithDouble:scale],nil];
+  NSArray *key=[NSArray arrayWithObjects:[NSNumber numberWithUnsignedInteger:(NSUInteger)icon],[NSNumber numberWithDouble:scale],
+    [NSNumber numberWithDouble:size],[NSNumber numberWithDouble:canvas],nil];
   UIImage *image=[images objectForKey:key];
   if(!image) {
-    image=RDLPFontAwesomeImage(glyphs[icon],20,26,scale,[UIColor whiteColor]);
+    image=RDLPFontAwesomeImage(glyphs[icon],size,canvas,scale,[UIColor whiteColor]);
     if(image) [images setObject:image forKey:key];
   }
   return image;
