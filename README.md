@@ -218,6 +218,23 @@ builds both GUIs. The outputs are:
 
 Keep each CLI binary with its `cacert.pem` when copying it to a device.
 
+### Linux CLI (container only)
+
+From the cloned repository root, build the Linux CLI in the Altivec Intelligence
+container:
+
+```sh
+docker compose run --rm altivec "make linux"
+```
+
+The binary is `build/linux/retro-dlp`. It is built for the container's Linux
+environment and is intended to run there, not directly on your Linux host. For
+example, to show its help text:
+
+```sh
+docker compose run --rm altivec "build/linux/retro-dlp --help"
+```
+
 ### Running Tests
 
 Run the offline Linux CLI and C library tests, including public API examples,
