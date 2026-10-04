@@ -302,4 +302,8 @@ examples are in `source/library/shared/tests/` and
 
 ## Credits
 
-## Status and License
+## License
+
+Retro-DLP is licensed under the MIT License; see [LICENSE](LICENSE). This
+project also includes third-party software, such as cJSON, QuickJS, and
+L-SMASH, which retain their own licenses in `source/deps/`.
