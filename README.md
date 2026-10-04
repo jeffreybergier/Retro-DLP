@@ -163,7 +163,24 @@ and there are risks.
 - [PO Token Guide](https://github.com/yt-dlp/yt-dlp/wiki/Po-Token-Guide)
 - [Cookies Extraction Guide](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)
 
-## Install from Releases
+## Download
+
+[Download Retro-DLP from GitHub Releases](https://github.com/jeffreybergier/Retro-DLP/releases).
+Each release includes these files (`{version}` is the release number):
+
+- `Retro-DLP-{version}-macOS-gui.zip` — the Mac app (`RetroDLP.app`).
+- `Retro-DLP-{version}-iOS-gui.ipa` — the iPhone and iPad app for jailbroken devices.
+- `Retro-DLP-{version}-macOS-cli.zip` — the Mac command-line tool and its
+  `cacert.pem` certificate bundle; keep both files together.
+- `Retro-DLP-{version}-iOS-cli.zip` — the iOS command-line tool and its
+  `cacert.pem` certificate bundle for a jailbroken device's terminal.
+- `Retro-DLP-{version}-macOS-library.zip` — Mac static C libraries, public
+  headers, examples, and license for developers.
+- `Retro-DLP-{version}-iOS-library.zip` — iOS static C libraries, public
+  headers, examples, and license for developers.
+- `Source code (zip)` and `Source code (tar.gz)` — GitHub-generated source
+  archives for building from source.
+
 
 ### iOS
 
