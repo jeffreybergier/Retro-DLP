@@ -58,6 +58,26 @@ kind of hardware.
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    A[Mac and iOS apps or CLI] --> B[Retro-DLP C library]
+    A -. GUI jobs and playlists .-> DB[(SQLite)]
+    B --> C[1. libcurl + OpenSSL: request video data and player JavaScript]
+    C --> D[2. cJSON: read metadata and available formats]
+    D --> E[3. QuickJS: run player JavaScript to resolve media URLs]
+    E --> F[4. Select an H.264 and AAC MP4 format]
+    F --> G[5. libcurl + OpenSSL: download media]
+    G --> H{Separate video and audio?}
+    H -- No, progressive MP4 --> J[Playable MP4 file]
+    H -- Yes --> I[6. L-SMASH: mux tracks without re-encoding]
+    I --> J
+```
+
+The apps use SQLite to keep track of playlists and downloads. The CLI and apps
+share the same C library for resolving videos and downloading media. A
+progressive MP4 already contains video and audio; separate tracks go through
+L-SMASH before playback.
+
 ## Compatibility
 
 Retro-DLP should work on any UNIX style OS on pretty much any hardware. But
