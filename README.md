@@ -213,13 +213,64 @@ install, or remove the pinned EJS assets.
 
 ## Compile from Source
 
-### BYOSDK
+Retro-DLP uses the Altivec Intelligence container for Apple builds. It requires
+Apple SDKs that are not provided with this repository or the container; see
+[Altivec Intelligence's BYOSDK instructions](https://github.com/jeffreybergier/AltivecIntelligence#byosdk)
+to supply them before building.
 
-### Mac and iOS
+Clone the repository with its submodules, then run these commands from the
+repository root after preparing the SDK archives:
 
-### Linux
+```sh
+git clone --recurse-submodules https://github.com/jeffreybergier/Retro-DLP.git
+cd Retro-DLP
+docker compose pull
+docker compose run --rm altivec-sdk install
+docker compose run --rm altivec "make clean app-clean"
+docker compose run --rm altivec "make release apps"
+```
+
+`release` builds the macOS and iOS command-line tools and libraries; `apps`
+builds both GUIs. The outputs are:
+
+- macOS CLI: `build/macOS/ppc-i386/retro-dlp` and `build/macOS/cacert.pem`
+- iOS CLI: `build/iOS/retro-dlp` and `build/iOS/cacert.pem`
+- Mac app: `build/apps/macOS/RetroDLP.zip`
+- iOS app: `build/apps/iOS/RetroDLP.ipa`
+
+Keep each CLI binary with its `cacert.pem` when copying it to a device.
 
 ### Running Tests
+
+Run the offline Linux CLI and C library tests, including public API examples,
+plus the portable GUI store and service tests:
+
+```sh
+docker compose run --rm altivec "make test app-test"
+```
+
+After an Apple build, check the app packages and cross-compiled binaries:
+
+```sh
+docker compose run --rm altivec "make app-validate validate-apple-artifacts"
+```
+
+For an offline iOS UI regression test, build its separate test app after the
+iOS GUI build:
+
+```sh
+docker compose run --rm altivec "python3 source/gui/iOS/tests/build_ios_ui_test.py"
+```
+
+Install `build/apps/tests/RetroDLPIOSOfflineTest.ipa` on a jailbroken test
+device and open it. The result is written to the app's `Documents/result.txt`.
+
+For a real-device smoke test of Retro-DLP itself, copy the Mac app or CLI to a
+supported Mac, or install the IPA or CLI on a jailbroken iOS device. Launch
+the app, resolve a video or playlist, download an MP4, and play it. For the
+CLI, run `retro-dlp --version`, then `retro-dlp --simulate VIDEO_URL` and a
+short download using a real video URL. These checks exercise device networking
+and playback, which the Linux tests and cross-build validation cannot verify.
 
 ## Source Map
 
