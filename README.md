@@ -272,7 +272,29 @@ CLI, run `retro-dlp --version`, then `retro-dlp --simulate VIDEO_URL` and a
 short download using a real video URL. These checks exercise device networking
 and playback, which the Linux tests and cross-build validation cannot verify.
 
-## Source Map
+## Source Code Overview
+
+Most of the behavior lives in portable C under `source/library/shared/`.
+Start with these files and directories:
+
+| Location | What it does |
+| --- | --- |
+| `source/library/shared/include/retrodlp/` | Public C headers for resolving, downloading, assets, and version information. |
+| `source/library/shared/retrodlp.c` | Implements the public API, contexts, selections, playlists, and error handling. |
+| `source/library/shared/yt_resolver.c` | Coordinates video resolution and chooses a playable media request. |
+| `source/library/shared/yt_innertube.c` | Talks to YouTube's Innertube API and parses its responses. |
+| `source/library/shared/yt_formats.c` | Reads available formats and applies format selection rules. |
+| `source/library/shared/yt_ejs.c` | Runs the player challenge code through QuickJS to resolve media URLs. |
+| `source/library/shared/rdlp_curl.c` | Provides the default libcurl network transport. |
+| `source/library/shared/yt_playlist.c` | Lists playlists and their entries. |
+| `source/library/shared/retrodlp_download.c` and `yt_mux.c` | Download media and mux separate tracks into MP4 with L-SMASH. |
+| `source/cli/cli_options.c` and `cli.c` | Parse CLI arguments and run the requested command. |
+| `source/gui/shared/rdapp_store.c` and `rdapp_service.c` | Store playlists and jobs in SQLite, then coordinate sync and downloads. |
+| `source/library/{linux,macOS,iOS}/platform.c` | Supply platform names, curl setup, and CA bundle paths. |
+
+Pinned third-party sources are in `source/deps/`; library tests and C usage
+examples are in `source/library/shared/tests/` and
+`source/library/shared/examples/`.
 
 ## Contributing
 
