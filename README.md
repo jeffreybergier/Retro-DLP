@@ -282,7 +282,7 @@ Start with these files and directories:
 | `source/library/shared/include/retrodlp/` | Public C headers for resolving, downloading, assets, and version information. |
 | `source/library/shared/retrodlp.c` | Implements the public API, contexts, selections, playlists, and error handling. |
 | `source/library/shared/yt_resolver.c` | Coordinates video resolution and chooses a playable media request. |
-| `source/library/shared/yt_innertube.c` | Talks to YouTube's Innertube API and parses its responses. |
+| `source/library/shared/yt_innertube.c` | Calls the Innertube player API and parses its responses. |
 | `source/library/shared/yt_formats.c` | Reads available formats and applies format selection rules. |
 | `source/library/shared/yt_ejs.c` | Runs the player challenge code through QuickJS to resolve media URLs. |
 | `source/library/shared/rdlp_curl.c` | Provides the default libcurl network transport. |
