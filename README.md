@@ -14,10 +14,11 @@ Retro-DLP integrates several open source projects into 1 working solution:
 
 ## How it Works
 
-Retro-DLP basically tries to do exactly what yt-delp does. It downloads
-the Player Javascript, uses QuickJS to solve a challenge written in Javascript, 
-downloads the audio and video files, then uses L-SMASH to mux them together into
-a single H.264 file that your device can play back. 
+Retro-DLP follows part of yt-dlp's process for resolving YouTube videos. It
+downloads the player JavaScript and uses QuickJS to resolve media URL challenges.
+It then downloads either a progressive MP4 or separate video and audio tracks.
+For separate tracks, L-SMASH muxes them into an MP4 file containing H.264 video
+and AAC audio without re-encoding.
 
 The main thing that distinguishes it from yt-dlp is that it is written in C and
 depends only on C libraries and thus can run on basically any device, no matter 
@@ -106,7 +107,7 @@ It is important to remember that these videos are H.264 encoded which is a
 very intense codec for retro computers. Read more about that in my blog post
 [Retro Stream Tutorial.](https://jeffburg.com/retro-tech/2025/08/17/Retro-Stream-Tutorial.html#why-cant-old-computers-play-youtube)
 
-- PPC Macs: 360p (18) 480p (135+140) are likely to play whereas 720p (136+140) ~~might~~ play
+- PPC Macs: 360p (18) 480p (135+140) are likely to play whereas 720p (136+140) _might_ play
 - Intel Macs: Untested, but 720p (136+140) and 1080p (137+140) will likely play
 - Retina iOS Devices: 720p (136+140) can sometimes appear pixelated. 1080p (137+140) plays fine but take up a lot more disk space
 - Non-Retina iOS Devices: Untested but 720p (136+140) will likely play and should look fantastic
@@ -122,7 +123,7 @@ very intense codec for retro computers. Read more about that in my blog post
   at up to 30 fps, with AAC-LC audio. Explicit format IDs can select HE-AAC
   and do not impose those resolution or frame-rate limits, but the codecs
   must still be supported and the requested tracks must be available.
-- The original audio track is always selected for downloaded. Other languages
+- The original audio track is always selected for download. Other languages
   are not selectable.
 - Retro-DLP uses `mweb` client and does not generate Proof of
   Origin (PO) tokens.
@@ -135,8 +136,8 @@ simple JavaScript Player Challenge and find the URL's for the videos. However,
 if you select a video format higher quality than 360p (18), your download will 
 likely fail because of lack of a PO token. Stick to 360p OR you can 
 authenticate with an account that is a Premium account. But before you do that,
-please read the as its and the Cookies Extraction Guide not a simple problem 
-and there are risks.
+please read the PO Token Guide and the Cookies Extraction Guide not a simple 
+problem and there are risks.
 
 - [PO Token Guide](https://github.com/yt-dlp/yt-dlp/wiki/Po-Token-Guide)
 - [Cookies Extraction Guide](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)
