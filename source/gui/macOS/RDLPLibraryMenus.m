@@ -38,7 +38,7 @@
     [menu addItem:[NSMenuItem separatorItem]];
     [self addItemToMenu:menu title:@"Customize Toolbar…" action:@selector(customizeToolbar:) target:target];
   } else if([title isEqualToString:@"Download Quality"]) {
-    NSArray *names=[NSArray arrayWithObjects:[RDLPLibrary qualityLabelForFormat:@"18"],[RDLPLibrary qualityLabelForFormat:@"136+140"],[RDLPLibrary qualityLabelForFormat:@"137+140"],@"Custom Format…",nil];
+    NSArray *names=[RDLPLibrary qualityTitles];
     unsigned int index;
     for(index=0;index<[names count];++index) {
       NSMenuItem *choice=[menu addItemWithTitle:[names objectAtIndex:index] action:@selector(chooseDownload:) keyEquivalent:@""];

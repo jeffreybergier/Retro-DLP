@@ -226,7 +226,8 @@ static YTStatus custom_request(YTHttpSession *session, rdlp_http_method method,
   else
     sent = session->transport.send(session->transport.context, &request,
                                    &transported, &error);
-  session->diagnostic.http_status = transported.http_status;
+  session->diagnostic.http_status =
+      error.http_status != 0 ? error.http_status : transported.http_status;
   session->diagnostic.transport_code =
       error.transport_code != 0 ? error.transport_code
                                 : transported.transport_code;

@@ -242,6 +242,8 @@ int main(void) {
   status = run_download(selection, destination, ca_path, 5000, &fixture,
                         &result, &error);
   if (status != RDLP_ERROR_HTTP_STATUS || error.http_status != 503 ||
+      error.transport_code != 0 ||
+      strcmp(error.message, "media download returned an HTTP error") != 0 ||
       exists(partial)) {
     fprintf(stderr, "FAIL: media HTTP error classification\n");
     ++failures;

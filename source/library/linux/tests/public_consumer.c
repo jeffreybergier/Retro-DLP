@@ -34,7 +34,8 @@ enum {
   FIXTURE_NETWORK_FAILURE,
   FIXTURE_HTTP_FAILURE,
   FIXTURE_MALFORMED_RESPONSE,
-  FIXTURE_OVERSIZED_RESPONSE
+  FIXTURE_OVERSIZED_RESPONSE,
+  FIXTURE_HTTP_ERROR_ONLY
 };
 
 typedef struct {
@@ -210,6 +211,13 @@ static rdlp_error_code fixture_send(void *opaque,
   const char *data;
   size_t index;
   (void)error;
+  if (state->failure_mode == FIXTURE_HTTP_ERROR_ONLY) {
+    error->code = RDLP_ERROR_HTTP_STATUS;
+    error->http_status = 403;
+    error->transport_code = 22;
+    snprintf(error->message, sizeof(error->message), "fixture HTTP rejection");
+    return RDLP_ERROR_HTTP_STATUS;
+  }
   if (state->failure_mode == FIXTURE_NETWORK_FAILURE) {
     if (error != NULL) {
       error->code = RDLP_ERROR_TRANSPORT_REQUEST_FAILED;
@@ -402,7 +410,8 @@ static int additive_transport_struct_test(void) {
 static int transport_failure_test(void) {
   static const rdlp_error_code expected[] = {
       RDLP_ERROR_TRANSPORT_REQUEST_FAILED, RDLP_ERROR_HTTP_STATUS,
-      RDLP_ERROR_RESPONSE_MALFORMED, RDLP_ERROR_RESPONSE_TOO_LARGE};
+      RDLP_ERROR_RESPONSE_MALFORMED, RDLP_ERROR_RESPONSE_TOO_LARGE,
+      RDLP_ERROR_HTTP_STATUS};
   fixture_state state;
   rdlp_transport transport;
   rdlp_config config;
@@ -433,6 +442,15 @@ static int transport_failure_test(void) {
     }
     if (state.failure_mode == FIXTURE_NETWORK_FAILURE &&
         error.transport_code != 77) {
+      rdlp_context_destroy(context);
+      return 0;
+    }
+    if ((state.failure_mode == FIXTURE_HTTP_FAILURE &&
+         (error.http_status != 503 || error.transport_code != 0 ||
+          error.message[0] == '\0')) ||
+        (state.failure_mode == FIXTURE_HTTP_ERROR_ONLY &&
+         (error.http_status != 403 || error.transport_code != 22 ||
+          strcmp(error.message, "fixture HTTP rejection") != 0))) {
       rdlp_context_destroy(context);
       return 0;
     }

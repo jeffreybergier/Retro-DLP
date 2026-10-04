@@ -494,8 +494,7 @@ static void cli_download_event(const rdlp_download_event *event, void *opaque) {
 }
 
 static void print_error(const rdlp_error *error, rdlp_error_code code) {
-  (void)error;
-  fprintf(stderr, "retro-dlp: %s (%d)\n", rdlp_error_name(code), (int)code);
+  cli_render_error(stderr, error, code);
 }
 
 static int create_cli_context(rdlp_context **context, rdlp_error *error,
@@ -529,7 +528,7 @@ static int resolve_argument(const CLIOptions *cli, const char *cookie_file,
   memset(&error, 0, sizeof(error));
   options.struct_size = sizeof(options);
   options.format_expression = cli->format_expression == NULL
-                                  ? "22/18"
+                                  ? CLI_PRESET_LOW_FORMAT
                                   : cli->format_expression;
   options.cookie_file = cookie_file;
   options.include_format_inventory = cli->list_formats;

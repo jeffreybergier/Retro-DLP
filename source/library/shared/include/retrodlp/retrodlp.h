@@ -88,9 +88,14 @@ typedef enum {
 typedef struct rdlp_error {
   size_t struct_size;
   rdlp_error_code code;
+  /* Actual HTTP response status (for example, 403), or zero if unavailable.
+   * Distinct from the negative RDLP_ERROR_HTTP_STATUS library error code. */
   long http_status;
+  /* Transport-specific diagnostic code; libcurl uses CURLcode (0 = CURLE_OK).
+   * A completed HTTP exchange can have transport code 0 and HTTP status 403. */
   int transport_code;
   int retryable;
+  /* Human-readable diagnostic; use code and http_status for program logic. */
   char message[256];
 } rdlp_error;
 

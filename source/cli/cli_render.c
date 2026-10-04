@@ -7,6 +7,20 @@
 #include "cJSON.h"
 #include "cli_options.h"
 
+void cli_render_error(FILE *stream, const rdlp_error *error,
+                      rdlp_error_code code) {
+  fprintf(stream, "retro-dlp: %s (%d)\n", rdlp_error_name(code), (int)code);
+  if (code == RDLP_ERROR_HTTP_STATUS && error != NULL) {
+    if (error->http_status != 0)
+      fprintf(stream, "  HTTP status: %ld\n", error->http_status);
+    else
+      fprintf(stream, "  HTTP status: unavailable\n");
+    fprintf(stream, "  Transport code: %d\n", error->transport_code);
+    if (error->message[0] != '\0')
+      fprintf(stream, "  Message: %s\n", error->message);
+  }
+}
+
 void cli_render_usage(FILE *stream) {
   fprintf(stream,
           "Usage: retro-dlp [OPTIONS] VIDEO_ID_OR_URL\n"
@@ -17,8 +31,8 @@ void cli_render_usage(FILE *stream) {
           "  -V, --version    Show version and build platform.\n"
           "  -f, --format FORMAT\n"
           "                   Select exact itags, combinations such as 136+140,\n"
-          "                   or explicit fallbacks such as 136+140/22/18.\n"
-          "                   Default: 22/18.\n"
+          "                   or explicit fallbacks such as 136+140/135+140/18.\n"
+          "                   Default: low (18).\n"
           "  -t, --preset-alias PRESET\n"
           "                   Select a built-in exact-format preset:\n"
           "                   low=" CLI_PRESET_LOW_FORMAT "\n"

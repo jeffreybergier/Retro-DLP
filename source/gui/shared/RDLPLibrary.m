@@ -155,13 +155,21 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 }
 @implementation RDLPLibrary
 + (NSArray *)qualityTitles;
-{ return [NSArray arrayWithObjects:[self qualityLabelForFormat:@"18"],[self qualityLabelForFormat:@"136+140"],[self qualityLabelForFormat:@"137+140"],@"Custom Format…",nil]; }
+{
+  NSMutableArray *titles=[NSMutableArray array];
+  for(NSString *format in [self qualityFormats]) [titles addObject:[self qualityLabelForFormat:format]];
+  [titles addObject:@"Custom Format…"];
+  return titles;
+}
 + (NSArray *)qualityFormats;
-{ return [NSArray arrayWithObjects:@"18",@"136+140",@"137+140",nil]; }
+{ return [NSArray arrayWithObjects:@"18",@"136+140/135+140/18",@"137+140/136+140/135+140/18",nil]; }
 + (NSString *)qualityLabelForFormat:(NSString *)format;
 {
   if(![format length]) return @"";
   NSUInteger index=[[self qualityFormats] indexOfObject:format];
+  /* Preserve labels for existing jobs and saved exact-format preferences. */
+  if(index==NSNotFound && [format isEqualToString:@"136+140"]) index=1;
+  if(index==NSNotFound && [format isEqualToString:@"137+140"]) index=2;
   NSArray *names=[NSArray arrayWithObjects:@"Low",@"Med",@"High",nil];
   NSString *name=index==NSNotFound?@"Custom":[names objectAtIndex:index];
   return [NSString stringWithFormat:@"%@ (%@)",name,format];

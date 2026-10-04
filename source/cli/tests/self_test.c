@@ -10,6 +10,7 @@
 
 #include "cJSON.h"
 #include "cli.h"
+#include "cli_render.h"
 #include "../../library/shared/tests/cache_test.h"
 #include "../../library/shared/tests/cookie_test.h"
 #include "curl/curl.h"
@@ -675,6 +676,48 @@ static int test_libcurl(void) {
   return 0;
 }
 
+static int test_http_error_rendering(void) {
+  rdlp_error error;
+  FILE *stream;
+  char output[1024];
+  size_t count;
+  memset(&error, 0, sizeof(error));
+  error.struct_size = sizeof(error);
+  error.http_status = 403;
+  strcpy(error.message, "media download returned an HTTP error");
+  stream = tmpfile();
+  if (stream == NULL)
+    return 1;
+  cli_render_error(stream, &error, RDLP_ERROR_HTTP_STATUS);
+  error.http_status = 503;
+  error.transport_code = 22;
+  strcpy(error.message, "fixture HTTP rejection");
+  cli_render_error(stream, &error, RDLP_ERROR_HTTP_STATUS);
+  error.http_status = 0;
+  error.message[0] = '\0';
+  cli_render_error(stream, &error, RDLP_ERROR_HTTP_STATUS);
+  cli_render_error(stream, &error, RDLP_ERROR_FORMAT_UNAVAILABLE);
+  rewind(stream);
+  count = fread(output, 1, sizeof(output) - 1, stream);
+  output[count] = '\0';
+  fclose(stream);
+  if (strcmp(output,
+      "retro-dlp: RDLP_ERROR_HTTP_STATUS (-350)\n"
+      "  HTTP status: 403\n  Transport code: 0\n"
+      "  Message: media download returned an HTTP error\n"
+      "retro-dlp: RDLP_ERROR_HTTP_STATUS (-350)\n"
+      "  HTTP status: 503\n  Transport code: 22\n"
+      "  Message: fixture HTTP rejection\n"
+      "retro-dlp: RDLP_ERROR_HTTP_STATUS (-350)\n"
+      "  HTTP status: unavailable\n  Transport code: 22\n"
+      "retro-dlp: RDLP_ERROR_FORMAT_UNAVAILABLE (-420)\n") != 0) {
+    fprintf(stderr, "FAIL: HTTP error diagnostics rendering\n");
+    return 1;
+  }
+  printf("PASS: HTTP error diagnostics rendering\n");
+  return 0;
+}
+
 int retro_dlp_run_self_tests(void) {
   int failures;
 
@@ -684,6 +727,7 @@ int retro_dlp_run_self_tests(void) {
 
   announce_test("libcurl availability");
   failures = test_libcurl();
+  failures += test_http_error_rendering();
   announce_test("YouTube video ID parsing");
   failures += test_video_id();
   failures += test_playlist_id();

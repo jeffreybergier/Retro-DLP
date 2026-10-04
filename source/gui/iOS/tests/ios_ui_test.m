@@ -699,9 +699,9 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     }
     NSUInteger count=[[library_ jobsForPlaylist:nil completedOnly:NO] count];
     [settings performRow:[[[sections(settings) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:2]];
-    require([[RDLPLibrary preferredFormat] isEqualToString:@"137+140"] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==count,@"Quality choice only saves preference");
+    require([[RDLPLibrary preferredFormat] isEqualToString:@"137+140/136+140/135+140/18"] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==count,@"Quality choice only saves preference");
     [settings performRow:findRow(settings,@"custom")]; confirm(settings,NO);
-    require([[RDLPLibrary preferredFormat] isEqualToString:@"137+140"],@"Custom cancellation preserves quality");
+    require([[RDLPLibrary preferredFormat] isEqualToString:@"137+140/136+140/135+140/18"],@"Custom cancellation preserves quality");
     [settings performRow:findRow(settings,@"custom")]; [[[settings valueForKey:@"alert_"] textFieldAtIndex:0] setText:@"18"]; confirm(settings,YES);
     require([[RDLPLibrary preferredFormat] isEqualToString:@"18"] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==count,@"Custom Save does not enqueue");
     NSString *cookie=[documents_ stringByAppendingPathComponent:@"test-cookies.txt"];

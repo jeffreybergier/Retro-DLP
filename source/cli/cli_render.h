@@ -8,6 +8,8 @@
 #include "retrodlp/retrodlp.h"
 
 void cli_render_usage(FILE *stream);
+void cli_render_error(FILE *stream, const rdlp_error *error,
+                      rdlp_error_code code);
 int cli_render_selection_json(const rdlp_selection *selection,
                               const char *input);
 void cli_render_formats(FILE *stream, const rdlp_selection *selection);

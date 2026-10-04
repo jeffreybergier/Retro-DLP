@@ -368,7 +368,7 @@ static void testFixedToolbar(RDLPLibraryWindowController *owner,RDLPLibrary *lib
   requireCondition([[job objectForKey:@"state"] isEqual:@"queued"],@"Download enqueues a new video at the preferred quality");
   NSString *jobID=[[job objectForKey:@"id"] copy];
   NSMenu *quality=[owner menuForMenuBarTitle:@"Download Quality"];
-  invoke(owner,choice(quality,@"High (137+140)"));
+  invoke(owner,choice(quality,@"High (137+140/136+140/135+140/18)"));
   requireCondition(rdapp_store_open("/tmp/retrodlp-toolbar-fixture/Support/retrodlp.sqlite",&store),@"Open retry fixture");
   NSArray *retryStates=[NSArray arrayWithObjects:@"failed",@"interrupted",@"cancelled",@"removed",@"complete",nil];
   NSEnumerator *states=[retryStates objectEnumerator]; NSString *state;
@@ -774,7 +774,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([[videosTable enclosingScrollView] hasHorizontalScroller],@"Narrow panes allow scrolling to all metadata columns");
     requireCondition([download itemWithTitle:@"Download Quality"]==nil,@"Playlist toolbar menu leaves quality in the application menu");
     NSMenu *quality=[window_ menuForMenuBarTitle:@"Download Quality"];
-    invoke(window_,choice(quality,@"High (137+140)"));
+    invoke(window_,choice(quality,@"High (137+140/136+140/135+140/18)"));
     requireCondition(![[window_ window] attachedSheet] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Choosing High must only save the preference");
     selectRow(window_,@"table_",0);
     NSDictionary *available=[window_ performSelector:@selector(targetJob)];
@@ -846,7 +846,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     download=[window_ menuForToolbarIdentifier:@"download"];
     requireCondition([[choice(download,@"Retry Download") title] isEqualToString:@"Retry Download — Med (136+140)"],@"Retry explicitly names the original job quality");
     requireCondition([choice(download,@"Download Quality") submenu]!=nil,@"Download quality is accessible in the toolbar menu");
-    invoke(window_,choice(quality,@"Med (136+140)"));
+    invoke(window_,choice(quality,@"Med (136+140/135+140/18)"));
     requireCondition([window_ validateMenuItem:choice(download,@"Download Video")],@"Download Video must allow failed jobs at the selected quality");
     invoke(window_,choice([queueTable menu],@"Retry"));
     requireCondition([[[window_ selectedJob] objectForKey:@"id"] isEqual:failedKey] && [queueTable selectedRow]==failedRow && [[[window_ selectedJob] objectForKey:@"state"] isEqual:@"queued"],@"Retry preserves exact job identity and row position");
@@ -876,7 +876,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([titles(toolbarMenu) isEqual:titles(download)],@"Toolbar caret and context menu must share the context menu definition");
     selectRow(window_,@"table_",1);
     download=[window_ menuForToolbarIdentifier:@"library"];
-    invoke(window_,choice(quality,@"High (137+140)"));
+    invoke(window_,choice(quality,@"High (137+140/136+140/135+140/18)"));
     requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Quality selection started a download");
     invoke(window_,choice(quality,@"Custom Format…"));
     [[window_ valueForKey:@"customFormat_"] setStringValue:@"invalid-format"];
@@ -888,11 +888,11 @@ static void testQueueWindow(RDLPLibrary *library) {
     invoke(window_,choice(quality,@"Custom Format…"));
     [[window_ valueForKey:@"customFormat_"] setStringValue:@"18"]; [save setTag:0]; [window_ dismissDownload:save]; pump();
     requireCondition([[RDLPLibrary preferredFormat] isEqualToString:@"22"],@"Cancelling custom quality changed preference");
-    invoke(window_,choice(quality,@"High (137+140)"));
+    invoke(window_,choice(quality,@"High (137+140/136+140/135+140/18)"));
     selectRow(window_,@"table_",0);
     download=[window_ menuForToolbarIdentifier:@"download"];
     [toolbarButton(window_,@"download") performClick:nil]; pump();
-    requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==4 && [[RDLPLibrary preferredFormat] isEqualToString:@"137+140"] && [library_ isPaused],@"Download primary click adds the preferred High quality without deleting the existing Low file");
+    requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==4 && [[RDLPLibrary preferredFormat] isEqualToString:@"137+140/136+140/135+140/18"] && [library_ isPaused],@"Download primary click adds the preferred High quality without deleting the existing Low file");
     selectRow(window_,@"sidebar_",1);
     NSString *selectedKey=[[[window_ valueForKey:@"selectedPlaylist_"] copy] autorelease];
     [outline collapseItem:@"My Playlists"];
