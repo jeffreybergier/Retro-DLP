@@ -188,11 +188,28 @@ Each release includes these files (`{version}` is the release number):
 
 ### Command-Line Tool
 
-## Using Retro-DLP
+## Using Retro-DLP CLI
 
-### Downloading Videos
+Run `retro-dlp [OPTIONS] VIDEO_ID_OR_URL` to work with a video or playlist.
 
-### Playlists
+| Short | Long | Description |
+| --- | --- | --- |
+| `-h` | `--help` | Show usage. |
+| `-V` | `--version` | Show version and build platform. |
+| `-f FORMAT` | `--format FORMAT` | Select exact format IDs or fallback choices. |
+| `-t PRESET` | `--preset-alias PRESET` | Use the `low`, `med`, or `high` preset. |
+| `-F` | `--list-formats` | List available formats. |
+| — | `--flat-playlist` | List playlist entries without downloading. |
+| `-o FILE` | `--output FILE` | Save the MP4 to `FILE`. |
+| `-s` | `--simulate` | Resolve without downloading. |
+| `-j` | `--dump-json` | Print JSON without downloading. |
+| — | `--cookies FILE` | Read Netscape-format cookies from `FILE`. |
+| — | `--cookies-default` | Read `~/.retro-dlp/cookies.txt`. |
+
+`VIDEO_ID_OR_URL` is the video ID, video URL, or playlist URL to process.
+Use `retro-dlp assets status`, `assets install`, or `assets remove` to inspect,
+install, or remove the pinned EJS assets.
+
 
 ## Compile from Source
 
