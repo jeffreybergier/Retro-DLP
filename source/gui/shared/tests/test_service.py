@@ -11,6 +11,7 @@ subprocess.run(['cc', '-std=c99', '-Wall', '-Wextra', '-Werror',
     '-I'+str(ROOT/'source/library/shared/include'), '-I'+str(ROOT/'source/gui/shared'),
     str(ROOT/'source/gui/shared/tests/service_test.c'),
     str(ROOT/'source/gui/shared/rdapp_store.c'), str(ROOT/'source/gui/shared/rdapp_service.c'),
+    str(ROOT/'source/gui/shared/rdapp_strings.c'),
     str(ROOT/'build/linux/libretrodlp-download.a'), str(ROOT/'build/linux/libretrodlp.a'),
     '-lsqlite3', '-lcurl', '-lcrypto', '-lm', '-ldl', '-lpthread',
     '-o',str(BUILD/'service-test')], check=True)

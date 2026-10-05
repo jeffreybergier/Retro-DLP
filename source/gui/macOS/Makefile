@@ -6,7 +6,7 @@ LOCALIZATION_FILES = $(wildcard $(SHARED_DIR)/Resources/*.lproj/*.strings)
 SOURCE_DIRS = $(SHARED_DIR)
 vpath %.c $(SHARED_DIR)
 vpath %.m $(SHARED_DIR)
-EXTRA_SOURCES = rdapp_store.c rdapp_service.c rdlp_thread.c RDLPLibrary.m RDLPVideoRows.m RDLPDownloadSections.m RDLP_Foundation.m
+EXTRA_SOURCES = rdapp_strings.c rdapp_store.c rdapp_service.c rdlp_thread.c RDLPLibrary.m RDLPVideoRows.m RDLPDownloadSections.m RDLP_Foundation.m
 INFO_PLIST = Info.plist
 MAC_ICON = Resources/RetroDLP.icns
 ALTIVECCORE_REQUIRED = 1
@@ -38,3 +38,5 @@ $(INT_DIR)/ppc.bin $(INT_DIR)/x86.bin: $(ROOT)/build/macOS/libretrodlp-download.
 $(UNIVERSAL_BIN): $(INT_DIR)/ppc.bin $(INT_DIR)/x86.bin Makefile
 	@echo "  > merging macOS application (ppc, i386)"
 	@$(LIPO) -create $(filter %.bin,$^) -output $@
+
+$(PPC_OBJS) $(X86_OBJS): $(SHARED_DIR)/rdapp_strings.h $(SHARED_DIR)/rdapp_strings.def

@@ -5,6 +5,7 @@
 #import <TargetConditionals.h>
 #include "rdapp_store.h"
 #include "rdapp_service.h"
+#include "rdapp_strings.h"
 #include <retrodlp/retrodlp.h>
 #include <retrodlp/download.h>
 #include <retrodlp/assets.h>
@@ -20,6 +21,10 @@ NSString * const RDLPLibraryErrorDidOccur = @"RetroDLPLibraryErrorDidOccur";
 NSString * const RDLPLibraryActivityDidChange = @"RetroDLPLibraryActivityDidChange";
 NSString * const RDLPLibraryDownloadDidComplete = @"RetroDLPLibraryDownloadDidComplete";
 static NSString *string(const char *s) { NSString *v=s?[NSString stringWithUTF8String:s]:nil; return v?v:@""; }
+static const char *localized_c_string(const char *key,void *context) {
+  (void)context;
+  return [NSLocalizedString(string(key), nil) UTF8String];
+}
 static long long identifier(NSString *value) { return value?strtoll([value UTF8String],NULL,10):0; }
 static const char *remove_download_file(void *context,const char *path) {
   return [[(RDLPLibrary *)context removeDownloadFileAtPath:string(path)] UTF8String];
@@ -151,6 +156,15 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   [pool drain];
 }
 @implementation RDLPLibrary
++ (void)initialize;
+{
+  if(self==[RDLPLibrary class]) {
+    /* Objective-C serializes +initialize before any library instance or worker.
+       C copies the UTF-8 bytes and retains them for the process lifetime. */
+    if(!rdapp_strings_initialize(localized_c_string,NULL))
+      NSLog(@"Could not initialize C UI strings; using English defaults.");
+  }
+}
 + (NSArray *)qualityTitles;
 {
   NSMutableArray *titles=[NSMutableArray array];
@@ -782,7 +796,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   if(operation==RDAPP_ADD_VIDEO) job.format=[[command objectForKey:@"format"] UTF8String];
   if(!ca_) {
     code=RDLP_ERROR_CERTIFICATE_BUNDLE;
-    snprintf(message,sizeof(message),"The application is missing its CA certificate bundle.");
+    snprintf(message,sizeof(message),"%s",rdapp_string(RDAPP_STRING_CA_BUNDLE_MISSING));
     if(row) { [lock_ lock]; rdapp_store_finish(store_,job.id,"failed","",message); [lock_ unlock]; }
   } else code=rdapp_service_run(store_,&config,operation,[[command objectForKey:@"input"] UTF8String],&job,message,sizeof(message));
   NSDictionary *result=[NSDictionary dictionaryWithObjectsAndKeys:string(message),@"message",

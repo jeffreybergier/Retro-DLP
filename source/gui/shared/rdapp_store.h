@@ -29,6 +29,9 @@ int rdapp_store_open(const char *path, rdapp_store **out);
 /* UI reader: no migration or recovery; WAL snapshots do not block the worker. */
 int rdapp_store_open_reader(const char *path, rdapp_store **out);
 void rdapp_store_close(rdapp_store *store);
+/* Known application errors and built-in row labels use rdapp_strings when
+   initialized. State/identity/path fields and stored recovery keys stay stable.
+   Third-party diagnostics and user-supplied titles are returned unchanged. */
 const char *rdapp_store_error(rdapp_store *store);
 int rdapp_store_list(rdapp_store *, rdapp_query, int64_t playlist, rdapp_row_callback, void *);
 /* Count and page use identical predicates. limit=-1 is reserved for bulk work.

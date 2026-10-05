@@ -1,3 +1,4 @@
+#include "rdapp_strings.h"
 #if !defined(__APPLE__)
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -58,7 +59,7 @@ static rdlp_error_code sync_playlist(rdapp_store *s,const rdapp_service_config *
   lock_store(c);
   ok=rdapp_store_snapshot(s,rdlp_playlist_id(p),rdlp_playlist_title(p),entries,n,&key);
   if(ok) ok=rdapp_store_export(s,key,c->download_root);
-  if(ok) snprintf(message,cap,"Synced %s (%lu entries)",rdlp_playlist_title(p),(unsigned long)n);
+  if(ok) snprintf(message,cap,rdapp_string(RDAPP_STRING_SYNCED_S_LU_ENTRIES),rdlp_playlist_title(p),(unsigned long)n);
   else { snprintf(error->message,sizeof(error->message),"%s",rdapp_store_error(s)); code=RDLP_ERROR_STORAGE_IO; }
   unlock_store(c);
 end:
@@ -102,8 +103,8 @@ static rdlp_error_code discover(rdapp_store *s,const rdapp_service_config *c,
     if(c->change_callback) c->change_callback(c->status_context);
   }
   code=first_code;
-  if(failed) snprintf(error->message,sizeof(error->message),"Synced %lu playlists; %lu failed. %.180s",(unsigned long)synced,(unsigned long)failed,first_error);
-  else snprintf(message,cap,"Synced My Playlists (%lu playlists)",(unsigned long)synced);
+  if(failed) snprintf(error->message,sizeof(error->message),rdapp_string(RDAPP_STRING_PLAYLIST_SYNC_PARTIAL),(unsigned long)synced,(unsigned long)failed,first_error);
+  else snprintf(message,cap,rdapp_string(RDAPP_STRING_SYNCED_MY_PLAYLISTS_LU_PLAYLISTS),(unsigned long)synced);
 end:
   free(items); rdlp_playlist_collection_destroy(p); return code;
 }
@@ -113,7 +114,7 @@ static rdlp_error_code add_video(rdapp_store *s,const rdapp_service_config *c,
   if(!job || !rdlp_format_expression_valid(job->format)) return RDLP_ERROR_INVALID_ARGUMENT;
   code=rdlp_parse_video_id(input,video_id,error); if(code!=RDLP_OK) return code;
   lock_store(c); ok=rdapp_store_add_adhoc_download(s,video_id,NULL,job->format,NULL); unlock_store(c);
-  if(ok) snprintf(message,cap,"Queued %s in Added Videos",video_id);
+  if(ok) snprintf(message,cap,rdapp_string(RDAPP_STRING_QUEUED_S_IN_ADDED_VIDEOS),video_id);
   else { snprintf(error->message,sizeof(error->message),"%s",rdapp_store_error(s)); code=RDLP_ERROR_STORAGE_IO; }
   return code;
 }
@@ -157,10 +158,10 @@ static rdlp_error_code download_job(rdapp_store *s,const rdapp_service_config *c
   if(c->change_callback) c->change_callback(c->status_context);
   if(c->status_callback) {
     char status[1024];
-    snprintf(status,sizeof(status),"Format: %s·%dx%d",rdlp_selection_format_id(selection),
+    snprintf(status,sizeof(status),rdapp_string(RDAPP_STRING_FORMAT_S_DX_D),rdlp_selection_format_id(selection),
       rdlp_selection_media_width(selection,0),rdlp_selection_media_height(selection,0));
     c->status_callback(status,c->status_context);
-    snprintf(status,sizeof(status),"File: %s",strrchr(destination,'/')+1);
+    snprintf(status,sizeof(status),rdapp_string(RDAPP_STRING_FILE_S),strrchr(destination,'/')+1);
     c->status_callback(status,c->status_context);
   }
   /* Persist actual format before file publication for crash reconciliation. */
@@ -178,7 +179,7 @@ static rdlp_error_code download_job(rdapp_store *s,const rdapp_service_config *c
   /* Same-volume exclusive publication never overwrites another file. */
   if(link(temporary,destination)) {
     code=errno==EEXIST?RDLP_ERROR_DESTINATION_EXISTS:RDLP_ERROR_STORAGE_IO;
-    snprintf(error->message,sizeof(error->message),"Cannot publish downloaded file: %s",strerror(errno)); goto end;
+    snprintf(error->message,sizeof(error->message),rdapp_string(RDAPP_STRING_DOWNLOAD_PUBLISH_FAILED),strerror(errno)); goto end;
   }
   unlink(temporary); rmdir(staging);
   if(c->result) c->result->downloaded_bytes=result.bytes_written>0?(uint64_t)result.bytes_written:0;
@@ -186,11 +187,11 @@ static rdlp_error_code download_job(rdapp_store *s,const rdapp_service_config *c
   ok=rdapp_store_finish(s,job->id,"complete",rdlp_selection_format_id(selection),"");
   if(!ok) {
     if(c->result) c->result->warning=1;
-    snprintf(message,cap,"File downloaded, but its database update failed. Reopen the library to recover it.");
+    snprintf(message,cap,"%s",rdapp_string(RDAPP_STRING_DOWNLOAD_DATABASE_WARNING));
   } else if(!rdapp_store_export(s,job->playlist_id,c->download_root)) {
     if(c->result) c->result->warning=1;
-    snprintf(message,cap,"Downloaded. VLC playlist export failed: %s. Sync the playlist to retry export.",rdapp_store_error(s));
-  } else snprintf(message,cap,"Download complete (%s)",rdlp_selection_format_id(selection));
+    snprintf(message,cap,rdapp_string(RDAPP_STRING_DOWNLOAD_EXPORT_WARNING),rdapp_store_error(s));
+  } else snprintf(message,cap,rdapp_string(RDAPP_STRING_DOWNLOAD_COMPLETE_S),rdlp_selection_format_id(selection));
   unlock_store(c);
 end:
   rdlp_selection_destroy(selection); return code;
@@ -203,7 +204,7 @@ rdlp_error_code rdapp_service_run(rdapp_store *s,const rdapp_service_config *c,
   message[0]=0;
   if(c->result) memset(c->result,0,sizeof(*c->result));
   if(operation==RDAPP_SYNC && !rdapp_playlist_can_sync(input)) {
-    snprintf(message,cap,"This playlist type cannot be synced by RetroDLP.");
+    snprintf(message,cap,"%s",rdapp_string(RDAPP_STRING_THIS_PLAYLIST_TYPE_CANNOT_BE_SYNCED_BY_RETRODLP));
     return RDLP_ERROR_INVALID_PLAYLIST;
   }
   if(operation==RDAPP_ADD_VIDEO) code=add_video(s,c,input,job,message,cap,&error);

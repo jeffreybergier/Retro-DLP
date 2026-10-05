@@ -939,3 +939,138 @@
 /* shared/RDLPVideoRows.m */
 "·%@" = "·%@";
 
+
+/* C UI: CANCEL_THE_ACTIVE_DOWNLOAD_BEFORE_REMOVING_IT */
+"Cancel the active download before removing it" = "Cancel the active download before removing it";
+
+/* C UI: CANNOT_CREATE_PLAYLIST_DIRECTORY */
+"Cannot create playlist directory" = "Cannot create playlist directory";
+
+/* C UI: CANNOT_OPEN_LIBRARY_DATABASE */
+"Cannot open library database" = "Cannot open library database";
+
+/* C UI: DOWNLOAD_PUBLISH_FAILED */
+"Cannot publish downloaded file: %s" = "Cannot publish downloaded file: %s";
+
+/* C UI: CANNOT_REMOVE_PLAYLIST_EXPORTS */
+"Cannot remove playlist exports" = "Cannot remove playlist exports";
+
+/* C UI: COULD_NOT_WRITE_VLC_PLAYLISTS */
+"Could not write VLC playlists" = "Could not write VLC playlists";
+
+/* C UI: DOWNLOAD_COMPLETE_S */
+"Download complete (%s)" = "Download complete (%s)";
+
+/* C UI: DOWNLOAD_IS_NO_LONGER_RUNNING */
+"Download is no longer running" = "Download is no longer running";
+
+/* C UI: DOWNLOAD_PATH_IS_A_DIRECTORY */
+"Download path is a directory" = "Download path is a directory";
+
+/* C UI: DOWNLOAD_PATH_IS_TOO_LONG */
+"Download path is too long" = "Download path is too long";
+
+/* C UI: DOWNLOAD_EXPORT_WARNING */
+"Downloaded. VLC playlist export failed: %s. Sync the playlist to retry export." = "Downloaded. VLC playlist export failed: %s. Sync the playlist to retry export.";
+
+/* C UI: DOWNLOAD_DATABASE_WARNING */
+"File downloaded, but its database update failed. Reopen the library to recover it." = "File downloaded, but its database update failed. Reopen the library to recover it.";
+
+/* C UI: FILE_IS_MISSING_RETRY_TO_DOWNLOAD_IT_AGAIN */
+"File is missing. Retry to download it again." = "File is missing. Retry to download it again.";
+
+/* C UI: FILE_S */
+"File: %s" = "File: %s";
+
+/* C UI: FORMAT_S_DX_D */
+"Format: %s·%dx%d" = "Format: %s·%dx%d";
+
+/* C UI: INTERRUPTED_RETRY_RESTARTS_THE_DOWNLOAD */
+"Interrupted. Retry restarts the download." = "Interrupted. Retry restarts the download.";
+
+/* C UI: INVALID_ACCOUNT_PLAYLIST */
+"Invalid account playlist" = "Invalid account playlist";
+
+/* C UI: INVALID_INDEXED_LIST */
+"Invalid indexed list" = "Invalid indexed list";
+
+/* C UI: INVALID_LIST_QUERY */
+"Invalid list query" = "Invalid list query";
+
+/* C UI: INVALID_NUMERIC_METADATA_IN_PLAYLIST */
+"Invalid numeric metadata in playlist" = "Invalid numeric metadata in playlist";
+
+/* C UI: INVALID_PAGE_RANGE */
+"Invalid page range" = "Invalid page range";
+
+/* C UI: INVALID_PLAYBACK_POSITION */
+"Invalid playback position" = "Invalid playback position";
+
+/* C UI: INVALID_PLAYLIST_ID */
+"Invalid playlist ID" = "Invalid playlist ID";
+
+/* C UI: INVALID_RESOLVED_JOB */
+"Invalid resolved job" = "Invalid resolved job";
+
+/* C UI: INVALID_SEEK_QUERY */
+"Invalid seek query" = "Invalid seek query";
+
+/* C UI: INVALID_THUMBNAIL_URL_IN_PLAYLIST */
+"Invalid thumbnail URL in playlist" = "Invalid thumbnail URL in playlist";
+
+/* C UI: INVALID_THUMBNAIL_LIST_IN_PLAYLIST */
+"Invalid thumbnail list in playlist" = "Invalid thumbnail list in playlist";
+
+/* C UI: INVALID_VIDEO */
+"Invalid video" = "Invalid video";
+
+/* C UI: INVALID_VIDEO_ID_IN_PLAYLIST */
+"Invalid video ID in playlist" = "Invalid video ID in playlist";
+
+/* C UI: JOB_DOES_NOT_EXIST */
+"Job does not exist" = "Job does not exist";
+
+/* C UI: MISSING_ACCOUNT_PLAYLISTS */
+"Missing account playlists" = "Missing account playlists";
+
+/* C UI: MISSING_DOWNLOAD_FORMAT */
+"Missing download format" = "Missing download format";
+
+/* C UI: PLAYLIST_CANNOT_BE_REMOVED */
+"Playlist cannot be removed" = "Playlist cannot be removed";
+
+/* C UI: PLAYLIST_DOES_NOT_EXIST */
+"Playlist does not exist" = "Playlist does not exist";
+
+/* C UI: PLAYLIST_PATH_IS_TOO_LONG */
+"Playlist path is too long" = "Playlist path is too long";
+
+/* C UI: QUEUED_S_IN_ADDED_VIDEOS */
+"Queued %s in Added Videos" = "Queued %s in Added Videos";
+
+/* C UI: RECOVERED_COMPLETED_DOWNLOAD_AFTER_INTERRUPTION */
+"Recovered completed download after interruption." = "Recovered completed download after interruption.";
+
+/* C UI: RESOLVED_PATH_IS_TOO_LONG */
+"Resolved path is too long" = "Resolved path is too long";
+
+/* C UI: RESULT_PROCESSING_FAILED */
+"Result processing failed" = "Result processing failed";
+
+/* C UI: STAGING_PATH_IS_TOO_LONG */
+"Staging path is too long" = "Staging path is too long";
+
+/* C UI: PLAYLIST_SYNC_PARTIAL */
+"Synced %lu playlists; %lu failed. %.180s" = "Synced %lu playlists; %lu failed. %.180s";
+
+/* C UI: SYNCED_S_LU_ENTRIES */
+"Synced %s (%lu entries)" = "Synced %s (%lu entries)";
+
+/* C UI: SYNCED_MY_PLAYLISTS_LU_PLAYLISTS */
+"Synced My Playlists (%lu playlists)" = "Synced My Playlists (%lu playlists)";
+
+/* C UI: CA_BUNDLE_MISSING */
+"The application is missing its CA certificate bundle." = "The application is missing its CA certificate bundle.";
+
+/* C UI: TOO_MANY_RESULT_COLUMNS */
+"Too many result columns" = "Too many result columns";

@@ -2,6 +2,7 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 #include "rdapp_store.h"
+#include "rdapp_strings.h"
 #include <sqlite3.h>
 #include <retrodlp/retrodlp.h>
 #include <stdio.h>
@@ -24,9 +25,18 @@ static void playlist_can_sync_sql(sqlite3_context *context,int argc,sqlite3_valu
   (void)argc;
   sqlite3_result_int(context,rdapp_playlist_can_sync((const char *)sqlite3_value_text(argv[0])));
 }
+static void display_title_sql(sqlite3_context *context,int argc,sqlite3_value **argv) {
+  const char *service=(const char *)sqlite3_value_text(argv[0]);
+  (void)argc;
+  if(service && !strcmp(service,RDAPP_ADHOC_PLAYLIST_ID))
+    sqlite3_result_text(context,rdapp_string(RDAPP_STRING_ADDED_VIDEOS),-1,SQLITE_TRANSIENT);
+  else sqlite3_result_value(context,argv[1]);
+}
 static int register_playlist_functions(sqlite3 *db) {
   return sqlite3_create_function(db,"rdapp_can_sync",1,SQLITE_UTF8,NULL,
-    playlist_can_sync_sql,NULL,NULL)==SQLITE_OK;
+    playlist_can_sync_sql,NULL,NULL)==SQLITE_OK &&
+    sqlite3_create_function(db,"rdapp_display_title",2,SQLITE_UTF8,NULL,
+      display_title_sql,NULL,NULL)==SQLITE_OK;
 }
 struct rdapp_store { sqlite3 *db; char error[512]; };
 static int failure(rdapp_store *s, const char *message) {
@@ -67,7 +77,7 @@ static int refresh_job_metadata(rdapp_store *s,int64_t key) {
   if(key) sqlite3_bind_int64(p,1,key);
   return done(s,p);
 }
-const char *rdapp_store_error(rdapp_store *s) { return s ? s->error : "Cannot open library database"; }
+const char *rdapp_store_error(rdapp_store *s) { return s ? rdapp_localize_key(s->error) : rdapp_string(RDAPP_STRING_CANNOT_OPEN_LIBRARY_DATABASE); }
 void rdapp_store_close(rdapp_store *s) { if (s) { sqlite3_close(s->db); free(s); } }
 int rdapp_store_open(const char *path, rdapp_store **out) {
   rdapp_store *s = calloc(1, sizeof(*s));
@@ -98,10 +108,14 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
     " title TEXT NOT NULL, format TEXT NOT NULL, actual_format TEXT NOT NULL DEFAULT '',"
     " path TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'queued', error TEXT NOT NULL DEFAULT '',"
     " UNIQUE(playlist_id,video_id,format));"
-    "CREATE INDEX IF NOT EXISTS jobs_state ON jobs(state,id);"
-    "UPDATE jobs SET state='interrupted', error='Interrupted. Retry restarts the download.' WHERE state='running';")) {
+    "CREATE INDEX IF NOT EXISTS jobs_state ON jobs(state,id);")) {
     rdapp_store_close(s); return 0;
   }
+  /* Persist stable English keys; presentation resolves the active language. */
+  p=prepare(s,"UPDATE jobs SET state='interrupted',error=? WHERE state='running'");
+  if(!p) { rdapp_store_close(s); return 0; }
+  bind_text(p,1,rdapp_string_key(RDAPP_STRING_INTERRUPTED_RETRY_RESTARTS_THE_DOWNLOAD));
+  if(!done(s,p)) { rdapp_store_close(s); return 0; }
   if ((version<2 && !sql(s,"ALTER TABLE playlists ADD COLUMN source TEXT NOT NULL DEFAULT 'added';")) ||
       (version<4 && !sql(s,"ALTER TABLE entries ADD COLUMN channel TEXT;"
         "ALTER TABLE entries ADD COLUMN channel_id TEXT;"
@@ -143,8 +157,11 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
   if(version<9 && !sql(s,"UPDATE entries SET enqueueDate=(SELECT max(j.enqueueDate) FROM jobs j "
       "WHERE j.playlist_id=entries.playlist_id AND j.video_id=entries.video_id) "
       "WHERE playlist_id IN (SELECT id FROM playlists WHERE service_id='adhoc');")) { rdapp_store_close(s); return 0; }
-  if((version<5 && !refresh_job_metadata(s,0)) || !sql(s,"UPDATE playlists SET title='Added Videos' WHERE service_id='adhoc' AND title<>'Added Videos';"
-    "PRAGMA user_version=9; COMMIT;")) {
+  if(version<5 && !refresh_job_metadata(s,0)) { rdapp_store_close(s); return 0; }
+  p=prepare(s,"UPDATE playlists SET title=?1 WHERE service_id='adhoc' AND title<>?1");
+  if(!p) { rdapp_store_close(s); return 0; }
+  bind_text(p,1,rdapp_string_key(RDAPP_STRING_ADDED_VIDEOS));
+  if(!done(s,p) || !sql(s,"PRAGMA user_version=9; COMMIT;")) {
     rdapp_store_close(s); return 0;
   }
   *out = s; return 1;
@@ -160,7 +177,7 @@ int rdapp_store_playback_seconds(rdapp_store *s,const char *video,double *second
 }
 int rdapp_store_save_playback_seconds(rdapp_store *s,const char *video,double seconds) {
   sqlite3_stmt *p;
-  if(!isfinite(seconds) || seconds<0) return failure(s,"Invalid playback position");
+  if(!isfinite(seconds) || seconds<0) return failure(s,rdapp_string_key(RDAPP_STRING_INVALID_PLAYBACK_POSITION));
   p=prepare(s,"UPDATE videos SET playback_seconds=? WHERE id=?"); if(!p) return 0;
   sqlite3_bind_double(p,1,seconds); bind_text(p,2,video); return done(s,p);
 }
@@ -215,10 +232,20 @@ static int each(rdapp_store *s, sqlite3_stmt *p, rdapp_row_callback cb, void *ct
   int rc, n, i; const char *values[32], *names[32];
   if (!p) return 0;
   n=sqlite3_column_count(p);
-  if (n>32) { sqlite3_finalize(p); return failure(s,"Too many result columns"); }
+  if (n>32) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_TOO_MANY_RESULT_COLUMNS)); }
   while ((rc=sqlite3_step(p)) == SQLITE_ROW) {
     for(i=0;i<n;++i) { names[i]=sqlite3_column_name(p,i); values[i]=(const char *)sqlite3_column_text(p,i); }
-    if (cb && !cb(ctx,n,names,values)) { sqlite3_finalize(p); return failure(s,"Result processing failed"); }
+    /* Translate presentation fields only, never write translations into SQLite. */
+    {
+      int adhoc=0;
+      for(i=0;i<n;++i)
+        if(!strcmp(names[i],"service_id") && values[i] && !strcmp(values[i],RDAPP_ADHOC_PLAYLIST_ID)) adhoc=1;
+      for(i=0;i<n;++i) {
+        if(!strcmp(names[i],"error") && values[i]) values[i]=rdapp_localize_key(values[i]);
+        else if(adhoc && !strcmp(names[i],"title")) values[i]=rdapp_string(RDAPP_STRING_ADDED_VIDEOS);
+      }
+    }
+    if (cb && !cb(ctx,n,names,values)) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_RESULT_PROCESSING_FAILED)); }
   }
   if(rc!=SQLITE_DONE) failure(s,sqlite3_errmsg(s->db));
   sqlite3_finalize(p); return rc==SQLITE_DONE;
@@ -233,7 +260,7 @@ int rdapp_store_open_reader(const char *path, rdapp_store **out) {
 /* Keep counting free of row projection, sorting and correlated metadata queries. */
 static int query_parts(rdapp_query kind,int64_t key,const char *format,
                        const char **fields,const char **from,const char **order) {
-  *fields="j.*, p.title AS playlist_title";
+  *fields="j.*, rdapp_display_title(p.service_id,p.title) AS playlist_title";
   *order="j.id DESC";
   switch(kind) {
     case RDAPP_UNSUPPORTED_IDS:
@@ -265,7 +292,7 @@ static int query_parts(rdapp_query kind,int64_t key,const char *format,
     case RDAPP_ENTRIES:
       *fields="e.*"; *from="entries e WHERE e.playlist_id=?1"; *order="e.position"; break;
     case RDAPP_ADDED_VIDEOS:
-      *fields="e.*,p.title AS playlist_title";
+      *fields="e.*,rdapp_display_title(p.service_id,p.title) AS playlist_title";
       *from="entries e JOIN playlists p ON p.id=e.playlist_id WHERE e.playlist_id=?1 AND p.service_id='adhoc'";
       *order="coalesce(e.enqueueDate,0) DESC,e.position DESC"; break;
     case RDAPP_ALL_DOWNLOADS:
@@ -296,7 +323,7 @@ static int query_parts(rdapp_query kind,int64_t key,const char *format,
 static sqlite3_stmt *list_statement(rdapp_store *s,rdapp_query kind,int64_t key,
                                    const char *video,const char *format,int count) {
   const char *fields,*from,*order; char query[2048]; sqlite3_stmt *p;
-  if(!query_parts(kind,key,format,&fields,&from,&order)) { failure(s,"Invalid list query"); return NULL; }
+  if(!query_parts(kind,key,format,&fields,&from,&order)) { failure(s,rdapp_string_key(RDAPP_STRING_INVALID_LIST_QUERY)); return NULL; }
   if(count && !strncmp(from,"jobs j JOIN playlists p ON p.id=j.playlist_id WHERE ",strlen("jobs j JOIN playlists p ON p.id=j.playlist_id WHERE ")))
     snprintf(query,sizeof(query),"SELECT count(*) FROM jobs j WHERE %s",from+strlen("jobs j JOIN playlists p ON p.id=j.playlist_id WHERE "));
   else if(count) snprintf(query,sizeof(query),"SELECT count(*) FROM %s",from);
@@ -315,7 +342,7 @@ int rdapp_store_count(rdapp_store *s,rdapp_query kind,int64_t key,const char *vi
 int rdapp_store_page(rdapp_store *s,rdapp_query kind,int64_t key,const char *video,const char *format,
                      int64_t offset,int64_t limit,rdapp_row_callback cb,void *ctx) {
   sqlite3_stmt *p;
-  if(offset<0 || limit< -1) return failure(s,"Invalid page range");
+  if(offset<0 || limit< -1) return failure(s,rdapp_string_key(RDAPP_STRING_INVALID_PAGE_RANGE));
   p=list_statement(s,kind,key,video,format,0); if(!p) return 0;
   sqlite3_bind_int64(p,4,limit); sqlite3_bind_int64(p,5,offset); return each(s,p,cb,ctx);
 }
@@ -326,7 +353,7 @@ int rdapp_store_after(rdapp_store *s,rdapp_query kind,int64_t key,const char *vi
      kind==RDAPP_ADDED_PLAYLISTS || kind==RDAPP_ACCOUNT_PLAYLISTS || kind==RDAPP_PLAYLIST || kind==RDAPP_PLAYLIST_INPUT ||
      kind==RDAPP_ADDED_IDS || kind==RDAPP_ACCOUNT_IDS ||
      kind==RDAPP_UNSUPPORTED_IDS || kind==RDAPP_UNSUPPORTED_PLAYLISTS)
-    return failure(s,"Invalid seek query");
+    return failure(s,rdapp_string_key(RDAPP_STRING_INVALID_SEEK_QUERY));
   /* Separate tied-date and earlier-date seeks so SQLite can use both index
      columns even when thousands of jobs share one enqueue timestamp. */
   if(kind==RDAPP_QUEUE)
@@ -365,8 +392,8 @@ int rdapp_store_list(rdapp_store *s,rdapp_query kind,int64_t key,rdapp_row_callb
 int rdapp_store_index(rdapp_store *s,rdapp_query kind,int64_t key,int64_t identity,int64_t *index) {
   const char *fields,*from,*order,*column,*comparison; char query[2048]; sqlite3_stmt *p; int ok;
   *index=-1;
-  if(kind!=RDAPP_ENTRIES && kind!=RDAPP_ADDED_VIDEOS && kind!=RDAPP_DOWNLOADS && kind!=RDAPP_ALL_DOWNLOADS && kind!=RDAPP_QUEUE) return failure(s,"Invalid indexed list");
-  if(!query_parts(kind,key,NULL,&fields,&from,&order)) return failure(s,"Invalid indexed list");
+  if(kind!=RDAPP_ENTRIES && kind!=RDAPP_ADDED_VIDEOS && kind!=RDAPP_DOWNLOADS && kind!=RDAPP_ALL_DOWNLOADS && kind!=RDAPP_QUEUE) return failure(s,rdapp_string_key(RDAPP_STRING_INVALID_INDEXED_LIST));
+  if(!query_parts(kind,key,NULL,&fields,&from,&order)) return failure(s,rdapp_string_key(RDAPP_STRING_INVALID_INDEXED_LIST));
   column=(kind==RDAPP_ENTRIES || kind==RDAPP_ADDED_VIDEOS)?"e.position":"j.id"; comparison=kind==RDAPP_ENTRIES?"<":">";
   snprintf(query,sizeof(query),"SELECT count(*) FROM %s AND %s=?2",from,column);
   p=prepare(s,query); if(!p) return 0;
@@ -410,7 +437,7 @@ int rdapp_store_playlist(rdapp_store *s,const char *id,const char *title,int64_t
   char safe[128], directory[256]; sqlite3_stmt *p; int ok;
   /* Service IDs become path components; reject every non-identifier byte. */
   if(!id || !*id || strspn(id,"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")!=strlen(id) || strlen(id)>100)
-    return failure(s,"Invalid playlist ID");
+    return failure(s,rdapp_string_key(RDAPP_STRING_INVALID_PLAYLIST_ID));
   rdapp_filename(title,safe,sizeof(safe));
   snprintf(directory,sizeof(directory),"Playlists/%s [%s]",safe,id);
   p=prepare(s,"INSERT OR IGNORE INTO playlists(service_id,title,directory) VALUES(?,?,?)");
@@ -438,11 +465,11 @@ rollback:
 }
 int rdapp_store_account_snapshot(rdapp_store *s,const rdapp_playlist_reference *items,size_t count) {
   sqlite3_stmt *p; size_t i;
-  if(count && !items) return failure(s,"Missing account playlists");
+  if(count && !items) return failure(s,rdapp_string_key(RDAPP_STRING_MISSING_ACCOUNT_PLAYLISTS));
   if(!sql(s,"BEGIN IMMEDIATE")) return 0;
   if(!sql(s,"CREATE TEMP TABLE IF NOT EXISTS account_snapshot (id TEXT PRIMARY KEY); DELETE FROM account_snapshot;")) goto rollback;
   for(i=0;i<count;++i) {
-    if(!items[i].id || !strcmp(items[i].id,RDAPP_ADHOC_PLAYLIST_ID)) { failure(s,"Invalid account playlist"); goto rollback; }
+    if(!items[i].id || !strcmp(items[i].id,RDAPP_ADHOC_PLAYLIST_ID)) { failure(s,rdapp_string_key(RDAPP_STRING_INVALID_ACCOUNT_PLAYLIST)); goto rollback; }
     if(!rdapp_store_playlist(s,items[i].id,items[i].title,NULL)) goto rollback;
     p=prepare(s,"INSERT OR IGNORE INTO account_snapshot(id) VALUES(?)"); if(!p) goto rollback;
     bind_text(p,1,items[i].id); if(!done(s,p)) goto rollback;
@@ -462,12 +489,12 @@ int rdapp_store_snapshot(rdapp_store *s,const char *id,const char *title,const r
   p=prepare(s,"DELETE FROM entries WHERE playlist_id=?"); if(!p) goto rollback;
   sqlite3_bind_int64(p,1,k); if(!done(s,p)) goto rollback;
   for(i=0;i<count;++i) {
-    if(!entries[i].video_id || strlen(entries[i].video_id)!=11 || strspn(entries[i].video_id,"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")!=11) { failure(s,"Invalid video ID in playlist"); goto rollback; }
+    if(!entries[i].video_id || strlen(entries[i].video_id)!=11 || strspn(entries[i].video_id,"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")!=11) { failure(s,rdapp_string_key(RDAPP_STRING_INVALID_VIDEO_ID_IN_PLAYLIST)); goto rollback; }
     p=prepare(s,"INSERT OR REPLACE INTO videos(id,title,playback_seconds) VALUES(?1,?2,coalesce((SELECT playback_seconds FROM videos WHERE id=?1),0))"); if(!p) goto rollback;
     bind_text(p,1,entries[i].video_id); bind_text(p,2,entries[i].title); if(!done(s,p)) goto rollback;
     if((entries[i].has_duration && entries[i].duration>UINT64_C(9007199254740991)) ||
        (entries[i].has_view_count && entries[i].view_count>UINT64_C(9007199254740991))) {
-      failure(s,"Invalid numeric metadata in playlist"); goto rollback;
+      failure(s,rdapp_string_key(RDAPP_STRING_INVALID_NUMERIC_METADATA_IN_PLAYLIST)); goto rollback;
     }
     p=prepare(s,"INSERT INTO entries(playlist_id,position,video_id,title,channel,channel_id,view_count_text,published_text,description_snippet,duration,view_count) VALUES(?,?,?,?,?,?,?,?,?,?,?)"); if(!p) goto rollback;
     sqlite3_bind_int64(p,1,k); sqlite3_bind_int(p,2,entries[i].position);
@@ -482,11 +509,11 @@ int rdapp_store_snapshot(rdapp_store *s,const char *id,const char *title,const r
     if(entries[i].has_view_count) sqlite3_bind_int64(p,11,(sqlite3_int64)entries[i].view_count);
     if(!done(s,p)) goto rollback;
     if(entries[i].thumbnail_count>INT_MAX || (entries[i].thumbnail_count && !entries[i].thumbnail_urls)) {
-      failure(s,"Invalid thumbnail list in playlist"); goto rollback;
+      failure(s,rdapp_string_key(RDAPP_STRING_INVALID_THUMBNAIL_LIST_IN_PLAYLIST)); goto rollback;
     }
     for(j=0;j<entries[i].thumbnail_count;++j) {
       if(!entries[i].thumbnail_urls[j] || !entries[i].thumbnail_urls[j][0]) {
-        failure(s,"Invalid thumbnail URL in playlist"); goto rollback;
+        failure(s,rdapp_string_key(RDAPP_STRING_INVALID_THUMBNAIL_URL_IN_PLAYLIST)); goto rollback;
       }
       p=prepare(s,"INSERT INTO entry_thumbnails(playlist_id,position,thumbnail_index,url) VALUES(?,?,?,?)"); if(!p) goto rollback;
       sqlite3_bind_int64(p,1,k); sqlite3_bind_int(p,2,entries[i].position); sqlite3_bind_int(p,3,(int)j);
@@ -505,9 +532,9 @@ rollback:
 static int add_adhoc(rdapp_store *s,const char *video_id,const char *title,const char *format,int64_t *key) {
   sqlite3_stmt *p; int64_t k,position=0; int exists;
   if(!video_id || strlen(video_id)!=11 || strspn(video_id,"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")!=11 || (title && !*title))
-    return failure(s,"Invalid video");
+    return failure(s,rdapp_string_key(RDAPP_STRING_INVALID_VIDEO));
   if(!sql(s,"BEGIN IMMEDIATE")) return 0;
-  if(!rdapp_store_playlist(s,RDAPP_ADHOC_PLAYLIST_ID,"Added Videos",&k)) goto rollback;
+  if(!rdapp_store_playlist(s,RDAPP_ADHOC_PLAYLIST_ID,rdapp_string_key(RDAPP_STRING_ADDED_VIDEOS),&k)) goto rollback;
   p=prepare(s,"UPDATE playlists SET source='system', synced_at=strftime('%s','now') WHERE id=?"); if(!p) goto rollback;
   sqlite3_bind_int64(p,1,k); if(!done(s,p)) goto rollback;
   p=prepare(s,title?"INSERT OR REPLACE INTO videos(id,title,playback_seconds) VALUES(?1,?2,coalesce((SELECT playback_seconds FROM videos WHERE id=?1),0))":"INSERT OR IGNORE INTO videos(id,title) VALUES(?,?)"); if(!p) goto rollback;
@@ -541,7 +568,7 @@ int rdapp_store_add_adhoc(rdapp_store *s,const char *video_id,const char *title,
   return add_adhoc(s,video_id,title,NULL,key);
 }
 int rdapp_store_add_adhoc_download(rdapp_store *s,const char *video_id,const char *title,const char *format,int64_t *key) {
-  if(!format || !*format) return failure(s,"Missing download format");
+  if(!format || !*format) return failure(s,rdapp_string_key(RDAPP_STRING_MISSING_DOWNLOAD_FORMAT));
   return add_adhoc(s,video_id,title,format,key);
 }
 int rdapp_store_enqueue(rdapp_store *s,int64_t key,const char *video,const char *format) {
@@ -581,19 +608,19 @@ fail: sqlite3_exec(s->db,"ROLLBACK",NULL,NULL,NULL); return 0;
 }
 int rdapp_store_resolve_job(rdapp_store *s,int64_t key,const char *title,char *path,size_t capacity) {
   sqlite3_stmt *p; char resolved[PATH_MAX],safe[128]; int adhoc,n;
-  if(!title || !*title || !path || !capacity) return failure(s,"Invalid resolved job");
+  if(!title || !*title || !path || !capacity) return failure(s,rdapp_string_key(RDAPP_STRING_INVALID_RESOLVED_JOB));
   if(!sql(s,"BEGIN IMMEDIATE")) return 0;
   p=prepare(s,"SELECT j.path,p.service_id,p.directory FROM jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.id=? AND j.state='running'");
   if(!p) goto rollback;
   sqlite3_bind_int64(p,1,key);
-  if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); failure(s,"Download is no longer running"); goto rollback; }
+  if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); failure(s,rdapp_string_key(RDAPP_STRING_DOWNLOAD_IS_NO_LONGER_RUNNING)); goto rollback; }
   adhoc=!strcmp((const char *)sqlite3_column_text(p,1),RDAPP_ADHOC_PLAYLIST_ID);
   if(adhoc) {
     rdapp_filename(title,safe,sizeof(safe));
     n=snprintf(resolved,sizeof(resolved),"%s/%s [%lld].mp4",sqlite3_column_text(p,2),safe,(long long)key);
   } else n=snprintf(resolved,sizeof(resolved),"%s",sqlite3_column_text(p,0));
   sqlite3_finalize(p);
-  if(n<0 || n>=(int)sizeof(resolved) || (size_t)n>=capacity) { failure(s,"Resolved path is too long"); goto rollback; }
+  if(n<0 || n>=(int)sizeof(resolved) || (size_t)n>=capacity) { failure(s,rdapp_string_key(RDAPP_STRING_RESOLVED_PATH_IS_TOO_LONG)); goto rollback; }
   if(adhoc) {
     const char *updates[]={
       "UPDATE videos SET title=?1 WHERE id=(SELECT video_id FROM jobs WHERE id=?2)",
@@ -628,7 +655,10 @@ int rdapp_store_retry(rdapp_store *s,int64_t key) {
   return by_id(s,"UPDATE jobs SET state='queued',error='' WHERE id=? AND state IN ('failed','cancelled','interrupted','removed')",key);
 }
 int rdapp_store_cancel(rdapp_store *s,int64_t key) {
-  return by_id(s,"UPDATE jobs SET state='cancelled',error='Cancelled' WHERE id=? AND state='queued'",key);
+  sqlite3_stmt *p=prepare(s,"UPDATE jobs SET state='cancelled',error=?1 WHERE id=?2 AND state='queued'");
+  if(!p) return 0;
+  bind_text(p,1,rdapp_string_key(RDAPP_STRING_CANCELLED));
+  sqlite3_bind_int64(p,2,key); return done(s,p);
 }
 int rdapp_store_forget_file(rdapp_store *s,int64_t key) {
   return by_id(s,"UPDATE jobs SET state='removed',actual_format='',error='' WHERE id=? AND state<>'running'",key);
@@ -639,7 +669,7 @@ int rdapp_store_remove_playlist(rdapp_store *s,int64_t key,const char *root) {
      parent and every job intact, including failed jobs' retry files. */
   if(!sql(s,"BEGIN IMMEDIATE")) return 0;
   if(!by_id(s,"UPDATE playlists SET removed=1 WHERE id=? AND service_id<>'adhoc'",key)) goto rollback;
-  if(sqlite3_changes(s->db)!=1) { failure(s,"Playlist cannot be removed"); goto rollback; }
+  if(sqlite3_changes(s->db)!=1) { failure(s,rdapp_string_key(RDAPP_STRING_PLAYLIST_CANNOT_BE_REMOVED)); goto rollback; }
   if(!by_id(s,"DELETE FROM entries WHERE playlist_id=?",key)) goto rollback;
   if(sql(s,"COMMIT")) return 1;
 rollback:
@@ -701,20 +731,20 @@ int rdapp_store_export(rdapp_store *s,int64_t key,const char *root) {
   sqlite3_stmt *p; char dir[PATH_MAX],path[PATH_MAX],temp[PATH_MAX],legacy[PATH_MAX],legacy_temp[PATH_MAX]; FILE *f,*m; int fd,mfd,rc,adhoc; char query[2048]; struct stat st;
   p=prepare(s,"SELECT directory,title,service_id,source,removed FROM playlists WHERE id=?"); if(!p) return 0;
   sqlite3_bind_int64(p,1,key);
-  if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); return failure(s,"Playlist does not exist"); }
+  if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_PLAYLIST_DOES_NOT_EXIST)); }
   adhoc=!strcmp((const char *)sqlite3_column_text(p,2),RDAPP_ADHOC_PLAYLIST_ID);
   rc=snprintf(dir,sizeof(dir),"%s/%s",root,sqlite3_column_text(p,0));
-  if(rc<0 || (size_t)rc>=sizeof(dir)) { sqlite3_finalize(p); return failure(s,"Cannot create playlist directory"); }
+  if(rc<0 || (size_t)rc>=sizeof(dir)) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_CANNOT_CREATE_PLAYLIST_DIRECTORY)); }
   if(snprintf(path,sizeof(path),"%s/Playlist.xspf",dir)>=(int)sizeof(path) ||
      snprintf(legacy,sizeof(legacy),"%s/Playlist.m3u8",dir)>=(int)sizeof(legacy) ||
      snprintf(temp,sizeof(temp),"%s/.playlist-XXXXXX",dir)>=(int)sizeof(temp) ||
-     snprintf(legacy_temp,sizeof(legacy_temp),"%s/.playlist-XXXXXX",dir)>=(int)sizeof(legacy_temp)) { sqlite3_finalize(p); return failure(s,"Playlist path is too long"); }
+     snprintf(legacy_temp,sizeof(legacy_temp),"%s/.playlist-XXXXXX",dir)>=(int)sizeof(legacy_temp)) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_PLAYLIST_PATH_IS_TOO_LONG)); }
   if(sqlite3_column_int(p,4)) {
     sqlite3_finalize(p);
-    if((unlink(path) && errno!=ENOENT) || (unlink(legacy) && errno!=ENOENT)) return failure(s,"Cannot remove playlist exports");
+    if((unlink(path) && errno!=ENOENT) || (unlink(legacy) && errno!=ENOENT)) return failure(s,rdapp_string_key(RDAPP_STRING_CANNOT_REMOVE_PLAYLIST_EXPORTS));
     return 1;
   }
-  if(!rdapp_make_directory(dir)) { sqlite3_finalize(p); return failure(s,"Cannot create playlist directory"); }
+  if(!rdapp_make_directory(dir)) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_CANNOT_CREATE_PLAYLIST_DIRECTORY)); }
   fd=mkstemp(temp); if(fd<0) { sqlite3_finalize(p); return failure(s,strerror(errno)); }
   f=fdopen(fd,"w"); if(!f) { sqlite3_finalize(p); close(fd); unlink(temp); return failure(s,strerror(errno)); }
   mfd=mkstemp(legacy_temp);
@@ -787,7 +817,7 @@ int rdapp_store_export(rdapp_store *s,int64_t key,const char *root) {
     if(lstat(path,&st)==0 && !S_ISREG(st.st_mode)) ok=0;
     if(lstat(legacy,&st)==0 && !S_ISREG(st.st_mode)) ok=0;
     if(!ok || rename(temp,path) || rename(legacy_temp,legacy)) {
-      unlink(temp); unlink(legacy_temp); return failure(s,"Could not write VLC playlists");
+      unlink(temp); unlink(legacy_temp); return failure(s,rdapp_string_key(RDAPP_STRING_COULD_NOT_WRITE_VLC_PLAYLISTS));
     }
   }
   return 1;
@@ -804,9 +834,9 @@ int rdapp_store_reconcile_job(rdapp_store *s,int64_t key,const char *root) {
     int exists=snprintf(path,sizeof(path),"%s/%s",root,sqlite3_column_text(p,0))<(int)sizeof(path) &&
       lstat(path,&st)==0 && S_ISREG(st.st_mode) && st.st_size>0;
     if(!strcmp(state,"complete") && !exists)
-      ok=rdapp_store_finish(s,key,"removed",format,"File is missing. Retry to download it again.");
+      ok=rdapp_store_finish(s,key,"removed",format,rdapp_string_key(RDAPP_STRING_FILE_IS_MISSING_RETRY_TO_DOWNLOAD_IT_AGAIN));
     else if(!strcmp(state,"interrupted") && exists && format[0])
-      ok=rdapp_store_finish(s,key,"complete",format,"Recovered completed download after interruption.");
+      ok=rdapp_store_finish(s,key,"complete",format,rdapp_string_key(RDAPP_STRING_RECOVERED_COMPLETED_DOWNLOAD_AFTER_INTERRUPTION));
   } else if(rc!=SQLITE_DONE) ok=failure(s,sqlite3_errmsg(s->db));
   sqlite3_finalize(p); return ok;
 }
@@ -830,9 +860,9 @@ int rdapp_store_reconcile(rdapp_store *s,const char *root) {
     int exists=snprintf(path,sizeof(path),"%s/%s",root,relative)<(int)sizeof(path) &&
       lstat(path,&st)==0 && S_ISREG(st.st_mode) && st.st_size>0;
     if(!strcmp(state,"complete") && !exists)
-      ok=rdapp_store_finish(s,key,"removed",format,"File is missing. Retry to download it again.");
+      ok=rdapp_store_finish(s,key,"removed",format,rdapp_string_key(RDAPP_STRING_FILE_IS_MISSING_RETRY_TO_DOWNLOAD_IT_AGAIN));
     else if(!strcmp(state,"interrupted") && exists && format[0])
-      ok=rdapp_store_finish(s,key,"complete",format,"Recovered completed download after interruption.");
+      ok=rdapp_store_finish(s,key,"complete",format,rdapp_string_key(RDAPP_STRING_RECOVERED_COMPLETED_DOWNLOAD_AFTER_INTERRUPTION));
     if(!ok) break;
   }
   sqlite3_finalize(p);
@@ -849,7 +879,7 @@ static int remove_download_file(rdapp_store *s,const char *path,rdapp_remove_fil
   const char *error;
   if(!remove_file) return !unlink(path) || errno==ENOENT || failure(s,strerror(errno));
   if(lstat(path,&info)) return errno==ENOENT || failure(s,strerror(errno));
-  if(S_ISDIR(info.st_mode)) return failure(s,"Download path is a directory");
+  if(S_ISDIR(info.st_mode)) return failure(s,rdapp_string_key(RDAPP_STRING_DOWNLOAD_PATH_IS_A_DIRECTORY));
   error=remove_file(context,path);
   return error?failure(s,error):1;
 }
@@ -862,17 +892,17 @@ int rdapp_store_remove_file_with_callback(rdapp_store *s,int64_t key,const char 
   const char *files[]={"video.mp4","video.mp4.part","video.mp4.video.mp4","video.mp4.video.mp4.part","video.mp4.audio.m4a","video.mp4.audio.m4a.part"};
   if(!p) return 0;
   sqlite3_bind_int64(p,1,key);
-  if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); return failure(s,"Job does not exist"); }
-  if(!strcmp((const char *)sqlite3_column_text(p,2),"running")) { sqlite3_finalize(p); return failure(s,"Cancel the active download before removing it"); }
+  if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_JOB_DOES_NOT_EXIST)); }
+  if(!strcmp((const char *)sqlite3_column_text(p,2),"running")) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_CANCEL_THE_ACTIVE_DOWNLOAD_BEFORE_REMOVING_IT)); }
   playlist=sqlite3_column_int64(p,1);
   n=snprintf(path,sizeof(path),"%s/%s",root,sqlite3_column_text(p,0));
   if(!sqlite3_column_bytes(p,0)) path[0]=0;
   sqlite3_finalize(p);
-  if(n<0 || (size_t)n>=sizeof(path)) return failure(s,"Download path is too long");
+  if(n<0 || (size_t)n>=sizeof(path)) return failure(s,rdapp_string_key(RDAPP_STRING_DOWNLOAD_PATH_IS_TOO_LONG));
   if(path[0] && !remove_download_file(s,path,remove_file,context)) return 0;
-  if(snprintf(staging,sizeof(staging),"%s/.staging/%lld",root,(long long)key)>=(int)sizeof(staging)) return failure(s,"Staging path is too long");
+  if(snprintf(staging,sizeof(staging),"%s/.staging/%lld",root,(long long)key)>=(int)sizeof(staging)) return failure(s,rdapp_string_key(RDAPP_STRING_STAGING_PATH_IS_TOO_LONG));
   for(i=0;i<sizeof(files)/sizeof(files[0]);++i) {
-    if(snprintf(path,sizeof(path),"%s/%s",staging,files[i])>=(int)sizeof(path)) return failure(s,"Staging path is too long");
+    if(snprintf(path,sizeof(path),"%s/%s",staging,files[i])>=(int)sizeof(path)) return failure(s,rdapp_string_key(RDAPP_STRING_STAGING_PATH_IS_TOO_LONG));
     if(!remove_download_file(s,path,remove_file,context)) return 0;
   }
   if(rmdir(staging) && errno!=ENOENT) return failure(s,strerror(errno));

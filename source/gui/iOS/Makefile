@@ -8,7 +8,7 @@ SOURCES += RDLPPlayerControls.m RDLPPlayerViewController.m RDLPPlayerQueue.m RDL
 SOURCE_DIRS = $(SHARED_DIR) player
 vpath %.c $(SHARED_DIR)
 vpath %.m $(SHARED_DIR) player
-EXTRA_SOURCES = rdapp_store.c rdapp_service.c rdlp_thread.c RDLPLibrary.m RDLPVideoRows.m RDLPDownloadSections.m RDLP_Foundation.m
+EXTRA_SOURCES = rdapp_strings.c rdapp_store.c rdapp_service.c rdlp_thread.c RDLPLibrary.m RDLPVideoRows.m RDLPDownloadSections.m RDLP_Foundation.m
 INFO_PLIST = Info.plist
 RES_DIR = Resources
 ALTIVECCORE_REQUIRED = 1
@@ -34,3 +34,5 @@ $(APP_BUNDLE): Info.plist Makefile $(LOCALIZATION_FILES) $(wildcard $(RES_DIR)/*
 $(INT_DIR)/$(APP_NAME)-bin: $(ROOT)/build/iOS/libretrodlp-download.a $(ROOT)/build/iOS/libretrodlp.a
 $(OBJS): $(wildcard *.h player/*.h $(SHARED_DIR)/*.h)
 .PHONY: app
+
+$(OBJS): $(SHARED_DIR)/rdapp_strings.h $(SHARED_DIR)/rdapp_strings.def

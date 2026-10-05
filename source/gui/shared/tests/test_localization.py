@@ -39,6 +39,36 @@ for key in ('File', 'Edit', 'View', 'Window', 'Help', 'Download Quality',
             'All Downloads'):
     assert key in english, f'Missing dynamically localized key: {key}'
 
+def printf_arguments(text):
+    # C formats use explicit positional arguments when translators reorder them.
+    token = re.compile(r'%(?:(\d+)\$)?[-+ #0]*(?:\d+)?(?:\.\d+)?(hh|ll|[hljztL])?([diuoxXfFeEgGaAcsp%])')
+    arguments = {}
+    next_index = 1
+    for match in token.finditer(text):
+        position, length, conversion = match.groups()
+        if conversion == '%':
+            continue
+        index = int(position) if position else next_index
+        next_index += not bool(position)
+        signature = (length or '', conversion)
+        assert index not in arguments or arguments[index] == signature
+        arguments[index] = signature
+    # Reject unsupported/malformed conversions, including %n and dynamic widths.
+    assert '%' not in token.sub('', text), f'Invalid C format: {text}'
+    return arguments
+
+
+# C keys are resolved dynamically by the Objective-C startup bridge.
+for match in re.finditer(r'RDAPP_STRING\(\w+,\s*(' + STRING + r')\)',
+                         (GUI/'shared/rdapp_strings.def').read_text()):
+    key = json.loads(match[1])
+    assert key in english, f'Missing C UI string: {key}'
+    if '%' in key:
+        for path in (GUI/'shared/Resources').glob('*.lproj/Localizable.strings'):
+            translation = read_table(path).get(key, key)
+            assert printf_arguments(translation) == printf_arguments(key), \
+                f'C format arguments changed in {path}: {key}'
+
 for platform in ('macOS', 'iOS'):
     makefile = (GUI/platform/'Makefile').read_text()
     assert 'BUNDLE_LOCALIZATION_DIRS = $(SHARED_DIR)/Resources' in makefile

@@ -21,6 +21,7 @@ BUILD.mkdir(parents=True, exist_ok=True)
 subprocess.run(['cc', '-std=c99', '-Wall', '-Wextra', '-Werror', '-shared', '-fPIC', '-Wl,-Bsymbolic',
                 '-I'+str(ROOT/'source/library/shared/include'),
                 str(ROOT/'source/gui/shared/tests/store_probe.c'),
+                str(ROOT/'source/gui/shared/rdapp_strings.c'),
                 str(ROOT/'build/linux/libretrodlp.a'),
                 '-lsqlite3', '-lcurl', '-lcrypto', '-lm', '-ldl', '-lpthread',
                 '-o', str(BUILD/'store.so')], check=True)
