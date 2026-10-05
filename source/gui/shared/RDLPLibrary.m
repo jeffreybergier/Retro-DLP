@@ -168,7 +168,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 + (NSArray *)qualityTitles;
 {
   NSMutableArray *titles=[NSMutableArray array];
-  for(NSString *format in [self qualityFormats]) [titles addObject:[self qualityLabelForFormat:format]];
+  NSEnumerator *formats=[[self qualityFormats] objectEnumerator]; NSString *format;
+  while((format=[formats nextObject])) [titles addObject:[self qualityLabelForFormat:format]];
   [titles addObject:NSLocalizedString(@"Custom Format…", nil)];
   return titles;
 }
