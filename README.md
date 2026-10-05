@@ -6,10 +6,23 @@ are simple GUI applications written for iOS 5+ and Mac OS X 10.4+.
 
 Retro-DLP integrates several open source projects into 1 working solution:
 
-- libcurl + OpenSSL: Modern networking with TLS 1.2 support
-- QuickJS: Amazing C library that provides a working JavaScript runtime
-- L-SMASH: Amazing C library that can mux audio and video files together into a single mp4
-- SQLite: Provides a database for the GUI applications
+- [libcurl](https://curl.se/libcurl/) + [OpenSSL](https://openssl-library.org/): Modern networking with TLS 1.2 support
+- [QuickJS](https://bellard.org/quickjs/): Amazing C library that provides a working JavaScript runtime
+- [L-SMASH](https://github.com/l-smash/l-smash): Amazing C library that can mux audio and video files together into a single mp4
+- [SQLite](https://www.sqlite.org/): Provides a database for the GUI applications
+- [yt-dlp/ejs](https://github.com/yt-dlp/ejs): Supplies the JavaScript solver that QuickJS runs to resolve media URL challenges
+
+## How it Works
+
+Retro-DLP follows part of yt-dlp's process for resolving YouTube videos. It
+downloads the player JavaScript and uses QuickJS to resolve media URL challenges.
+It then downloads either a progressive MP4 or separate video and audio tracks.
+For separate tracks, L-SMASH muxes them into an MP4 file containing H.264 video
+and AAC audio without re-encoding.
+
+The main thing that distinguishes it from yt-dlp is that it is written in C and
+depends only on C libraries and thus can run on basically any device, no matter
+how old.
 
 ## Demo Videos
 
@@ -45,8 +58,6 @@ Core functionality written in a platform agnostic way. The library and the
 CLI should be compatible and usable on any UNIX style OS on pretty much any
 kind of hardware.
 
-## Architecture
-
 ## Compatibility
 
 Retro-DLP should work on any UNIX style OS on pretty much any hardware. But
@@ -74,12 +85,11 @@ MP4 without re-encoding.
 | Separate audio tracks | AAC-LC (`mp4a.40.2`) or HE-AAC (`mp4a.40.5`), mono or stereo |
 | Output | MP4 containing both video and audio |
 
-
 ### Formats and Presets
 
 Different videos have different video and audio formats available and they
-are specified as numbers separated by a + sign. In the CLI to select a format 
-manually use `-f`, to see available formats for a video use `-F`, and `-t` 
+are specified as numbers separated by a + sign. In the CLI to select a format
+manually use `-f`, to see available formats for a video use `-F`, and `-t`
 to use a preset below.
 
 | Preset | Resolution | Format IDs |
@@ -97,9 +107,9 @@ It is important to remember that these videos are H.264 encoded which is a
 very intense codec for retro computers. Read more about that in my blog post
 [Retro Stream Tutorial.](https://jeffburg.com/retro-tech/2025/08/17/Retro-Stream-Tutorial.html#why-cant-old-computers-play-youtube)
 
-- PPC Macs: 360p (18) 480p (135+140) are likely to play whereas 720p (136+140) ~~might~~ play
+- PPC Macs: 360p (18) 480p (135+140) are likely to play whereas 720p (136+140) _might_ play
 - Intel Macs: Untested, but 720p (136+140) and 1080p (137+140) will likely play
-- Retina iOS Devices: 720p (136+140) can sometimes appear pixelated. 1080p (137+140) plays fine but are larger
+- Retina iOS Devices: 720p (136+140) can sometimes appear pixelated. 1080p (137+140) plays fine but take up a lot more disk space
 - Non-Retina iOS Devices: Untested but 720p (136+140) will likely play and should look fantastic
 
 ## Known limitations:
@@ -109,58 +119,170 @@ very intense codec for retro computers. Read more about that in my blog post
 - Format selection accepts numeric IDs, `+` to pair video and audio, and `/`
   for alternatives, such as `137+140/136+140/18`. General yt-dlp selectors
   such as `bestvideo`, codec filters, and sorting expressions are not supported.
-- The library's automatic adaptive selection is limited to 720p or 1080p,
-  at up to 30 fps, with AAC-LC audio. Explicit format IDs can select HE-AAC
-  and do not impose those resolution or frame-rate limits, but the codecs
-  must still be supported and the requested tracks must be available.
+- The original audio track is always selected for download. Other languages
+  are not selectable.
 - Retro-DLP uses `mweb` client and does not generate Proof of
-  Origin (PO) tokens. Beside 18
-- Original audio is preferred. Retro-DLP does not silently substitute a known
-  dubbed track, and resolution can fail when a multilingual response does not
-  clearly identify the original audio.
+  Origin (PO) tokens.
 
-## Install from Releases
+### PO Tokens
 
-### iOS
+PO Tokens are a tricky subject even for the original yt-dlp. Basically,
+Retro-DLP has sufficient JavaScript chops via QuickJS that it can solve the
+simple JavaScript Player Challenge and find the URL's for the videos. However,
+if you select a video format higher quality than 360p (18), your download will
+likely fail because of lack of a PO token. Stick to 360p OR you can
+authenticate with an account that is a Premium account. But before you do that,
+please read the PO Token Guide and the Cookies Extraction Guide not a simple
+problem and there are risks.
 
-### Mac
+- [PO Token Guide](https://github.com/yt-dlp/yt-dlp/wiki/Po-Token-Guide)
+- [Cookies Extraction Guide](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)
 
-### Command-Line Tool
+## Download
 
-## Using Retro-DLP
+[Download Retro-DLP from GitHub Releases](https://github.com/jeffreybergier/Retro-DLP/releases).
+Each release includes these files. Choose the one that works best for you.
 
-### Downloading Videos
+### GUI Applications
 
-### Playlists
+- `Retro-DLP-{version}-macOS-gui.zip` — the Mac app (`RetroDLP.app`).
+- `Retro-DLP-{version}-iOS-gui.ipa` — the iPhone and iPad app for jailbroken devices.
 
-### Playback
+### CLI Applications
 
-### Cookies and Authentication
+- `Retro-DLP-{version}-macOS-cli.zip` — the Mac command-line tool and its
+  `cacert.pem` certificate bundle; keep both files together.
+- `Retro-DLP-{version}-iOS-cli.zip` — the iOS command-line tool and its
+  `cacert.pem` certificate bundle for a jailbroken device's terminal.
 
-## Command-Line Usage
+### Library and Source Code
 
-### Downloading Videos and Choosing Formats
+- `Retro-DLP-{version}-macOS-library.zip` — Mac static C libraries, public
+  headers, examples, and license for developers.
+- `Retro-DLP-{version}-iOS-library.zip` — iOS static C libraries, public
+  headers, examples, and license for developers.
+- `Source code (zip)` and `Source code (tar.gz)` — GitHub-generated source
+  archives for building from source.
 
-### Listing Playlists and Metadata
+## Using Retro-DLP CLI
 
-## Using the C Library
+Run `retro-dlp [OPTIONS] VIDEO_ID_OR_URL` to work with a video or playlist.
+
+| Short | Long | Description |
+| ----------- | --- | --- |
+| `-h`        | `--help`                | Show usage. |
+| `-V`        | `--version`             | Show version and build platform. |
+| `-f FORMAT` | `--format FORMAT`       | Select exact format IDs or fallback choices. |
+| `-t PRESET` | `--preset-alias PRESET` | Use the `low`, `med`, or `high` preset. |
+| `-F`        | `--list-formats`        | List available formats. |
+| —           | `--flat-playlist`       | List playlist entries without downloading. |
+| `-o FILE`   | `--output FILE`         | Save the MP4 to `FILE`. |
+| `-s`        | `--simulate`            | Resolve without downloading. |
+| `-j`        | `--dump-json`           | Print JSON without downloading. |
+| —           | `--cookies FILE`        | Read Netscape-format cookies from `FILE`. |
+| —           | `--cookies-default`     | Read `~/.retro-dlp/cookies.txt`. |
+
+`VIDEO_ID_OR_URL` is the video ID, video URL, or playlist URL to process.
+Use `retro-dlp assets status`, `assets install`, or `assets remove` to inspect,
+install, or remove the pinned EJS assets.
 
 ## Compile from Source
 
-### BYOSDK
+Retro-DLP uses the Altivec Intelligence container for Apple builds. It requires
+Apple SDKs that are not provided with this repository or the container; see
+[Altivec Intelligence's BYOSDK Instructions](https://github.com/jeffreybergier/AltivecIntelligence#byosdk)
+to supply them before building.
 
-### Mac and iOS
+Clone the repository with its submodules, then run these commands from the
+repository root after preparing the SDK archives:
 
-### Linux
+```sh
+git clone --recurse-submodules https://github.com/jeffreybergier/Retro-DLP.git
+cd Retro-DLP
+docker compose pull
+docker compose run --rm altivec-sdk install
+docker compose run --rm altivec "make clean app-clean"
+docker compose run --rm altivec "make release apps"
+```
+
+`release` builds the macOS and iOS command-line tools and libraries; `apps`
+builds both GUIs. The outputs are:
+
+- Mac app: `build/apps/macOS/RetroDLP.zip`
+- iOS app: `build/apps/iOS/RetroDLP.ipa`
+- macOS CLI: `build/macOS/ppc-i386/retro-dlp` and `build/macOS/cacert.pem`
+- iOS CLI: `build/iOS/retro-dlp` and `build/iOS/cacert.pem`
+
+Keep each CLI binary with its `cacert.pem` when copying it to a device.
+
+### Linux CLI (container only)
+
+From the cloned repository root, build the Linux CLI in the Altivec Intelligence
+container:
+
+```sh
+docker compose run --rm altivec "make linux"
+```
+
+The binary is `build/linux/retro-dlp`. It is built for the container's Linux
+environment and is intended to run there, not directly on your Linux host. For
+example, to show its help text:
+
+```sh
+docker compose run --rm altivec "build/linux/retro-dlp --help"
+```
 
 ### Running Tests
 
-## Source Map
+Run the offline Linux CLI and C library tests, including public API examples,
+plus the portable GUI store and service tests:
 
-## Contributing
+```sh
+docker compose run --rm altivec "make test app-test"
+```
 
-### Wish List
+After an Apple build, check the app packages and cross-compiled binaries:
 
-## Credits
+```sh
+docker compose run --rm altivec "make app-validate validate-apple-artifacts"
+```
 
-## Status and License
+For an offline iOS UI regression test, build its separate test app after the
+iOS GUI build:
+
+```sh
+docker compose run --rm altivec "python3 source/gui/iOS/tests/build_ios_ui_test.py"
+```
+
+Install `build/apps/tests/RetroDLPIOSOfflineTest.ipa` on a jailbroken test
+device and open it. The result is written to the app's `Documents/result.txt`.
+
+## Source Code Overview
+
+Most of the behavior lives in portable C under `source/library/shared/`.
+Start with these files and directories:
+
+| Location | What it does |
+| --- | --- |
+| `source/library/shared/include/retrodlp/` | Public C headers for resolving, downloading, assets, and version information. |
+| `source/library/shared/retrodlp.c` | Implements the public API, contexts, selections, playlists, and error handling. |
+| `source/library/shared/yt_resolver.c` | Coordinates video resolution and chooses a playable media request. |
+| `source/library/shared/yt_innertube.c` | Calls the Innertube player API and parses its responses. |
+| `source/library/shared/yt_formats.c` | Reads available formats and applies format selection rules. |
+| `source/library/shared/yt_ejs.c` | Runs the player challenge code through QuickJS to resolve media URLs. |
+| `source/library/shared/rdlp_curl.c` | Provides the default libcurl network transport. |
+| `source/library/shared/yt_playlist.c` | Lists playlists and their entries. |
+| `source/library/shared/retrodlp_download.c` and `yt_mux.c` | Download media and mux separate tracks into MP4 with L-SMASH. |
+| `source/cli/cli_options.c` and `cli.c` | Parse CLI arguments and run the requested command. |
+| `source/gui/shared/rdapp_store.c` and `rdapp_service.c` | Store playlists and jobs in SQLite, then coordinate sync and downloads. |
+| `source/library/{linux,macOS,iOS}/platform.c` | Supply platform names, curl setup, and CA bundle paths. |
+
+Pinned third-party sources are in `source/deps/`; library tests and C usage
+examples are in `source/library/shared/tests/` and
+`source/library/shared/examples/`.
+
+## License
+
+Retro-DLP is licensed under the MIT License; see [LICENSE](LICENSE). This
+project also includes third-party software, such as cJSON, QuickJS, and
+L-SMASH, which retain their own licenses in `source/deps/`.
