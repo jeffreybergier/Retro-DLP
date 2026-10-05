@@ -150,7 +150,7 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
 + (id)downloadCompletionNotificationForTitle:(NSString *)title;
 {
   UILocalNotification *alert=[[[UILocalNotification alloc] init] autorelease];
-  [alert setAlertBody:[NSString stringWithFormat:@"Download Complete '%@'",title]];
+  [alert setAlertBody:[NSString stringWithFormat:NSLocalizedString(@"Download Complete '%@'", nil),title]];
   [alert setSoundName:UILocalNotificationDefaultSoundName];
   return alert;
 }
@@ -216,9 +216,9 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   NSArray *key=[NSArray arrayWithObjects:status,[NSNumber numberWithDouble:scale],nil];
   UIImage *cached=[images objectForKey:key]; if(cached) return cached;
   AIFontAwesomeIcon icon=AIFATriangleExclamation;
-  if([status isEqualToString:@"Downloaded"]) icon=AIFACircleCheck;
-  else if([status isEqualToString:@"Downloading"] || [status isEqualToString:@"Queued"]) icon=AIFAHourglass;
-  else if([status isEqualToString:@"Not downloaded"]) icon=AIFADownload;
+  if([status isEqualToString:NSLocalizedString(@"Downloaded", nil)]) icon=AIFACircleCheck;
+  else if([status isEqualToString:NSLocalizedString(@"Downloading", nil)] || [status isEqualToString:NSLocalizedString(@"Queued", nil)]) icon=AIFAHourglass;
+  else if([status isEqualToString:NSLocalizedString(@"Not downloaded", nil)]) icon=AIFADownload;
   UIImage *image=RDLPFontAwesomeImage(icon,14,18,scale,[UIColor blackColor]);
   if(image) [images setObject:image forKey:key]; return image;
 }
@@ -282,17 +282,17 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
     return [NSArray arrayWithObjects:activity,left,message,right,empty,nil];
   }
   UIBarButtonItem *queue=[[[UIBarButtonItem alloc] initWithImage:[self queueToolbarIcon] style:UIBarButtonItemStyleBordered target:target action:action] autorelease];
-  [queue setAccessibilityLabel:@"Download Queue"];
+  [queue setAccessibilityLabel:NSLocalizedString(@"Download Queue", nil)];
   return [NSArray arrayWithObjects:activity,left,message,right,queue,nil];
 }
 
 + (void)showMessage:(NSString *)message; {
-  UIAlertView *alert=[[UIAlertView alloc] initWithTitle:@"RetroDLP" message:message delegate:nil cancelButtonTitle:@"OK" otherButtonTitles:nil];
+  UIAlertView *alert=[[UIAlertView alloc] initWithTitle:NSLocalizedString(@"RetroDLP", nil) message:message delegate:nil cancelButtonTitle:NSLocalizedString(@"OK", nil) otherButtonTitles:nil];
   [alert show]; [alert release];
 }
 + (void)presentPlayer:(UIViewController *)owner library:(RDLPLibrary *)library job:(NSDictionary *)job; {
   NSString *path=[library fileForJob:job];
-  if(!path || ![[NSFileManager defaultManager] fileExistsAtPath:path]) { [self showMessage:@"The downloaded file is missing. Retry its download from Queue."]; return; }
+  if(!path || ![[NSFileManager defaultManager] fileExistsAtPath:path]) { [self showMessage:NSLocalizedString(@"The downloaded file is missing. Retry its download from Queue.", nil)]; return; }
   RDLPDownloadedPlayerViewController *controller=[[RDLPDownloadedPlayerViewController alloc]
     initWithLibrary:library job:job URL:[NSURL fileURLWithPath:path]];
   [owner presentViewController:controller animated:YES completion:nil];
@@ -302,7 +302,7 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
 {
   RDLPDownloadPolicy *policy=[[[RDLPDownloadPolicy alloc] initWithLibrary:library] autorelease];
   NSDictionary *selectedFile=[policy localFileForJob:selectedJob];
-  if(!selectedFile) { [self showMessage:@"The downloaded file is missing. Retry its download from Queue."]; return; }
+  if(!selectedFile) { [self showMessage:NSLocalizedString(@"The downloaded file is missing. Retry its download from Queue.", nil)]; return; }
   /* Query completed jobs once, newest first, instead of querying every entry.
    * Keep the same representative-quality policy as the playlist's rows. */
   NSMutableDictionary *jobsByVideo=[NSMutableDictionary dictionary], *URLsByVideo=[NSMutableDictionary dictionary];

@@ -1,6 +1,8 @@
 APP_NAME = RetroDLP
 SOURCES = main.m RDLPLibrary+iOS.m RDLPAppDelegate.m RDLPLibraryViewController.m RDLPLibraryActions.m RDLPLibrarySections.m RDLPUIKit.m RDLPDownloadPolicy.m RDLPStatusBarView.m RDLPSettingsViewController.m RDLPPlaylistsViewController.m RDLPPlaylistViewController.m RDLPVideoListViewController.m RDLPDownloadsViewController.m RDLPQueueViewController.m
 SHARED_DIR = ../shared
+BUNDLE_LOCALIZATION_DIRS = $(SHARED_DIR)/Resources
+LOCALIZATION_FILES = $(wildcard $(SHARED_DIR)/Resources/*.lproj/*.strings)
 SOURCES += RDLPDownloadedPlayerViewController.m
 SOURCES += RDLPPlayerControls.m RDLPPlayerViewController.m RDLPPlayerQueue.m RDLPPlayerNavigationController.m
 SOURCE_DIRS = $(SHARED_DIR) player
@@ -28,7 +30,7 @@ EXTRA_BUNDLE_STEPS = @set -e; cp $(ALTIVECCORE_DIR)/lib/cacert.pem $@/cacert.pem
 # so all app artifacts remain under the repository build directory.
 app: validate $(APP_BUNDLE)
 	@python3 package_ipa.py $(APP_BUNDLE) $(BUILD_DIR)/RetroDLP.ipa
-$(APP_BUNDLE): Info.plist Makefile $(wildcard $(RES_DIR)/*.png player/RDLPPlayer.bundle/*) $(ALTIVECCORE_DIR)/lib/cacert.pem $(wildcard $(ROOT)/build/apps/resources/ejs/*)
+$(APP_BUNDLE): Info.plist Makefile $(LOCALIZATION_FILES) $(wildcard $(RES_DIR)/*.png player/RDLPPlayer.bundle/*) $(ALTIVECCORE_DIR)/lib/cacert.pem $(wildcard $(ROOT)/build/apps/resources/ejs/*)
 $(INT_DIR)/$(APP_NAME)-bin: $(ROOT)/build/iOS/libretrodlp-download.a $(ROOT)/build/iOS/libretrodlp.a
 $(OBJS): $(wildcard *.h player/*.h $(SHARED_DIR)/*.h)
 .PHONY: app

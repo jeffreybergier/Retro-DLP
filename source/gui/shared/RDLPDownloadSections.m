@@ -71,7 +71,7 @@
 - (id)initWithRows:(RDLPLibraryRows *)rows date:(NSDate *)date calendar:(NSCalendar *)calendar;
 {
   self=[super init]; if(!self) return nil;
-  NSArray *titles=[NSArray arrayWithObjects:@"Today",@"This Week",@"This Month",@"This Year",@"Older",nil];
+  NSArray *titles=[NSArray arrayWithObjects:NSLocalizedString(@"Today", nil),NSLocalizedString(@"This Week", nil),NSLocalizedString(@"This Month", nil),NSLocalizedString(@"This Year", nil),NSLocalizedString(@"Older", nil),nil];
   NSArray *starts=[calendar RDLP_downloadSectionStartsForDate:date];
   NSMutableArray *sections=[NSMutableArray array];
   NSUInteger i, offset=0;

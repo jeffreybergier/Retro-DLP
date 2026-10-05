@@ -1,6 +1,8 @@
 APP_NAME = RetroDLP
 SOURCES = main.m RDLPLibrary+macOS.m RDLPAppDelegate.m RDLPLibraryWindowController.m RDLPQueueWindowController.m RDLPAppKit.m RDLPToolbarButton.m RDLPLibraryViews.m RDLPDownloadPolicy.m RDLPLibraryMenus.m
 SHARED_DIR = ../shared
+BUNDLE_LOCALIZATION_DIRS = $(SHARED_DIR)/Resources
+LOCALIZATION_FILES = $(wildcard $(SHARED_DIR)/Resources/*.lproj/*.strings)
 SOURCE_DIRS = $(SHARED_DIR)
 vpath %.c $(SHARED_DIR)
 vpath %.m $(SHARED_DIR)
@@ -29,7 +31,7 @@ EXTRA_BUNDLE_STEPS = @set -e; cp $(ALTIVECCORE_DIR)/lib/cacert.pem $@/Contents/R
 
 .DEFAULT_GOAL := app
 app: validate $(ZIP_FILE)
-$(BUNDLE): Info.plist Makefile $(MAC_ICON) $(ALTIVECCORE_DIR)/lib/cacert.pem $(wildcard $(ROOT)/build/apps/resources/ejs/*)
+$(BUNDLE): Info.plist Makefile $(LOCALIZATION_FILES) $(MAC_ICON) $(ALTIVECCORE_DIR)/lib/cacert.pem $(wildcard $(ROOT)/build/apps/resources/ejs/*)
 $(INT_DIR)/ppc.bin $(INT_DIR)/x86.bin: $(ROOT)/build/macOS/libretrodlp-download.a $(ROOT)/build/macOS/libretrodlp.a
 .PHONY: app
 

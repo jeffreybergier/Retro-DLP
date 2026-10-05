@@ -6,7 +6,7 @@
 {
   self=[super initWithStyle:UITableViewStyleGrouped]; if(!self) return nil;
   library_=[library retain]; model_=[[RDLPLibrarySections alloc] initWithLibrary:library];
-  [self setTitle:@"Settings"];
+  [self setTitle:NSLocalizedString(@"Settings", nil)];
   [[self navigationItem] setRightBarButtonItem:[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(dismissSettings:)] autorelease]];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library];
   return self;
@@ -38,8 +38,8 @@
 { return [[[sections_ objectAtIndex:(NSUInteger)[index section]] objectForKey:@"rows"] objectAtIndex:(NSUInteger)[index row]]; }
 - (BOOL)enabled:(NSString *)action;
 {
-  if([action isEqualToString:@"import"]) return ![library_ isBusy] && ![[library_ cookieStatus] isEqualToString:@"Imported"];
-  if([action isEqualToString:@"clearCookies"]) return ![library_ isBusy] && ![[library_ cookieStatus] isEqualToString:@"Not Imported"];
+  if([action isEqualToString:@"import"]) return ![library_ isBusy] && ![[library_ cookieStatus] isEqualToString:NSLocalizedString(@"Imported", nil)];
+  if([action isEqualToString:@"clearCookies"]) return ![library_ isBusy] && ![[library_ cookieStatus] isEqualToString:NSLocalizedString(@"Not Imported", nil)];
   return YES;
 }
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index;
@@ -65,7 +65,7 @@
 {
   if(alert_) return;
   request_=[request copy];
-  alert_=[[UIAlertView alloc] initWithTitle:title message:detail delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:button,nil];
+  alert_=[[UIAlertView alloc] initWithTitle:title message:detail delegate:self cancelButtonTitle:NSLocalizedString(@"Cancel", nil) otherButtonTitles:button,nil];
   if(input) {
     [alert_ setAlertViewStyle:UIAlertViewStylePlainTextInput];
     UITextField *field=[alert_ textFieldAtIndex:0]; [field setText:input];
@@ -77,11 +77,11 @@
 {
   NSString *action=[row objectForKey:@"action"]; if(![self enabled:action]) return;
   if([action isEqualToString:@"quality"]) { [RDLPLibrary savePreferredFormat:[row objectForKey:@"format"]]; [self refresh:nil]; }
-  else if([action isEqualToString:@"custom"]) [self showAlert:@"Custom Format" detail:@"Example: 18 or 136+140" request:[NSDictionary dictionaryWithObject:@"quality" forKey:@"operation"] button:@"Save" input:[RDLPLibrary preferredFormat]];
+  else if([action isEqualToString:@"custom"]) [self showAlert:NSLocalizedString(@"Custom Format", nil) detail:NSLocalizedString(@"Example: 18 or 136+140", nil) request:[NSDictionary dictionaryWithObject:@"quality" forKey:@"operation"] button:NSLocalizedString(@"Save", nil) input:[RDLPLibrary preferredFormat]];
   else if([action isEqualToString:@"import"]) {
     NSString *documents=[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES) objectAtIndex:0];
     [self requestCookieImport:[documents stringByAppendingPathComponent:@"cookies.txt"] discover:NO];
-  } else if([action isEqualToString:@"clearCookies"]) [self showAlert:@"Remove imported cookies?" detail:@"Only the app’s working copy is removed. Your original export is retained." request:[NSDictionary dictionaryWithObject:@"clearCookies" forKey:@"operation"] button:@"Remove" input:nil];
+  } else if([action isEqualToString:@"clearCookies"]) [self showAlert:NSLocalizedString(@"Remove imported cookies?", nil) detail:NSLocalizedString(@"Only the app’s working copy is removed. Your original export is retained.", nil) request:[NSDictionary dictionaryWithObject:@"clearCookies" forKey:@"operation"] button:NSLocalizedString(@"Remove", nil) input:nil];
   else if([action isEqualToString:@"guide"]) [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"https://github.com/yt-dlp/yt-dlp/wiki/Extractors"]];
 }
 - (void)importRequest:(NSDictionary *)request;
@@ -91,12 +91,12 @@
 }
 - (BOOL)requestCookieImport:(NSString *)path discover:(BOOL)discover;
 {
-  if([library_ isBusy] || alert_) { [RDLPUIKit showMessage:@"Finish the current operation or dialog before importing cookies."]; return NO; }
+  if([library_ isBusy] || alert_) { [RDLPUIKit showMessage:NSLocalizedString(@"Finish the current operation or dialog before importing cookies.", nil)]; return NO; }
   NSDictionary *request=[NSDictionary dictionaryWithObjectsAndKeys:@"import",@"operation",path,@"path",[NSNumber numberWithBool:discover],@"discover",nil];
-  if(![[library_ cookieStatus] isEqualToString:@"Not Imported"])
-    [self showAlert:discover?@"Replace cookies and sync playlists?":@"Replace imported cookies?" detail:@"Replace the working cookie copy. Your original export is retained." request:request button:discover?@"Replace and Sync":@"Replace" input:nil];
+  if(![[library_ cookieStatus] isEqualToString:NSLocalizedString(@"Not Imported", nil)])
+    [self showAlert:discover?NSLocalizedString(@"Replace cookies and sync playlists?", nil):NSLocalizedString(@"Replace imported cookies?", nil) detail:NSLocalizedString(@"Replace the working cookie copy. Your original export is retained.", nil) request:request button:discover?NSLocalizedString(@"Replace and Sync", nil):NSLocalizedString(@"Replace", nil) input:nil];
   else if([[NSFileManager defaultManager] fileExistsAtPath:path]) [self importRequest:request];
-  else { [RDLPUIKit showMessage:@"Copy cookies.txt into RetroDLP with iTunes File Sharing, or open your exported text file in RetroDLP. Then use Import Cookies again."]; return NO; }
+  else { [RDLPUIKit showMessage:NSLocalizedString(@"Copy cookies.txt into RetroDLP with iTunes File Sharing, or open your exported text file in RetroDLP. Then use Import Cookies again.", nil)]; return NO; }
   return YES;
 }
 - (void)alertView:(UIAlertView *)alert clickedButtonAtIndex:(NSInteger)index;
@@ -108,7 +108,7 @@
   if(index==0) return;
   NSString *operation=[request objectForKey:@"operation"];
   if([operation isEqualToString:@"quality"]) {
-    if(![RDLPLibrary savePreferredFormat:text]) [RDLPUIKit showMessage:@"Enter an exact format such as 18 or 136+140."];
+    if(![RDLPLibrary savePreferredFormat:text]) [RDLPUIKit showMessage:NSLocalizedString(@"Enter an exact format such as 18 or 136+140.", nil)];
   } else if([operation isEqualToString:@"clearCookies"] && [self enabled:@"clearCookies"]) [library_ clearCookies];
   else if([operation isEqualToString:@"import"]) [self importRequest:request];
   [self refresh:nil];

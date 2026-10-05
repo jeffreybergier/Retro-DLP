@@ -1,0 +1,938 @@
+/* Shared macOS and iOS English UI strings.
+ * English keys are the fallback text. Preserve printf placeholders in translations.
+ * Source comments also identify keys looked up dynamically for stable UI identifiers.
+ */
+
+/* macOS/RDLPLibraryWindowController.m */
+" → %@" = " → %@";
+
+/* iOS/player/RDLPPlayerControls.m */
+"%.0f:%02.0f" = "%.0f:%02.0f";
+
+/* iOS/player/RDLPPlayerControls.m */
+"%.0f:%02.0f:%02.0f" = "%.0f:%02.0f:%02.0f";
+
+/* shared/RDLPLibrary.m */
+"%.1f MB" = "%.1f MB";
+
+/* shared/RDLPVideoRows.m */
+"%.1f megabytes" = "%.1f megabytes";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPQueueViewController.m */
+"%@ %@ — %@?" = "%@ %@ — %@?";
+
+/* macOS/RDLPLibraryWindowController.m, shared/RDLPLibrary.m */
+"%@ (%@)" = "%@ (%@)";
+
+/* iOS/player/RDLPPlayerControls.m */
+"%@ of %@" = "%@ of %@";
+
+/* iOS/RDLPLibrarySections.m */
+"%@ videos" = "%@ videos";
+
+/* macOS/RDLPLibraryWindowController.m */
+"%@ — %@" = "%@ — %@";
+
+/* macOS/RDLPLibraryWindowController.m */
+"%@ ‘%@’ — %@?" = "%@ ‘%@’ — %@?";
+
+/* shared/RDLPLibrary.m */
+"%@%@" = "%@%@";
+
+/* shared/RDLPVideoRows.m */
+"%@%@, %@" = "%@%@, %@";
+
+/* iOS/RDLPVideoListViewController.m */
+"%@%@\n\nRetry downloads this video from the beginning at the same quality: %@." = "%@%@\n\nRetry downloads this video from the beginning at the same quality: %@.";
+
+/* iOS/RDLPLibraryViewController.m */
+"%@, %@" = "%@, %@";
+
+/* iOS/RDLPLibrarySections.m */
+"%@, %@, %@" = "%@, %@, %@";
+
+/* macOS/RDLPLibraryWindowController.m */
+"%@: %@" = "%@: %@";
+
+/* shared/RDLPLibrary.m */
+"%@\n\n%@" = "%@\n\n%@";
+
+/* shared/RDLPLibrary.m */
+"%@·%.0f%%%@" = "%@·%.0f%%%@";
+
+/* iOS/RDLPLibrarySections.m */
+"%@·%@" = "%@·%@";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPLibrarySections.m, iOS/RDLPQueueViewController.m */
+"%@·%@\n%@" = "%@·%@\n%@";
+
+/* shared/RDLPLibrary.m */
+"%llu %@" = "%llu %@";
+
+/* shared/RDLPLibrary.m */
+"%llu KB" = "%llu KB";
+
+/* shared/RDLPVideoRows.m */
+"%llu kilobytes" = "%llu kilobytes";
+
+/* shared/RDLPLibrary.m */
+"%llu views" = "%llu views";
+
+/* shared/RDLPLibrary.m */
+"%llu:%02llu" = "%llu:%02llu";
+
+/* shared/RDLPLibrary.m */
+"%llu:%02llu:%02llu" = "%llu:%02llu:%02llu";
+
+/* shared/RDLPVideoRows.m */
+": %@" = ": %@";
+
+/* macOS/RDLPAppDelegate.m */
+"About RetroDLP" = "About RetroDLP";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPVideoListViewController.m */
+"Add" = "Add";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, macOS/RDLPLibraryWindowController.m */
+"Add Playlist" = "Add Playlist";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, macOS/RDLPLibraryMenus.m */
+"Add Playlist…" = "Add Playlist…";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPVideoListViewController.m, macOS/RDLPLibraryWindowController.m */
+"Add Video" = "Add Video";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, macOS/RDLPLibraryMenus.m */
+"Add Video…" = "Add Video…";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Add videos and playlists, or sync your library" = "Add videos and playlists, or sync your library";
+
+/* iOS/RDLPLibrarySections.m, macOS: stable menu/sidebar identifier localized for display */
+"Added Playlists" = "Added Playlists";
+
+/* iOS/RDLPLibrarySections.m */
+"Added Videos" = "Added Videos";
+
+/* shared/RDLPLibrary.m */
+"Adding playlist…" = "Adding playlist…";
+
+/* shared/RDLPLibrary.m */
+"Adding video…" = "Adding video…";
+
+/* iOS/RDLPDownloadsViewController.m, iOS/RDLPLibrarySections.m, iOS/RDLPLibraryViewController.m, macOS: stable menu/sidebar identifier localized for display */
+"All Downloads" = "All Downloads";
+
+/* shared/RDLPLibrary.m */
+"At last sync: " = "At last sync: ";
+
+/* iOS/player/RDLPPlayerControls.m */
+"Audio only" = "Audio only";
+
+/* iOS/player/RDLPPlayerViewController.m */
+"Back 30 seconds" = "Back 30 seconds";
+
+/* macOS/RDLPAppDelegate.m */
+"Bring All to Front" = "Bring All to Front";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPQueueViewController.m, iOS/RDLPSettingsViewController.m, iOS/RDLPVideoListViewController.m, macOS/RDLPLibraryWindowController.m */
+"Cancel" = "Cancel";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Cancel Download" = "Cancel Download";
+
+/* macOS/RDLPLibraryMenus.m */
+"Cancel Download…" = "Cancel Download…";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Cancel download for" = "Cancel download for";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Cancel the selected download…" = "Cancel the selected download…";
+
+/* iOS/RDLPLibrarySections.m, iOS/RDLPQueueViewController.m, iOS/RDLPVideoListViewController.m, macOS/RDLPLibraryWindowController.m, shared/RDLPDownloadPolicy.m */
+"Cancelled" = "Cancelled";
+
+/* iOS/RDLPAppDelegate.m */
+"Cannot open the RetroDLP library. Check available storage and restart the app." = "Cannot open the RetroDLP library. Check available storage and restart the app.";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Channel" = "Channel";
+
+/* shared/RDLPLibrary.m */
+"Check available storage and try again." = "Check available storage and try again.";
+
+/* shared/RDLPLibrary.m */
+"Choose a readable, nonempty Netscape cookies.txt file of 4 MiB or less." = "Choose a readable, nonempty Netscape cookies.txt file of 4 MiB or less.";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Choose the quality for future downloads." = "Choose the quality for future downloads.";
+
+/* macOS/RDLPLibraryMenus.m */
+"Close Window" = "Close Window";
+
+/* shared/RDLPLibrary.m */
+"Combining audio and video…" = "Combining audio and video…";
+
+/* shared/RDLPLibrary.m */
+"Configuring client…" = "Configuring client…";
+
+/* iOS/RDLPLibrarySections.m, macOS/RDLPLibraryMenus.m */
+"Cookie Export Guide" = "Cookie Export Guide";
+
+/* iOS/RDLPLibrarySections.m, macOS/RDLPAppDelegate.m, macOS/RDLPLibraryWindowController.m */
+"Cookies" = "Cookies";
+
+/* macOS/RDLPLibraryMenus.m */
+"Copy" = "Copy";
+
+/* iOS/RDLPSettingsViewController.m */
+"Copy cookies.txt into RetroDLP with iTunes File Sharing, or open your exported text file in RetroDLP. Then use Import Cookies again." = "Copy cookies.txt into RetroDLP with iTunes File Sharing, or open your exported text file in RetroDLP. Then use Import Cookies again.";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m */
+"Copy cookies.txt into RetroDLP with iTunes File Sharing, or open your exported text file in RetroDLP. Then use Sync My Playlists again." = "Copy cookies.txt into RetroDLP with iTunes File Sharing, or open your exported text file in RetroDLP. Then use Sync My Playlists again.";
+
+/* shared/RDLPLibrary.m */
+"Could not open a library read snapshot." = "Could not open a library read snapshot.";
+
+/* macOS/RDLPAppDelegate.m */
+"Could not open the RetroDLP library. Check permissions and free space in Documents and Application Support." = "Could not open the RetroDLP library. Check permissions and free space in Documents and Application Support.";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Could not open the cookie export guide in your browser." = "Could not open the cookie export guide in your browser.";
+
+/* macOS/RDLPAppKit.m */
+"Could not open this file in QuickTime Player." = "Could not open this file in QuickTime Player.";
+
+/* macOS/RDLPAppKit.m */
+"Could not open this file in VLC." = "Could not open this file in VLC.";
+
+/* macOS/RDLPAppKit.m */
+"Could not open this file in its default app. Check that the download exists and choose an app in Finder’s Open With settings." = "Could not open this file in its default app. Check that the download exists and choose an app in Finder’s Open With settings.";
+
+/* macOS/RDLPAppKit.m */
+"Could not reveal this file in Finder. Check that the download exists." = "Could not reveal this file in Finder. Check that the download exists.";
+
+/* shared/RDLPLibrary.m */
+"Couldn’t add video" = "Couldn’t add video";
+
+/* shared/RDLPLibrary.m */
+"Couldn’t delete download" = "Couldn’t delete download";
+
+/* iOS/RDLPLibrary+iOS.m */
+"Couldn’t delete the download file." = "Couldn’t delete the download file.";
+
+/* iOS/RDLPLibrary+iOS.m */
+"Couldn’t exclude downloads from backups" = "Couldn’t exclude downloads from backups";
+
+/* shared/RDLPLibrary.m */
+"Couldn’t import cookies" = "Couldn’t import cookies";
+
+/* macOS/RDLPLibrary+macOS.m */
+"Couldn’t move ‘%@’ to the Trash. Check permissions and try again." = "Couldn’t move ‘%@’ to the Trash. Check permissions and try again.";
+
+/* shared/RDLPLibrary.m */
+"Couldn’t queue download" = "Couldn’t queue download";
+
+/* shared/RDLPLibrary.m */
+"Couldn’t read date sections" = "Couldn’t read date sections";
+
+/* shared/RDLPLibrary.m */
+"Couldn’t read library" = "Couldn’t read library";
+
+/* shared/RDLPLibrary.m */
+"Couldn’t remove cookies" = "Couldn’t remove cookies";
+
+/* shared/RDLPLibrary.m */
+"Couldn’t remove playlist" = "Couldn’t remove playlist";
+
+/* shared/RDLPLibrary.m */
+"Couldn’t retry download" = "Couldn’t retry download";
+
+/* shared/RDLPLibrary.m */
+"Couldn’t save cookies" = "Couldn’t save cookies";
+
+/* shared/RDLPLibrary.m */
+"Couldn’t start download" = "Couldn’t start download";
+
+/* shared/RDLPLibrary.m */
+"Couldn’t start worker: %s" = "Couldn’t start worker: %s";
+
+/* shared/RDLPLibrary.m */
+"Couldn’t stop download" = "Couldn’t stop download";
+
+/* shared/RDLPLibrary.m */
+"Custom" = "Custom";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Custom Download Quality" = "Custom Download Quality";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPSettingsViewController.m */
+"Custom Format" = "Custom Format";
+
+/* shared/RDLPLibrary.m */
+"Custom Format…" = "Custom Format…";
+
+/* macOS/RDLPLibraryMenus.m */
+"Customize Toolbar…" = "Customize Toolbar…";
+
+/* macOS/RDLPLibraryMenus.m */
+"Cut" = "Cut";
+
+/* macOS: stable menu/sidebar identifier localized for display */
+"Default App" = "Default App";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPQueueViewController.m, macOS/RDLPQueueWindowController.m */
+"Delete" = "Delete";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Delete %lu %@" = "Delete %lu %@";
+
+/* macOS/RDLPLibraryMenus.m, macOS/RDLPLibraryWindowController.m */
+"Delete Download" = "Delete Download";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPLibrarySections.m, iOS/RDLPQueueViewController.m, macOS/RDLPLibraryMenus.m, macOS/RDLPLibraryWindowController.m, macOS/RDLPQueueWindowController.m */
+"Delete Download…" = "Delete Download…";
+
+/* macOS/RDLPLibraryMenus.m, macOS/RDLPLibraryWindowController.m */
+"Delete Selected Downloads…" = "Delete Selected Downloads…";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Delete download for" = "Delete download for";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Delete the selected download or remove the selected playlist…" = "Delete the selected download or remove the selected playlist…";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPQueueViewController.m */
+"Deletes this quality and its partial files. Other qualities and playlist membership are retained." = "Deletes this quality and its partial files. Other qualities and playlist membership are retained.";
+
+/* iOS/RDLPLibraryActions.m, macOS/RDLPLibraryWindowController.m */
+"Download" = "Download";
+
+/* iOS/RDLPLibraryActions.m */
+"Download %lu missing videos?" = "Download %lu missing videos?";
+
+/* iOS/RDLPUIKit.m */
+"Download Complete '%@'" = "Download Complete '%@'";
+
+/* iOS/RDLPLibrarySections.m, macOS/RDLPAppDelegate.m, macOS/RDLPLibraryMenus.m */
+"Download Quality" = "Download Quality";
+
+/* iOS/RDLPLibraryViewController.m, iOS/RDLPQueueViewController.m, iOS/RDLPUIKit.m, macOS/RDLPAppDelegate.m, macOS/RDLPQueueWindowController.m */
+"Download Queue" = "Download Queue";
+
+/* macOS/RDLPLibraryMenus.m, macOS/RDLPLibraryWindowController.m */
+"Download Selected Videos" = "Download Selected Videos";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPLibrarySections.m, iOS/RDLPQueueViewController.m, macOS/RDLPLibraryMenus.m, macOS/RDLPLibraryWindowController.m */
+"Download Video" = "Download Video";
+
+/* shared/RDLPLibrary.m */
+"Download complete" = "Download complete";
+
+/* shared/RDLPLibrary.m */
+"Download failed" = "Download failed";
+
+/* iOS/RDLPVideoListViewController.m */
+"Download in progress" = "Download in progress";
+
+/* shared/RDLPLibrary.m */
+"Download needs attention" = "Download needs attention";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Download selected videos — %@" = "Download selected videos — %@";
+
+/* shared/RDLPLibrary.m */
+"Download stopped" = "Download stopped";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Download the selected video" = "Download the selected video";
+
+/* iOS/RDLPVideoListViewController.m */
+"Download video" = "Download video";
+
+/* iOS/RDLPUIKit.m, iOS/RDLPVideoListViewController.m, macOS/RDLPLibraryWindowController.m, shared/RDLPDownloadPolicy.m */
+"Downloaded" = "Downloaded";
+
+/* shared/RDLPLibrary.m */
+"Downloaded·%.1f MiB" = "Downloaded·%.1f MiB";
+
+/* iOS/RDLPUIKit.m, iOS/RDLPVideoListViewController.m, macOS/RDLPLibraryWindowController.m, shared/RDLPDownloadPolicy.m, shared/RDLPLibrary.m */
+"Downloading" = "Downloading";
+
+/* shared/RDLPLibrary.m */
+"Downloading audio" = "Downloading audio";
+
+/* shared/RDLPLibrary.m */
+"Downloading player script…" = "Downloading player script…";
+
+/* shared/RDLPLibrary.m */
+"Downloading video" = "Downloading video";
+
+/* iOS/RDLPLibrarySections.m */
+"Downloads" = "Downloads";
+
+/* macOS: stable menu/sidebar identifier localized for display */
+"Edit" = "Edit";
+
+/* macOS/RDLPQueueWindowController.m */
+"Enqueued" = "Enqueued";
+
+/* shared/RDLPLibrary.m */
+"Enter a YouTube video URL or ID." = "Enter a YouTube video URL or ID.";
+
+/* shared/RDLPLibrary.m */
+"Enter a format ID, such as 18 or 136+140." = "Enter a format ID, such as 18 or 136+140.";
+
+/* shared/RDLPLibrary.m */
+"Enter a playlist" = "Enter a playlist";
+
+/* shared/RDLPLibrary.m */
+"Enter a playlist URL or ID." = "Enter a playlist URL or ID.";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Enter a valid format such as 18 or 136+140." = "Enter a valid format such as 18 or 136+140.";
+
+/* shared/RDLPLibrary.m */
+"Enter a video" = "Enter a video";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPSettingsViewController.m */
+"Enter an exact format such as 18 or 136+140." = "Enter an exact format such as 18 or 136+140.";
+
+/* macOS/RDLPQueueWindowController.m */
+"Error" = "Error";
+
+/* shared/RDLPLibrary.m */
+"Error adding playlist" = "Error adding playlist";
+
+/* shared/RDLPLibrary.m */
+"Error adding video" = "Error adding video";
+
+/* shared/RDLPLibrary.m */
+"Error syncing My Playlists" = "Error syncing My Playlists";
+
+/* shared/RDLPLibrary.m */
+"Error syncing playlist" = "Error syncing playlist";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPSettingsViewController.m */
+"Example: 18 or 136+140" = "Example: 18 or 136+140";
+
+/* macOS/RDLPLibraryMenus.m */
+"Export Guide" = "Export Guide";
+
+/* iOS/RDLPVideoListViewController.m, shared/RDLPDownloadPolicy.m */
+"Failed" = "Failed";
+
+/* macOS/RDLPLibraryWindowController.m, macOS: stable menu/sidebar identifier localized for display */
+"File" = "File";
+
+/* iOS/RDLPVideoListViewController.m, shared/RDLPDownloadPolicy.m */
+"File missing" = "File missing";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPSettingsViewController.m */
+"Finish the current operation or dialog before importing cookies." = "Finish the current operation or dialog before importing cookies.";
+
+/* shared/RDLPLibrary.m */
+"Finishing download…" = "Finishing download…";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Format expression (for example, 18 or 136+140)" = "Format expression (for example, 18 or 136+140)";
+
+/* iOS/player/RDLPPlayerViewController.m */
+"Forward 60 seconds" = "Forward 60 seconds";
+
+/* macOS: stable menu/sidebar identifier localized for display */
+"Help" = "Help";
+
+/* macOS/RDLPLibraryMenus.m, macOS/RDLPLibraryWindowController.m */
+"Hide Playlists" = "Hide Playlists";
+
+/* shared/RDLPLibrary.m */
+"High" = "High";
+
+/* iOS/RDLPLibrarySections.m */
+"Import Cookies..." = "Import Cookies...";
+
+/* macOS/RDLPLibraryMenus.m */
+"Import Cookies…" = "Import Cookies…";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPSettingsViewController.m, macOS/RDLPLibraryWindowController.m, shared/RDLPLibrary.m */
+"Imported" = "Imported";
+
+/* iOS/RDLPVideoListViewController.m, shared/RDLPDownloadPolicy.m */
+"Interrupted" = "Interrupted";
+
+/* shared/RDLPLibrary.m */
+"Invalid format" = "Invalid format";
+
+/* macOS/RDLPQueueWindowController.m */
+"Latest Download" = "Latest Download";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Library" = "Library";
+
+/* iOS/RDLPPlaylistsViewController.m */
+"Library Actions" = "Library Actions";
+
+/* shared/RDLPLibrary.m */
+"Loading mobile player…" = "Loading mobile player…";
+
+/* shared/RDLPLibrary.m */
+"Low" = "Low";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Manage cookies and view the export guide" = "Manage cookies and view the export guide";
+
+/* shared/RDLPLibrary.m */
+"Med" = "Med";
+
+/* macOS/RDLPAppDelegate.m */
+"Minimize" = "Minimize";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Move %lu %@ to the Trash?" = "Move %lu %@ to the Trash?";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Move selected downloads to the Trash…" = "Move selected downloads to the Trash…";
+
+/* iOS/RDLPLibrarySections.m, macOS: stable menu/sidebar identifier localized for display */
+"My Playlists" = "My Playlists";
+
+/* shared/RDLPLibrary.m */
+"My Playlists synced" = "My Playlists synced";
+
+/* iOS/player/RDLPPlayerControls.m, iOS/player/RDLPPlayerViewController.m */
+"Next item" = "Next item";
+
+/* iOS/RDLPLibraryViewController.m */
+"No items" = "No items";
+
+/* iOS/player/RDLPPlayerControls.m */
+"No media" = "No media";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPSettingsViewController.m, macOS/RDLPLibraryWindowController.m, shared/RDLPLibrary.m */
+"Not Imported" = "Not Imported";
+
+/* iOS/RDLPUIKit.m, macOS/RDLPLibraryWindowController.m, shared/RDLPDownloadPolicy.m */
+"Not downloaded" = "Not downloaded";
+
+/* iOS/RDLPLibrarySections.m */
+"Not synced" = "Not synced";
+
+/* iOS/RDLPAppDelegate.m, iOS/RDLPUIKit.m, macOS/RDLPAppDelegate.m, macOS/RDLPAppKit.m */
+"OK" = "OK";
+
+/* shared/RDLPDownloadSections.m */
+"Older" = "Older";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPSettingsViewController.m */
+"Only the app’s working copy is removed. Your original export is retained." = "Only the app’s working copy is removed. Your original export is retained.";
+
+/* macOS/RDLPLibraryMenus.m */
+"Paste" = "Paste";
+
+/* iOS/player/RDLPPlayerViewController.m */
+"Pause" = "Pause";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPLibrarySections.m, iOS/RDLPQueueViewController.m, iOS/player/RDLPPlayerControls.m, iOS/player/RDLPPlayerViewController.m, macOS/RDLPLibraryWindowController.m, macOS/RDLPQueueWindowController.m */
+"Play" = "Play";
+
+/* macOS/RDLPLibraryMenus.m, macOS/RDLPLibraryWindowController.m */
+"Play %@" = "Play %@";
+
+/* macOS/RDLPLibraryMenus.m */
+"Play Entire Playlist" = "Play Entire Playlist";
+
+/* macOS/RDLPLibraryMenus.m */
+"Play Playlist" = "Play Playlist";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Play the selected video or playlist" = "Play the selected video or playlist";
+
+/* iOS/RDLPVideoListViewController.m */
+"Play video" = "Play video";
+
+/* iOS/player/RDLPPlayerControls.m */
+"Playback position" = "Playback position";
+
+/* macOS/RDLPLibraryMenus.m, macOS/RDLPLibraryWindowController.m, macOS/RDLPQueueWindowController.m */
+"Playlist" = "Playlist";
+
+/* iOS/RDLPLibraryViewController.m */
+"Playlist Actions" = "Playlist Actions";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Playlist URL or ID" = "Playlist URL or ID";
+
+/* shared/RDLPLibrary.m */
+"Playlist added" = "Playlist added";
+
+/* shared/RDLPLibrary.m */
+"Playlist operation stopped" = "Playlist operation stopped";
+
+/* shared/RDLPLibrary.m */
+"Playlist synced" = "Playlist synced";
+
+/* iOS/RDLPLibraryViewController.m, iOS/RDLPPlaylistsViewController.m, macOS/RDLPLibraryViews.m */
+"Playlists" = "Playlists";
+
+/* iOS/player/RDLPPlayerControls.m, iOS/player/RDLPPlayerViewController.m */
+"Previous item" = "Previous item";
+
+/* shared/RDLPLibrary.m */
+"Published " = "Published ";
+
+/* macOS/RDLPLibraryWindowController.m, macOS/RDLPQueueWindowController.m */
+"Quality" = "Quality";
+
+/* iOS/RDLPLibraryActions.m */
+"Quality: %@. Existing failed, interrupted and stopped downloads are not retried." = "Quality: %@. Existing failed, interrupted and stopped downloads are not retried.";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Queue" = "Queue";
+
+/* macOS/RDLPQueueWindowController.m */
+"Queue Actions" = "Queue Actions";
+
+/* iOS/RDLPUIKit.m, iOS/RDLPVideoListViewController.m, macOS/RDLPLibraryWindowController.m, shared/RDLPDownloadPolicy.m */
+"Queued" = "Queued";
+
+/* macOS: stable menu/sidebar identifier localized for display */
+"QuickTime" = "QuickTime";
+
+/* macOS/RDLPAppDelegate.m */
+"Quit RetroDLP" = "Quit RetroDLP";
+
+/* shared/RDLPLibrary.m */
+"Reading cookies…" = "Reading cookies…";
+
+/* shared/RDLPLibrary.m */
+"Reading playlist…" = "Reading playlist…";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m */
+"Refresh your account playlists and their videos. Playlists no longer in your account are removed locally; downloads and unfinished jobs are retained. Cookies are required. No videos will be downloaded." = "Refresh your account playlists and their videos. Playlists no longer in your account are removed locally; downloads and unfinished jobs are retained. Cookies are required. No videos will be downloaded.";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Refresh your account playlists and their videos. Playlists no longer in your account are removed locally; downloads and unfinished jobs are retained. You will be asked to import cookies if needed. No videos will be downloaded." = "Refresh your account playlists and their videos. Playlists no longer in your account are removed locally; downloads and unfinished jobs are retained. You will be asked to import cookies if needed. No videos will be downloaded.";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m */
+"Refresh your manually added playlists and their videos from YouTube. Local downloads are retained. No videos will be downloaded." = "Refresh your manually added playlists and their videos from YouTube. Local downloads are retained. No videos will be downloaded.";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Refresh your manually added playlists and their videos from YouTube. Local downloads are retained. This does not download videos." = "Refresh your manually added playlists and their videos from YouTube. Local downloads are retained. This does not download videos.";
+
+/* shared/RDLPLibrary.m */
+"Refreshing visitor data…" = "Refreshing visitor data…";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPSettingsViewController.m, macOS/RDLPLibraryWindowController.m */
+"Remove" = "Remove";
+
+/* iOS/RDLPLibrarySections.m, macOS/RDLPLibraryMenus.m */
+"Remove Cookies…" = "Remove Cookies…";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Remove Playlist" = "Remove Playlist";
+
+/* macOS/RDLPLibraryMenus.m */
+"Remove Playlist — ‘%@’…" = "Remove Playlist — ‘%@’…";
+
+/* macOS/RDLPLibraryMenus.m */
+"Remove Playlist…" = "Remove Playlist…";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPSettingsViewController.m, macOS/RDLPLibraryWindowController.m */
+"Remove imported cookies?" = "Remove imported cookies?";
+
+/* iOS/RDLPLibraryActions.m */
+"Remove playlist?" = "Remove playlist?";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Remove the app’s working cookie copy. The original exported file is retained." = "Remove the app’s working cookie copy. The original exported file is retained.";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Remove ‘%@’ from the library?" = "Remove ‘%@’ from the library?";
+
+/* iOS/RDLPLibraryActions.m, macOS/RDLPLibraryWindowController.m */
+"Removes the playlist from your library. Downloads and unfinished jobs are retained. Your YouTube playlist is unchanged." = "Removes the playlist from your library. Downloads and unfinished jobs are retained. Your YouTube playlist is unchanged.";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPSettingsViewController.m, macOS/RDLPLibraryWindowController.m */
+"Replace" = "Replace";
+
+/* macOS/RDLPLibraryMenus.m */
+"Replace Cookies…" = "Replace Cookies…";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPSettingsViewController.m, macOS/RDLPLibraryWindowController.m */
+"Replace and Sync" = "Replace and Sync";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPSettingsViewController.m, macOS/RDLPLibraryWindowController.m */
+"Replace cookies and sync playlists?" = "Replace cookies and sync playlists?";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPSettingsViewController.m, macOS/RDLPLibraryWindowController.m */
+"Replace imported cookies?" = "Replace imported cookies?";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Replace the app’s working cookie copy with the selected file. The original exported files are retained." = "Replace the app’s working cookie copy with the selected file. The original exported files are retained.";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Replace the app’s working cookie copy, then sync your account playlists. Local downloads are retained. No videos will be downloaded." = "Replace the app’s working cookie copy, then sync your account playlists. Local downloads are retained. No videos will be downloaded.";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPSettingsViewController.m */
+"Replace the working cookie copy. Your original export is retained." = "Replace the working cookie copy. Your original export is retained.";
+
+/* shared/RDLPLibrary.m */
+"Requesting metadata…" = "Requesting metadata…";
+
+/* shared/RDLPLibrary.m */
+"Resolving video…" = "Resolving video…";
+
+/* iOS/player/RDLPPlayerViewController.m */
+"Restart item" = "Restart item";
+
+/* iOS/RDLPUIKit.m, macOS/RDLPLibraryWindowController.m */
+"RetroDLP" = "RetroDLP";
+
+/* iOS/RDLPVideoListViewController.m, macOS/RDLPQueueWindowController.m */
+"Retry" = "Retry";
+
+/* iOS/RDLPQueueViewController.m */
+"Retry Download" = "Retry Download";
+
+/* macOS/RDLPLibraryMenus.m */
+"Retry Download — %@" = "Retry Download — %@";
+
+/* iOS/RDLPVideoListViewController.m */
+"Retry Download?" = "Retry Download?";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPQueueViewController.m */
+"Retry restarts this quality from the beginning. Other queued downloads continue." = "Retry restarts this quality from the beginning. Other queued downloads continue.";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Retry the selected download" = "Retry the selected download";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Retrying this job restarts the transfer; it does not resume from where it stopped." = "Retrying this job restarts the transfer; it does not resume from where it stopped.";
+
+/* macOS/RDLPLibraryMenus.m */
+"Reveal %@ in Finder" = "Reveal %@ in Finder";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPSettingsViewController.m, macOS/RDLPLibraryWindowController.m */
+"Save" = "Save";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Saving this quality does not start a download." = "Saving this quality does not start a download.";
+
+/* macOS/RDLPLibraryMenus.m */
+"Select All" = "Select All";
+
+/* shared/RDLPLibrary.m */
+"Select a playlist" = "Select a playlist";
+
+/* shared/RDLPLibrary.m */
+"Select a synced playlist first." = "Select a synced playlist first.";
+
+/* shared/RDLPLibrary.m */
+"Selecting format…" = "Selecting format…";
+
+/* iOS/RDLPLibraryViewController.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPSettingsViewController.m */
+"Settings" = "Settings";
+
+/* macOS/RDLPLibraryMenus.m, macOS/RDLPLibraryWindowController.m */
+"Show Download Queue" = "Show Download Queue";
+
+/* macOS/RDLPQueueWindowController.m */
+"Show Error…" = "Show Error…";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Show Playlists" = "Show Playlists";
+
+/* iOS/RDLPQueueViewController.m */
+"Show download details and actions" = "Show download details and actions";
+
+/* macOS/RDLPLibraryMenus.m */
+"Show in Finder" = "Show in Finder";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPLibrarySections.m, iOS/RDLPQueueViewController.m */
+"Show in Queue" = "Show in Queue";
+
+/* iOS/player/RDLPPlayerViewController.m */
+"Show video" = "Show video";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Size" = "Size";
+
+/* shared/RDLPLibrary.m */
+"Solving challenges…" = "Solving challenges…";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPQueueViewController.m, macOS/RDLPQueueWindowController.m */
+"Stop" = "Stop";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPLibrarySections.m, iOS/RDLPQueueViewController.m, macOS/RDLPQueueWindowController.m */
+"Stop Download…" = "Stop Download…";
+
+/* iOS/RDLPLibrarySections.m, iOS/RDLPQueueViewController.m */
+"Stopped" = "Stopped";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistViewController.m, iOS/RDLPPlaylistsViewController.m */
+"Sync" = "Sync";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Sync %lu Added Playlists" = "Sync %lu Added Playlists";
+
+/* macOS/RDLPLibraryWindowController.m */
+"Sync %lu added playlists?" = "Sync %lu added playlists?";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m */
+"Sync Added Playlists" = "Sync Added Playlists";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m */
+"Sync Added Playlists?" = "Sync Added Playlists?";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, macOS/RDLPLibraryMenus.m */
+"Sync Added Playlists…" = "Sync Added Playlists…";
+
+/* macOS/RDLPLibraryMenus.m */
+"Sync Current Playlist" = "Sync Current Playlist";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, macOS/RDLPLibraryWindowController.m */
+"Sync My Playlists" = "Sync My Playlists";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, macOS/RDLPLibraryWindowController.m */
+"Sync My Playlists?" = "Sync My Playlists?";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, macOS/RDLPLibraryMenus.m */
+"Sync My Playlists…" = "Sync My Playlists…";
+
+/* shared/RDLPLibrary.m */
+"Syncing My Playlists…" = "Syncing My Playlists…";
+
+/* shared/RDLPLibrary.m */
+"Syncing playlist…" = "Syncing playlist…";
+
+/* iOS/RDLPLibrarySections.m, macOS: stable menu/sidebar identifier localized for display */
+"System" = "System";
+
+/* iOS/RDLPVideoListViewController.m */
+"The downloaded file is missing." = "The downloaded file is missing.";
+
+/* iOS/RDLPUIKit.m */
+"The downloaded file is missing. Retry its download from Queue." = "The downloaded file is missing. Retry its download from Queue.";
+
+/* iOS/RDLPVideoListViewController.m */
+"The previous download failed." = "The previous download failed.";
+
+/* iOS/RDLPVideoListViewController.m */
+"The previous download was interrupted." = "The previous download was interrupted.";
+
+/* iOS/RDLPVideoListViewController.m */
+"The previous download was stopped." = "The previous download was stopped.";
+
+/* shared/RDLPDownloadSections.m */
+"This Month" = "This Month";
+
+/* shared/RDLPDownloadSections.m */
+"This Week" = "This Week";
+
+/* shared/RDLPDownloadSections.m */
+"This Year" = "This Year";
+
+/* macOS/RDLPLibraryWindowController.m */
+"This moves the selected downloads and their partial files to the Trash. Playlist membership and other downloaded qualities are retained." = "This moves the selected downloads and their partial files to the Trash. Playlist membership and other downloaded qualities are retained.";
+
+/* macOS/RDLPLibraryWindowController.m */
+"This moves this download and its partial files to the Trash. Playlist membership and other downloaded qualities are retained." = "This moves this download and its partial files to the Trash. Playlist membership and other downloaded qualities are retained.";
+
+/* iOS/RDLPLibrarySections.m */
+"This playlist type cannot be synced" = "This playlist type cannot be synced";
+
+/* shared/RDLPLibrary.m */
+"This playlist type cannot be synced by RetroDLP." = "This playlist type cannot be synced by RetroDLP.";
+
+/* shared/RDLPDownloadSections.m */
+"Today" = "Today";
+
+/* iOS/player/RDLPPlayerViewController.m */
+"Unable to play this item" = "Unable to play this item";
+
+/* shared/RDLPLibrary.m */
+"Unavailable" = "Unavailable";
+
+/* iOS/RDLPLibrarySections.m, macOS: stable menu/sidebar identifier localized for display */
+"Unsupported Playlists" = "Unsupported Playlists";
+
+/* shared/RDLPLibrary.m */
+"Unsupported playlist" = "Unsupported playlist";
+
+/* iOS/RDLPLibrarySections.m, shared/RDLPVideoRows.m */
+"Untitled" = "Untitled";
+
+/* iOS/player/RDLPPlayerControls.m, iOS/player/RDLPPlayerViewController.m */
+"Use audio only" = "Use audio only";
+
+/* macOS: stable menu/sidebar identifier localized for display */
+"VLC" = "VLC";
+
+/* iOS/RDLPAppDelegate.m, iOS/RDLPDownloadedPlayerViewController.m, iOS/RDLPLibrarySections.m, iOS/RDLPLibraryViewController.m, macOS/RDLPLibraryMenus.m, macOS/RDLPLibraryWindowController.m, macOS/RDLPQueueWindowController.m */
+"Video" = "Video";
+
+/* macOS/RDLPAppDelegate.m */
+"Video Player" = "Video Player";
+
+/* shared/RDLPLibrary.m */
+"Video added" = "Video added";
+
+/* iOS/RDLPLibrarySections.m */
+"Videos" = "Videos";
+
+/* macOS: stable menu/sidebar identifier localized for display */
+"View" = "View";
+
+/* shared/RDLPLibrary.m */
+"Wait for playlist operations to finish. Added Videos cannot be removed." = "Wait for playlist operations to finish. Added Videos cannot be removed.";
+
+/* shared/RDLPLibrary.m */
+"Wait for the current operation to finish." = "Wait for the current operation to finish.";
+
+/* macOS: stable menu/sidebar identifier localized for display */
+"Window" = "Window";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m */
+"YouTube playlist URL or ID" = "YouTube playlist URL or ID";
+
+/* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPVideoListViewController.m, macOS/RDLPLibraryWindowController.m */
+"YouTube video URL or ID" = "YouTube video URL or ID";
+
+/* macOS/RDLPAppDelegate.m */
+"Zoom" = "Zoom";
+
+/* shared/RDLPVideoRows.m */
+"\nLocal file: %@" = "\nLocal file: %@";
+
+/* macOS/RDLPLibraryWindowController.m */
+"download" = "download";
+
+/* macOS/RDLPLibraryWindowController.m */
+"downloads" = "downloads";
+
+/* shared/RDLPLibrary.m */
+"hour" = "hour";
+
+/* shared/RDLPLibrary.m */
+"hours" = "hours";
+
+/* shared/RDLPLibrary.m */
+"minute" = "minute";
+
+/* shared/RDLPLibrary.m */
+"minutes" = "minutes";
+
+/* shared/RDLPLibrary.m */
+"second" = "second";
+
+/* shared/RDLPLibrary.m */
+"seconds" = "seconds";
+
+/* shared/RDLPLibrary.m */
+"·%.1f Mbps" = "·%.1f Mbps";
+
+/* shared/RDLPVideoRows.m */
+"·%@" = "·%@";
+

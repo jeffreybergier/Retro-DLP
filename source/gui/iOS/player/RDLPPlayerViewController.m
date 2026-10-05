@@ -318,17 +318,17 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   BOOL ready=item && [item status]==AVPlayerItemStatusReadyToPlay && !failed;
   [[_controls playButton] setEnabled:ready];
   [[_controls playButton] setImage:[RDLPUIKit playerIcon:[_player rate]!=0?RDLPPlayerIconPause:RDLPPlayerIconPlay]];
-  [[_controls playButton] setAccessibilityLabel:[_player rate]!=0?@"Pause":@"Play"];
+  [[_controls playButton] setAccessibilityLabel:[_player rate]!=0?NSLocalizedString(@"Pause", nil):NSLocalizedString(@"Play", nil)];
   BOOL audio=[_delegate respondsToSelector:@selector(playerViewController:didRequestAudioOnly:)];
   [[_controls audioButton] setEnabled:_player!=nil];
-  [[_controls audioButton] setAccessibilityLabel:_audioOnly?@"Show video":@"Use audio only"];
+  [[_controls audioButton] setAccessibilityLabel:_audioOnly?NSLocalizedString(@"Show video", nil):NSLocalizedString(@"Use audio only", nil)];
   [[_controls audioButton] setAccessibilityTraits:UIAccessibilityTraitButton|(_audioOnly?UIAccessibilityTraitSelected:0)];
   [[_controls audioButton] setTintColor:_audioOnly?[UIColor colorWithRed:0.2f green:0.6f blue:1 alpha:1]:nil];
   BOOL modalRoot=[[self navigationController] presentingViewController] && [[[self navigationController] viewControllers] objectAtIndex:0]==self;
   BOOL done=[_delegate respondsToSelector:@selector(playerViewControllerDidRequestDismissal:)] || modalRoot;
   [[self navigationItem] setLeftBarButtonItem:audio?[_controls audioButton]:nil];
   [[self navigationItem] setRightBarButtonItem:done?[_controls doneButton]:nil];
-  NSString *message=failed?@"Unable to play this item":nil;
+  NSString *message=failed?NSLocalizedString(@"Unable to play this item", nil):nil;
   [_controls setMessage:message];
   [_controls setAudioOnlyPlaceholderVisible:_audioOnly && item && !failed];
   [_controls setNoMediaPlaceholderVisible:!item && !failed];
@@ -357,8 +357,8 @@ static NSArray *RDLPItemKeys(void) { return [NSArray arrayWithObjects:@"status",
   BOOL canSeek=ready && isfinite(seconds);
   [[_controls previousButton] setImage:[RDLPUIKit playerIcon:longContent?RDLPPlayerIconBack:RDLPPlayerIconPrevious]];
   [[_controls nextButton] setImage:[RDLPUIKit playerIcon:longContent?RDLPPlayerIconForward:RDLPPlayerIconNext]];
-  [[_controls previousButton] setAccessibilityLabel:longContent?@"Back 30 seconds":(restart?@"Restart item":@"Previous item")];
-  [[_controls nextButton] setAccessibilityLabel:longContent?@"Forward 60 seconds":@"Next item"];
+  [[_controls previousButton] setAccessibilityLabel:longContent?NSLocalizedString(@"Back 30 seconds", nil):(restart?NSLocalizedString(@"Restart item", nil):NSLocalizedString(@"Previous item", nil))];
+  [[_controls nextButton] setAccessibilityLabel:longContent?NSLocalizedString(@"Forward 60 seconds", nil):NSLocalizedString(@"Next item", nil)];
   [[_controls previousButton] setEnabled:[_delegate respondsToSelector:@selector(playerViewControllerDidRequestBack:)] &&
     ((longContent || restart)?canSeek:(_player && _canSkipToPreviousItem))];
   [[_controls nextButton] setEnabled:[_delegate respondsToSelector:@selector(playerViewControllerDidRequestForward:)] &&

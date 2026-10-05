@@ -11,7 +11,7 @@
   self=[super init]; if(!self) return nil;
   library_=[library retain]; mode_=mode; playlist_=[playlist copy]; video_=[video copy];
   policy_=[[RDLPDownloadPolicy alloc] initWithLibrary:library]; model_=[[RDLPLibrarySections alloc] initWithLibrary:library];
-  [self setTitle:mode==RDLPScreenLibrary?@"Playlists":(mode==RDLPScreenPlaylist?[playlist objectForKey:@"title"]:(mode==RDLPScreenQueue?@"Download Queue":(mode==RDLPScreenDownloads?@"All Downloads":(mode==RDLPScreenSettings?@"Settings":@"Video"))))];
+  [self setTitle:mode==RDLPScreenLibrary?NSLocalizedString(@"Playlists", nil):(mode==RDLPScreenPlaylist?[playlist objectForKey:@"title"]:(mode==RDLPScreenQueue?NSLocalizedString(@"Download Queue", nil):(mode==RDLPScreenDownloads?NSLocalizedString(@"All Downloads", nil):(mode==RDLPScreenSettings?NSLocalizedString(@"Settings", nil):NSLocalizedString(@"Video", nil)))))];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library_];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPLibraryStatusDidChange object:library_]; return self;
 }
@@ -43,8 +43,8 @@
     [self setToolbarItems:[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:@selector(queue:)]];
     [[self navigationItem] setRightBarButtonItem:[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit plusIcon] style:UIBarButtonItemStylePlain target:self action:@selector(showPlaylistActions:)] autorelease]];
     [[self navigationItem] setLeftBarButtonItem:[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit settingsIcon] style:UIBarButtonItemStylePlain target:self action:@selector(settings:)] autorelease]];
-    [[[self navigationItem] leftBarButtonItem] setAccessibilityLabel:@"Settings"];
-    [[[self navigationItem] rightBarButtonItem] setAccessibilityLabel:@"Playlist Actions"];
+    [[[self navigationItem] leftBarButtonItem] setAccessibilityLabel:NSLocalizedString(@"Settings", nil)];
+    [[[self navigationItem] rightBarButtonItem] setAccessibilityLabel:NSLocalizedString(@"Playlist Actions", nil)];
   }
   [self refresh:nil];
 }
@@ -96,7 +96,7 @@
 {
   (void)view;
   if(mode_==RDLPScreenLibrary || mode_==RDLPScreenSettings) return nil;
-  if(![[[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"rows"] count]) return @"No items";
+  if(![[[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"rows"] count]) return NSLocalizedString(@"No items", nil);
   return nil;
 }
 - (NSDictionary *)rowAtIndex:(NSIndexPath *)index;
@@ -130,7 +130,7 @@
   [cell setAccessoryView:nil]; [[cell imageView] setImage:[row objectForKey:@"status"]?[RDLPUIKit statusIcon:[row objectForKey:@"status"]]:nil]; [cell setAccessoryType:UITableViewCellAccessoryDisclosureIndicator];
   if(mode_==RDLPScreenSettings && ([action isEqualToString:@"import"] || [action isEqualToString:@"clearCookies"] || [action isEqualToString:@"guide"])) [cell setAccessoryType:UITableViewCellAccessoryNone];
   if([row objectForKey:@"checked"]) [cell setAccessoryType:[[row objectForKey:@"checked"] boolValue]?UITableViewCellAccessoryCheckmark:UITableViewCellAccessoryNone];
-  [cell setAccessibilityLabel:[NSString stringWithFormat:@"%@, %@",[[cell textLabel] text],[[cell detailTextLabel] text]]]; return cell;
+  [cell setAccessibilityLabel:[NSString stringWithFormat:NSLocalizedString(@"%@, %@", nil),[[cell textLabel] text],[[cell detailTextLabel] text]]]; return cell;
 }
 - (CGFloat)tableView:(UITableView *)view heightForRowAtIndexPath:(NSIndexPath *)index;
 {

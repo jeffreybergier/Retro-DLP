@@ -11,7 +11,7 @@
 {
   self=[super initWithStyle:UITableViewStylePlain]; if(!self) return nil;
   library_=[library retain]; model_=[[RDLPLibrarySections alloc] initWithLibrary:library];
-  [self setTitle:@"Playlists"];
+  [self setTitle:NSLocalizedString(@"Playlists", nil)];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPLibraryStatusDidChange object:library_];
   return self;
@@ -29,9 +29,9 @@
 {
   [super viewDidLoad]; [RDLPUIKit configureContentEdges:self];
   [[self navigationItem] setLeftBarButtonItem:[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit settingsIcon] style:UIBarButtonItemStylePlain target:self action:@selector(settings:)] autorelease]];
-  [[[self navigationItem] leftBarButtonItem] setAccessibilityLabel:@"Settings"];
+  [[[self navigationItem] leftBarButtonItem] setAccessibilityLabel:NSLocalizedString(@"Settings", nil)];
   [[self navigationItem] setRightBarButtonItem:[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit plusIcon] style:UIBarButtonItemStylePlain target:self action:@selector(showPlaylistActions:)] autorelease]];
-  [[[self navigationItem] rightBarButtonItem] setAccessibilityLabel:@"Library Actions"];
+  [[[self navigationItem] rightBarButtonItem] setAccessibilityLabel:NSLocalizedString(@"Library Actions", nil)];
   statusBar_=[[RDLPStatusBarView alloc] initWithFrame:CGRectZero];
   [statusBar_ setMaximumWidth:MAX(0,[[self view] bounds].size.width-112)];
   [self setToolbarItems:[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:@selector(queue:)]];
@@ -162,7 +162,7 @@
   if([operation isEqualToString:@"syncAll"]) {
     for(NSString *input in [request objectForKey:@"inputs"]) if(![library_ isSyncPendingForInput:input]) [library_ syncPlaylistInput:input];
   } else if([operation isEqualToString:@"discover"] && [self enabled:@"discover"]) {
-    if([[library_ cookieStatus] isEqualToString:@"Imported"]) [library_ discoverPlaylists];
+    if([[library_ cookieStatus] isEqualToString:NSLocalizedString(@"Imported", nil)]) [library_ discoverPlaylists];
     else [self requestCookieImport:[self documentsCookiePath] discover:YES];
   } else if([operation isEqualToString:@"import"] && ![library_ isBusy]) {
     if([library_ importCookies:[request objectForKey:@"path"]] && [[request objectForKey:@"discover"] boolValue]) [library_ discoverPlaylists];
@@ -184,7 +184,7 @@
 {
   if(alert_) return;
   request_=[request copy]; alertActions_=[buttons copy];
-  alert_=[[UIAlertView alloc] initWithTitle:title message:detail delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:nil];
+  alert_=[[UIAlertView alloc] initWithTitle:title message:detail delegate:self cancelButtonTitle:NSLocalizedString(@"Cancel", nil) otherButtonTitles:nil];
   for(NSString *button in buttons) [alert_ addButtonWithTitle:button];
   if(input) {
     [alert_ setAlertViewStyle:UIAlertViewStylePlainTextInput];
@@ -198,12 +198,12 @@
 { return [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES) objectAtIndex:0] stringByAppendingPathComponent:@"cookies.txt"]; }
 - (BOOL)requestCookieImport:(NSString *)path discover:(BOOL)discover;
 {
-  if([library_ isBusy] || alert_) { [RDLPUIKit showMessage:@"Finish the current operation or dialog before importing cookies."]; return NO; }
+  if([library_ isBusy] || alert_) { [RDLPUIKit showMessage:NSLocalizedString(@"Finish the current operation or dialog before importing cookies.", nil)]; return NO; }
   NSDictionary *request=[NSDictionary dictionaryWithObjectsAndKeys:@"import",@"operation",path,@"path",[NSNumber numberWithBool:discover],@"discover",nil];
-  if(![[library_ cookieStatus] isEqualToString:@"Not Imported"])
-    [self confirm:request title:discover?@"Replace cookies and sync playlists?":@"Replace imported cookies?" detail:@"Replace the working cookie copy. Your original export is retained." button:discover?@"Replace and Sync":@"Replace"];
+  if(![[library_ cookieStatus] isEqualToString:NSLocalizedString(@"Not Imported", nil)])
+    [self confirm:request title:discover?NSLocalizedString(@"Replace cookies and sync playlists?", nil):NSLocalizedString(@"Replace imported cookies?", nil) detail:NSLocalizedString(@"Replace the working cookie copy. Your original export is retained.", nil) button:discover?NSLocalizedString(@"Replace and Sync", nil):NSLocalizedString(@"Replace", nil)];
   else if([[NSFileManager defaultManager] fileExistsAtPath:path]) [self performConfirmed:request];
-  else { [RDLPUIKit showMessage:@"Copy cookies.txt into RetroDLP with iTunes File Sharing, or open your exported text file in RetroDLP. Then use Sync My Playlists again."]; return NO; }
+  else { [RDLPUIKit showMessage:NSLocalizedString(@"Copy cookies.txt into RetroDLP with iTunes File Sharing, or open your exported text file in RetroDLP. Then use Sync My Playlists again.", nil)]; return NO; }
   return YES;
 }
 /* UIActionSheet keeps the playlist menu available on iOS 5 and 6. Dispatch
@@ -212,8 +212,8 @@
 {
   (void)sender; if(playlistActions_ || alert_) return;
   playlistActions_=[[UIActionSheet alloc] initWithTitle:nil delegate:self
-    cancelButtonTitle:@"Cancel" destructiveButtonTitle:nil
-    otherButtonTitles:@"Add Video…",@"Add Playlist…",@"Sync Added Playlists…",@"Sync My Playlists…",nil];
+    cancelButtonTitle:NSLocalizedString(@"Cancel", nil) destructiveButtonTitle:nil
+    otherButtonTitles:NSLocalizedString(@"Add Video…", nil),NSLocalizedString(@"Add Playlist…", nil),NSLocalizedString(@"Sync Added Playlists…", nil),NSLocalizedString(@"Sync My Playlists…", nil),nil];
   [playlistActions_ showFromBarButtonItem:[[self navigationItem] rightBarButtonItem] animated:YES];
 }
 - (void)actionSheet:(UIActionSheet *)sheet didDismissWithButtonIndex:(NSInteger)index;
@@ -231,15 +231,15 @@
   }
 }
 - (void)add:(id)sender;
-{ (void)sender; [self showAlert:@"Add Playlist" detail:@"YouTube playlist URL or ID" request:[NSDictionary dictionaryWithObject:@"add" forKey:@"operation"] buttons:[NSArray arrayWithObject:@"Sync"] input:@""]; }
+{ (void)sender; [self showAlert:NSLocalizedString(@"Add Playlist", nil) detail:NSLocalizedString(@"YouTube playlist URL or ID", nil) request:[NSDictionary dictionaryWithObject:@"add" forKey:@"operation"] buttons:[NSArray arrayWithObject:NSLocalizedString(@"Sync", nil)] input:@""]; }
 - (void)addVideo:(id)sender;
-{ (void)sender; [self showAlert:@"Add Video" detail:@"YouTube video URL or ID" request:[NSDictionary dictionaryWithObject:@"addVideo" forKey:@"operation"] buttons:[NSArray arrayWithObject:@"Add"] input:@""]; }
+{ (void)sender; [self showAlert:NSLocalizedString(@"Add Video", nil) detail:NSLocalizedString(@"YouTube video URL or ID", nil) request:[NSDictionary dictionaryWithObject:@"addVideo" forKey:@"operation"] buttons:[NSArray arrayWithObject:NSLocalizedString(@"Add", nil)] input:@""]; }
 - (void)discover:(id)sender;
-{ (void)sender; if([self enabled:@"discover"]) [self confirm:[NSDictionary dictionaryWithObject:@"discover" forKey:@"operation"] title:@"Sync My Playlists?" detail:@"Refresh your account playlists and their videos. Playlists no longer in your account are removed locally; downloads and unfinished jobs are retained. Cookies are required. No videos will be downloaded." button:@"Sync My Playlists"]; }
+{ (void)sender; if([self enabled:@"discover"]) [self confirm:[NSDictionary dictionaryWithObject:@"discover" forKey:@"operation"] title:NSLocalizedString(@"Sync My Playlists?", nil) detail:NSLocalizedString(@"Refresh your account playlists and their videos. Playlists no longer in your account are removed locally; downloads and unfinished jobs are retained. Cookies are required. No videos will be downloaded.", nil) button:NSLocalizedString(@"Sync My Playlists", nil)]; }
 - (void)syncAll:(id)sender;
 {
   (void)sender; NSMutableArray *inputs=[NSMutableArray array];
   for(NSDictionary *playlist in [library_ playlistsFromAccount:NO]) if([RDLPLibrary canSyncPlaylist:playlist] && ![library_ isSyncPendingForInput:[playlist objectForKey:@"service_id"]]) [inputs addObject:[playlist objectForKey:@"service_id"]];
-  if([inputs count]) [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:@"syncAll",@"operation",inputs,@"inputs",nil] title:@"Sync Added Playlists?" detail:@"Refresh your manually added playlists and their videos from YouTube. Local downloads are retained. No videos will be downloaded." button:@"Sync Added Playlists"];
+  if([inputs count]) [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:@"syncAll",@"operation",inputs,@"inputs",nil] title:NSLocalizedString(@"Sync Added Playlists?", nil) detail:NSLocalizedString(@"Refresh your manually added playlists and their videos from YouTube. Local downloads are retained. No videos will be downloaded.", nil) button:NSLocalizedString(@"Sync Added Playlists", nil)];
 }
 @end

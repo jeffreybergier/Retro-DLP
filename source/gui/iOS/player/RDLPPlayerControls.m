@@ -44,7 +44,7 @@ static UIView *RDLPAudioOnlyPlaceholder(void) {
   UIView *view=[[[UIView alloc] initWithFrame:bounds] autorelease];
   [view setUserInteractionEnabled:NO];
   [view setIsAccessibilityElement:YES];
-  [view setAccessibilityLabel:@"Audio only"];
+  [view setAccessibilityLabel:NSLocalizedString(@"Audio only", nil)];
   [view setAccessibilityTraits:UIAccessibilityTraitImage];
   UIImage *glyph=[RDLPUIKit playerIcon:RDLPPlayerIconHeadphones size:128 canvas:128];
   for(NSUInteger i=0;i<2;++i) {
@@ -67,8 +67,8 @@ static UIView *RDLPAudioOnlyPlaceholder(void) {
 static NSString *RDLPTimeText(double seconds) {
   if(!isfinite(seconds) || seconds<0) return @"--:--";
   double minutes=floor(seconds/60);
-  if(minutes>=60) return [NSString stringWithFormat:@"%.0f:%02.0f:%02.0f",floor(minutes/60),fmod(minutes,60),floor(fmod(seconds,60))];
-  return [NSString stringWithFormat:@"%.0f:%02.0f",minutes,floor(fmod(seconds,60))];
+  if(minutes>=60) return [NSString stringWithFormat:NSLocalizedString(@"%.0f:%02.0f:%02.0f", nil),floor(minutes/60),fmod(minutes,60),floor(fmod(seconds,60))];
+  return [NSString stringWithFormat:NSLocalizedString(@"%.0f:%02.0f", nil),minutes,floor(fmod(seconds,60))];
 }
 
 @implementation RDLPPlayerControls
@@ -81,19 +81,19 @@ static NSString *RDLPTimeText(double seconds) {
   self=[super initWithFrame:frame]; if(!self) return nil;
   [self setUserInteractionEnabled:NO];
   _doneButton=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:nil action:NULL];
-  _audioButton=RDLPImageButton(RDLPPlayerIconHeadphones,@"Use audio only");
+  _audioButton=RDLPImageButton(RDLPPlayerIconHeadphones,NSLocalizedString(@"Use audio only", nil));
   [RDLPUIKit setBorderedStyleForBarButtonItem:_audioButton];
-  _previousButton=RDLPImageButton(RDLPPlayerIconPrevious,@"Previous item");
-  _nextButton=RDLPImageButton(RDLPPlayerIconNext,@"Next item");
+  _previousButton=RDLPImageButton(RDLPPlayerIconPrevious,NSLocalizedString(@"Previous item", nil));
+  _nextButton=RDLPImageButton(RDLPPlayerIconNext,NSLocalizedString(@"Next item", nil));
   [_previousButton setWidth:32]; [_nextButton setWidth:32];
   /* Align the plain artwork with the neighboring bordered play button. */
   [_previousButton setImageInsets:UIEdgeInsetsMake(2,0,-2,0)]; [_nextButton setImageInsets:UIEdgeInsetsMake(2,0,-2,0)];
   [_previousButton setLandscapeImagePhoneInsets:UIEdgeInsetsMake(2,0,-2,0)]; [_nextButton setLandscapeImagePhoneInsets:UIEdgeInsetsMake(2,0,-2,0)];
-  _playButton=RDLPImageButton(RDLPPlayerIconPlay,@"Play");
+  _playButton=RDLPImageButton(RDLPPlayerIconPlay,NSLocalizedString(@"Play", nil));
   [RDLPUIKit setBorderedStyleForBarButtonItem:_playButton];
   _timeline=[[RDLPPlayerTimeline alloc] initWithFrame:CGRectMake(0,0,164,40)];
   [_timeline setContinuous:YES];
-  [_timeline setAccessibilityLabel:@"Playback position"];
+  [_timeline setAccessibilityLabel:NSLocalizedString(@"Playback position", nil)];
   _timelineItem=[[UIBarButtonItem alloc] initWithCustomView:_timeline];
   /* Keep spare space beside the scrubber, with transport buttons at the edges. */
   _toolbarItems=[[NSArray alloc] initWithObjects:RDLPToolbarSpace(NO),_previousButton,
@@ -110,7 +110,7 @@ static NSString *RDLPTimeText(double seconds) {
   _noMediaPlaceholder=[[UIView alloc] initWithFrame:CGRectMake(0,0,128,128)];
   [_noMediaPlaceholder setUserInteractionEnabled:NO];
   [_noMediaPlaceholder setIsAccessibilityElement:YES];
-  [_noMediaPlaceholder setAccessibilityLabel:@"No media"];
+  [_noMediaPlaceholder setAccessibilityLabel:NSLocalizedString(@"No media", nil)];
   [_noMediaPlaceholder setAccessibilityTraits:UIAccessibilityTraitImage];
   UIImage *noMediaIcon=[RDLPUIKit playerIcon:RDLPPlayerIconVideoSlash size:128 canvas:128];
   /* Raw contents preserve the white glyph on both legacy and template-image UIKit. */
@@ -138,7 +138,7 @@ static NSString *RDLPTimeText(double seconds) {
 }
 - (void)setElapsedTime:(double)elapsed duration:(double)duration {
   NSString *current=RDLPTimeText(elapsed), *total=RDLPTimeText(duration);
-  [[self slider] setAccessibilityValue:[NSString stringWithFormat:@"%@ of %@",current,total]];
+  [[self slider] setAccessibilityValue:[NSString stringWithFormat:NSLocalizedString(@"%@ of %@", nil),current,total]];
 }
 - (void)setMessage:(NSString *)message { [_messageLabel setText:message]; }
 - (void)setAudioOnlyPlaceholderVisible:(BOOL)visible { [_audioOnlyPlaceholder setHidden:!visible]; }

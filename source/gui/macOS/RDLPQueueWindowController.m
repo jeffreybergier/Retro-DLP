@@ -26,7 +26,7 @@
 {
   NSWindow *window=[[[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,640,400)
     styleMask:RDLPTexturedWindowStyleMask backing:NSBackingStoreBuffered defer:NO] autorelease];
-  [window setTitle:@"Download Queue"]; [window setReleasedWhenClosed:NO];
+  [window setTitle:NSLocalizedString(@"Download Queue", nil)]; [window setReleasedWhenClosed:NO];
   [window setMinSize:NSMakeSize(480,300)]; [window center];
   [self setWindow:window]; [self setShouldCascadeWindows:NO];
 }
@@ -40,7 +40,7 @@
   NSView *queue=[[[RDLPLayoutView alloc] initWithFrame:NSMakeRect(0,32,640,368)] autorelease];
   queue_=[RDLPLibraryViews tableInView:queue frame:[queue bounds] owner:owner_
     names:[NSArray arrayWithObjects:@"number",@"state",@"quality",@"title",@"playlist_title",@"enqueueDate",@"latestDownloadDate",nil]
-    labels:[NSArray arrayWithObjects:@"",@"",@"Quality",@"Video",@"Playlist",@"Enqueued",@"Latest Download",nil]];
+    labels:[NSArray arrayWithObjects:@"",@"",NSLocalizedString(@"Quality", nil),NSLocalizedString(@"Video", nil),NSLocalizedString(@"Playlist", nil),NSLocalizedString(@"Enqueued", nil),NSLocalizedString(@"Latest Download", nil),nil]];
   NSTableColumn *numberColumn=[queue_ tableColumnWithIdentifier:@"number"];
   [numberColumn setMinWidth:36]; [numberColumn setMaxWidth:36]; [numberColumn setWidth:36];
   [numberColumn setResizingMask:NSTableColumnNoResizing];
@@ -67,12 +67,12 @@
   [queue_ setColumnAutoresizingStyle:NSTableViewNoColumnAutoresizing];
   NSScrollView *queueScroll=[queue_ enclosingScrollView];
   [queueScroll setBorderType:NSNoBorder]; [queueScroll setAutohidesScrollers:YES];
-  NSMenu *jobMenu=[[[NSMenu alloc] initWithTitle:@"Queue Actions"] autorelease];
-  [RDLPLibraryMenus addItemToMenu:jobMenu title:@"Play" action:@selector(openJob:) target:owner_];
-  [RDLPLibraryMenus addItemToMenu:jobMenu title:@"Retry" action:@selector(retryQueueJob:) target:owner_];
-  [RDLPLibraryMenus addItemToMenu:jobMenu title:@"Stop Download…" action:@selector(cancelQueueJob:) target:owner_];
-  [RDLPLibraryMenus addItemToMenu:jobMenu title:@"Show Error…" action:@selector(showQueueError:) target:owner_];
-  [RDLPLibraryMenus addItemToMenu:jobMenu title:@"Delete Download…" action:@selector(removeJob:) target:owner_];
+  NSMenu *jobMenu=[[[NSMenu alloc] initWithTitle:NSLocalizedString(@"Queue Actions", nil)] autorelease];
+  [RDLPLibraryMenus addItemToMenu:jobMenu title:NSLocalizedString(@"Play", nil) action:@selector(openJob:) target:owner_];
+  [RDLPLibraryMenus addItemToMenu:jobMenu title:NSLocalizedString(@"Retry", nil) action:@selector(retryQueueJob:) target:owner_];
+  [RDLPLibraryMenus addItemToMenu:jobMenu title:NSLocalizedString(@"Stop Download…", nil) action:@selector(cancelQueueJob:) target:owner_];
+  [RDLPLibraryMenus addItemToMenu:jobMenu title:NSLocalizedString(@"Show Error…", nil) action:@selector(showQueueError:) target:owner_];
+  [RDLPLibraryMenus addItemToMenu:jobMenu title:NSLocalizedString(@"Delete Download…", nil) action:@selector(removeJob:) target:owner_];
   [queue_ setMenu:jobMenu]; [queue_ setTarget:owner_]; [queue_ setDoubleAction:@selector(openJob:)];
 
   [queue setFrame:NSMakeRect(0,32,bounds.size.width,MAX(0,bounds.size.height-32))];
@@ -112,7 +112,7 @@
   (void)toolbar;
   NSArray *ids=[NSArray arrayWithObjects:@"retry",@"stop",@"error",@"delete",nil];
   NSUInteger index=[ids indexOfObject:identifier]; if(index==NSNotFound) return nil;
-  NSArray *labels=[NSArray arrayWithObjects:@"Retry",@"Stop",@"Error",@"Delete",nil];
+  NSArray *labels=[NSArray arrayWithObjects:NSLocalizedString(@"Retry", nil),NSLocalizedString(@"Stop", nil),NSLocalizedString(@"Error", nil),NSLocalizedString(@"Delete", nil),nil];
   NSToolbarItem *item=[[[NSToolbarItem alloc] initWithItemIdentifier:identifier] autorelease];
   RDLPToolbarButton *button=[[[RDLPToolbarButton alloc] initWithFrame:NSMakeRect(0,0,40,32)] autorelease];
   [button setTitle:[labels objectAtIndex:index]]; [button setTag:(NSInteger)index];

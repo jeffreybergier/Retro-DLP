@@ -112,7 +112,7 @@ static NSArray *RDLPDownloadItemKeys(void) {
     if(!isfinite(_resume) || _resume<0) _resume=0;
     _savedPosition=_resume;
     NSString *title=[job objectForKey:@"title"], *channel=[job objectForKey:@"channel"];
-    if(![title length]) title=[_video length]?_video:@"Video";
+    if(![title length]) title=[_video length]?_video:NSLocalizedString(@"Video", nil);
     [_playerViewController setTitle:title];
     NSMutableDictionary *metadata=[NSMutableDictionary dictionaryWithObject:title forKey:MPMediaItemPropertyTitle];
     if([channel length]) [metadata setObject:channel forKey:MPMediaItemPropertyArtist];

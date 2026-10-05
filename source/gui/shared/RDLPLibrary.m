@@ -71,7 +71,7 @@ static int collect(void *context,int count,const char *const *names,const char *
       rdapp_store_page(reader_,(rdapp_query)query_,key_,[video_ UTF8String],[format_ UTF8String],(int64_t)index,1,collect,rows);
     if(!ok && !readFailed_) {
       readFailed_=YES;
-      [owner_ reportError:@"Couldn’t read library" detail:string(rdapp_store_error(reader_))];
+      [owner_ reportError:NSLocalizedString(@"Couldn’t read library", nil) detail:string(rdapp_store_error(reader_))];
     }
     row=[rows count]?[rows objectAtIndex:0]:[NSDictionary dictionary];
     /* Retain only a small working set, even after scrolling through a huge list. */
@@ -96,7 +96,7 @@ static int collect(void *context,int count,const char *const *names,const char *
   int64_t timestamp=(int64_t)[date timeIntervalSince1970];
   int ok=query_==RDAPP_ADDED_VIDEOS?rdapp_store_added_videos_since(reader_,key_,timestamp,&count):
     (query_==RDAPP_ALL_DOWNLOADS && rdapp_store_downloads_since(reader_,timestamp,&count));
-  if(!ok) [owner_ reportError:@"Couldn’t read date sections" detail:string(rdapp_store_error(reader_))];
+  if(!ok) [owner_ reportError:NSLocalizedString(@"Couldn’t read date sections", nil) detail:string(rdapp_store_error(reader_))];
   return (NSUInteger)count;
 }
 - (NSUInteger)indexForIdentity:(NSString *)identity;
@@ -143,12 +143,12 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   if(!event) return;
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
   switch(event->type) {
-    case RDLP_DOWNLOAD_EVENT_DOWNLOADING_AUDIO: phase=@"Downloading audio"; break;
-    case RDLP_DOWNLOAD_EVENT_DOWNLOADING_VIDEO: phase=@"Downloading video"; break;
-    case RDLP_DOWNLOAD_EVENT_DOWNLOADING_MEDIA: phase=@"Downloading"; break;
-    case RDLP_DOWNLOAD_EVENT_MUXING: phase=@"Combining audio and video…"; break;
-    case RDLP_DOWNLOAD_EVENT_CLEANING_UP: phase=@"Finishing download…"; break;
-    default: phase=@"Downloading"; break;
+    case RDLP_DOWNLOAD_EVENT_DOWNLOADING_AUDIO: phase=NSLocalizedString(@"Downloading audio", nil); break;
+    case RDLP_DOWNLOAD_EVENT_DOWNLOADING_VIDEO: phase=NSLocalizedString(@"Downloading video", nil); break;
+    case RDLP_DOWNLOAD_EVENT_DOWNLOADING_MEDIA: phase=NSLocalizedString(@"Downloading", nil); break;
+    case RDLP_DOWNLOAD_EVENT_MUXING: phase=NSLocalizedString(@"Combining audio and video…", nil); break;
+    case RDLP_DOWNLOAD_EVENT_CLEANING_UP: phase=NSLocalizedString(@"Finishing download…", nil); break;
+    default: phase=NSLocalizedString(@"Downloading", nil); break;
   }
   [(RDLPLibrary *)context progress:phase completed:event->completed_bytes expected:event->expected_bytes];
   [pool drain];
@@ -158,7 +158,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 {
   NSMutableArray *titles=[NSMutableArray array];
   for(NSString *format in [self qualityFormats]) [titles addObject:[self qualityLabelForFormat:format]];
-  [titles addObject:@"Custom Format…"];
+  [titles addObject:NSLocalizedString(@"Custom Format…", nil)];
   return titles;
 }
 + (NSArray *)qualityFormats;
@@ -170,16 +170,16 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   /* Preserve labels for existing jobs and saved exact-format preferences. */
   if(index==NSNotFound && [format isEqualToString:@"136+140"]) index=1;
   if(index==NSNotFound && [format isEqualToString:@"137+140"]) index=2;
-  NSArray *names=[NSArray arrayWithObjects:@"Low",@"Med",@"High",nil];
-  NSString *name=index==NSNotFound?@"Custom":[names objectAtIndex:index];
-  return [NSString stringWithFormat:@"%@ (%@)",name,format];
+  NSArray *names=[NSArray arrayWithObjects:NSLocalizedString(@"Low", nil),NSLocalizedString(@"Med", nil),NSLocalizedString(@"High", nil),nil];
+  NSString *name=index==NSNotFound?NSLocalizedString(@"Custom", nil):[names objectAtIndex:index];
+  return [NSString stringWithFormat:NSLocalizedString(@"%@ (%@)", nil),name,format];
 }
 + (NSString *)durationLabelForEntry:(NSDictionary *)entry;
 {
   unsigned long long seconds;
   if(!entry_number(entry,@"duration",&seconds)) return @"";
-  return seconds>=3600?[NSString stringWithFormat:@"%llu:%02llu:%02llu",seconds/3600,(seconds/60)%60,seconds%60]:
-    [NSString stringWithFormat:@"%llu:%02llu",seconds/60,seconds%60];
+  return seconds>=3600?[NSString stringWithFormat:NSLocalizedString(@"%llu:%02llu:%02llu", nil),seconds/3600,(seconds/60)%60,seconds%60]:
+    [NSString stringWithFormat:NSLocalizedString(@"%llu:%02llu", nil),seconds/60,seconds%60];
 }
 + (NSString *)spokenDurationForEntry:(NSDictionary *)entry;
 {
@@ -187,9 +187,9 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   if(!entry_number(entry,@"duration",&seconds)) return @"";
   NSMutableArray *parts=[NSMutableArray array];
   unsigned long long hours=seconds/3600, minutes=(seconds/60)%60, remainder=seconds%60;
-  if(hours) [parts addObject:[NSString stringWithFormat:@"%llu %@",hours,hours==1?@"hour":@"hours"]];
-  if(minutes) [parts addObject:[NSString stringWithFormat:@"%llu %@",minutes,minutes==1?@"minute":@"minutes"]];
-  if(remainder || !seconds) [parts addObject:[NSString stringWithFormat:@"%llu %@",remainder,remainder==1?@"second":@"seconds"]];
+  if(hours) [parts addObject:[NSString stringWithFormat:NSLocalizedString(@"%llu %@", nil),hours,hours==1?NSLocalizedString(@"hour", nil):NSLocalizedString(@"hours", nil)]];
+  if(minutes) [parts addObject:[NSString stringWithFormat:NSLocalizedString(@"%llu %@", nil),minutes,minutes==1?NSLocalizedString(@"minute", nil):NSLocalizedString(@"minutes", nil)]];
+  if(remainder || !seconds) [parts addObject:[NSString stringWithFormat:NSLocalizedString(@"%llu %@", nil),remainder,remainder==1?NSLocalizedString(@"second", nil):NSLocalizedString(@"seconds", nil)]];
   return [parts componentsJoinedByString:@", "];
 }
 + (NSString *)metadataSummaryForEntry:(NSDictionary *)entry;
@@ -208,17 +208,17 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   NSString *snippet=[entry objectForKey:@"description_snippet"]; unsigned long long count;
   if([title length]) [lines addObject:title];
   if([summary length]) [lines addObject:summary];
-  if(![views length] && entry_number(entry,@"view_count",&count)) views=[NSString stringWithFormat:@"%llu views",count];
+  if(![views length] && entry_number(entry,@"view_count",&count)) views=[NSString stringWithFormat:NSLocalizedString(@"%llu views", nil),count];
   if([views length]) [snapshot addObject:views];
-  if([published length]) [snapshot addObject:[@"Published " stringByAppendingString:published]];
-  if([snapshot count]) [lines addObject:[@"At last sync: " stringByAppendingString:[snapshot componentsJoinedByString:@"·"]]];
+  if([published length]) [snapshot addObject:[NSLocalizedString(@"Published ", nil) stringByAppendingString:published]];
+  if([snapshot count]) [lines addObject:[NSLocalizedString(@"At last sync: ", nil) stringByAppendingString:[snapshot componentsJoinedByString:@"·"]]];
   if([snippet length]) [lines addObject:snippet];
   return [lines componentsJoinedByString:@"\n"];
 }
 + (NSString *)fileSizeLabelForBytes:(unsigned long long)bytes;
 {
-  if(bytes<1000000) return [NSString stringWithFormat:@"%llu KB",(bytes+999)/1000];
-  return [NSString stringWithFormat:@"%.1f MB",(double)bytes/1000000.0];
+  if(bytes<1000000) return [NSString stringWithFormat:NSLocalizedString(@"%llu KB", nil),(bytes+999)/1000];
+  return [NSString stringWithFormat:NSLocalizedString(@"%.1f MB", nil),(double)bytes/1000000.0];
 }
 + (NSString *)preferredFormat;
 {
@@ -353,9 +353,9 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (NSString *)cookieStatus;
 {
   struct stat info;
-  if(stat([cookies_ fileSystemRepresentation],&info)) return errno==ENOENT?@"Not Imported":@"Unavailable";
-  if(!S_ISREG(info.st_mode) || info.st_size<=0 || info.st_size>4*1024*1024 || access([cookies_ fileSystemRepresentation],R_OK)) return @"Unavailable";
-  return @"Imported";
+  if(stat([cookies_ fileSystemRepresentation],&info)) return errno==ENOENT?NSLocalizedString(@"Not Imported", nil):NSLocalizedString(@"Unavailable", nil);
+  if(!S_ISREG(info.st_mode) || info.st_size<=0 || info.st_size>4*1024*1024 || access([cookies_ fileSystemRepresentation],R_OK)) return NSLocalizedString(@"Unavailable", nil);
+  return NSLocalizedString(@"Imported", nil);
 }
 - (void)startDownloads;
 { operationsSuspended_=NO; paused_=NO; [self startNext]; }
@@ -364,8 +364,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 {
   RDLPLibraryRows *rows=[[[RDLPLibraryRows alloc] initWithLibrary:self path:[support_ stringByAppendingPathComponent:@"retrodlp.sqlite"] query:query key:key video:video format:format] autorelease];
   if(!rows && !lastReadError_) {
-    lastReadError_=[@"Could not open a library read snapshot." copy];
-    [self reportError:@"Couldn’t read library" detail:lastReadError_];
+    lastReadError_=[NSLocalizedString(@"Could not open a library read snapshot.", nil) copy];
+    [self reportError:NSLocalizedString(@"Couldn’t read library", nil) detail:lastReadError_];
   } else if(rows) { [lastReadError_ release]; lastReadError_=nil; }
   return rows;
 }
@@ -465,18 +465,18 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 {
   NSString *command=[activeCommand_ objectForKey:@"type"], *phase=nil;
   if(![command isEqualToString:@"download"] && ![command isEqualToString:@"addVideo"]) {
-    phase=[command isEqualToString:@"discover"]?@"Syncing My Playlists…":
-      ([[activeCommand_ objectForKey:@"adding"] boolValue]?@"Adding playlist…":@"Syncing playlist…");
+    phase=[command isEqualToString:@"discover"]?NSLocalizedString(@"Syncing My Playlists…", nil):
+      ([[activeCommand_ objectForKey:@"adding"] boolValue]?NSLocalizedString(@"Adding playlist…", nil):NSLocalizedString(@"Syncing playlist…", nil));
   } else switch(type) {
-    case RDLP_EVENT_AUTHENTICATING: phase=@"Reading cookies…"; break;
-    case RDLP_EVENT_LOADING_CONFIGURATION: phase=@"Configuring client…"; break;
-    case RDLP_EVENT_FETCHING_BOOTSTRAP: phase=@"Loading mobile player…"; break;
-    case RDLP_EVENT_REQUESTING_METADATA: phase=@"Requesting metadata…"; break;
-    case RDLP_EVENT_REFRESHING_METADATA: phase=@"Refreshing visitor data…"; break;
-    case RDLP_EVENT_SELECTING_FORMATS: phase=@"Selecting format…"; break;
-    case RDLP_EVENT_LOADING_PLAYER_JAVASCRIPT: phase=@"Downloading player script…"; break;
-    case RDLP_EVENT_SOLVING_CHALLENGES: phase=@"Solving challenges…"; break;
-    case RDLP_EVENT_ENUMERATING_PLAYLIST: phase=@"Reading playlist…"; break;
+    case RDLP_EVENT_AUTHENTICATING: phase=NSLocalizedString(@"Reading cookies…", nil); break;
+    case RDLP_EVENT_LOADING_CONFIGURATION: phase=NSLocalizedString(@"Configuring client…", nil); break;
+    case RDLP_EVENT_FETCHING_BOOTSTRAP: phase=NSLocalizedString(@"Loading mobile player…", nil); break;
+    case RDLP_EVENT_REQUESTING_METADATA: phase=NSLocalizedString(@"Requesting metadata…", nil); break;
+    case RDLP_EVENT_REFRESHING_METADATA: phase=NSLocalizedString(@"Refreshing visitor data…", nil); break;
+    case RDLP_EVENT_SELECTING_FORMATS: phase=NSLocalizedString(@"Selecting format…", nil); break;
+    case RDLP_EVENT_LOADING_PLAYER_JAVASCRIPT: phase=NSLocalizedString(@"Downloading player script…", nil); break;
+    case RDLP_EVENT_SOLVING_CHALLENGES: phase=NSLocalizedString(@"Solving challenges…", nil); break;
+    case RDLP_EVENT_ENUMERATING_PLAYLIST: phase=NSLocalizedString(@"Reading playlist…", nil); break;
     case RDLP_EVENT_OTHER: return;
   }
   if(phase) [self progress:phase completed:0 expected:0];
@@ -493,9 +493,9 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   NSString *message=phase;
   if(completed || expected) {
     double elapsed=now-transferStarted_;
-    NSString *speed=elapsed>0?[NSString stringWithFormat:@"·%.1f Mbps",(double)completed*8.0/elapsed/1000000.0]:@"";
-    message=expected?[NSString stringWithFormat:@"%@·%.0f%%%@",phase,MIN(100.0,100.0*(double)completed/(double)expected),speed]:
-      [NSString stringWithFormat:@"%@%@",phase,speed];
+    NSString *speed=elapsed>0?[NSString stringWithFormat:NSLocalizedString(@"·%.1f Mbps", nil),(double)completed*8.0/elapsed/1000000.0]:@"";
+    message=expected?[NSString stringWithFormat:NSLocalizedString(@"%@·%.0f%%%@", nil),phase,MIN(100.0,100.0*(double)completed/(double)expected),speed]:
+      [NSString stringWithFormat:NSLocalizedString(@"%@%@", nil),phase,speed];
   }
   NSDictionary *update=[NSDictionary dictionaryWithObjectsAndKeys:message,@"message",
     [NSNumber numberWithUnsignedLongLong:completed],@"completed",
@@ -518,9 +518,9 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (void)queuePlaylistInput:(NSString *)input adding:(BOOL)adding;
 {
   input=[input stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-  if(![input length]) { [self reportError:@"Enter a playlist" detail:@"Enter a playlist URL or ID."]; return; }
+  if(![input length]) { [self reportError:NSLocalizedString(@"Enter a playlist", nil) detail:NSLocalizedString(@"Enter a playlist URL or ID.", nil)]; return; }
   if(!rdapp_playlist_can_sync([input UTF8String])) {
-    if(adding) [self reportError:@"Unsupported playlist" detail:@"This playlist type cannot be synced by RetroDLP."];
+    if(adding) [self reportError:NSLocalizedString(@"Unsupported playlist", nil) detail:NSLocalizedString(@"This playlist type cannot be synced by RetroDLP.", nil)];
     return;
   }
   if([self isSyncPendingForInput:input]) return;
@@ -530,7 +530,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (void)queueVideoInput:(NSString *)input;
 {
   input=[input stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-  if(![input length]) { [self reportError:@"Enter a video" detail:@"Enter a YouTube video URL or ID."]; return; }
+  if(![input length]) { [self reportError:NSLocalizedString(@"Enter a video", nil) detail:NSLocalizedString(@"Enter a YouTube video URL or ID.", nil)]; return; }
   /* Admission is local: show the row immediately, even during another transfer.
      The normal worker resolves metadata and media URLs once, when claimed. */
   rdapp_service_config config; rdapp_job job; char message[1024];
@@ -539,8 +539,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   config.lock=store_lock; config.unlock=store_unlock; config.lock_context=lock_;
   job.format=[[RDLPLibrary preferredFormat] UTF8String];
   rdlp_error_code code=rdapp_service_run(store_,&config,RDAPP_ADD_VIDEO,[input UTF8String],&job,message,sizeof(message));
-  if(code!=RDLP_OK) { [self reportError:@"Couldn’t add video" detail:string(message)]; return; }
-  if(!busy_) [self showStatus:@"Video added"];
+  if(code!=RDLP_OK) { [self reportError:NSLocalizedString(@"Couldn’t add video", nil) detail:string(message)]; return; }
+  if(!busy_) [self showStatus:NSLocalizedString(@"Video added", nil)];
   [self changed]; [self startNext];
 }
 - (void)syncAll;
@@ -554,12 +554,12 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (void)enqueuePlaylist:(NSString *)key video:(NSString *)video format:(NSString *)format;
 {
   int ok;
-  if(![key length]) { [self reportError:@"Select a playlist" detail:@"Select a synced playlist first."]; return; }
-  if(!rdlp_format_expression_valid([format UTF8String])) { [self reportError:@"Invalid format" detail:@"Enter a format ID, such as 18 or 136+140."]; return; }
+  if(![key length]) { [self reportError:NSLocalizedString(@"Select a playlist", nil) detail:NSLocalizedString(@"Select a synced playlist first.", nil)]; return; }
+  if(!rdlp_format_expression_valid([format UTF8String])) { [self reportError:NSLocalizedString(@"Invalid format", nil) detail:NSLocalizedString(@"Enter a format ID, such as 18 or 136+140.", nil)]; return; }
   [lock_ lock]; ok=rdapp_store_enqueue(store_,identifier(key),[video UTF8String],[format UTF8String]);
   NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy];
   [lock_ unlock];
-  if(error) [self reportError:@"Couldn’t queue download" detail:error];
+  if(error) [self reportError:NSLocalizedString(@"Couldn’t queue download", nil) detail:error];
   [error release]; [self changed];
   [self startNext];
 }
@@ -569,7 +569,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   int ok=rdapp_store_reconcile_job(store_,identifier(key),[root_ fileSystemRepresentation]) && rdapp_store_retry(store_,identifier(key));
   NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy]; [lock_ unlock];
   if(ok) { [self changed]; [self startNext]; }
-  else [self reportError:@"Couldn’t retry download" detail:error];
+  else [self reportError:NSLocalizedString(@"Couldn’t retry download", nil) detail:error];
   [error release];
 }
 - (void)cancelJob:(NSString *)key;
@@ -582,7 +582,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
     if(!rdapp_store_cancel(store_,identifier(key))) error=[string(rdapp_store_error(store_)) copy];
     [lock_ unlock];
   }
-  if(error) [self reportError:@"Couldn’t stop download" detail:error];
+  if(error) [self reportError:NSLocalizedString(@"Couldn’t stop download", nil) detail:error];
   [error release]; [self changed];
 }
 - (double)storedPlaybackSecondsForVideo:(NSString *)video;
@@ -611,11 +611,11 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (void)removeDownload:(NSDictionary *)job;
 {
   NSString *key=[job objectForKey:@"id"];
-  if(busy_) { [self reportError:@"Couldn’t delete download" detail:@"Wait for the current operation to finish."]; return; }
+  if(busy_) { [self reportError:NSLocalizedString(@"Couldn’t delete download", nil) detail:NSLocalizedString(@"Wait for the current operation to finish.", nil)]; return; }
   [lock_ lock];
   int ok=rdapp_store_remove_file_with_callback(store_,identifier(key),[root_ fileSystemRepresentation],remove_download_file,self);
   NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy];
-  [lock_ unlock]; if(error) [self reportError:@"Couldn’t delete download" detail:error]; [error release]; [self changed];
+  [lock_ unlock]; if(error) [self reportError:NSLocalizedString(@"Couldn’t delete download", nil) detail:error]; [error release]; [self changed];
 }
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
 {
@@ -629,7 +629,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 }
 - (void)removePlaylist:(NSDictionary *)playlist;
 {
-  if(![self canRemovePlaylist:playlist]) { [self reportError:@"Couldn’t remove playlist" detail:@"Wait for playlist operations to finish. Added Videos cannot be removed."]; return; }
+  if(![self canRemovePlaylist:playlist]) { [self reportError:NSLocalizedString(@"Couldn’t remove playlist", nil) detail:NSLocalizedString(@"Wait for playlist operations to finish. Added Videos cannot be removed.", nil)]; return; }
   [lock_ lock]; int ok=rdapp_store_remove_playlist(store_,identifier([playlist objectForKey:@"id"]),[root_ fileSystemRepresentation]);
   NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy]; [lock_ unlock];
   if(ok) {
@@ -638,20 +638,20 @@ static void download_callback(const rdlp_download_event *event,void *context) {
     unlink([[directory stringByAppendingPathComponent:@"Playlist.m3u8"] fileSystemRepresentation]);
     /* An active transfer may already have prepared this destination folder. */
   }
-  if(error) [self reportError:@"Couldn’t remove playlist" detail:error]; [error release]; [self changed];
+  if(error) [self reportError:NSLocalizedString(@"Couldn’t remove playlist", nil) detail:error]; [error release]; [self changed];
 }
 - (BOOL)importCookies:(NSString *)path;
 {
-  if(busy_) { [self reportError:@"Couldn’t import cookies" detail:@"Wait for the current operation to finish."]; return NO; }
+  if(busy_) { [self reportError:NSLocalizedString(@"Couldn’t import cookies", nil) detail:NSLocalizedString(@"Wait for the current operation to finish.", nil)]; return NO; }
   NSData *data=[NSData dataWithContentsOfFile:path];
-  if(!data || ![data length] || [data length]>4*1024*1024) { [self reportError:@"Couldn’t import cookies" detail:@"Choose a readable, nonempty Netscape cookies.txt file of 4 MiB or less."]; return NO; }
-  if(![data writeToFile:cookies_ atomically:YES] || chmod([cookies_ fileSystemRepresentation],0600)) { [self reportError:@"Couldn’t save cookies" detail:@"Check available storage and try again."]; return NO; }
+  if(!data || ![data length] || [data length]>4*1024*1024) { [self reportError:NSLocalizedString(@"Couldn’t import cookies", nil) detail:NSLocalizedString(@"Choose a readable, nonempty Netscape cookies.txt file of 4 MiB or less.", nil)]; return NO; }
+  if(![data writeToFile:cookies_ atomically:YES] || chmod([cookies_ fileSystemRepresentation],0600)) { [self reportError:NSLocalizedString(@"Couldn’t save cookies", nil) detail:NSLocalizedString(@"Check available storage and try again.", nil)]; return NO; }
   [self changed]; return YES;
 }
 - (void)clearCookies;
 {
-  if(busy_) { [self reportError:@"Couldn’t remove cookies" detail:@"Wait for the current operation to finish."]; return; }
-  if(unlink([cookies_ fileSystemRepresentation]) && errno!=ENOENT) [self reportError:@"Couldn’t remove cookies" detail:string(strerror(errno))];
+  if(busy_) { [self reportError:NSLocalizedString(@"Couldn’t remove cookies", nil) detail:NSLocalizedString(@"Wait for the current operation to finish.", nil)]; return; }
+  if(unlink([cookies_ fileSystemRepresentation]) && errno!=ENOENT) [self reportError:NSLocalizedString(@"Couldn’t remove cookies", nil) detail:string(strerror(errno))];
   else [self changed];
 }
 - (void)startNext;
@@ -662,7 +662,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   else if(!paused_) {
     NSMutableArray *rows=[NSMutableArray array];
     [lock_ lock]; int ok=rdapp_store_claim(store_,collect,rows); [lock_ unlock];
-    if(!ok) { [self reportError:@"Couldn’t start download" detail:string(rdapp_store_error(store_))]; return; }
+    if(!ok) { [self reportError:NSLocalizedString(@"Couldn’t start download", nil) detail:string(rdapp_store_error(store_))]; return; }
     if([rows count]) command=[NSDictionary dictionaryWithObjectsAndKeys:@"download",@"type",[rows objectAtIndex:0],@"job",nil];
   }
   if(!command) {
@@ -679,15 +679,15 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   transferCompleted_=0; transferExpected_=0; lastProgress_=0;
   [lastPhase_ release]; lastPhase_=nil;
   NSString *type=[command objectForKey:@"type"];
-  if(![type isEqualToString:@"reconcile"]) [self showStatus:[type isEqualToString:@"download"]?@"Resolving video…":
-    ([type isEqualToString:@"discover"]?@"Syncing My Playlists…":([type isEqualToString:@"addVideo"]?@"Adding video…":([[command objectForKey:@"adding"] boolValue]?@"Adding playlist…":@"Syncing playlist…")))];
+  if(![type isEqualToString:@"reconcile"]) [self showStatus:[type isEqualToString:@"download"]?NSLocalizedString(@"Resolving video…", nil):
+    ([type isEqualToString:@"discover"]?NSLocalizedString(@"Syncing My Playlists…", nil):([type isEqualToString:@"addVideo"]?NSLocalizedString(@"Adding video…", nil):([[command objectForKey:@"adding"] boolValue]?NSLocalizedString(@"Adding playlist…", nil):NSLocalizedString(@"Syncing playlist…", nil))))];
   [self changed];
   /* QuickJS permits 1 MiB of stack; the default 512 KiB worker stack can
      hit its guard page before QuickJS detects overflow. Leave native headroom. */
   int error=[NSThread RDLP_detachNewThreadSelector:@selector(work:) toTarget:self
     withObject:command stackSize:2U*1024U*1024U];
   if(error) {
-    NSString *message=[NSString stringWithFormat:@"Couldn’t start worker: %s",strerror(error)];
+    NSString *message=[NSString stringWithFormat:NSLocalizedString(@"Couldn’t start worker: %s", nil),strerror(error)];
     paused_=YES; operationsSuspended_=YES;
     if(activeJob_) {
       [lock_ lock];
@@ -703,7 +703,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   if([[activeCommand_ objectForKey:@"type"] isEqualToString:@"reconcile"]) {
     [activeCommand_ release]; activeCommand_=nil; busy_=NO;
     if([[result objectForKey:@"code"] intValue]!=RDLP_OK)
-      [self reportError:@"Couldn’t read library" detail:[result objectForKey:@"message"]];
+      [self reportError:NSLocalizedString(@"Couldn’t read library", nil) detail:[result objectForKey:@"message"]];
     if(!stopping_) { [self changed]; [self startNext]; }
     [self endOperation];
     return;
@@ -723,16 +723,16 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   BOOL download=[type isEqualToString:@"download"], discover=[type isEqualToString:@"discover"], addVideo=[type isEqualToString:@"addVideo"];
   BOOL adding=[[activeCommand_ objectForKey:@"adding"] boolValue];
   rdlp_error_code code=(rdlp_error_code)[[result objectForKey:@"code"] intValue];
-  NSString *status=download?@"Download complete":(discover?@"My Playlists synced":(addVideo?@"Video added":(adding?@"Playlist added":@"Playlist synced")));
-  if(download && code==RDLP_OK) status=[NSString stringWithFormat:@"Downloaded·%.1f MiB",[[result objectForKey:@"bytes"] doubleValue]/1048576.0];
-  if(code==RDLP_ERROR_CANCELLED) status=download?@"Download stopped":@"Playlist operation stopped";
-  else if(code!=RDLP_OK) status=download?@"Download failed":(discover?@"Error syncing My Playlists":(addVideo?@"Error adding video":(adding?@"Error adding playlist":@"Error syncing playlist")));
+  NSString *status=download?NSLocalizedString(@"Download complete", nil):(discover?NSLocalizedString(@"My Playlists synced", nil):(addVideo?NSLocalizedString(@"Video added", nil):(adding?NSLocalizedString(@"Playlist added", nil):NSLocalizedString(@"Playlist synced", nil))));
+  if(download && code==RDLP_OK) status=[NSString stringWithFormat:NSLocalizedString(@"Downloaded·%.1f MiB", nil),[[result objectForKey:@"bytes"] doubleValue]/1048576.0];
+  if(code==RDLP_ERROR_CANCELLED) status=download?NSLocalizedString(@"Download stopped", nil):NSLocalizedString(@"Playlist operation stopped", nil);
+  else if(code!=RDLP_OK) status=download?NSLocalizedString(@"Download failed", nil):(discover?NSLocalizedString(@"Error syncing My Playlists", nil):(addVideo?NSLocalizedString(@"Error adding video", nil):(adding?NSLocalizedString(@"Error adding playlist", nil):NSLocalizedString(@"Error syncing playlist", nil))));
   BOOL warning=[[result objectForKey:@"warning"] boolValue];
-  if(warning) status=@"Download needs attention";
+  if(warning) status=NSLocalizedString(@"Download needs attention", nil);
   if((code!=RDLP_OK && code!=RDLP_ERROR_CANCELLED) || warning) {
     NSString *title=download?[[activeCommand_ objectForKey:@"job"] objectForKey:@"title"]:[activeCommand_ objectForKey:@"input"];
     NSString *detail=[result objectForKey:@"message"];
-    if([title length]) detail=[NSString stringWithFormat:@"%@\n\n%@",title,detail];
+    if([title length]) detail=[NSString stringWithFormat:NSLocalizedString(@"%@\n\n%@", nil),title,detail];
     [self reportError:status detail:detail];
   }
   [activeCommand_ release]; activeCommand_=nil;

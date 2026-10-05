@@ -5,7 +5,7 @@
 @implementation RDLPDownloadsViewController
 - (id)initWithLibrary:(RDLPLibrary *)library;
 {
-  self=[super initWithLibrary:library title:@"All Downloads"];
+  self=[super initWithLibrary:library title:NSLocalizedString(@"All Downloads", nil)];
   if(self) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPDateBoundariesDidChange object:nil];
     [NSCalendar RDLP_monitorDateBoundaries];

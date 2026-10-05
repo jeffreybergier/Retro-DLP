@@ -90,12 +90,12 @@
 - (void)configureAddVideoButton;
 {
   [[self navigationItem] setRightBarButtonItem:[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit plusIcon] style:UIBarButtonItemStylePlain target:self action:@selector(addVideo:)] autorelease]];
-  [[[self navigationItem] rightBarButtonItem] setAccessibilityLabel:@"Add Video"];
+  [[[self navigationItem] rightBarButtonItem] setAccessibilityLabel:NSLocalizedString(@"Add Video", nil)];
 }
 - (void)addVideo:(id)sender;
 {
   (void)sender; if(alert_ || [self presentedViewController] || [[self navigationController] presentedViewController]) return;
-  alert_=[[UIAlertView alloc] initWithTitle:@"Add Video" message:@"YouTube video URL or ID" delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Add",nil];
+  alert_=[[UIAlertView alloc] initWithTitle:NSLocalizedString(@"Add Video", nil) message:NSLocalizedString(@"YouTube video URL or ID", nil) delegate:self cancelButtonTitle:NSLocalizedString(@"Cancel", nil) otherButtonTitles:NSLocalizedString(@"Add", nil),nil];
   [alert_ setAlertViewStyle:UIAlertViewStylePlainTextInput];
   UITextField *field=[alert_ textFieldAtIndex:0];
   [field setAutocapitalizationType:UITextAutocapitalizationTypeNone];
@@ -175,7 +175,7 @@
   if([status length]) [spoken addObject:status];
   NSString *accessibility=[row objectForKey:@"accessibility_label"];
   [cell setAccessibilityLabel:accessibility?accessibility:[spoken componentsJoinedByString:@", "]];
-  [cell setAccessibilityHint:[status isEqualToString:@"Downloaded"]?@"Play video":(([status isEqualToString:@"Queued"] || [status isEqualToString:@"Downloading"])?@"Download in progress":@"Download video")];
+  [cell setAccessibilityHint:[status isEqualToString:NSLocalizedString(@"Downloaded", nil)]?NSLocalizedString(@"Play video", nil):(([status isEqualToString:NSLocalizedString(@"Queued", nil)] || [status isEqualToString:NSLocalizedString(@"Downloading", nil)])?NSLocalizedString(@"Download in progress", nil):NSLocalizedString(@"Download video", nil))];
   return cell;
 }
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index;
@@ -198,12 +198,12 @@
   }
   if([policy_ canCancel:job]) return;
   NSString *status=[policy_ statusForJob:job];
-  if([policy_ canRetry:job] || [status isEqualToString:@"File missing"]) {
-    NSString *reason=[status isEqualToString:@"Failed"]?@"The previous download failed.":([status isEqualToString:@"Interrupted"]?@"The previous download was interrupted.":([status isEqualToString:@"Cancelled"]?@"The previous download was stopped.":@"The downloaded file is missing."));
+  if([policy_ canRetry:job] || [status isEqualToString:NSLocalizedString(@"File missing", nil)]) {
+    NSString *reason=[status isEqualToString:NSLocalizedString(@"Failed", nil)]?NSLocalizedString(@"The previous download failed.", nil):([status isEqualToString:NSLocalizedString(@"Interrupted", nil)]?NSLocalizedString(@"The previous download was interrupted.", nil):([status isEqualToString:NSLocalizedString(@"Cancelled", nil)]?NSLocalizedString(@"The previous download was stopped.", nil):NSLocalizedString(@"The downloaded file is missing.", nil)));
     NSString *error=[job objectForKey:@"error"];
-    NSString *message=[NSString stringWithFormat:@"%@%@\n\nRetry downloads this video from the beginning at the same quality: %@.",reason,[error length]?[@"\n\n" stringByAppendingString:error]:@"",[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
+    NSString *message=[NSString stringWithFormat:NSLocalizedString(@"%@%@\n\nRetry downloads this video from the beginning at the same quality: %@.", nil),reason,[error length]?[@"\n\n" stringByAppendingString:error]:@"",[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
     retryRequest_=[[NSDictionary alloc] initWithObjectsAndKeys:[job objectForKey:@"id"],@"job",entry,@"entry",nil];
-    alert_=[[UIAlertView alloc] initWithTitle:@"Retry Download?" message:message delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Retry",nil];
+    alert_=[[UIAlertView alloc] initWithTitle:NSLocalizedString(@"Retry Download?", nil) message:message delegate:self cancelButtonTitle:NSLocalizedString(@"Cancel", nil) otherButtonTitles:NSLocalizedString(@"Retry", nil),nil];
     [alert_ show]; return;
   }
   if([policy_ canDownloadAgain:job]) [library_ retryJob:[job objectForKey:@"id"]];

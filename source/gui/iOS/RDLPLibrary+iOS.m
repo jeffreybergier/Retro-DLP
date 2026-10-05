@@ -28,7 +28,7 @@
 {
   NSError *error=nil;
   if([[NSFileManager defaultManager] removeItemAtPath:path error:&error]) return nil;
-  return error?[error localizedDescription]:@"Couldn’t delete the download file.";
+  return error?[error localizedDescription]:NSLocalizedString(@"Couldn’t delete the download file.", nil);
 }
 - (void)configurePlatformStorage;
 {
@@ -47,7 +47,7 @@
     if(!excluded) backupError=[NSError errorWithDomain:NSPOSIXErrorDomain code:errno userInfo:nil];
   }
 #pragma clang diagnostic pop
-  if(!excluded) [self reportError:@"Couldn’t exclude downloads from backups" detail:[backupError localizedDescription]];
+  if(!excluded) [self reportError:NSLocalizedString(@"Couldn’t exclude downloads from backups", nil) detail:[backupError localizedDescription]];
 }
 @end
 

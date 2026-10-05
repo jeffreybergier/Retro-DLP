@@ -4,9 +4,9 @@
 @implementation RDLPQueueViewController
 - (id)initWithLibrary:(RDLPLibrary *)library;
 {
-  self=[super initWithLibrary:library title:@"Download Queue"];
+  self=[super initWithLibrary:library title:NSLocalizedString(@"Download Queue", nil)];
   if(self) {
-    [self setTitle:@"Download Queue"];
+    [self setTitle:NSLocalizedString(@"Download Queue", nil)];
     [[self navigationItem] setRightBarButtonItem:[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(dismissQueue:)] autorelease]];
   }
   return self;
@@ -44,7 +44,7 @@
   UITableViewCell *cell=[super tableView:table cellForRowAtIndexPath:index];
   [[cell detailTextLabel] setNumberOfLines:1];
   [RDLPUIKit truncateMiddleInLabel:[cell detailTextLabel]];
-  [cell setAccessibilityHint:@"Show download details and actions"];
+  [cell setAccessibilityHint:NSLocalizedString(@"Show download details and actions", nil)];
   return cell;
 }
 - (void)showJobAlert:(NSDictionary *)job operation:(NSString *)operation;
@@ -54,20 +54,20 @@
   NSMutableArray *actions=[NSMutableArray array];
   if(menu) {
     [actions addObjectsFromArray:[model_ actionsForJob:job]];
-    [actions removeObject:@"Show in Queue"];
-    NSUInteger retry=[actions indexOfObject:@"Download Video"];
-    if(retry!=NSNotFound) [actions replaceObjectAtIndex:retry withObject:@"Retry Download"];
+    [actions removeObject:NSLocalizedString(@"Show in Queue", nil)];
+    NSUInteger retry=[actions indexOfObject:NSLocalizedString(@"Download Video", nil)];
+    if(retry!=NSNotFound) [actions replaceObjectAtIndex:retry withObject:NSLocalizedString(@"Retry Download", nil)];
   } else {
     if(stop?![policy_ canCancel:job]:(![policy_ canRemove:job] || [policy_ canCancel:job])) return;
-    [actions addObject:stop?@"Stop":@"Delete"];
+    [actions addObject:stop?NSLocalizedString(@"Stop", nil):NSLocalizedString(@"Delete", nil)];
   }
-  NSString *status=[policy_ statusForJob:job]; if([status isEqualToString:@"Cancelled"]) status=@"Stopped";
-  NSString *detail=menu?[NSString stringWithFormat:@"%@·%@\n%@",status,[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")]:
-    (stop?@"Retry restarts this quality from the beginning. Other queued downloads continue.":@"Deletes this quality and its partial files. Other qualities and playlist membership are retained.");
-  NSString *title=menu?[job objectForKey:@"title"]:[NSString stringWithFormat:@"%@ %@ — %@?",stop?@"Stop":@"Delete",[job objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
+  NSString *status=[policy_ statusForJob:job]; if([status isEqualToString:NSLocalizedString(@"Cancelled", nil)]) status=NSLocalizedString(@"Stopped", nil);
+  NSString *detail=menu?[NSString stringWithFormat:NSLocalizedString(@"%@·%@\n%@", nil),status,[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")]:
+    (stop?NSLocalizedString(@"Retry restarts this quality from the beginning. Other queued downloads continue.", nil):NSLocalizedString(@"Deletes this quality and its partial files. Other qualities and playlist membership are retained.", nil));
+  NSString *title=menu?[job objectForKey:@"title"]:[NSString stringWithFormat:NSLocalizedString(@"%@ %@ — %@?", nil),stop?NSLocalizedString(@"Stop", nil):NSLocalizedString(@"Delete", nil),[job objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
   retryRequest_=[[NSDictionary alloc] initWithObjectsAndKeys:[job objectForKey:@"id"],@"job",operation,@"operation",nil];
   jobActions_=[actions copy];
-  alert_=[[UIAlertView alloc] initWithTitle:title message:detail delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:nil];
+  alert_=[[UIAlertView alloc] initWithTitle:title message:detail delegate:self cancelButtonTitle:NSLocalizedString(@"Cancel", nil) otherButtonTitles:nil];
   for(NSString *action in actions) [alert_ addButtonWithTitle:action];
   [alert_ show];
 }
@@ -92,12 +92,12 @@
   if(!action) return;
   NSDictionary *job=[model_ currentJob:[request objectForKey:@"job"]]; if(!job) return;
   if([[request objectForKey:@"operation"] isEqualToString:@"actions"]) {
-    if([action isEqualToString:@"Play"] && [policy_ playable:job]) [RDLPUIKit presentPlayer:self library:library_ job:job];
-    else if([action isEqualToString:@"Retry Download"] && ([policy_ canRetry:job] || [policy_ canDownloadAgain:job])) [library_ retryJob:[job objectForKey:@"id"]];
-    else if([action isEqualToString:@"Stop Download…"]) [self showJobAlert:job operation:@"stop"];
-    else if([action isEqualToString:@"Delete Download…"]) [self showJobAlert:job operation:@"delete"];
-  } else if([action isEqualToString:@"Stop"] && [policy_ canCancel:job]) [library_ cancelJob:[job objectForKey:@"id"]];
-  else if([action isEqualToString:@"Delete"] && [policy_ canRemove:job] && ![policy_ canCancel:job]) [library_ removeDownload:job];
+    if([action isEqualToString:NSLocalizedString(@"Play", nil)] && [policy_ playable:job]) [RDLPUIKit presentPlayer:self library:library_ job:job];
+    else if([action isEqualToString:NSLocalizedString(@"Retry Download", nil)] && ([policy_ canRetry:job] || [policy_ canDownloadAgain:job])) [library_ retryJob:[job objectForKey:@"id"]];
+    else if([action isEqualToString:NSLocalizedString(@"Stop Download…", nil)]) [self showJobAlert:job operation:@"stop"];
+    else if([action isEqualToString:NSLocalizedString(@"Delete Download…", nil)]) [self showJobAlert:job operation:@"delete"];
+  } else if([action isEqualToString:NSLocalizedString(@"Stop", nil)] && [policy_ canCancel:job]) [library_ cancelJob:[job objectForKey:@"id"]];
+  else if([action isEqualToString:NSLocalizedString(@"Delete", nil)] && [policy_ canRemove:job] && ![policy_ canCancel:job]) [library_ removeDownload:job];
   [self refresh:nil];
 }
 @end

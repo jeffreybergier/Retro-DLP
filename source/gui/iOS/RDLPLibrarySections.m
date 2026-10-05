@@ -47,7 +47,7 @@
 - (NSDictionary *)section:(NSString *)title rows:(NSArray *)rows;
 { return [NSDictionary dictionaryWithObjectsAndKeys:title,@"title",rows,@"rows",nil]; }
 - (NSMutableDictionary *)row:(NSString *)title detail:(NSString *)detail action:(NSString *)action;
-{ return [NSMutableDictionary dictionaryWithObjectsAndKeys:title?title:@"Untitled",@"title",detail?detail:@"",@"detail",action,@"action",nil]; }
+{ return [NSMutableDictionary dictionaryWithObjectsAndKeys:title?title:NSLocalizedString(@"Untitled", nil),@"title",detail?detail:@"",@"detail",action,@"action",nil]; }
 - (NSDictionary *)currentJob:(NSString *)key;
 { return [library_ jobForID:key]; }
 - (NSDictionary *)jobForPlaylist:(NSString *)playlist video:(NSString *)video format:(NSString *)format;
@@ -62,17 +62,17 @@
 - (NSArray *)actionsForJob:(NSDictionary *)job;
 {
   NSMutableArray *actions=[NSMutableArray array];
-  if([policy_ playable:job]) [actions addObject:@"Play"];
-  if([policy_ canRetry:job] || [policy_ canDownloadAgain:job]) [actions addObject:@"Download Video"];
-  if([policy_ canCancel:job]) [actions addObject:@"Stop Download…"];
-  if([policy_ canRemove:job] && ![policy_ canCancel:job]) [actions addObject:@"Delete Download…"];
-  [actions addObject:@"Show in Queue"];
+  if([policy_ playable:job]) [actions addObject:NSLocalizedString(@"Play", nil)];
+  if([policy_ canRetry:job] || [policy_ canDownloadAgain:job]) [actions addObject:NSLocalizedString(@"Download Video", nil)];
+  if([policy_ canCancel:job]) [actions addObject:NSLocalizedString(@"Stop Download…", nil)];
+  if([policy_ canRemove:job] && ![policy_ canCancel:job]) [actions addObject:NSLocalizedString(@"Delete Download…", nil)];
+  [actions addObject:NSLocalizedString(@"Show in Queue", nil)];
   return actions;
 }
 - (NSDictionary *)jobRow:(NSDictionary *)job;
 {
   NSString *status=[policy_ statusForJob:job];
-  NSString *detail=[NSString stringWithFormat:@"%@·%@\n%@",status,[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")];
+  NSString *detail=[NSString stringWithFormat:NSLocalizedString(@"%@·%@\n%@", nil),status,[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")];
   NSMutableDictionary *row=[self row:[job objectForKey:@"title"] detail:detail action:@"job"];
   [row setObject:job forKey:@"job"]; [row setObject:status forKey:@"status"]; return row;
 }
@@ -85,7 +85,7 @@
   if([[job objectForKey:@"format"] length]) [parts addObject:[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
   NSString *detail=[parts componentsJoinedByString:@"·"];
   NSTimeInterval seconds=[[job objectForKey:key] doubleValue];
-  if(seconds>0) detail=[NSString stringWithFormat:@"%@·%@",
+  if(seconds>0) detail=[NSString stringWithFormat:NSLocalizedString(@"%@·%@", nil),
     [NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:seconds]
       dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterNoStyle],detail];
   return detail;
@@ -107,12 +107,12 @@
     }
     NSString *detail=[self subtitleForJob:job dateKey:screen==RDLPScreenDownloads?@"latestDownloadDate":@"enqueueDate"];
     [row setObject:detail forKey:@"detail"]; [row setObject:detail forKey:@"spoken_detail"];
-    [row setObject:[NSString stringWithFormat:@"%@, %@, %@",[row objectForKey:@"title"],detail,[row objectForKey:@"status"]] forKey:@"accessibility_label"];
+    [row setObject:[NSString stringWithFormat:NSLocalizedString(@"%@, %@, %@", nil),[row objectForKey:@"title"],detail,[row objectForKey:@"status"]] forKey:@"accessibility_label"];
     return row;
   }
   if(screen==RDLPScreenLibrary) {
-    NSMutableDictionary *row=[self row:[item objectForKey:@"title"] detail:[[item objectForKey:@"synced_at"] length]?[NSString stringWithFormat:@"%@ videos",[item objectForKey:@"count"]]:@"Not synced" action:@"playlist"];
-    if(![[item objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![RDLPLibrary canSyncPlaylist:item]) [row setObject:@"This playlist type cannot be synced" forKey:@"detail"];
+    NSMutableDictionary *row=[self row:[item objectForKey:@"title"] detail:[[item objectForKey:@"synced_at"] length]?[NSString stringWithFormat:NSLocalizedString(@"%@ videos", nil),[item objectForKey:@"count"]]:NSLocalizedString(@"Not synced", nil) action:@"playlist"];
+    if(![[item objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] && ![RDLPLibrary canSyncPlaylist:item]) [row setObject:NSLocalizedString(@"This playlist type cannot be synced", nil) forKey:@"detail"];
     [row setObject:item forKey:@"playlist"]; return row;
   }
   if(screen==RDLPScreenQueue) {
@@ -120,7 +120,7 @@
     NSString *detail=[self subtitleForJob:item dateKey:@"enqueueDate"];
     NSMutableDictionary *row=[self row:title detail:detail action:@"job"];
     NSString *status=[policy_ statusForJob:item];
-    [row setObject:[status isEqualToString:@"Cancelled"]?@"Stopped":status forKey:@"status"];
+    [row setObject:[status isEqualToString:NSLocalizedString(@"Cancelled", nil)]?NSLocalizedString(@"Stopped", nil):status forKey:@"status"];
     [row setObject:item forKey:@"job"]; return row;
   }
   return [self jobRow:item];
@@ -131,16 +131,16 @@
   NSMutableArray *sections=[NSMutableArray array], *rows=[NSMutableArray array];
   NSString *pid=[playlist objectForKey:@"id"];
   if(screen==RDLPScreenLibrary) {
-    [rows addObject:[self row:@"All Downloads" detail:@"" action:@"downloads"]];
+    [rows addObject:[self row:NSLocalizedString(@"All Downloads", nil) detail:@"" action:@"downloads"]];
     NSDictionary *adhoc=[library_ adhocPlaylist];
     if(adhoc) {
-      NSMutableDictionary *row=[self row:@"Added Videos" detail:[NSString stringWithFormat:@"%@ videos",[adhoc objectForKey:@"count"]] action:@"playlist"];
+      NSMutableDictionary *row=[self row:NSLocalizedString(@"Added Videos", nil) detail:[NSString stringWithFormat:NSLocalizedString(@"%@ videos", nil),[adhoc objectForKey:@"count"]] action:@"playlist"];
       [row setObject:adhoc forKey:@"playlist"]; [rows addObject:row];
     }
-    [sections addObject:[self section:@"System" rows:rows]];
-    [sections addObject:[self section:@"Added Playlists" rows:[self displayRows:[library_ playlistsFromAccount:NO] screen:screen playlist:nil]]];
-    [sections addObject:[self section:@"My Playlists" rows:[self displayRows:[library_ playlistsFromAccount:YES] screen:screen playlist:nil]]];
-    [sections addObject:[self section:@"Unsupported Playlists" rows:[self displayRows:[library_ unsupportedPlaylists] screen:screen playlist:nil]]];
+    [sections addObject:[self section:NSLocalizedString(@"System", nil) rows:rows]];
+    [sections addObject:[self section:NSLocalizedString(@"Added Playlists", nil) rows:[self displayRows:[library_ playlistsFromAccount:NO] screen:screen playlist:nil]]];
+    [sections addObject:[self section:NSLocalizedString(@"My Playlists", nil) rows:[self displayRows:[library_ playlistsFromAccount:YES] screen:screen playlist:nil]]];
+    [sections addObject:[self section:NSLocalizedString(@"Unsupported Playlists", nil) rows:[self displayRows:[library_ unsupportedPlaylists] screen:screen playlist:nil]]];
   } else if(screen==RDLPScreenSettings) {
     NSArray *titles=[RDLPLibrary qualityTitles], *formats=[RDLPLibrary qualityFormats]; NSString *format=[RDLPLibrary preferredFormat];
     for(NSUInteger i=0;i<[titles count];++i) {
@@ -148,12 +148,12 @@
       if(i<3) [row setObject:[formats objectAtIndex:i] forKey:@"format"];
       [row setObject:[NSNumber numberWithBool:i<3?[format isEqualToString:[formats objectAtIndex:i]]:![formats containsObject:format]] forKey:@"checked"]; [rows addObject:row];
     }
-    [sections addObject:[self section:@"Download Quality" rows:rows]];
+    [sections addObject:[self section:NSLocalizedString(@"Download Quality", nil) rows:rows]];
     NSMutableArray *cookies=[NSMutableArray array];
-    [cookies addObject:[self row:@"Import Cookies..." detail:@"" action:@"import"]];
-    [cookies addObject:[self row:@"Remove Cookies…" detail:@"" action:@"clearCookies"]];
-    [cookies addObject:[self row:@"Cookie Export Guide" detail:@"" action:@"guide"]];
-    [sections addObject:[self section:@"Cookies" rows:cookies]];
+    [cookies addObject:[self row:NSLocalizedString(@"Import Cookies...", nil) detail:@"" action:@"import"]];
+    [cookies addObject:[self row:NSLocalizedString(@"Remove Cookies…", nil) detail:@"" action:@"clearCookies"]];
+    [cookies addObject:[self row:NSLocalizedString(@"Cookie Export Guide", nil) detail:@"" action:@"guide"]];
+    [sections addObject:[self section:NSLocalizedString(@"Cookies", nil) rows:cookies]];
   } else {
     if(screen==RDLPScreenQueue)
       return [NSArray arrayWithObject:[self section:@"" rows:[self displayRows:[library_ queueRows] screen:screen playlist:nil]]];
@@ -165,24 +165,24 @@
         NSArray *videos=[[[RDLPVideoRows alloc] initWithRows:source library:library_ playlist:added?pid:nil] autorelease];
         return [groups sectionsWithRows:[self displayRows:videos screen:screen playlist:added?pid:nil]];
       }
-      return [NSArray arrayWithObject:[self section:screen==RDLPScreenPlaylist?@"Videos":@"Downloads" rows:[[[RDLPVideoRows alloc] initWithRows:source library:library_ playlist:screen==RDLPScreenPlaylist?pid:nil] autorelease]]];
+      return [NSArray arrayWithObject:[self section:screen==RDLPScreenPlaylist?NSLocalizedString(@"Videos", nil):NSLocalizedString(@"Downloads", nil) rows:[[[RDLPVideoRows alloc] initWithRows:source library:library_ playlist:screen==RDLPScreenPlaylist?pid:nil] autorelease]]];
     } else {
       NSArray *jobs=[library_ jobsForPlaylist:pid video:[video objectForKey:@"video_id"]];
       if(screen==RDLPScreenVideo) {
         NSMutableArray *commands=[NSMutableArray array];
         NSDictionary *representative=[policy_ representativeJobForEntry:video playlist:pid jobs:jobs];
         if([policy_ playable:representative]) {
-          NSMutableDictionary *play=[self row:@"Play" detail:[RDLPLibrary qualityLabelForFormat:[representative objectForKey:@"format"]] action:@"play"];
+          NSMutableDictionary *play=[self row:NSLocalizedString(@"Play", nil) detail:[RDLPLibrary qualityLabelForFormat:[representative objectForKey:@"format"]] action:@"play"];
           [play setObject:representative forKey:@"job"]; [commands addObject:play];
         }
         NSDictionary *exact=[self jobForPlaylist:pid video:[video objectForKey:@"video_id"] format:[RDLPLibrary preferredFormat]];
         NSString *action=[policy_ playable:exact]?@"delete":([policy_ canCancel:exact]?@"showQueue":@"download");
-        NSMutableDictionary *command=[self row:[action isEqualToString:@"delete"]?@"Delete Download…":([action isEqualToString:@"showQueue"]?@"Show in Queue":@"Download Video") detail:[RDLPLibrary qualityLabelForFormat:[RDLPLibrary preferredFormat]] action:action];
+        NSMutableDictionary *command=[self row:[action isEqualToString:@"delete"]?NSLocalizedString(@"Delete Download…", nil):([action isEqualToString:@"showQueue"]?NSLocalizedString(@"Show in Queue", nil):NSLocalizedString(@"Download Video", nil)) detail:[RDLPLibrary qualityLabelForFormat:[RDLPLibrary preferredFormat]] action:action];
         if(exact) [command setObject:exact forKey:@"job"]; [commands addObject:command];
-        [commands addObject:[self row:@"Download Quality" detail:@"" action:@"settings"]];
-        [sections addObject:[self section:([video objectForKey:@"title"]?[video objectForKey:@"title"]:@"Video") rows:commands]];
+        [commands addObject:[self row:NSLocalizedString(@"Download Quality", nil) detail:@"" action:@"settings"]];
+        [sections addObject:[self section:([video objectForKey:@"title"]?[video objectForKey:@"title"]:NSLocalizedString(@"Video", nil)) rows:commands]];
       }
-      [sections addObject:[self section:@"Downloads" rows:[self displayRows:jobs screen:screen playlist:pid]]];
+      [sections addObject:[self section:NSLocalizedString(@"Downloads", nil) rows:[self displayRows:jobs screen:screen playlist:pid]]];
       return sections;
     }
   }

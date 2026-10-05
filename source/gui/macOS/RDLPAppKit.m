@@ -32,7 +32,7 @@
 + (void)styleButton:(NSButton *)button { [button setBezelStyle:NSRoundedBezelStyle]; }
 + (void)setApplication:(NSApplication *)application delegate:(id)delegate { [application setDelegate:delegate]; }
 + (void)showAlert:(NSString *)message {
-  NSAlert *alert=[[[NSAlert alloc] init] autorelease]; [alert setMessageText:message]; [alert addButtonWithTitle:@"OK"]; [alert runModal];
+  NSAlert *alert=[[[NSAlert alloc] init] autorelease]; [alert setMessageText:message]; [alert addButtonWithTitle:NSLocalizedString(@"OK", nil)]; [alert runModal];
 }
 + (void)beginAlertSheet:(NSAlert *)alert forWindow:(NSWindow *)window delegate:(id)delegate didEnd:(SEL)didEnd {
   [alert beginSheetModalForWindow:window modalDelegate:delegate didEndSelector:didEnd contextInfo:NULL];
@@ -103,7 +103,7 @@
 }
 + (void)revealInFinder:(NSString *)path {
   if(!path || ![[NSWorkspace sharedWorkspace] selectFile:path inFileViewerRootedAtPath:@""])
-    [RDLPAppKit showAlert:@"Could not reveal this file in Finder. Check that the download exists."];
+    [RDLPAppKit showAlert:NSLocalizedString(@"Could not reveal this file in Finder. Check that the download exists.", nil)];
 }
 + (NSString *)defaultApplication:(NSString *)path {
   if(![path length] || ![[NSFileManager defaultManager] fileExistsAtPath:path]) return nil;
@@ -179,15 +179,15 @@
 + (void)openInVLC:(NSString *)path {
   NSString *application=[self VLCApplication];
   path=[self VLCPlaybackPath:path];
-  if(path && application && (![[NSFileManager defaultManager] fileExistsAtPath:path] || ![[NSWorkspace sharedWorkspace] openFile:path withApplication:application])) [RDLPAppKit showAlert:@"Could not open this file in VLC."];
+  if(path && application && (![[NSFileManager defaultManager] fileExistsAtPath:path] || ![[NSWorkspace sharedWorkspace] openFile:path withApplication:application])) [RDLPAppKit showAlert:NSLocalizedString(@"Could not open this file in VLC.", nil)];
 }
 + (void)openInQuickTime:(NSString *)path {
   NSString *application=[self QuickTimeApplication];
-  if(path && application && ![[NSWorkspace sharedWorkspace] openFile:path withApplication:application]) [self showAlert:@"Could not open this file in QuickTime Player."];
+  if(path && application && ![[NSWorkspace sharedWorkspace] openFile:path withApplication:application]) [self showAlert:NSLocalizedString(@"Could not open this file in QuickTime Player.", nil)];
 }
 + (void)openDefaultApplication:(NSString *)path {
   if(!path || ![[NSWorkspace sharedWorkspace] openFile:path])
-    [RDLPAppKit showAlert:@"Could not open this file in its default app. Check that the download exists and choose an app in Finder’s Open With settings."];
+    [RDLPAppKit showAlert:NSLocalizedString(@"Could not open this file in its default app. Check that the download exists and choose an app in Finder’s Open With settings.", nil)];
 }
 @end
 

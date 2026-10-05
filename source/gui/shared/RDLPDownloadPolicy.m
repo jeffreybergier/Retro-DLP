@@ -16,14 +16,14 @@
 { return [self statusForJob:job localFile:[self localFileForJob:job]]; }
 - (NSString *)statusForJob:(NSDictionary *)job localFile:(NSDictionary *)file;
 {
-  if(file) return @"Downloaded";
-  if([RDLPDownloadPolicy job:job hasState:@"running"]) return @"Downloading";
-  if([RDLPDownloadPolicy job:job hasState:@"queued"]) return @"Queued";
-  if([RDLPDownloadPolicy job:job hasState:@"failed"]) return @"Failed";
-  if([RDLPDownloadPolicy job:job hasState:@"interrupted"]) return @"Interrupted";
-  if([RDLPDownloadPolicy job:job hasState:@"cancelled"]) return @"Cancelled";
-  if([RDLPDownloadPolicy job:job hasState:@"complete"] || ([RDLPDownloadPolicy job:job hasState:@"removed"] && [[job objectForKey:@"error"] length])) return @"File missing";
-  return @"Not downloaded";
+  if(file) return NSLocalizedString(@"Downloaded", nil);
+  if([RDLPDownloadPolicy job:job hasState:@"running"]) return NSLocalizedString(@"Downloading", nil);
+  if([RDLPDownloadPolicy job:job hasState:@"queued"]) return NSLocalizedString(@"Queued", nil);
+  if([RDLPDownloadPolicy job:job hasState:@"failed"]) return NSLocalizedString(@"Failed", nil);
+  if([RDLPDownloadPolicy job:job hasState:@"interrupted"]) return NSLocalizedString(@"Interrupted", nil);
+  if([RDLPDownloadPolicy job:job hasState:@"cancelled"]) return NSLocalizedString(@"Cancelled", nil);
+  if([RDLPDownloadPolicy job:job hasState:@"complete"] || ([RDLPDownloadPolicy job:job hasState:@"removed"] && [[job objectForKey:@"error"] length])) return NSLocalizedString(@"File missing", nil);
+  return NSLocalizedString(@"Not downloaded", nil);
 }
 
 - (BOOL)playable:(NSDictionary *)job;

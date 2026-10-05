@@ -48,6 +48,7 @@ app-assets: linux
 		build/linux/libretrodlp.a -lcurl -lcrypto -lm -ldl -lpthread -o build/apps/prepare-assets
 	@build/apps/prepare-assets $(abspath build/apps/resources/ejs) /altivec/libs/core/build-mac/lib/cacert.pem
 app-test: linux
+	@python3 source/gui/shared/tests/test_localization.py
 	@python3 source/gui/shared/tests/test_store.py
 	@python3 source/gui/shared/tests/test_service.py
 app-clean:

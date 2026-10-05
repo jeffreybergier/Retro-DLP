@@ -5,7 +5,7 @@
 - (void)configurePlatformStorage; { }
 - (NSString *)removeDownloadFileAtPath:(NSString *)path;
 {
-  return [RDLPAppKit moveFileToTrash:path]?nil:[NSString stringWithFormat:@"Couldn’t move ‘%@’ to the Trash. Check permissions and try again.",[path lastPathComponent]];
+  return [RDLPAppKit moveFileToTrash:path]?nil:[NSString stringWithFormat:NSLocalizedString(@"Couldn’t move ‘%@’ to the Trash. Check permissions and try again.", nil),[path lastPathComponent]];
 }
 @end
 

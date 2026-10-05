@@ -144,7 +144,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSView *detail=[[[RDLPLayoutView alloc] initWithFrame:NSMakeRect(0,0,540,600)] autorelease];
   table_=[RDLPLibraryViews tableInView:detail frame:[detail bounds] owner:self
     names:[NSArray arrayWithObjects:@"state",@"size",@"quality",@"title",@"channel",nil]
-    labels:[NSArray arrayWithObjects:@"",@"Size",@"Quality",@"Video",@"Channel",nil]];
+    labels:[NSArray arrayWithObjects:@"",NSLocalizedString(@"Size", nil),NSLocalizedString(@"Quality", nil),NSLocalizedString(@"Video", nil),NSLocalizedString(@"Channel", nil),nil]];
   NSTableColumn *stateColumn=[table_ tableColumnWithIdentifier:@"state"];
   [stateColumn setMinWidth:24]; [stateColumn setMaxWidth:24]; [stateColumn setWidth:24];
   [stateColumn setResizingMask:NSTableColumnNoResizing];
@@ -172,8 +172,8 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [table_ setTarget:self]; [table_ setDoubleAction:@selector(openVideo:)];
   NSMenu *videoMenu=[[[NSMenu alloc] initWithTitle:@"videos"] autorelease];
   [videoMenu setDelegate:(id)self];
-  [RDLPLibraryMenus addItemToMenu:videoMenu title:@"Download Video" action:@selector(chooseDownload:) target:self];
-  [RDLPLibraryMenus addItemToMenu:videoMenu title:@"Delete Download…" action:@selector(removeTarget:) target:self];
+  [RDLPLibraryMenus addItemToMenu:videoMenu title:NSLocalizedString(@"Download Video", nil) action:@selector(chooseDownload:) target:self];
+  [RDLPLibraryMenus addItemToMenu:videoMenu title:NSLocalizedString(@"Delete Download…", nil) action:@selector(removeTarget:) target:self];
   [table_ setMenu:videoMenu];
   downloadFormat_=[[RDLPLibrary preferredFormat] copy];
   [split_ addSubview:detail];
@@ -251,7 +251,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   /* Tiger cannot change a window's style mask after creation. */
   NSWindow *window=[[[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,800,600)
     styleMask:RDLPTexturedWindowStyleMask backing:NSBackingStoreBuffered defer:NO] autorelease];
-  [window setTitle:@"RetroDLP"]; [window setReleasedWhenClosed:NO];
+  [window setTitle:NSLocalizedString(@"RetroDLP", nil)]; [window setReleasedWhenClosed:NO];
   if(AICCCurrentTier()>=AICCTierMiddle)
     [window setCollectionBehavior:AIWindowCollectionBehaviorFullScreenPrimary];
   [window setMinSize:NSMakeSize(640,480)];
@@ -310,7 +310,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   (void)toolbar; (void)insert;
   NSArray *ids=[NSArray arrayWithObjects:@"library",@"play",@"cookies",@"downloads",@"download",@"remove",nil];
   NSUInteger index=[ids indexOfObject:identifier]; if(index==NSNotFound) return nil;
-  NSArray *labels=[NSArray arrayWithObjects:@"Library",@"Play",@"Cookies",@"Queue",@"Download",@"Remove",nil];
+  NSArray *labels=[NSArray arrayWithObjects:NSLocalizedString(@"Library", nil),NSLocalizedString(@"Play", nil),NSLocalizedString(@"Cookies", nil),NSLocalizedString(@"Queue", nil),NSLocalizedString(@"Download", nil),NSLocalizedString(@"Remove", nil),nil];
   NSArray *icons=[NSArray arrayWithObjects:[NSNumber numberWithInt:0x2b],
     [NSNumber numberWithInt:AIFAPlay],[NSNumber numberWithInt:AIFACookie],
     [NSNumber numberWithInt:AIFAListCheck],[NSNumber numberWithInt:AIFADownload],[NSNumber numberWithInt:AIFATrash],nil];
@@ -421,15 +421,15 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     [self enqueueRequest:request]; return;
   }
   downloadSheet_=[[NSPanel alloc] initWithContentRect:NSMakeRect(0,0,500,220) styleMask:AIWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
-  [downloadSheet_ setTitle:@"Custom Download Quality"];
+  [downloadSheet_ setTitle:NSLocalizedString(@"Custom Download Quality", nil)];
   NSView *view=[downloadSheet_ contentView];
-  [[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,182,460,28) editable:NO] setStringValue:@"Choose the quality for future downloads."];
+  [[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,182,460,28) editable:NO] setStringValue:NSLocalizedString(@"Choose the quality for future downloads.", nil)];
   customSummary_=[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,146,460,32) editable:NO];
-  [[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,115,460,24) editable:NO] setStringValue:@"Format expression (for example, 18 or 136+140)"];
+  [[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,115,460,24) editable:NO] setStringValue:NSLocalizedString(@"Format expression (for example, 18 or 136+140)", nil)];
   customFormat_=[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,83,460,24) editable:YES]; [customFormat_ setStringValue:downloadFormat_]; [customFormat_ setDelegate:(id)self];
   customError_=[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,47,460,28) editable:NO];
-  NSButton *cancel=[RDLPLibraryViews buttonInView:view title:@"Cancel" action:@selector(dismissDownload:) target:self frame:NSMakeRect(240,10,105,28)]; [cancel setTag:0]; [cancel setKeyEquivalent:@"\033"];
-  NSButton *download=[RDLPLibraryViews buttonInView:view title:@"Save" action:@selector(dismissDownload:) target:self frame:NSMakeRect(350,10,130,28)]; [download setTag:1]; [download setKeyEquivalent:@"\r"];
+  NSButton *cancel=[RDLPLibraryViews buttonInView:view title:NSLocalizedString(@"Cancel", nil) action:@selector(dismissDownload:) target:self frame:NSMakeRect(240,10,105,28)]; [cancel setTag:0]; [cancel setKeyEquivalent:@"\033"];
+  NSButton *download=[RDLPLibraryViews buttonInView:view title:NSLocalizedString(@"Save", nil) action:@selector(dismissDownload:) target:self frame:NSMakeRect(350,10,130,28)]; [download setTag:1]; [download setKeyEquivalent:@"\r"];
   [self updateCustomSummary];
   [RDLPAppKit beginSheet:downloadSheet_ forWindow:[self actionWindow] delegate:self didEnd:@selector(downloadSheetDidEnd:returnCode:contextInfo:)];
   [downloadSheet_ makeFirstResponder:customFormat_];
@@ -441,7 +441,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (void)updateCustomSummary;
 {
-  if(downloadSheet_) [customSummary_ setStringValue:@"Saving this quality does not start a download."];
+  if(downloadSheet_) [customSummary_ setStringValue:NSLocalizedString(@"Saving this quality does not start a download.", nil)];
 }
 - (void)controlTextDidChange:(NSNotification *)notification;
 { if([notification object]==customFormat_) { [customError_ setStringValue:@""]; [self updateCustomSummary]; } }
@@ -449,7 +449,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   if([sender tag]) {
     NSString *format=[customFormat_ stringValue];
-    if(![RDLPLibrary validFormat:format]) { [customError_ setStringValue:@"Enter a valid format such as 18 or 136+140."]; return; }
+    if(![RDLPLibrary validFormat:format]) { [customError_ setStringValue:NSLocalizedString(@"Enter a valid format such as 18 or 136+140.", nil)]; return; }
     [downloadRequest_ release]; downloadRequest_=[[NSDictionary dictionaryWithObject:format forKey:@"format"] retain];
   }
   [NSApp endSheet:downloadSheet_ returnCode:[sender tag]];
@@ -668,11 +668,11 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if([self hasAttachedSheet] || ![self hasMultipleTargetVideos]) return;
   NSArray *keys=[self selectedRequestsForRemoval:YES firstOnly:NO];
   if(![keys count]) return;
-  NSString *noun=[keys count]==1?@"download":@"downloads";
+  NSString *noun=[keys count]==1?NSLocalizedString(@"download", nil):NSLocalizedString(@"downloads", nil);
   [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"removeMany",@"operation",keys,@"jobs",nil]
-    title:[NSString stringWithFormat:@"Move %lu %@ to the Trash?",(unsigned long)[keys count],noun]
-    detail:@"This moves the selected downloads and their partial files to the Trash. Playlist membership and other downloaded qualities are retained."
-    action:[NSString stringWithFormat:@"Delete %lu %@",(unsigned long)[keys count],[noun capitalizedString]]];
+    title:[NSString stringWithFormat:NSLocalizedString(@"Move %lu %@ to the Trash?", nil),(unsigned long)[keys count],noun]
+    detail:NSLocalizedString(@"This moves the selected downloads and their partial files to the Trash. Playlist membership and other downloaded qualities are retained.", nil)
+    action:[NSString stringWithFormat:NSLocalizedString(@"Delete %lu %@", nil),(unsigned long)[keys count],[noun capitalizedString]]];
 }
 - (NSString *)targetPlaylistFolder;
 {
@@ -719,20 +719,20 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(multiple) [self updateBulkAvailability];
   NSDictionary *job=video && !multiple?(mode_==0?[self jobForEntry:row]:row):nil;
   NSDictionary *playlist=job?[library_ playlistForID:[job objectForKey:@"playlist_id"]]:[self selectedPlaylist];
-  [self setToolbarItem:@"library" title:@"Library" tip:@"Add videos and playlists, or sync your library" icon:[RDLPLibraryViews toolbarIcon:(AIFontAwesomeIcon)0x2b window:[self window]] enabled:YES];
+  [self setToolbarItem:@"library" title:NSLocalizedString(@"Library", nil) tip:NSLocalizedString(@"Add videos and playlists, or sync your library", nil) icon:[RDLPLibraryViews toolbarIcon:(AIFontAwesomeIcon)0x2b window:[self window]] enabled:YES];
   BOOL cancellable=video && [self canCancel:job];
   BOOL retry=video && ([self canRetry:job] || [self canDownloadAgain:job]);
   NSDictionary *matching=video && !multiple?[self jobForPlaylist:[playlist objectForKey:@"id"] video:[row objectForKey:@"video_id"] format:downloadFormat_]:nil;
   BOOL canDownload=multiple?bulkCanDownload_:(video && (!matching || [self canRetry:matching] || [self canDownloadAgain:matching]));
   NSString *quality=[RDLPLibrary qualityLabelForFormat:retry?[job objectForKey:@"format"]:downloadFormat_];
-  NSString *downloadTip=cancellable?@"Cancel the selected download…":[NSString stringWithFormat:@"%@ — %@",retry?@"Retry the selected download":@"Download the selected video",quality];
-  if(multiple) downloadTip=[NSString stringWithFormat:@"Download selected videos — %@",quality];
-  [self setToolbarItem:@"download" title:@"Download" tip:downloadTip icon:[RDLPLibraryViews toolbarIcon:cancellable?AIFAOctagon:AIFADownload window:[self window]] enabled:cancellable || retry || canDownload];
-  [self setToolbarItem:@"remove" title:@"Remove" tip:multiple?@"Move selected downloads to the Trash…":@"Delete the selected download or remove the selected playlist…" icon:[RDLPLibraryViews toolbarIcon:AIFATrash window:[self window]] enabled:multiple?bulkCanRemove_:(video?[self canRemove:job]:[self canRemovePlaylist:playlist])];
+  NSString *downloadTip=cancellable?NSLocalizedString(@"Cancel the selected download…", nil):[NSString stringWithFormat:NSLocalizedString(@"%@ — %@", nil),retry?NSLocalizedString(@"Retry the selected download", nil):NSLocalizedString(@"Download the selected video", nil),quality];
+  if(multiple) downloadTip=[NSString stringWithFormat:NSLocalizedString(@"Download selected videos — %@", nil),quality];
+  [self setToolbarItem:@"download" title:NSLocalizedString(@"Download", nil) tip:downloadTip icon:[RDLPLibraryViews toolbarIcon:cancellable?AIFAOctagon:AIFADownload window:[self window]] enabled:cancellable || retry || canDownload];
+  [self setToolbarItem:@"remove" title:NSLocalizedString(@"Remove", nil) tip:multiple?NSLocalizedString(@"Move selected downloads to the Trash…", nil):NSLocalizedString(@"Delete the selected download or remove the selected playlist…", nil) icon:[RDLPLibraryViews toolbarIcon:AIFATrash window:[self window]] enabled:multiple?bulkCanRemove_:(video?[self canRemove:job]:[self canRemovePlaylist:playlist])];
   NSString *path=video?([self playable:job]?[library_ fileForJob:job]:nil):[self playFileForPlaylist:playlist];
-  [self setToolbarItem:@"play" title:@"Play" tip:@"Play the selected video or playlist" icon:[RDLPAppKit youTubeIconForScale:[RDLPAppKit backingScaleForWindow:[self window]]] enabled:[RDLPAppKit preferredPlaybackApplication:path]!=nil];
-  [self setToolbarItem:@"cookies" title:@"Cookies" tip:@"Manage cookies and view the export guide" icon:[RDLPLibraryViews toolbarIcon:AIFACookie window:[self window]] enabled:YES];
-  [self setToolbarItem:@"downloads" title:@"Queue" tip:@"Show Download Queue" icon:[RDLPLibraryViews toolbarIcon:AIFAListCheck window:[self window]] enabled:YES];
+  [self setToolbarItem:@"play" title:NSLocalizedString(@"Play", nil) tip:NSLocalizedString(@"Play the selected video or playlist", nil) icon:[RDLPAppKit youTubeIconForScale:[RDLPAppKit backingScaleForWindow:[self window]]] enabled:[RDLPAppKit preferredPlaybackApplication:path]!=nil];
+  [self setToolbarItem:@"cookies" title:NSLocalizedString(@"Cookies", nil) tip:NSLocalizedString(@"Manage cookies and view the export guide", nil) icon:[RDLPLibraryViews toolbarIcon:AIFACookie window:[self window]] enabled:YES];
+  [self setToolbarItem:@"downloads" title:NSLocalizedString(@"Queue", nil) tip:NSLocalizedString(@"Show Download Queue", nil) icon:[RDLPLibraryViews toolbarIcon:AIFAListCheck window:[self window]] enabled:YES];
 }
 - (void)updateControls;
 { [self updateToolbar]; [queueWindow_ updateControls]; [self refreshStatus:nil]; }
@@ -779,9 +779,9 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (id)outlineView:(NSOutlineView *)outline objectValueForTableColumn:(NSTableColumn *)column byItem:(id)item;
 {
   (void)outline; (void)column;
-  if([RDLPLibraryViews isSidebarGroup:item] || [item isEqual:@"All Downloads"]) return item;
+  if([RDLPLibraryViews isSidebarGroup:item] || [item isEqual:@"All Downloads"]) return NSLocalizedString(item, nil);
   NSDictionary *playlist=[library_ playlistForID:item];
-  return playlist?[NSString stringWithFormat:@"%@ (%@)",[playlist objectForKey:@"title"],[playlist objectForKey:@"count"]]:@"";
+  return playlist?[NSString stringWithFormat:NSLocalizedString(@"%@ (%@)", nil),[playlist objectForKey:@"title"],[playlist objectForKey:@"count"]]:@"";
 }
 - (void)outlineView:(NSOutlineView *)outline willDisplayCell:(id)cell forTableColumn:(NSTableColumn *)column item:(id)item;
 {
@@ -808,15 +808,15 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(queue && [key isEqualToString:@"quality"]) {
     NSString *format=[job objectForKey:@"format"], *actual=[job objectForKey:@"actual_format"];
     NSString *label=[RDLPLibrary qualityLabelForFormat:format];
-    return [actual length] && ![actual isEqualToString:format]?[label stringByAppendingFormat:@" → %@",[RDLPLibrary qualityLabelForFormat:actual]]:label;
+    return [actual length] && ![actual isEqualToString:format]?[label stringByAppendingFormat:NSLocalizedString(@" → %@", nil),[RDLPLibrary qualityLabelForFormat:actual]]:label;
   }
   if([key isEqualToString:@"state"]) {
     NSString *status=queue?[self queueStatusForJob:job]:[entry objectForKey:@"status"]; AIFontAwesomeIcon icon=0;
-    if([status isEqualToString:@"Downloaded"]) icon=AIFACircleCheck;
-    else if([status isEqualToString:@"Downloading"]) icon=AIFAArrowDown;
-    else if([status isEqualToString:@"Queued"]) icon=AIFAClock;
-    else if([status isEqualToString:@"Cancelled"]) icon=AIFACirclePause;
-    else if(![status isEqualToString:@"Not downloaded"]) icon=AIFATriangleExclamation;
+    if([status isEqualToString:NSLocalizedString(@"Downloaded", nil)]) icon=AIFACircleCheck;
+    else if([status isEqualToString:NSLocalizedString(@"Downloading", nil)]) icon=AIFAArrowDown;
+    else if([status isEqualToString:NSLocalizedString(@"Queued", nil)]) icon=AIFAClock;
+    else if([status isEqualToString:NSLocalizedString(@"Cancelled", nil)]) icon=AIFACirclePause;
+    else if(![status isEqualToString:NSLocalizedString(@"Not downloaded", nil)]) icon=AIFATriangleExclamation;
     return icon?[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid iconSize:12 canvasSize:16 scale:[RDLPAppKit backingScaleForWindow:[view window]]]:nil;
   }
   return [entry objectForKey:key];
@@ -860,7 +860,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   }
   NSDictionary *job=entry;
   NSString *status=[self queueStatusForJob:job], *error=[job objectForKey:@"error"];
-  return [error length]?[NSString stringWithFormat:@"%@: %@",status,error]:status;
+  return [error length]?[NSString stringWithFormat:NSLocalizedString(@"%@: %@", nil),status,error]:status;
 }
 - (void)tableViewSelectionDidChange:(NSNotification *)notification;
 {
@@ -884,12 +884,12 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   SEL visibilityAction=[item action];
   BOOL multiple=[self hasMultipleTargetVideos];
   if(visibilityAction==@selector(downloadFromMenu:) || (visibilityAction==@selector(chooseDownload:) && [item tag]==0))
-    [item setTitle:multiple?@"Download Selected Videos":@"Download Video"];
-  if(visibilityAction==@selector(removeTarget:)) [item setTitle:multiple?@"Delete Selected Downloads…":([[[item menu] title] isEqualToString:@"remove"]?@"Delete Download":@"Delete Download…")];
-  if(visibilityAction==@selector(togglePlaylists:)) [item setTitle:[self isSidebarCollapsed]?@"Show Playlists":@"Hide Playlists"];
-  if([[item menu] title] && [[[item menu] title] isEqualToString:@"File"]) {
-    NSString *object=[self hasTargetVideo]?@"Video":@"Playlist";
-    if(visibilityAction==@selector(playSelection:)) [item setTitle:[NSString stringWithFormat:@"Play %@",object]];
+    [item setTitle:multiple?NSLocalizedString(@"Download Selected Videos", nil):NSLocalizedString(@"Download Video", nil)];
+  if(visibilityAction==@selector(removeTarget:)) [item setTitle:multiple?NSLocalizedString(@"Delete Selected Downloads…", nil):([[[item menu] title] isEqualToString:@"remove"]?NSLocalizedString(@"Delete Download", nil):NSLocalizedString(@"Delete Download…", nil))];
+  if(visibilityAction==@selector(togglePlaylists:)) [item setTitle:[self isSidebarCollapsed]?NSLocalizedString(@"Show Playlists", nil):NSLocalizedString(@"Hide Playlists", nil)];
+  if([[item menu] title] && [[[item menu] title] isEqualToString:NSLocalizedString(@"File", nil)]) {
+    NSString *object=[self hasTargetVideo]?NSLocalizedString(@"Video", nil):NSLocalizedString(@"Playlist", nil);
+    if(visibilityAction==@selector(playSelection:)) [item setTitle:[NSString stringWithFormat:NSLocalizedString(@"Play %@", nil),object]];
   }
   if(visibilityAction==@selector(chooseVideoPlayer:)) {
     NSString *player=[item representedObject];
@@ -903,7 +903,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     [command setTag:0]; return [self validateMenuItem:command];
   }
   SEL action=[item action]; NSDictionary *job=[self targetJob], *playlist=[self contextPlaylist], *queued=[self selectedJob];
-  BOOL noCookies=[[library_ cookieStatus] isEqualToString:@"Not Imported"];
+  BOOL noCookies=[[library_ cookieStatus] isEqualToString:NSLocalizedString(@"Not Imported", nil)];
   if(action==@selector(importCookies:)) return ![library_ isBusy] && noCookies;
   if(action==@selector(replaceCookies:) || action==@selector(clearCookies:)) return ![library_ isBusy] && !noCookies;
   if(action==@selector(discover:)) return ![library_ isBusy] && ![library_ isDiscoveryPending];
@@ -962,11 +962,11 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   (void)sender; if(addSheet_ || [self hasAttachedSheet]) return;
   addingVideo_=NO;
   addSheet_=[[NSPanel alloc] initWithContentRect:NSMakeRect(0,0,460,135) styleMask:AIWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
-  [addSheet_ setTitle:@"Add Playlist"];
-  NSView *view=[addSheet_ contentView]; [[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,95,420,24) editable:NO] setStringValue:@"Playlist URL or ID"];
+  [addSheet_ setTitle:NSLocalizedString(@"Add Playlist", nil)];
+  NSView *view=[addSheet_ contentView]; [[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,95,420,24) editable:NO] setStringValue:NSLocalizedString(@"Playlist URL or ID", nil)];
   input_=[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,62,420,24) editable:YES];
-  NSButton *cancel=[RDLPLibraryViews buttonInView:view title:@"Cancel" action:@selector(dismissAdd:) target:self frame:NSMakeRect(230,15,100,28)]; [cancel setTag:0]; [cancel setKeyEquivalent:@"\033"];
-  NSButton *add=[RDLPLibraryViews buttonInView:view title:@"Add Playlist" action:@selector(dismissAdd:) target:self frame:NSMakeRect(335,15,110,28)]; [add setTag:1]; [add setKeyEquivalent:@"\r"];
+  NSButton *cancel=[RDLPLibraryViews buttonInView:view title:NSLocalizedString(@"Cancel", nil) action:@selector(dismissAdd:) target:self frame:NSMakeRect(230,15,100,28)]; [cancel setTag:0]; [cancel setKeyEquivalent:@"\033"];
+  NSButton *add=[RDLPLibraryViews buttonInView:view title:NSLocalizedString(@"Add Playlist", nil) action:@selector(dismissAdd:) target:self frame:NSMakeRect(335,15,110,28)]; [add setTag:1]; [add setKeyEquivalent:@"\r"];
   [RDLPAppKit beginSheet:addSheet_ forWindow:[self actionWindow] delegate:self didEnd:@selector(addSheetDidEnd:returnCode:contextInfo:)];
   [addSheet_ makeFirstResponder:input_];
 }
@@ -975,11 +975,11 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   (void)sender;
   if([self hasAttachedSheet] || addSheet_) return;
   addSheet_=[[NSPanel alloc] initWithContentRect:NSMakeRect(0,0,460,135) styleMask:AIWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
-  [addSheet_ setTitle:@"Add Video"];
-  NSView *view=[addSheet_ contentView]; [[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,95,420,24) editable:NO] setStringValue:@"YouTube video URL or ID"];
+  [addSheet_ setTitle:NSLocalizedString(@"Add Video", nil)];
+  NSView *view=[addSheet_ contentView]; [[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,95,420,24) editable:NO] setStringValue:NSLocalizedString(@"YouTube video URL or ID", nil)];
   addingVideo_=YES; input_=[RDLPLibraryViews fieldInView:view frame:NSMakeRect(20,62,420,24) editable:YES];
-  NSButton *cancel=[RDLPLibraryViews buttonInView:view title:@"Cancel" action:@selector(dismissAdd:) target:self frame:NSMakeRect(230,15,100,28)]; [cancel setTag:0]; [cancel setKeyEquivalent:@"\033"];
-  NSButton *add=[RDLPLibraryViews buttonInView:view title:@"Add Video" action:@selector(dismissAdd:) target:self frame:NSMakeRect(335,15,110,28)]; [add setTag:1]; [add setKeyEquivalent:@"\r"];
+  NSButton *cancel=[RDLPLibraryViews buttonInView:view title:NSLocalizedString(@"Cancel", nil) action:@selector(dismissAdd:) target:self frame:NSMakeRect(230,15,100,28)]; [cancel setTag:0]; [cancel setKeyEquivalent:@"\033"];
+  NSButton *add=[RDLPLibraryViews buttonInView:view title:NSLocalizedString(@"Add Video", nil) action:@selector(dismissAdd:) target:self frame:NSMakeRect(335,15,110,28)]; [add setTag:1]; [add setKeyEquivalent:@"\r"];
   [RDLPAppKit beginSheet:addSheet_ forWindow:[self actionWindow] delegate:self didEnd:@selector(addSheetDidEnd:returnCode:contextInfo:)]; [addSheet_ makeFirstResponder:input_];
 }
 - (void)dismissAdd:(id)sender;
@@ -996,7 +996,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   confirmationRequest_=[request copy]; confirmation_=[[NSAlert alloc] init];
   [confirmation_ setMessageText:title]; [confirmation_ setInformativeText:detail];
   [[confirmation_ addButtonWithTitle:action] setKeyEquivalent:@"\r"];
-  [[confirmation_ addButtonWithTitle:@"Cancel"] setKeyEquivalent:@"\033"];
+  [[confirmation_ addButtonWithTitle:NSLocalizedString(@"Cancel", nil)] setKeyEquivalent:@"\033"];
   [RDLPAppKit beginAlertSheet:confirmation_ forWindow:[self actionWindow] delegate:self didEnd:@selector(confirmationDidEnd:returnCode:contextInfo:)];
   [self updateControls];
 }
@@ -1026,10 +1026,10 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     while((input=[e nextObject])) [library_ syncPlaylistInput:input];
   } else if([op isEqualToString:@"discover"]) {
     if([library_ isBusy] || [library_ isDiscoveryPending]) return;
-    if(![[library_ cookieStatus] isEqualToString:@"Imported"]) {
+    if(![[library_ cookieStatus] isEqualToString:NSLocalizedString(@"Imported", nil)]) {
       NSString *path=[RDLPAppKit chooseCookieFile]; if(!path) return;
-      if(![[library_ cookieStatus] isEqualToString:@"Not Imported"]) {
-        [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"import",@"operation",path,@"path",@"yes",@"discover",nil] title:@"Replace cookies and sync playlists?" detail:@"Replace the app’s working cookie copy, then sync your account playlists. Local downloads are retained. No videos will be downloaded." action:@"Replace and Sync"]; return;
+      if(![[library_ cookieStatus] isEqualToString:NSLocalizedString(@"Not Imported", nil)]) {
+        [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"import",@"operation",path,@"path",@"yes",@"discover",nil] title:NSLocalizedString(@"Replace cookies and sync playlists?", nil) detail:NSLocalizedString(@"Replace the app’s working cookie copy, then sync your account playlists. Local downloads are retained. No videos will be downloaded.", nil) action:NSLocalizedString(@"Replace and Sync", nil)]; return;
       }
       if(![library_ importCookies:path]) return;
     }
@@ -1051,8 +1051,8 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)confirmJob:(NSDictionary *)job remove:(BOOL)remove;
 {
   if(remove?![self canRemove:job]:![self canCancel:job]) return;
-  NSString *title=[NSString stringWithFormat:@"%@ ‘%@’ — %@?",remove?@"Delete download for":@"Cancel download for",[job objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
-  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:remove?@"remove":@"cancel",@"operation",[job objectForKey:@"id"],@"job",nil] title:title detail:remove?@"This moves this download and its partial files to the Trash. Playlist membership and other downloaded qualities are retained.":@"Retrying this job restarts the transfer; it does not resume from where it stopped." action:remove?@"Delete Download":@"Cancel Download"];
+  NSString *title=[NSString stringWithFormat:NSLocalizedString(@"%@ ‘%@’ — %@?", nil),remove?NSLocalizedString(@"Delete download for", nil):NSLocalizedString(@"Cancel download for", nil),[job objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
+  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:remove?@"remove":@"cancel",@"operation",[job objectForKey:@"id"],@"job",nil] title:title detail:remove?NSLocalizedString(@"This moves this download and its partial files to the Trash. Playlist membership and other downloaded qualities are retained.", nil):NSLocalizedString(@"Retrying this job restarts the transfer; it does not resume from where it stopped.", nil) action:remove?NSLocalizedString(@"Delete Download", nil):NSLocalizedString(@"Cancel Download", nil)];
 }
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
 {
@@ -1099,34 +1099,34 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)syncAll:(id)sender;
 {
   (void)sender; NSArray *inputs=[self syncPlan]; if(![inputs count]) return;
-  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"syncAll",@"operation",inputs,@"inputs",nil] title:[NSString stringWithFormat:@"Sync %lu added playlists?",(unsigned long)[inputs count]] detail:@"Refresh your manually added playlists and their videos from YouTube. Local downloads are retained. This does not download videos." action:[NSString stringWithFormat:@"Sync %lu Added Playlists",(unsigned long)[inputs count]]];
+  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"syncAll",@"operation",inputs,@"inputs",nil] title:[NSString stringWithFormat:NSLocalizedString(@"Sync %lu added playlists?", nil),(unsigned long)[inputs count]] detail:NSLocalizedString(@"Refresh your manually added playlists and their videos from YouTube. Local downloads are retained. This does not download videos.", nil) action:[NSString stringWithFormat:NSLocalizedString(@"Sync %lu Added Playlists", nil),(unsigned long)[inputs count]]];
 }
 - (void)discover:(id)sender;
 {
   (void)sender; if([library_ isBusy] || [library_ isDiscoveryPending]) return;
-  [self confirmRequest:[NSDictionary dictionaryWithObject:@"discover" forKey:@"operation"] title:@"Sync My Playlists?" detail:@"Refresh your account playlists and their videos. Playlists no longer in your account are removed locally; downloads and unfinished jobs are retained. You will be asked to import cookies if needed. No videos will be downloaded." action:@"Sync My Playlists"];
+  [self confirmRequest:[NSDictionary dictionaryWithObject:@"discover" forKey:@"operation"] title:NSLocalizedString(@"Sync My Playlists?", nil) detail:NSLocalizedString(@"Refresh your account playlists and their videos. Playlists no longer in your account are removed locally; downloads and unfinished jobs are retained. You will be asked to import cookies if needed. No videos will be downloaded.", nil) action:NSLocalizedString(@"Sync My Playlists", nil)];
 }
 - (void)openCookieExportGuide:(id)sender;
 {
   (void)sender;
-  if(![[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://github.com/yt-dlp/yt-dlp/wiki/Extractors"]]) [RDLPAppKit showAlert:@"Could not open the cookie export guide in your browser."];
+  if(![[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://github.com/yt-dlp/yt-dlp/wiki/Extractors"]]) [RDLPAppKit showAlert:NSLocalizedString(@"Could not open the cookie export guide in your browser.", nil)];
 }
 - (void)importCookies:(id)sender;
 {
   (void)sender; if([library_ isBusy] || [self hasAttachedSheet]) return;
-  if(![[library_ cookieStatus] isEqualToString:@"Not Imported"]) { [self replaceCookies:nil]; return; }
+  if(![[library_ cookieStatus] isEqualToString:NSLocalizedString(@"Not Imported", nil)]) { [self replaceCookies:nil]; return; }
   NSString *path=[RDLPAppKit chooseCookieFile]; if(path) [library_ importCookies:path];
 }
 - (void)replaceCookies:(id)sender;
 {
   (void)sender; if([library_ isBusy] || [self hasAttachedSheet]) return;
   NSString *path=[RDLPAppKit chooseCookieFile]; if(!path) return;
-  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"import",@"operation",path,@"path",nil] title:@"Replace imported cookies?" detail:@"Replace the app’s working cookie copy with the selected file. The original exported files are retained." action:@"Replace"];
+  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"import",@"operation",path,@"path",nil] title:NSLocalizedString(@"Replace imported cookies?", nil) detail:NSLocalizedString(@"Replace the app’s working cookie copy with the selected file. The original exported files are retained.", nil) action:NSLocalizedString(@"Replace", nil)];
 }
 - (void)clearCookies:(id)sender;
 {
-  (void)sender; if([library_ isBusy] || [[library_ cookieStatus] isEqualToString:@"Not Imported"]) return;
-  [self confirmRequest:[NSDictionary dictionaryWithObject:@"clearCookies" forKey:@"operation"] title:@"Remove imported cookies?" detail:@"Remove the app’s working cookie copy. The original exported file is retained." action:@"Remove"];
+  (void)sender; if([library_ isBusy] || [[library_ cookieStatus] isEqualToString:NSLocalizedString(@"Not Imported", nil)]) return;
+  [self confirmRequest:[NSDictionary dictionaryWithObject:@"clearCookies" forKey:@"operation"] title:NSLocalizedString(@"Remove imported cookies?", nil) detail:NSLocalizedString(@"Remove the app’s working cookie copy. The original exported file is retained.", nil) action:NSLocalizedString(@"Remove", nil)];
 }
 - (void)showQueueError:(id)sender;
 { (void)sender; NSString *error=[[self selectedJob] objectForKey:@"error"]; if([error length]) [RDLPAppKit showAlert:error]; }
@@ -1174,7 +1174,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)removePlaylist:(id)sender;
 {
   (void)sender; NSDictionary *playlist=[self contextPlaylist]; if(![self canRemovePlaylist:playlist]) return;
-  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"removePlaylist",@"operation",playlist,@"playlist",nil] title:[NSString stringWithFormat:@"Remove ‘%@’ from the library?",[playlist objectForKey:@"title"]] detail:@"Removes the playlist from your library. Downloads and unfinished jobs are retained. Your YouTube playlist is unchanged." action:@"Remove Playlist"];
+  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:@"removePlaylist",@"operation",playlist,@"playlist",nil] title:[NSString stringWithFormat:NSLocalizedString(@"Remove ‘%@’ from the library?", nil),[playlist objectForKey:@"title"]] detail:NSLocalizedString(@"Removes the playlist from your library. Downloads and unfinished jobs are retained. Your YouTube playlist is unchanged.", nil) action:NSLocalizedString(@"Remove Playlist", nil)];
 }
 - (void)playTargetVideo:(id)sender;
 { (void)sender; NSDictionary *job=[self targetJob]; if([self playable:job]) [RDLPAppKit openPreferredPlayback:[library_ fileForJob:job]]; }

@@ -83,6 +83,14 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
                 assert data==(ROOT/'source/gui/iOS/Resources'/filename).read_bytes(),filename+' is stale in bundle'
                 assert archive.read(prefix+filename)==data,filename+' is stale in IPA'
                 assert (archive.getinfo(prefix+filename).external_attr>>16) & stat.S_IROTH,filename+' is unreadable'
+        for source in (ROOT/'source/gui/shared/Resources').glob('*.lproj/*.strings'):
+            relative='/'.join(p for p in [resources,source.parent.name,source.name] if p)
+            data=(bundle/relative).read_bytes()
+            # Tiger reads the engine's UTF-16 table; iOS ships the UTF-8 source.
+            encoding='utf-16' if platform=='macOS' else 'utf-8'
+            assert data.decode(encoding)==source.read_text(),platform+' has stale strings'
+            assert archive.read(prefix+relative)==data,platform+' archive has stale strings'
+            assert (archive.getinfo(prefix+relative).external_attr>>16) & stat.S_IROTH
         for filename in ['cacert.pem','ejs/core.min.js','ejs/lib.min.js','ejs/NOTICE.txt']:
             relative='/'.join(p for p in [resources,filename] if p)
             data=(bundle/relative).read_bytes()

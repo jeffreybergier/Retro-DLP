@@ -28,13 +28,13 @@
   } else file=[policy_ localFileForJob:job];
   NSString *pid=playlist_?playlist_:[entry objectForKey:@"playlist_id"];
   NSString *title=[entry objectForKey:@"title"], *status=[policy_ statusForJob:job localFile:file];
-  if(![title length]) title=@"Untitled";
+  if(![title length]) title=NSLocalizedString(@"Untitled", nil);
   NSString *quality=@"", *size=@"", *local=@"";
   if(file) {
     NSString *format=[[job objectForKey:@"actual_format"] length]?[job objectForKey:@"actual_format"]:[job objectForKey:@"format"];
     quality=[RDLPLibrary qualityLabelForFormat:format];
     size=[RDLPLibrary fileSizeLabelForBytes:[[file objectForKey:@"bytes"] unsignedLongLongValue]];
-    local=[quality length]?[quality stringByAppendingFormat:@"·%@",size]:size;
+    local=[quality length]?[quality stringByAppendingFormat:NSLocalizedString(@"·%@", nil),size]:size;
   }
   NSString *summary=[RDLPLibrary metadataSummaryForEntry:entry];
   NSMutableArray *details=[NSMutableArray array];
@@ -48,19 +48,24 @@
   NSString *duration=[RDLPLibrary spokenDurationForEntry:entry], *channel=[entry objectForKey:@"channel"];
   if(!channel) channel=@"";
   if([duration length]) [spoken addObject:duration];
-  if([size length]) [spoken addObject:[NSString stringWithFormat:@"%@ %@",[size substringToIndex:[size length]-3],[size hasSuffix:@" KB"]?@"kilobytes":@"megabytes"]];
+  if(file) {
+    unsigned long long bytes=[[file objectForKey:@"bytes"] unsignedLongLongValue];
+    [spoken addObject:bytes<1000000?
+      [NSString stringWithFormat:NSLocalizedString(@"%llu kilobytes", nil),(bytes+999)/1000]:
+      [NSString stringWithFormat:NSLocalizedString(@"%.1f megabytes", nil),(double)bytes/1000000.0]];
+  }
   if([quality length]) [spoken addObject:quality];
   if([channel length]) [spoken addObject:channel];
   NSString *spokenDetail=[spoken componentsJoinedByString:@", "];
-  NSString *accessibility=[NSString stringWithFormat:@"%@%@, %@",title,[spokenDetail length]?[@", " stringByAppendingString:spokenDetail]:@"",status];
+  NSString *accessibility=[NSString stringWithFormat:NSLocalizedString(@"%@%@, %@", nil),title,[spokenDetail length]?[@", " stringByAppendingString:spokenDetail]:@"",status];
   NSString *tooltip=[RDLPLibrary metadataTooltipForEntry:entry];
-  if([local length]) tooltip=[tooltip stringByAppendingFormat:@"\nLocal file: %@",local];
+  if([local length]) tooltip=[tooltip stringByAppendingFormat:NSLocalizedString(@"\nLocal file: %@", nil),local];
   NSString *error=[job objectForKey:@"error"];
   NSMutableDictionary *row=[NSMutableDictionary dictionaryWithObjectsAndKeys:
     title,@"title",entry,@"video",pid?pid:@"",@"playlist_id",status,@"status",detail,@"detail",
     summary,@"metadata_detail",local,@"local_detail",spokenDetail,@"spoken_detail",accessibility,@"accessibility_label",
     tooltip,@"tooltip",quality,@"quality",size,@"size",[RDLPLibrary durationLabelForEntry:entry],@"duration",channel,@"channel",
-    [error length]?[status stringByAppendingFormat:@": %@",error]:status,@"status_tooltip",@"video",@"action",nil];
+    [error length]?[status stringByAppendingFormat:NSLocalizedString(@": %@", nil),error]:status,@"status_tooltip",@"video",@"action",nil];
   NSString *description=[entry objectForKey:@"description_snippet"];
   [row setObject:description?description:@"" forKey:@"description_snippet"];
   if(job) [row setObject:job forKey:@"job"];

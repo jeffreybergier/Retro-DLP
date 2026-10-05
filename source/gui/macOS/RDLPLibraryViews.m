@@ -138,7 +138,7 @@
   [column setEditable:NO]; [[column dataCell] setLineBreakMode:NSLineBreakByTruncatingTail];
   [outline addTableColumn:column];
   [outline setColumnAutoresizingStyle:NSTableViewFirstColumnOnlyAutoresizingStyle];
-  [outline setOutlineTableColumn:column]; [[column headerCell] setStringValue:@"Playlists"];
+  [outline setOutlineTableColumn:column]; [[column headerCell] setStringValue:NSLocalizedString(@"Playlists", nil)];
   [outline setAllowsMultipleSelection:NO]; [outline setDataSource:owner]; [outline setDelegate:owner];
   [scroll setDocumentView:outline]; [scroll setHasVerticalScroller:YES]; [scroll setHasHorizontalScroller:NO];
   [scroll setAutohidesScrollers:YES];

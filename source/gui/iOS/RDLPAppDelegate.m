@@ -33,7 +33,7 @@
     [window_ setRootViewController:navigation]; [navigation release]; [root release];
   } else {
     UIViewController *error=[[UIViewController alloc] init]; [window_ setRootViewController:error]; [error release];
-    [RDLPUIKit showMessage:@"Cannot open the RetroDLP library. Check available storage and restart the app."];
+    [RDLPUIKit showMessage:NSLocalizedString(@"Cannot open the RetroDLP library. Check available storage and restart the app.", nil)];
   }
   [window_ makeKeyAndVisible];
   if(library_) {
@@ -48,7 +48,7 @@
   if(!backgrounded_) return;
   NSString *title=[[notification userInfo] objectForKey:@"title"];
   if(![title length]) title=[[notification userInfo] objectForKey:@"video_id"];
-  if(![title length]) title=@"Video";
+  if(![title length]) title=NSLocalizedString(@"Video", nil);
   [self presentDownloadNotification:[RDLPUIKit downloadCompletionNotificationForTitle:title]];
 }
 - (void)presentDownloadNotification:(id)notification;
@@ -115,7 +115,7 @@
   for(UIWindow *window in [[UIApplication sharedApplication] windows])
     if(![window isHidden] && [window windowLevel]>=UIWindowLevelAlert) { [self errorsChanged:nil]; return; }
   NSDictionary *error=[library_ takeError]; if(!error) return;
-  errorAlert_=[[UIAlertView alloc] initWithTitle:[error objectForKey:@"title"] message:[error objectForKey:@"detail"] delegate:self cancelButtonTitle:@"OK" otherButtonTitles:nil];
+  errorAlert_=[[UIAlertView alloc] initWithTitle:[error objectForKey:@"title"] message:[error objectForKey:@"detail"] delegate:self cancelButtonTitle:NSLocalizedString(@"OK", nil) otherButtonTitles:nil];
   [errorAlert_ show];
 }
 - (void)alertView:(UIAlertView *)alert didDismissWithButtonIndex:(NSInteger)index;
