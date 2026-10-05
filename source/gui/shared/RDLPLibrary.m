@@ -132,9 +132,6 @@ static void event_callback(const rdlp_event *event,void *context) {
   if(event) [(RDLPLibrary *)context resolverEvent:event->type];
   [pool drain];
 }
-static void service_status(const char *message,void *context) {
-  [(RDLPLibrary *)context progress:string(message) completed:0 expected:0];
-}
 static void service_changed(void *context) {
   [(RDLPLibrary *)context performSelectorOnMainThread:@selector(changed) withObject:nil waitUntilDone:NO];
 }
@@ -145,10 +142,10 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   switch(event->type) {
     case RDLP_DOWNLOAD_EVENT_DOWNLOADING_AUDIO: phase=NSLocalizedString(@"Downloading audio", nil); break;
     case RDLP_DOWNLOAD_EVENT_DOWNLOADING_VIDEO: phase=NSLocalizedString(@"Downloading video", nil); break;
-    case RDLP_DOWNLOAD_EVENT_DOWNLOADING_MEDIA: phase=NSLocalizedString(@"Downloading", nil); break;
+    case RDLP_DOWNLOAD_EVENT_DOWNLOADING_MEDIA: phase=NSLocalizedString(@"Downloading…", nil); break;
     case RDLP_DOWNLOAD_EVENT_MUXING: phase=NSLocalizedString(@"Combining audio and video…", nil); break;
     case RDLP_DOWNLOAD_EVENT_CLEANING_UP: phase=NSLocalizedString(@"Finishing download…", nil); break;
-    default: phase=NSLocalizedString(@"Downloading", nil); break;
+    default: phase=NSLocalizedString(@"Downloading…", nil); break;
   }
   [(RDLPLibrary *)context progress:phase completed:event->completed_bytes expected:event->expected_bytes];
   [pool drain];
@@ -760,7 +757,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   rdlp_error_code code=RDLP_OK; memset(&outcome,0,sizeof(outcome));
   memset(&config,0,sizeof(config)); memset(&job,0,sizeof(job));
   config.download_root=[root_ fileSystemRepresentation];
-  config.result=&outcome; config.status_callback=service_status; config.status_context=self;
+  /* Typed resolver/download events drive the status bar; omit raw format/file notices. */
+  config.result=&outcome; config.status_context=self;
   config.change_callback=service_changed;
   config.resolver.struct_size=sizeof(config.resolver);
   config.resolver.ca_bundle_path=[ca_ fileSystemRepresentation];

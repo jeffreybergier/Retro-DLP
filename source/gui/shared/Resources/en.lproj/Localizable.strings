@@ -172,10 +172,10 @@
 "Close Window" = "Close Window";
 
 /* shared/RDLPLibrary.m */
-"Combining audio and video…" = "Combining audio and video…";
+"Combining audio and video…" = "Combining…";
 
 /* shared/RDLPLibrary.m */
-"Configuring client…" = "Configuring client…";
+"Configuring client…" = "Configuring…";
 
 /* iOS/RDLPLibrarySections.m, macOS/RDLPLibraryMenus.m */
 "Cookie Export Guide" = "Cookie Export Guide";
@@ -360,14 +360,17 @@
 /* iOS/RDLPUIKit.m, iOS/RDLPVideoListViewController.m, macOS/RDLPLibraryWindowController.m, shared/RDLPDownloadPolicy.m, shared/RDLPLibrary.m */
 "Downloading" = "Downloading";
 
-/* shared/RDLPLibrary.m */
-"Downloading audio" = "Downloading audio";
+/* shared/RDLPLibrary.m: active transfer phase, separate from the job status. */
+"Downloading…" = "Downloading…";
 
 /* shared/RDLPLibrary.m */
-"Downloading player script…" = "Downloading player script…";
+"Downloading audio" = "Audio…";
 
 /* shared/RDLPLibrary.m */
-"Downloading video" = "Downloading video";
+"Downloading player script…" = "JavaScript…";
+
+/* shared/RDLPLibrary.m */
+"Downloading video" = "Video…";
 
 /* iOS/RDLPLibrarySections.m */
 "Downloads" = "Downloads";
@@ -433,7 +436,7 @@
 "Finish the current operation or dialog before importing cookies." = "Finish the current operation or dialog before importing cookies.";
 
 /* shared/RDLPLibrary.m */
-"Finishing download…" = "Finishing download…";
+"Finishing download…" = "Finishing…";
 
 /* macOS/RDLPLibraryWindowController.m */
 "Format expression (for example, 18 or 136+140)" = "Format expression (for example, 18 or 136+140)";
@@ -475,7 +478,7 @@
 "Library Actions" = "Library Actions";
 
 /* shared/RDLPLibrary.m */
-"Loading mobile player…" = "Loading mobile player…";
+"Loading mobile player…" = "Player…";
 
 /* shared/RDLPLibrary.m */
 "Low" = "Low";
@@ -604,7 +607,7 @@
 "Quit RetroDLP" = "Quit RetroDLP";
 
 /* shared/RDLPLibrary.m */
-"Reading cookies…" = "Reading cookies…";
+"Reading cookies…" = "Cookies…";
 
 /* shared/RDLPLibrary.m */
 "Reading playlist…" = "Reading playlist…";
@@ -622,7 +625,7 @@
 "Refresh your manually added playlists and their videos from YouTube. Local downloads are retained. This does not download videos." = "Refresh your manually added playlists and their videos from YouTube. Local downloads are retained. This does not download videos.";
 
 /* shared/RDLPLibrary.m */
-"Refreshing visitor data…" = "Refreshing visitor data…";
+"Refreshing visitor data…" = "Visitor…";
 
 /* iOS/RDLPLibraryActions.m, iOS/RDLPSettingsViewController.m, macOS/RDLPLibraryWindowController.m */
 "Remove" = "Remove";
@@ -679,10 +682,10 @@
 "Replace the working cookie copy. Your original export is retained." = "Replace the working cookie copy. Your original export is retained.";
 
 /* shared/RDLPLibrary.m */
-"Requesting metadata…" = "Requesting metadata…";
+"Requesting metadata…" = "Metadata…";
 
 /* shared/RDLPLibrary.m */
-"Resolving video…" = "Resolving video…";
+"Resolving video…" = "Resolving…";
 
 /* iOS/player/RDLPPlayerViewController.m */
 "Restart item" = "Restart item";
@@ -730,7 +733,7 @@
 "Select a synced playlist first." = "Select a synced playlist first.";
 
 /* shared/RDLPLibrary.m */
-"Selecting format…" = "Selecting format…";
+"Selecting format…" = "Format…";
 
 /* iOS/RDLPLibraryViewController.m, iOS/RDLPPlaylistsViewController.m, iOS/RDLPSettingsViewController.m */
 "Settings" = "Settings";
@@ -760,7 +763,7 @@
 "Size" = "Size";
 
 /* shared/RDLPLibrary.m */
-"Solving challenges…" = "Solving challenges…";
+"Solving challenges…" = "Solving…";
 
 /* iOS/RDLPLibraryActions.m, iOS/RDLPQueueViewController.m, macOS/RDLPQueueWindowController.m */
 "Stop" = "Stop";
