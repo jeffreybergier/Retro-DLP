@@ -28,6 +28,7 @@
 - (NSInteger)outlineView:(NSOutlineView *)outline numberOfChildrenOfItem:(id)item;
 @end
 #import "../../shared/tests/shared_status_test.h"
+#import "../../shared/tests/shared_localization_test.h"
 #import "../../shared/tests/shared_worker_test.h"
 #import "../../shared/tests/shared_metadata_test.h"
 #import "../../shared/tests/shared_video_rows_test.h"
@@ -426,15 +427,15 @@ static void testFixedToolbar(RDLPLibraryWindowController *owner,RDLPLibrary *lib
 }
 static void testQueueWindow(RDLPLibrary *library) {
   RDLPLibraryWindowController *owner=[[RDLPLibraryWindowController alloc] initWithLibrary:library];
-  [owner showWindow:nil]; pump();
+  [owner showWindow:nil]; [NSApp activateIgnoringOtherApps:YES]; pump();
   RDLPQueueWindowController *queue=[owner valueForKey:@"queueWindow_"];
   NSTableView *table=[queue tableView]; NSWindow *window=[queue window];
   requireCondition([[[owner AI_splitView] subviews] count]==2,@"Library has exactly two panes and no inspector");
   requireCondition(![window isVisible] && window!=[owner window],@"Queue starts closed in a separate window");
   requireCondition(([window styleMask]&NSTexturedBackgroundWindowMask)!=0,@"Queue uses brushed metal window style");
   [toolbarButton(owner,@"downloads") performClick:nil]; pump();
-  requireCondition([window isVisible] && [window isKeyWindow] && [table window]==window,@"Main Queue button opens and focuses the separate queue");
-  requireCondition([[table tableColumns] count]==5 && [table numberOfRows]==3,@"Queue retains its five columns and all job qualities");
+  requireCondition([window isVisible] && [window isKeyWindow] && [table window]==window,[NSString stringWithFormat:@"Main Queue button opens and focuses the separate queue (visible=%d, key=%d, active=%d, attached=%d)",[window isVisible],[window isKeyWindow],[NSApp isActive],[table window]==window]);
+  requireCondition([[[table tableColumns] valueForKey:@"identifier"] isEqual:[NSArray arrayWithObjects:@"number",@"state",@"quality",@"title",@"playlist_title",@"enqueueDate",@"latestDownloadDate",nil]] && [table numberOfRows]==3,@"Queue includes both date columns and all job qualities");
   requireCondition([[queue valueForKey:@"toolbarItems_"] count]==4 && queueButton(queue,@"play")==nil,@"Queue has Retry, Stop, Error, and Delete controls without Play");
   NSUInteger scope, jobIndex;
   for(scope=0;scope<3;++scope) {
@@ -507,6 +508,11 @@ static void testQueueWindow(RDLPLibrary *library) {
   (void)sender; NSString *report=@"PASS";
   @try {
     requireCondition([[NSBundle mainBundle] pathForResource:@"cacert" ofType:@"pem"]==nil,@"Test bundle must have no network CA resource");
+    if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestLocalizationOnly"] boolValue]) {
+      testSharedLocalization(@"/tmp/retrodlp-localization-fixture");
+      [@"PASS: native shared bundle localization, owned C UTF-8, translated rows/status, stable identifiers and paths" writeToFile:@"/tmp/retrodlp-localization-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [NSApp terminate:nil]; return;
+    }
     NSString *customization=[[[NSProcessInfo processInfo] environment] objectForKey:@"RDToolbarCustomizationTest"];
     if(![customization isEqualToString:@"restore"])
       [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"NSToolbar Configuration RetroDLPLibraryToolbar"];
@@ -737,6 +743,8 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([[[window_ valueForKey:@"addSheet_"] title] isEqualToString:@"Add Video"],@"Library menu opens Add Video without a selection");
     [NSApp endSheet:[window_ valueForKey:@"addSheet_"] returnCode:0]; pump();
     testFixedToolbar(window_,library_);
+    /* Removed playlists retain their download history, including the toolbar fixture. */
+    NSUInteger initialJobCount=[[library_ jobsForPlaylist:nil completedOnly:NO] count];
     NSMenu *fileMenu=[window_ menuForMenuBarTitle:@"File"];
     requireCondition([[fileMenu itemAtIndex:0] action]==@selector(addVideo:) && [[fileMenu itemAtIndex:1] action]==@selector(addPlaylist:),@"File menu puts Add Video before Add Playlist");
     NSMenu *editMenu=[window_ menuForMenuBarTitle:@"Edit"];
@@ -775,7 +783,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([download itemWithTitle:@"Download Quality"]==nil,@"Playlist toolbar menu leaves quality in the application menu");
     NSMenu *quality=[window_ menuForMenuBarTitle:@"Download Quality"];
     invoke(window_,choice(quality,@"High (137+140/136+140/135+140/18)"));
-    requireCondition(![[window_ window] attachedSheet] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Choosing High must only save the preference");
+    requireCondition(![[window_ window] attachedSheet] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==initialJobCount,@"Choosing High must only save the preference");
     selectRow(window_,@"table_",0);
     NSDictionary *available=[window_ performSelector:@selector(targetJob)];
     requireCondition([[available objectForKey:@"format"] isEqualToString:@"18"],@"High preference must still target the existing Low download");
@@ -820,7 +828,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     selectRow(window_,@"sidebar_",1);
     [window_ performSelector:@selector(downloadFromMenu:) withObject:fileDownload];
     invoke(window_,choice(quality,@"Low (18)"));
-    requireCondition(![[window_ window] attachedSheet] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3 && [library_ isPaused],@"Playlist selection cannot start downloads or a bulk confirmation");
+    requireCondition(![[window_ window] attachedSheet] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==initialJobCount && [library_ isPaused],@"Playlist selection cannot start downloads or a bulk confirmation");
     selectRow(window_,@"table_",0);
     download=[window_ menuForToolbarIdentifier:@"download"]; play=[window_ menuForToolbarIdentifier:@"play"];
     requireCondition([playlistTitles isEqual:titles([window_ menuForToolbarIdentifier:@"library"])],@"Library menu keeps its commands across selections");
@@ -850,7 +858,10 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([window_ validateMenuItem:choice(download,@"Download Video")],@"Download Video must allow failed jobs at the selected quality");
     invoke(window_,choice([queueTable menu],@"Retry"));
     requireCondition([[[window_ selectedJob] objectForKey:@"id"] isEqual:failedKey] && [queueTable selectedRow]==failedRow && [[[window_ selectedJob] objectForKey:@"state"] isEqual:@"queued"],@"Retry preserves exact job identity and row position");
+    requireCondition([window_ validateMenuItem:choice(download,@"Download Video")],@"A different preferred format remains available while the original quality is queued");
+    [window_ performSelector:@selector(saveDownloadQuality:) withObject:[[window_ selectedJob] objectForKey:@"format"]];
     requireCondition(![window_ validateMenuItem:choice(download,@"Download Video")] && [window_ validateMenuItem:choice(download,@"Cancel Download…")],@"Queued job must disable duplicate Download Video");
+    invoke(window_,choice(quality,@"Med (136+140/135+140/18)"));
     requireCondition([library_ isPaused] && ![library_ isBusy],@"Explicit retry must preserve Pause");
     invoke(window_,choice([queueTable menu],@"Stop Download…")); confirm(window_,NO);
     requireCondition([window_ validateMenuItem:choice(download,@"Cancel Download…")],@"Cancelled sheet changed job");
@@ -877,14 +888,14 @@ static void testQueueWindow(RDLPLibrary *library) {
     selectRow(window_,@"table_",1);
     download=[window_ menuForToolbarIdentifier:@"library"];
     invoke(window_,choice(quality,@"High (137+140/136+140/135+140/18)"));
-    requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Quality selection started a download");
+    requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==initialJobCount,@"Quality selection started a download");
     invoke(window_,choice(quality,@"Custom Format…"));
     [[window_ valueForKey:@"customFormat_"] setStringValue:@"invalid-format"];
     NSButton *save=[[[NSButton alloc] init] autorelease]; [save setTag:1]; [window_ dismissDownload:save];
     requireCondition([window_ hasAttachedSheet],@"Invalid quality must keep the sheet open");
     [[window_ valueForKey:@"customFormat_"] setStringValue:@"22"];
     [window_ dismissDownload:save]; pump();
-    requireCondition([[RDLPLibrary preferredFormat] isEqualToString:@"22"] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==3,@"Saving custom quality must not enqueue");
+    requireCondition([[RDLPLibrary preferredFormat] isEqualToString:@"22"] && [[library_ jobsForPlaylist:nil completedOnly:NO] count]==initialJobCount,@"Saving custom quality must not enqueue");
     invoke(window_,choice(quality,@"Custom Format…"));
     [[window_ valueForKey:@"customFormat_"] setStringValue:@"18"]; [save setTag:0]; [window_ dismissDownload:save]; pump();
     requireCondition([[RDLPLibrary preferredFormat] isEqualToString:@"22"],@"Cancelling custom quality changed preference");
@@ -892,7 +903,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     selectRow(window_,@"table_",0);
     download=[window_ menuForToolbarIdentifier:@"download"];
     [toolbarButton(window_,@"download") performClick:nil]; pump();
-    requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==4 && [[RDLPLibrary preferredFormat] isEqualToString:@"137+140/136+140/135+140/18"] && [library_ isPaused],@"Download primary click adds the preferred High quality without deleting the existing Low file");
+    requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==initialJobCount+1 && [[RDLPLibrary preferredFormat] isEqualToString:@"137+140/136+140/135+140/18"] && [library_ isPaused],@"Download primary click adds the preferred High quality without deleting the existing Low file");
     selectRow(window_,@"sidebar_",1);
     NSString *selectedKey=[[[window_ valueForKey:@"selectedPlaylist_"] copy] autorelease];
     [outline collapseItem:@"My Playlists"];

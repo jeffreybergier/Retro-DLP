@@ -52,8 +52,8 @@ static void testSharedStatus(NSString *base) {
   rdlp_event_type events[]={RDLP_EVENT_AUTHENTICATING,RDLP_EVENT_LOADING_CONFIGURATION,
     RDLP_EVENT_FETCHING_BOOTSTRAP,RDLP_EVENT_REQUESTING_METADATA,RDLP_EVENT_REFRESHING_METADATA,
     RDLP_EVENT_SELECTING_FORMATS,RDLP_EVENT_LOADING_PLAYER_JAVASCRIPT,RDLP_EVENT_SOLVING_CHALLENGES};
-  NSArray *labels=[NSArray arrayWithObjects:@"Reading cookies…",@"Configuring client…",@"Loading mobile player…",
-    @"Requesting metadata…",@"Refreshing visitor data…",@"Selecting format…",@"Downloading player script…",@"Solving challenges…",nil];
+  NSArray *labels=[NSArray arrayWithObjects:@"Cookies…",@"Configuring…",@"Player…",
+    @"Metadata…",@"Visitor…",@"Format…",@"JavaScript…",@"Solving…",nil];
   unsigned int i;
   for(i=0;i<sizeof(events)/sizeof(events[0]);++i) {
     [library resolverEvent:events[i]]; statusWait(0.01);

@@ -13,7 +13,9 @@
 #import "../../shared/rdapp_store.h"
 #import <AVFoundation/AVFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
+#include <sys/resource.h>
 #import "../../shared/tests/shared_status_test.h"
+#import "../../shared/tests/shared_localization_test.h"
 #import "../../shared/tests/shared_worker_test.h"
 #import "ios_lifecycle_test.h"
 #import "ios_playback_progress_test.h"
@@ -140,7 +142,7 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
     rdapp_store_add_adhoc(store,"AAAAAAAAAAA","Native playback",NULL),@"Create real-player fixture");
   rdapp_store_close(store);
   require([[NSFileManager defaultManager] copyItemAtPath:[[NSBundle mainBundle] pathForResource:@"playback-fixture" ofType:@"mp4"]
-    toPath:[downloads stringByAppendingPathComponent:@"fixture.mp4"] error:NULL],@"Copy long playback fixture");
+    toPath:[downloads stringByAppendingPathComponent:@"fixture.mp4"] error:NULL],@"Copy short playback fixture");
   [library savePlaybackSeconds:10 forVideo:@"AAAAAAAAAAA"];
   NSDictionary *job=[NSDictionary dictionaryWithObjectsAndKeys:@"fixture.mp4",@"path",@"AAAAAAAAAAA",@"video_id",
     @"Native playback",@"title",@"Example Channel",@"channel",nil];
@@ -156,7 +158,7 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
     @"Session contains an ordinary player controller sharing the queue's AVPlayer");
   playbackWait(controller);
   require([[[controller queue] playlist] count]==1 && [[controller queue] currentIndex]==0,@"Presentation creates a one-item playlist");
-  require([[controller player] rate]==1 && CMTimeGetSeconds([[controller player] currentTime])>=9 && CMTimeGetSeconds([[controller player] currentTime])<14,@"Playback starts at the saved checkpoint");
+  require([[controller player] rate]==1 && CMTimeGetSeconds([[controller player] currentTime])<2,@"Short playback starts at the beginning despite a saved checkpoint");
   RDLPPlayerControls *controls=[presentation valueForKey:@"controls"];
   require(![[controls previousButton] isEnabled] && ![[controls nextButton] isEnabled],@"One-item presentation disables previous and next");
   require([[presentation title] isEqualToString:@"Native playback"] && [[presentation navigationItem] leftBarButtonItem]==[controls audioButton] && [[presentation navigationItem] rightBarButtonItem]==[controls doneButton],@"Title, headphones, and Done occupy the native navigation bar");
@@ -188,11 +190,13 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
   [[[controls audioButton] target] performSelector:[[controls audioButton] action] withObject:[controls audioButton]]; pump();
   require([presentation isAudioOnly] && [[controller queue] isAudioOnly],@"Audio Only is wired from the visible control to the queue");
   for(AVPlayerItemTrack *track in [[[controller player] currentItem] tracks])
-    if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo]) require(![track isEnabled],@"Video decoding is disabled for audio-only playback");
+    if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo]) require([track isEnabled],@"Audio-only mode preserves track enablement");
+  require([presentation valueForKey:@"videoLayer"]==nil,@"Audio-only mode removes the rendering layer");
   screenshot(window,[directory stringByAppendingPathComponent:@"audio-only.png"]);
   [[[controls audioButton] target] performSelector:[[controls audioButton] action] withObject:[controls audioButton]]; pump();
   for(AVPlayerItemTrack *track in [[[controller player] currentItem] tracks])
-    if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo]) require([track isEnabled],@"Show Video restores video tracks");
+    if([[[track assetTrack] mediaType] isEqualToString:AVMediaTypeVideo]) require([track isEnabled],@"Show Video preserves enabled video tracks");
+  require([[presentation valueForKey:@"videoLayer"] player]==[controller player],@"Show Video restores the rendering layer and its player");
   if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestNowPlayingHold"] boolValue]) {
     /* Device-only window for locking, headset controls, and background audio. */
     playbackSeek([controller player],5); [[controller player] play];
@@ -263,11 +267,11 @@ static void testPlaylistSelection(UIWindow *window,NSString *directory) {
   NSURL *first=[NSURL fileURLWithPath:[library fileForJob:[library jobForPlaylist:pid video:@"AAAAAAAAAAA" format:@"18"]]];
   NSURL *second=[NSURL fileURLWithPath:[library fileForJob:[library jobForPlaylist:pid video:@"BBBBBBBBBBB" format:@"18"]]];
   require([[[player queue] playlist] isEqualToArray:[NSArray arrayWithObjects:first,second,first,nil]] && [[player queue] currentIndex]==2,@"Available files retain playlist order and the tapped duplicate's exact index; missing/newer quality, queued and undownloaded entries are excluded");
-  require([[player player] rate]==1 && fabs(CMTimeGetSeconds([[player player] currentTime])-12)<2,@"Tapped duplicate restores its bookmark and autoplays");
+  require([[player player] rate]==1 && CMTimeGetSeconds([[player player] currentTime])<2,@"Tapped duplicate autoplays short content from the beginning despite a saved bookmark");
   RDLPPlayerControls *controls=[[player playerViewController] valueForKey:@"controls"];
   require([[controls previousButton] isEnabled] && ![[controls nextButton] isEnabled],@"Transport availability reflects the selected playlist index");
   [[[controls previousButton] target] performSelector:[[controls previousButton] action] withObject:[controls previousButton]]; playbackWait(player);
-  require([[player queue] currentIndex]==1 && [[player player] rate]==1 && fabs(CMTimeGetSeconds([[player player] currentTime])-24)<1,@"Visible Previous button selects the preceding available video and restores its bookmark");
+  require([[player queue] currentIndex]==1 && [[player player] rate]==1 && CMTimeGetSeconds([[player player] currentTime])<2,@"Visible Previous button selects the preceding available short video and starts at the beginning");
   screenshot(window,[directory stringByAppendingPathComponent:@"playlist-player.png"]);
   [list dismissViewControllerAnimated:NO completion:nil]; pump();
   [window setRootViewController:previous]; [previous release]; [navigation release]; [list release];
@@ -341,18 +345,20 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   require([library playlistForID:key]!=nil,@"Dismissing the swipe preserves the playlist");
   index=playlistIndex(root,key);
   [root tableView:[root tableView] willBeginEditingRowAtIndexPath:index];
-  [library setTestBusy:YES];
-  require(![root tableView:[root tableView] canEditRowAtIndexPath:index],@"Busy library disables playlist deletion");
+  [library setValue:[NSNumber numberWithBool:YES] forKey:@"busy_"];
+  [library setValue:[NSDictionary dictionaryWithObject:@"sync" forKey:@"type"] forKey:@"activeCommand_"];
+  require(![root tableView:[root tableView] canEditRowAtIndexPath:index],@"Active playlist sync disables playlist deletion");
   [root tableView:[root tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:index]; pump();
   require([library playlistForID:key]!=nil,@"Work beginning during swipe blocks removal");
-  [library setTestBusy:NO]; index=playlistIndex(root,key);
+  [library setValue:[NSNumber numberWithBool:NO] forKey:@"busy_"];
+  [library setValue:nil forKey:@"activeCommand_"]; index=playlistIndex(root,key);
   [root tableView:[root tableView] willBeginEditingRowAtIndexPath:index];
   [library enqueuePlaylist:key video:@"AAAAAAAAAAA" format:@"18"];
-  [root tableView:[root tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:index]; pump();
-  require([library playlistForID:key]!=nil && ![root tableView:[root tableView] canEditRowAtIndexPath:playlistIndex(root,key)],@"A download queued during swipe blocks removal");
+  require([root tableView:[root tableView] canEditRowAtIndexPath:index],@"Queued downloads allow playlist removal with retained history");
+  [root tableView:[root tableView] didEndEditingRowAtIndexPath:index]; pump();
   NSDictionary *job=[library jobForPlaylist:key video:@"AAAAAAAAAAA" format:@"18"];
-  require(rdapp_store_finish(store,[[job objectForKey:@"id"] longLongValue],"complete","18",""),@"Record completed blocker");
-  require(![root tableView:[root tableView] canEditRowAtIndexPath:playlistIndex(root,key)],@"Completed downloads block playlist deletion");
+  require(rdapp_store_finish(store,[[job objectForKey:@"id"] longLongValue],"complete","18",""),@"Record completed download");
+  require([root tableView:[root tableView] canEditRowAtIndexPath:playlistIndex(root,key)],@"Completed downloads allow playlist removal with retained history");
   [library removeDownload:job];
   index=playlistIndex(root,key);
   [root tableView:[root tableView] willBeginEditingRowAtIndexPath:index];
@@ -364,6 +370,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   require([library playlistForID:key]!=nil,@"Deletion waits until UIKit's commit callback returns");
   pump();
   require(![library playlistForID:key] && [library playlistForID:otherKey] && [library playlistForID:accountKey],@"Delete uses playlist identity after discovery promotion");
+  require([library jobForID:[job objectForKey:@"id"]]!=nil,@"Removing playlist membership retains download history");
   nativeDelete(root,playlistIndex(root,otherKey));
   require(![library playlistForID:otherKey] && [root tableView:[root tableView] numberOfRowsInSection:1]==0,@"Native Delete removes the last Added Playlists row without recursive reload");
   nativeDelete(root,playlistIndex(root,accountKey));
@@ -375,8 +382,9 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   RDLPPlaylistViewController *detail=[[RDLPPlaylistViewController alloc] initWithLibrary:library playlist:unsupported];
   [detail view]; [detail refresh:nil];
   require(![[[detail navigationItem] rightBarButtonItem] isEnabled],@"Unsupported playlist disables Sync");
+  NSArray *pendingCommands=[[[library valueForKey:@"commands_"] copy] autorelease];
   [detail sync:nil]; [library syncPlaylistInput:@"https://www.youtube.com/playlist?list=WL"]; [library syncAll];
-  require([[library valueForKey:@"commands_"] count]==0 && ![library hasPlaylistsToSync],@"Only unsupported and Ad-Hoc playlists means no manual or automatic sync work");
+  require([[library valueForKey:@"commands_"] isEqual:pendingCommands] && ![library hasPlaylistsToSync],@"Only unsupported and Ad-Hoc playlists adds no manual or automatic sync work");
   require([root tableView:[root tableView] canEditRowAtIndexPath:playlistIndex(root,[unsupported objectForKey:@"id"])],@"Unsupported playlists remain removable");
   [detail release];
   rdapp_store_close(store);
@@ -422,6 +430,11 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   [@"RUNNING" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSString *report=@"PASS";
   @try {
+    if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestLocalizationOnly"] boolValue]) {
+      testSharedLocalization([documents_ stringByAppendingPathComponent:@"LocalizationFixture"]);
+      [@"PASS: native shared bundle localization, owned C UTF-8, translated rows/status, stable identifiers and paths" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [[UIApplication sharedApplication] setIdleTimerDisabled:idleTimerDisabled]; return;
+    }
     testIOSPlaybackWrites([documents_ stringByAppendingPathComponent:@"PlaybackWrites"]);
     testIOSPlaybackProgress([documents_ stringByAppendingPathComponent:@"PlaybackFixture"]);
     testIOSPlaylistPlayback([documents_ stringByAppendingPathComponent:@"PlaylistPlayback"]);
@@ -587,7 +600,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require([[[root valueForKey:@"alert_"] title] isEqualToString:@"Add Playlist"],@"Second action opens Add Playlist after sheet dismisses");
     confirm(root,NO);
     require([sections(root) count]==4,@"Four library groups");
-    require([[[sections(root) objectAtIndex:1] objectForKey:@"rows"] count]==1,@"Added playlist group");
+    require([[[sections(root) objectAtIndex:1] objectForKey:@"rows"] count]==1,[NSString stringWithFormat:@"Added playlist group: %@",sections(root)]);
     require([[[sections(root) objectAtIndex:2] objectForKey:@"rows"] count]==1,@"Account playlist group");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"library.png"]);
     NSDictionary *playlist=[[[[[sections(root) objectAtIndex:1] objectForKey:@"rows"] objectAtIndex:0] objectForKey:@"playlist"] retain];
@@ -727,7 +740,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require(![playerController isBeingPresented],@"Native player presentation finishes before transport and dismissal");
     RDLPDownloadedPlayerViewController *downloaded=(id)playerController;
     playbackWait(downloaded); [[downloaded player] pause];
-    require([[[downloaded queue] playlist] count]==1 && CMTimeGetSeconds([[downloaded player] currentTime])>=1,@"Details restores progress in a one-item queue");
+    require([[[downloaded queue] playlist] count]==1 && CMTimeGetSeconds([[downloaded player] currentTime])<2,@"Details starts short content at the beginning in a one-item queue");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"player.png"]);
     [detail dismissViewControllerAnimated:YES completion:nil];
     for(NSUInteger wait=0;wait<10 && ([detail presentedViewController] || [navigation_ presentedViewController]);++wait) pump();
@@ -837,18 +850,18 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require([playlistPlayer isKindOfClass:[RDLPDownloadedPlayerViewController class]],@"Playlist tap presents RDLPDownloadedPlayerViewController even with another preferred quality");
     require([[[[playlistPlayer queue] playlist] objectAtIndex:0] isEqual:[NSURL fileURLWithPath:file]],@"Playlist plays only the tapped local file");
     playbackWait(playlistPlayer); [[playlistPlayer player] pause];
-    require([[[playlistPlayer queue] playlist] count]==1 && CMTimeGetSeconds([[playlistPlayer player] currentTime])>=1,@"Playlist tap restores progress");
+    require([[[playlistPlayer queue] playlist] count]==1 && CMTimeGetSeconds([[playlistPlayer player] currentTime])<2,@"Playlist tap starts short content at the beginning");
     playbackSeek([playlistPlayer player],0.75);
     [[NSNotificationCenter defaultCenter] postNotificationName:UIApplicationWillResignActiveNotification object:[UIApplication sharedApplication]];
-    require(fabs([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]-0.75)<0.01,@"Backgrounding flushes the latest paused seek");
+    require([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]==0,@"Backgrounding discards the short-content bookmark");
     playbackSeek([playlistPlayer player],0.5);
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.7]];
-    require(fabs([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]-0.5)<0.01,@"Paused seeks save while inactive after the debounce");
+    require([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]==0,@"Paused short-content seeks keep the bookmark cleared while inactive");
     playbackSeek([playlistPlayer player],1.5);
     [list dismissViewControllerAnimated:YES completion:nil];
     for(NSUInteger wait=0;wait<10 && ([list presentedViewController] || [navigation_ presentedViewController]);++wait) pump();
     require(![list presentedViewController] && [navigation_ isToolbarHidden],@"Movie dismissal returns to playlist without a toolbar");
-    require(fabs([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]-1.5)<0.01,@"Dismissing an inactive player flushes its final position");
+    require([library_ playbackSecondsForVideo:@"AAAAAAAAAAA"]==0,@"Dismissing inactive short content keeps its bookmark cleared");
     [[NSNotificationCenter defaultCenter] postNotificationName:UIApplicationDidBecomeActiveNotification object:[UIApplication sharedApplication]];
     [library_ savePlaybackSeconds:0.75 forVideo:@"AAAAAAAAAAA"];
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.7]];
@@ -984,7 +997,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     [library_ setTestBusy:NO];
     [all tableView:[all tableView] willBeginEditingRowAtIndexPath:lowIndex];
     [all tableView:[all tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:lowIndex]; pump();
-    require([all tableView:[all tableView] numberOfRowsInSection:0]==0 && (![all respondsToSelector:@selector(tableView:titleForFooterInSection:)] || [all tableView:[all tableView] titleForFooterInSection:0]==nil),@"Empty All Downloads has no placeholder section footer");
+    require([all numberOfSectionsInTableView:[all tableView]]==0 && (![all respondsToSelector:@selector(tableView:titleForFooterInSection:)] || [all tableView:[all tableView] titleForFooterInSection:0]==nil),@"Empty All Downloads has no placeholder section footer");
     list=[self show:RDLPScreenPlaylist playlist:playlist video:nil];
     /* Each stopped/failed quality may retain final, video, audio, and .part files. */
     NSString *staging=[downloads stringByAppendingPathComponent:[@".staging/" stringByAppendingString:[newJob objectForKey:@"id"]]];
@@ -1059,5 +1072,12 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
 }
 @end
 int main(int argc,char **argv) {
+  /* This synchronous suite retains read snapshots across many UI actions;
+     normal application event turns drain their autorelease pools between them. */
+  struct rlimit files;
+  if(!getrlimit(RLIMIT_NOFILE,&files) && files.rlim_cur<4096) {
+    files.rlim_cur=files.rlim_max<4096?files.rlim_max:4096;
+    setrlimit(RLIMIT_NOFILE,&files); /* Test process only; preserve the hard limit. */
+  }
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init]; int result=UIApplicationMain(argc,argv,nil,@"RDLPIOSOfflineTest"); [pool drain]; return result;
 }

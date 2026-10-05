@@ -37,7 +37,7 @@ static NSDate *sectionDate(NSCalendar *calendar,NSInteger year,NSInteger month,N
 }
 static void testDownloadSections(void) {
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
-  NSCalendar *calendar=[[[NSCalendar alloc] initWithCalendarIdentifier:@"gregorian"] autorelease];
+  NSCalendar *calendar=[[[NSCalendar alloc] initWithCalendarIdentifier:NSGregorianCalendar] autorelease];
   [calendar setTimeZone:[NSTimeZone timeZoneForSecondsFromGMT:0]]; [calendar setFirstWeekday:2];
   RDLPSectionFixture *source=[[[RDLPSectionFixture alloc] init] autorelease];
   source->dates=[[NSArray alloc] initWithObjects:sectionDate(calendar,2026,9,29,1),sectionDate(calendar,2026,9,28,1),
