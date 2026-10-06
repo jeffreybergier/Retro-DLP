@@ -30,11 +30,11 @@
   NSString *title=[entry objectForKey:@"title"], *status=[policy_ statusForJob:job localFile:file];
   if(![title length]) title=NSLocalizedString(@"Untitled", nil);
   NSString *quality=@"", *size=@"", *local=@"";
+  NSString *format=[[job objectForKey:@"actual_format"] length]?[job objectForKey:@"actual_format"]:[job objectForKey:@"format"];
   if(file) {
-    NSString *format=[[job objectForKey:@"actual_format"] length]?[job objectForKey:@"actual_format"]:[job objectForKey:@"format"];
     quality=[RDLPLibrary qualityLabelForFormat:format];
     size=[RDLPLibrary fileSizeLabelForBytes:[[file objectForKey:@"bytes"] unsignedLongLongValue]];
-    local=[quality length]?[quality stringByAppendingFormat:NSLocalizedString(@"·%@", nil),size]:size;
+    local=[quality length]?[[RDLPLibrary qualityDetailForFormat:format] stringByAppendingFormat:NSLocalizedString(@"·%@", nil),size]:size;
   }
   NSString *summary=[RDLPLibrary metadataSummaryForEntry:entry];
   NSMutableArray *details=[NSMutableArray array];
@@ -54,7 +54,7 @@
       [NSString stringWithFormat:NSLocalizedString(@"%llu kilobytes", nil),(bytes+999)/1000]:
       [NSString stringWithFormat:NSLocalizedString(@"%.1f megabytes", nil),(double)bytes/1000000.0]];
   }
-  if([quality length]) [spoken addObject:quality];
+  if([quality length]) [spoken addObject:[RDLPLibrary qualityDetailForFormat:format]];
   if([channel length]) [spoken addObject:channel];
   NSString *spokenDetail=[spoken componentsJoinedByString:@", "];
   NSString *accessibility=[NSString stringWithFormat:NSLocalizedString(@"%@%@, %@", nil),title,[spokenDetail length]?[@", " stringByAppendingString:spokenDetail]:@"",status];

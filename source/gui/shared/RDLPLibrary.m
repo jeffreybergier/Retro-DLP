@@ -183,8 +183,12 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   if(index==NSNotFound && [format isEqualToString:@"136+140"]) index=1;
   if(index==NSNotFound && [format isEqualToString:@"137+140"]) index=2;
   NSArray *names=[NSArray arrayWithObjects:NSLocalizedString(@"Low", nil),NSLocalizedString(@"Med", nil),NSLocalizedString(@"High", nil),nil];
-  NSString *name=index==NSNotFound?NSLocalizedString(@"Custom", nil):[names objectAtIndex:index];
-  return [NSString stringWithFormat:NSLocalizedString(@"%@ (%@)", nil),name,format];
+  return index==NSNotFound?NSLocalizedString(@"Custom", nil):[names objectAtIndex:index];
+}
++ (NSString *)qualityDetailForFormat:(NSString *)format;
+{
+  if(![format length]) return @"";
+  return [NSString stringWithFormat:NSLocalizedString(@"%@ (%@)", nil),[self qualityLabelForFormat:format],format];
 }
 + (NSString *)durationLabelForEntry:(NSDictionary *)entry;
 {

@@ -435,12 +435,16 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
       [@"PASS: native shared bundle localization, owned C UTF-8, translated rows/status, stable identifiers and paths" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
       [[UIApplication sharedApplication] setIdleTimerDisabled:idleTimerDisabled]; return;
     }
-    testIOSPlaybackWrites([documents_ stringByAppendingPathComponent:@"PlaybackWrites"]);
-    testIOSPlaybackProgress([documents_ stringByAppendingPathComponent:@"PlaybackFixture"]);
-    testIOSPlaylistPlayback([documents_ stringByAppendingPathComponent:@"PlaylistPlayback"]);
-    testPlaylistSelection(window_,[documents_ stringByAppendingPathComponent:@"PlaylistSelection"]);
-    testIOSNowPlaying([documents_ stringByAppendingPathComponent:@"NowPlaying"]);
-    testDownloadedPlayback(window_,[documents_ stringByAppendingPathComponent:@"NativePlayback"]);
+    /* UI-only runs still exercise the shared bridge and native interactions;
+       the independent playback suite can be run separately on the device. */
+    if(![[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestUIOnly"] boolValue]) {
+      testIOSPlaybackWrites([documents_ stringByAppendingPathComponent:@"PlaybackWrites"]);
+      testIOSPlaybackProgress([documents_ stringByAppendingPathComponent:@"PlaybackFixture"]);
+      testIOSPlaylistPlayback([documents_ stringByAppendingPathComponent:@"PlaylistPlayback"]);
+      testPlaylistSelection(window_,[documents_ stringByAppendingPathComponent:@"PlaylistSelection"]);
+      testIOSNowPlaying([documents_ stringByAppendingPathComponent:@"NowPlaying"]);
+      testDownloadedPlayback(window_,[documents_ stringByAppendingPathComponent:@"NativePlayback"]);
+    }
     if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestPlaybackOnly"] boolValue]) {
       [@"PASS: playlist filtering/order/duplicates, per-video resume, automatic advancement, rapid navigation, Now Playing, audio-only, autoplay, debounced paused/background checkpoints, and first/last ten-percent reset" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
       return;
@@ -664,14 +668,14 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     UITableViewCell *videoCell=[list tableView:[list tableView] cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
     require([[videoCell accessoryView] isKindOfClass:[UIImageView class]] && [(UIImageView *)[videoCell accessoryView] image]!=nil && [[videoCell imageView] image]==nil && [videoCell accessoryType]==UITableViewCellAccessoryNone,@"Video status occupies the accessory with no disclosure chevron or leading image");
     require([[videoCell accessibilityLabel] rangeOfString:@"Downloaded"].location!=NSNotFound,@"Accessory status is accessible");
-    require([[[videoCell detailTextLabel] text] hasPrefix:@"12:34·"] && [[[videoCell detailTextLabel] text] hasSuffix:@"·Low (18)·Example Channel"],@"Playlist subtitle orders duration, file size, quality, and channel");
+    require([[[videoCell detailTextLabel] text] hasPrefix:@"12:34·"] && [[[videoCell detailTextLabel] text] hasSuffix:@"·Low·Example Channel"],@"Playlist subtitle orders duration, file size, quality, and channel");
     require([[videoCell accessibilityLabel] rangeOfString:@"12 minutes, 34 seconds"].location!=NSNotFound,@"Playlist duration is spoken as time");
     screenshot(window_,[documents_ stringByAppendingPathComponent:@"playlist.png"]);
     NSArray *videos=[[[[sections(list) objectAtIndex:0] objectForKey:@"rows"] copy] autorelease];
     require([videos count]==4,@"Playlist retains one row per entry regardless of quality count");
     require([[[videos objectAtIndex:0] objectForKey:@"status"] isEqualToString:@"Downloaded"] &&
       [[[[videos objectAtIndex:0] objectForKey:@"job"] objectForKey:@"format"] isEqualToString:@"18"],@"Playable quality represents video despite missing preferred quality");
-    require([[[videoCell detailTextLabel] text] rangeOfString:@"(18)"].location!=NSNotFound,@"Downloaded playlist subtitle shows its playable job quality");
+    require([[[videoCell detailTextLabel] text] rangeOfString:@"Low"].location!=NSNotFound,@"Downloaded playlist subtitle shows its playable job quality");
     for(NSDictionary *row in videos)
       require([[row objectForKey:@"status"] isEqualToString:@"Downloaded"] || [[row objectForKey:@"detail"] rangeOfString:@"("].location==NSNotFound,@"Playlist omits quality when no playable download is available");
     NSIndexPath *pendingIndex=videoIndex(list,@"BBBBBBBBBBB",@"18");
@@ -704,7 +708,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require([[settings tableView] style]==UITableViewStyleGrouped,@"Settings stays grouped");
     require(![settings respondsToSelector:@selector(tableView:titleForFooterInSection:)] || ([settings tableView:[settings tableView] titleForFooterInSection:0]==nil && [settings tableView:[settings tableView] titleForFooterInSection:1]==nil),@"Settings has no explanatory footers");
     NSDictionary *importRow=findRow(settings,@"import");
-    require([[importRow objectForKey:@"title"] isEqualToString:@"Import Cookies..."] && ![[importRow objectForKey:@"detail"] length],@"Simple import label without subtitle");
+    require([[importRow objectForKey:@"title"] isEqualToString:@"Import Cookies…"] && ![[importRow objectForKey:@"detail"] length],@"Simple import label without subtitle");
     require([settings enabled:@"import"],@"Import enabled before cookies imported");
     for(NSInteger row=0;row<3;++row) {
       UITableViewCell *cookieCell=[settings tableView:[settings tableView] cellForRowAtIndexPath:[NSIndexPath indexPathForRow:row inSection:1]];
@@ -773,7 +777,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     UITableViewCell *defaultCell=[[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil] autorelease];
     require([[cell accessoryView] isKindOfClass:[UIImageView class]] && [[cell imageView] image]==nil && [cell indentationLevel]==0 && [[[cell textLabel] font] pointSize]==[[[defaultCell textLabel] font] pointSize] && [[[cell detailTextLabel] font] pointSize]==[[[defaultCell detailTextLabel] font] pointSize],@"Queue shares native subtitle cell styling and trailing status icon");
     require([[cell detailTextLabel] numberOfLines]==1 && [[cell detailTextLabel] lineBreakMode]==5,@"Queue subtitle truncates in the middle on one line");
-    NSArray *statuses=[NSArray arrayWithObjects:@"Queued",@"Downloading",@"Downloaded",@"Failed",@"Stopped",@"Interrupted",@"File missing",nil];
+    NSArray *statuses=[NSArray arrayWithObjects:@"Queued",@"Downloading",@"Downloaded",@"Failed",@"Stopped",@"Interrupted",@"File Missing",nil];
     for(NSString *status in statuses) {
       NSString *playlistStatus=[status isEqualToString:@"Stopped"]?@"Cancelled":status;
       require([UIImagePNGRepresentation([queue statusIcon:status]) isEqualToData:UIImagePNGRepresentation([RDLPUIKit statusIcon:playlistStatus])],@"Queue status icons match Playlist");
@@ -782,11 +786,11 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     UIAlertView *jobMenu=[queue valueForKey:@"alert_"];
     require([[jobMenu message] rangeOfString:@"Synthetic failure"].location!=NSNotFound,@"Queue job dialog includes full error");
     for(NSInteger i=0;i<[jobMenu numberOfButtons];++i) require(![[jobMenu buttonTitleAtIndex:i] isEqualToString:@"Show in Queue"],@"Queue actions omit redundant navigation");
-    choose(queue,@"Retry Download");
+    choose(queue,@"Retry");
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"queued"] && [[[model currentJob:@"2"] objectForKey:@"format"] isEqualToString:@"136+140"],@"Retry uses selected quality, ignoring preference");
-    [queue tableView:[queue tableView] didSelectRowAtIndexPath:selected]; choose(queue,@"Stop Download…"); confirm(queue,NO);
+    [queue tableView:[queue tableView] didSelectRowAtIndexPath:selected]; choose(queue,@"Stop…"); confirm(queue,NO);
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"queued"],@"Cancelled row stop does nothing");
-    [queue tableView:[queue tableView] didSelectRowAtIndexPath:selected]; choose(queue,@"Stop Download…"); confirm(queue,YES);
+    [queue tableView:[queue tableView] didSelectRowAtIndexPath:selected]; choose(queue,@"Stop…"); confirm(queue,YES);
     require([RDLPDownloadPolicy job:[model currentJob:@"2"] hasState:@"cancelled"] && [RDLPDownloadPolicy job:[model currentJob:@"3"] hasState:@"queued"] && ![library_ isPaused],@"Stopping one quality preserves other pending work");
     require([[[queue tableView] indexPathForSelectedRow] isEqual:selected] && [[[[[sections(queue) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:failedIndex] objectForKey:@"status"] isEqualToString:@"Stopped"],@"Status changes preserve row position and stable selection");
     /* Deleting a job preserves the other jobs' identities and titles. */
@@ -797,7 +801,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
       NSString *jobID=[[row objectForKey:@"job"] objectForKey:@"id"];
       require(![jobID isEqualToString:@"2"] && [[row objectForKey:@"title"] isEqualToString:[[row objectForKey:@"job"] objectForKey:@"title"]],@"Deleted jobs are hidden and remaining titles have no ID prefixes");
     }
-    BOOL hasMissing=NO; for(NSDictionary *row in queueRows) if([[row objectForKey:@"status"] isEqualToString:@"File missing"]) hasMissing=YES;
+    BOOL hasMissing=NO; for(NSDictionary *row in queueRows) if([[row objectForKey:@"status"] isEqualToString:@"File Missing"]) hasMissing=YES;
     require(hasMissing,@"Missing files remain visible for retry");
     require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Restore queue fixture");
     require(rdapp_store_finish(store,2,"cancelled","",""),@"Restore stopped quality"); rdapp_store_close(store); [queue refresh:nil];

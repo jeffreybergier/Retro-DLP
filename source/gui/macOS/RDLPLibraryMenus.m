@@ -43,6 +43,8 @@
     for(index=0;index<[names count];++index) {
       NSMenuItem *choice=[menu addItemWithTitle:[names objectAtIndex:index] action:@selector(chooseDownload:) keyEquivalent:@""];
       [choice setTarget:target]; [choice setTag:index+1];
+      if(index<[[RDLPLibrary qualityFormats] count])
+        [choice setToolTip:[RDLPLibrary qualityDetailForFormat:[[RDLPLibrary qualityFormats] objectAtIndex:index]]];
     }
   } else if([title isEqualToString:@"Video Player"]) {
     NSArray *players=[NSArray arrayWithObjects:@"VLC",@"QuickTime",@"Default App",nil];
@@ -113,14 +115,12 @@
     if(video) {
       [self addItemToMenu:menu title:multiple?NSLocalizedString(@"Delete Selected Downloads…", nil):NSLocalizedString(@"Delete Download", nil) action:@selector(removeTarget:) target:target];
     } else {
-      NSDictionary *playlist=[target contextPlaylist];
-      NSString *title=playlist?[NSString stringWithFormat:NSLocalizedString(@"Remove Playlist — ‘%@’…", nil),[playlist objectForKey:@"title"]]:NSLocalizedString(@"Remove Playlist…", nil);
-      [self addItemToMenu:menu title:title action:@selector(removePlaylist:) target:target];
+      [self addItemToMenu:menu title:NSLocalizedString(@"Remove Playlist…", nil) action:@selector(removePlaylist:) target:target];
     }
   } else {
     NSString *object=video?NSLocalizedString(@"Video", nil):NSLocalizedString(@"Playlist", nil);
     [self addItemToMenu:menu title:[NSString stringWithFormat:NSLocalizedString(@"Play %@", nil),object] action:@selector(playSelection:) target:target];
-    [self addItemToMenu:menu title:[NSString stringWithFormat:NSLocalizedString(@"Reveal %@ in Finder", nil),object] action:@selector(revealSelection:) target:target];
+    [self addItemToMenu:menu title:NSLocalizedString(@"Show in Finder", nil) action:@selector(revealSelection:) target:target];
     if(video && [target contextPlaylist]) {
       [menu addItem:[NSMenuItem separatorItem]];
       [self addItemToMenu:menu title:NSLocalizedString(@"Play Playlist", nil) action:@selector(playTargetPlaylist:) target:target];

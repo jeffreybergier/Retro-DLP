@@ -53,8 +53,9 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
 + (BOOL)canSyncPlaylist:(NSDictionary *)playlist;
 + (NSArray *)qualityTitles;
 + (NSArray *)qualityFormats;
-/* Preset name and exact expression, without implying measured resolution. */
+/* Compact preset name; details preserve the exact expression for inspection. */
 + (NSString *)qualityLabelForFormat:(NSString *)format;
++ (NSString *)qualityDetailForFormat:(NSString *)format;
 /* Optional numbers arrive from SQLite as strings; empty means absent, not zero. */
 + (NSString *)durationLabelForEntry:(NSDictionary *)entry;
 + (NSString *)spokenDurationForEntry:(NSDictionary *)entry;

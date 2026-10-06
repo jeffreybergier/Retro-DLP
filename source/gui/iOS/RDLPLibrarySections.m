@@ -64,8 +64,8 @@
   NSMutableArray *actions=[NSMutableArray array];
   if([policy_ playable:job]) [actions addObject:NSLocalizedString(@"Play", nil)];
   if([policy_ canRetry:job] || [policy_ canDownloadAgain:job]) [actions addObject:NSLocalizedString(@"Download Video", nil)];
-  if([policy_ canCancel:job]) [actions addObject:NSLocalizedString(@"Stop Download…", nil)];
-  if([policy_ canRemove:job] && ![policy_ canCancel:job]) [actions addObject:NSLocalizedString(@"Delete Download…", nil)];
+  if([policy_ canCancel:job]) [actions addObject:NSLocalizedString(@"Stop…", nil)];
+  if([policy_ canRemove:job] && ![policy_ canCancel:job]) [actions addObject:NSLocalizedString(@"Delete…", nil)];
   [actions addObject:NSLocalizedString(@"Show in Queue", nil)];
   return actions;
 }
@@ -106,8 +106,9 @@
       job=subtitle;
     }
     NSString *detail=[self subtitleForJob:job dateKey:screen==RDLPScreenDownloads?@"latestDownloadDate":@"enqueueDate"];
-    [row setObject:detail forKey:@"detail"]; [row setObject:detail forKey:@"spoken_detail"];
-    [row setObject:[NSString stringWithFormat:NSLocalizedString(@"%@, %@, %@", nil),[row objectForKey:@"title"],detail,[row objectForKey:@"status"]] forKey:@"accessibility_label"];
+    NSString *spoken=[[job objectForKey:@"format"] length]?[detail stringByAppendingFormat:NSLocalizedString(@", %@", nil),[job objectForKey:@"format"]]:detail;
+    [row setObject:detail forKey:@"detail"]; [row setObject:spoken forKey:@"spoken_detail"];
+    [row setObject:[NSString stringWithFormat:NSLocalizedString(@"%@, %@, %@", nil),[row objectForKey:@"title"],spoken,[row objectForKey:@"status"]] forKey:@"accessibility_label"];
     return row;
   }
   if(screen==RDLPScreenLibrary) {
@@ -119,6 +120,7 @@
     NSString *title=[item objectForKey:@"title"];
     NSString *detail=[self subtitleForJob:item dateKey:@"enqueueDate"];
     NSMutableDictionary *row=[self row:title detail:detail action:@"job"];
+    [row setObject:[[item objectForKey:@"format"] length]?[detail stringByAppendingFormat:NSLocalizedString(@", %@", nil),[item objectForKey:@"format"]]:detail forKey:@"spoken_detail"];
     NSString *status=[policy_ statusForJob:item];
     [row setObject:[status isEqualToString:NSLocalizedString(@"Cancelled", nil)]?NSLocalizedString(@"Stopped", nil):status forKey:@"status"];
     [row setObject:item forKey:@"job"]; return row;
@@ -152,7 +154,7 @@
     NSMutableArray *cookies=[NSMutableArray array];
     [cookies addObject:[self row:NSLocalizedString(@"Import Cookies...", nil) detail:@"" action:@"import"]];
     [cookies addObject:[self row:NSLocalizedString(@"Remove Cookies…", nil) detail:@"" action:@"clearCookies"]];
-    [cookies addObject:[self row:NSLocalizedString(@"Cookie Export Guide", nil) detail:@"" action:@"guide"]];
+    [cookies addObject:[self row:NSLocalizedString(@"Export Guide", nil) detail:@"" action:@"guide"]];
     [sections addObject:[self section:NSLocalizedString(@"Cookies", nil) rows:cookies]];
   } else {
     if(screen==RDLPScreenQueue)
@@ -177,7 +179,7 @@
         }
         NSDictionary *exact=[self jobForPlaylist:pid video:[video objectForKey:@"video_id"] format:[RDLPLibrary preferredFormat]];
         NSString *action=[policy_ playable:exact]?@"delete":([policy_ canCancel:exact]?@"showQueue":@"download");
-        NSMutableDictionary *command=[self row:[action isEqualToString:@"delete"]?NSLocalizedString(@"Delete Download…", nil):([action isEqualToString:@"showQueue"]?NSLocalizedString(@"Show in Queue", nil):NSLocalizedString(@"Download Video", nil)) detail:[RDLPLibrary qualityLabelForFormat:[RDLPLibrary preferredFormat]] action:action];
+        NSMutableDictionary *command=[self row:[action isEqualToString:@"delete"]?NSLocalizedString(@"Delete…", nil):([action isEqualToString:@"showQueue"]?NSLocalizedString(@"Show in Queue", nil):NSLocalizedString(@"Download Video", nil)) detail:[RDLPLibrary qualityLabelForFormat:[RDLPLibrary preferredFormat]] action:action];
         if(exact) [command setObject:exact forKey:@"job"]; [commands addObject:command];
         [commands addObject:[self row:NSLocalizedString(@"Download Quality", nil) detail:@"" action:@"settings"]];
         [sections addObject:[self section:([video objectForKey:@"title"]?[video objectForKey:@"title"]:NSLocalizedString(@"Video", nil)) rows:commands]];

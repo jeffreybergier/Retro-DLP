@@ -53,6 +53,8 @@ if os.environ.get('RDLP_TEST_NOW_PLAYING_HOLD') == '1':
     info['RDLPTestNowPlayingHold'] = True
 if os.environ.get('RDLP_TEST_INTERACTION_ONLY') == '1':
     info['RDLPTestInteractionOnly'] = True
+if os.environ.get('RDLP_TEST_UI_ONLY') == '1':
+    info['RDLPTestUIOnly'] = True
 plist.write_bytes(plistlib.dumps(info))
 objects = root / 'build/apps/iOS/Intermediates'
 cmd = ['/usr/bin/clang', '-target', 'armv7-apple-ios5.0', '-arch', 'armv7',

@@ -42,7 +42,7 @@ static void testIOSIconScale(void) {
   testIOSIconImage([RDLPUIKit queueToolbarIcon],28,scale,YES);
   testIOSIconImage([RDLPUIKit queueActionIcon:NO],20,scale,YES);
   testIOSIconImage([RDLPUIKit queueActionIcon:YES],20,scale,YES);
-  for(NSString *status in [NSArray arrayWithObjects:@"Downloaded",@"Downloading",@"Queued",@"Not downloaded",@"Failed",nil]) {
+  for(NSString *status in [NSArray arrayWithObjects:@"Downloaded",@"Downloading",@"Queued",@"Not Downloaded",@"Failed",nil]) {
     UIImage *image=[RDLPUIKit statusIcon:status];
     testIOSIconImage(image,18,scale,NO);
     if(image!=[RDLPUIKit statusIcon:status])

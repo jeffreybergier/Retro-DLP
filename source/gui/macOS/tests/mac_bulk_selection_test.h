@@ -56,7 +56,7 @@ static void testBulkSelection(void) {
   requireCondition([[table selectedRowIndexes] isEqual:all],@"Refresh preserves every playlist occurrence");
   requireCondition([toolbarButton(owner,@"download") isDefaultEnabled] && [toolbarButton(owner,@"remove") isDefaultEnabled] && ![toolbarButton(owner,@"play") isDefaultEnabled],@"Mixed selection enables bulk download/delete, without first-row playback");
   NSMenu *menu=[owner menuForToolbarIdentifier:@"download"];
-  invoke(owner,choice(menu,@"Download Selected Videos"));
+  invoke(owner,choice(menu,@"Download Videos"));
   requireCondition([[library jobsForPlaylist:pid completedOnly:NO] count]==4,@"Bulk download deduplicates occurrences and skips completed qualities");
   NSDictionary *failed=[library jobForPlaylist:pid video:@"BBBBBBBBBBB" format:@"18"];
   NSDictionary *newJob=[library jobForPlaylist:pid video:@"CCCCCCCCCCC" format:@"18"];

@@ -35,17 +35,17 @@ static void testSharedStatus(NSString *base) {
     downloadDirectory:[base stringByAppendingPathComponent:@"Downloads"]];
   statusRequire(library!=nil,@"Open isolated status fixture");
   statusRequire(![[library status] length],@"No startup/Ready message");
-  [library showStatus:@"Download complete"];
+  [library showStatus:@"Downloaded"];
   NSString *cookie=[base stringByAppendingPathComponent:@"cookies.txt"];
   [@"# Netscape HTTP Cookie File\n" writeToFile:cookie atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   statusRequire([library importCookies:cookie],@"Import synthetic cookies");
-  statusRequire([[library status] isEqualToString:@"Download complete"],@"Cookie import leaves download status untouched");
+  statusRequire([[library status] isEqualToString:@"Downloaded"],@"Cookie import leaves download status untouched");
   [library clearCookies];
-  statusRequire([[library status] isEqualToString:@"Download complete"],@"Cookie removal leaves download status untouched");
+  statusRequire([[library status] isEqualToString:@"Downloaded"],@"Cookie removal leaves download status untouched");
   statusRequire(![library importCookies:[base stringByAppendingPathComponent:@"absent"]],@"Missing cookie file fails");
   NSDictionary *error=[library takeError];
   statusRequire([[error objectForKey:@"title"] isEqualToString:@"Couldn’t import cookies"] && [[error objectForKey:@"detail"] length]>0,@"Action failure is a separate alert");
-  statusRequire([[library status] isEqualToString:@"Download complete"] && ![library takeError],@"Error does not replace status or repeat after consumption");
+  statusRequire([[library status] isEqualToString:@"Downloaded"] && ![library takeError],@"Error does not replace status or repeat after consumption");
 
   [library setValue:[NSDictionary dictionaryWithObject:@"download" forKey:@"type"] forKey:@"activeCommand_"];
   [library setValue:[NSNumber numberWithBool:YES] forKey:@"busy_"];
@@ -68,14 +68,14 @@ static void testSharedStatus(NSString *base) {
 
   [library setValue:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",[NSNumber numberWithBool:YES],@"adding",nil] forKey:@"activeCommand_"];
   [library resolverEvent:RDLP_EVENT_FETCHING_BOOTSTRAP]; statusWait(0.01);
-  statusRequire([[library status] isEqualToString:@"Adding playlist…"],@"Adding keeps a simple playlist message");
+  statusRequire([[library status] isEqualToString:@"Adding…"],@"Adding keeps a simple playlist message");
   [library beginOperation];
   [library finished:[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithInt:RDLP_OK],@"code",@"Internal service text",@"message",nil]];
-  statusRequire([[library status] isEqualToString:@"Playlist added"],@"Adding has its own final message");
+  statusRequire([[library status] isEqualToString:@"Playlist Added"],@"Adding has its own final message");
   [library setValue:[NSDictionary dictionaryWithObject:@"sync" forKey:@"type"] forKey:@"activeCommand_"];
   [library beginOperation];
   [library finished:[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithInt:RDLP_ERROR_STORAGE_IO],@"code",@"Synthetic database failure",@"message",nil]];
-  statusRequire([[library status] isEqualToString:@"Error syncing playlist"] &&
+  statusRequire([[library status] isEqualToString:@"Sync Failed"] &&
     [[[[library takeError] objectForKey:@"detail"] description] isEqualToString:@"Synthetic database failure"],@"Playlist failure has short status and detailed alert");
 
   /* Shared by iOS and macOS: admission must not wait for the active worker. */
@@ -91,11 +91,11 @@ static void testSharedStatus(NSString *base) {
   [library setValue:[NSNumber numberWithBool:NO] forKey:@"busy_"];
   [library setValue:nil forKey:@"activeCommand_"];
   /* Identical idle messages reset the deadline; reads/refreshes do not. */
-  [library showStatus:@"Download complete"];
+  [library showStatus:@"Downloaded"];
   statusWait(6);
-  [library showStatus:@"Download complete"];
+  [library showStatus:@"Downloaded"];
   statusWait(5);
-  statusRequire([[library status] isEqualToString:@"Download complete"],@"Identical idle message resets ten-second deadline");
+  statusRequire([[library status] isEqualToString:@"Downloaded"],@"Identical idle message resets ten-second deadline");
   NSDate *expiry=[NSDate dateWithTimeIntervalSinceNow:5.2];
   while([expiry timeIntervalSinceNow]>0) { [library status]; [library activityProgress]; statusWait(0.1); }
   statusRequire(![[library status] length] && ![[[library activityProgress] objectForKey:@"active"] boolValue],@"Idle completion text expires after ten seconds");

@@ -18,6 +18,17 @@
 
 static void testSharedVideoRows(NSString *base) {
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+  NSArray *formats=[RDLPLibrary qualityFormats];
+  NSArray *labels=[NSArray arrayWithObjects:@"Low",@"Med",@"High",nil];
+  NSUInteger i;
+  for(i=0;i<[formats count];++i) {
+    NSString *format=[formats objectAtIndex:i];
+    metadataRequire([[RDLPLibrary qualityLabelForFormat:format] isEqualToString:[labels objectAtIndex:i]],@"Compact presets omit fallback expressions");
+    metadataRequire([[RDLPLibrary qualityDetailForFormat:format] rangeOfString:format].location!=NSNotFound,@"Preset inspection preserves the complete fallback expression");
+  }
+  metadataRequire([[RDLPLibrary qualityLabelForFormat:@"136+140"] isEqualToString:@"Med"] && [[RDLPLibrary qualityLabelForFormat:@"137+140"] isEqualToString:@"High"],@"Saved legacy formats retain their preset names");
+  metadataRequire([[RDLPLibrary qualityLabelForFormat:@"135+140"] isEqualToString:@"Custom"] && [[RDLPLibrary qualityDetailForFormat:@"135+140"] isEqualToString:@"Custom (135+140)"],@"Custom labels stay compact while inspection identifies the exact format");
+  metadataRequire(![[RDLPLibrary qualityLabelForFormat:nil] length] && ![[RDLPLibrary qualityDetailForFormat:@""] length],@"Absent formats have no fabricated quality label");
   NSString *support=[base stringByAppendingPathComponent:@"Support"], *downloads=[base stringByAppendingPathComponent:@"Downloads"];
   RDLPLibrary *library=[[RDLPLibrary alloc] initWithSupportDirectory:support downloadDirectory:downloads];
   metadataRequire(library!=nil,@"Open shared row fixture");
@@ -49,7 +60,7 @@ static void testSharedVideoRows(NSString *base) {
   RDLPCountingFilePolicy *policy=[[[RDLPCountingFilePolicy alloc] initWithLibrary:library] autorelease];
   [playlist setTestPolicy:policy];
   NSDictionary *first=[playlist objectAtIndex:0];
-  metadataRequire([[first objectForKey:@"detail"] isEqualToString:@"12:34·1.5 MB·High (137+140)·First channel"],@"Playlist combines metadata with representative file quality and bytes");
+  metadataRequire([[first objectForKey:@"detail"] isEqualToString:@"12:34·1.5 MB·High·First channel"],@"Playlist combines metadata with representative file quality and bytes");
   metadataRequire([first objectForKey:@"accessibility_label"]!=nil && [[first objectForKey:@"tooltip"] rangeOfString:@"Local file: High (137+140)·1.5 MB"].location!=NSNotFound,@"Shared accessibility and tooltip include local size");
   metadataRequire([playlist objectAtIndex:0]==first && policy->probes==1,@"Repeated row rendering reuses one filesystem probe");
   metadataRequire([source cachedObjectAtIndex:1]==nil,@"Displaying one row does not load the next occurrence");
@@ -63,7 +74,7 @@ static void testSharedVideoRows(NSString *base) {
   metadataRequire(![policy playable:[first objectForKey:@"job"]],@"Actions recheck a deleted file despite cached display");
   RDLPVideoRows *refreshed=[[[RDLPVideoRows alloc] initWithRows:complete library:library playlist:nil] autorelease];
   NSDictionary *missing=[refreshed objectAtIndex:0];
-  metadataRequire(![[missing objectForKey:@"quality"] length] && ![[missing objectForKey:@"size"] length] && [[missing objectForKey:@"status"] isEqualToString:@"File missing"],@"Refresh removes quality and size for missing files");
+  metadataRequire(![[missing objectForKey:@"quality"] length] && ![[missing objectForKey:@"size"] length] && [[missing objectForKey:@"status"] isEqualToString:@"File Missing"],@"Refresh removes quality and size for missing files");
   metadataRequire(rdapp_make_directory([highPath fileSystemRepresentation]),@"Replace file with directory");
   metadataRequire(![policy playable:[first objectForKey:@"job"]],@"A directory is not a playable local file");
   [[NSFileManager defaultManager] removeItemAtPath:highPath error:NULL];

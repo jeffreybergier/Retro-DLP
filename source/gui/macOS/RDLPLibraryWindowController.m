@@ -728,7 +728,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   NSString *downloadTip=cancellable?NSLocalizedString(@"Cancel the selected download…", nil):[NSString stringWithFormat:NSLocalizedString(@"%@ — %@", nil),retry?NSLocalizedString(@"Retry the selected download", nil):NSLocalizedString(@"Download the selected video", nil),quality];
   if(multiple) downloadTip=[NSString stringWithFormat:NSLocalizedString(@"Download selected videos — %@", nil),quality];
   [self setToolbarItem:@"download" title:NSLocalizedString(@"Download", nil) tip:downloadTip icon:[RDLPLibraryViews toolbarIcon:cancellable?AIFAOctagon:AIFADownload window:[self window]] enabled:cancellable || retry || canDownload];
-  [self setToolbarItem:@"remove" title:NSLocalizedString(@"Remove", nil) tip:multiple?NSLocalizedString(@"Move selected downloads to the Trash…", nil):NSLocalizedString(@"Delete the selected download or remove the selected playlist…", nil) icon:[RDLPLibraryViews toolbarIcon:AIFATrash window:[self window]] enabled:multiple?bulkCanRemove_:(video?[self canRemove:job]:[self canRemovePlaylist:playlist])];
+  [self setToolbarItem:@"remove" title:NSLocalizedString(@"Remove", nil) tip:multiple?NSLocalizedString(@"Move selected downloads to the Trash…", nil):(video?NSLocalizedString(@"Delete download…", nil):NSLocalizedString(@"Remove playlist…", nil)) icon:[RDLPLibraryViews toolbarIcon:AIFATrash window:[self window]] enabled:multiple?bulkCanRemove_:(video?[self canRemove:job]:[self canRemovePlaylist:playlist])];
   NSString *path=video?([self playable:job]?[library_ fileForJob:job]:nil):[self playFileForPlaylist:playlist];
   [self setToolbarItem:@"play" title:NSLocalizedString(@"Play", nil) tip:NSLocalizedString(@"Play the selected video or playlist", nil) icon:[RDLPAppKit youTubeIconForScale:[RDLPAppKit backingScaleForWindow:[self window]]] enabled:[RDLPAppKit preferredPlaybackApplication:path]!=nil];
   [self setToolbarItem:@"cookies" title:NSLocalizedString(@"Cookies", nil) tip:NSLocalizedString(@"Manage cookies and view the export guide", nil) icon:[RDLPLibraryViews toolbarIcon:AIFACookie window:[self window]] enabled:YES];
@@ -851,6 +851,12 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   (void)cell; (void)rect; (void)point;
   NSDictionary *entry=[(view==queue_?queueRows_:videoRows_) objectAtIndex:(NSUInteger)row];
+  if([[column identifier] isEqualToString:@"quality"]) {
+    NSDictionary *job=[entry objectForKey:@"job"]; if(!job) job=entry;
+    NSString *format=[job objectForKey:@"format"], *actual=[job objectForKey:@"actual_format"];
+    NSString *detail=[RDLPLibrary qualityDetailForFormat:format];
+    return [actual length] && ![actual isEqualToString:format]?[detail stringByAppendingFormat:NSLocalizedString(@" → %@", nil),[RDLPLibrary qualityDetailForFormat:actual]]:detail;
+  }
   if(view==table_) return [entry objectForKey:[[column identifier] isEqualToString:@"title"]?@"tooltip":([[column identifier] isEqualToString:@"state"]?@"status_tooltip":[column identifier])];
   if(![[column identifier] isEqualToString:@"state"]) {
     id value=[self tableView:view objectValueForTableColumn:column row:row];
@@ -1051,8 +1057,10 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)confirmJob:(NSDictionary *)job remove:(BOOL)remove;
 {
   if(remove?![self canRemove:job]:![self canCancel:job]) return;
-  NSString *title=[NSString stringWithFormat:NSLocalizedString(@"%@ ‘%@’ — %@?", nil),remove?NSLocalizedString(@"Delete download for", nil):NSLocalizedString(@"Cancel download for", nil),[job objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]];
-  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:remove?@"remove":@"cancel",@"operation",[job objectForKey:@"id"],@"job",nil] title:title detail:remove?NSLocalizedString(@"This moves this download and its partial files to the Trash. Playlist membership and other downloaded qualities are retained.", nil):NSLocalizedString(@"Retrying this job restarts the transfer; it does not resume from where it stopped.", nil) action:remove?NSLocalizedString(@"Delete Download", nil):NSLocalizedString(@"Cancel Download", nil)];
+  NSString *title=remove?NSLocalizedString(@"Delete Download?", nil):NSLocalizedString(@"Stop Download?", nil);
+  NSString *item=[NSString stringWithFormat:NSLocalizedString(@"%@ — %@", nil),[job objectForKey:@"title"],[RDLPLibrary qualityDetailForFormat:[job objectForKey:@"format"]]];
+  NSString *explanation=remove?NSLocalizedString(@"This moves this download and its partial files to the Trash. Playlist membership and other downloaded qualities are retained.", nil):NSLocalizedString(@"Retrying this job restarts the transfer; it does not resume from where it stopped.", nil);
+  [self confirmRequest:[NSDictionary dictionaryWithObjectsAndKeys:remove?@"remove":@"cancel",@"operation",[job objectForKey:@"id"],@"job",nil] title:title detail:[NSString stringWithFormat:NSLocalizedString(@"%@\n\n%@", nil),item,explanation] action:remove?NSLocalizedString(@"Delete Download", nil):NSLocalizedString(@"Cancel Download", nil)];
 }
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
 {

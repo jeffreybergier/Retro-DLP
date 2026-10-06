@@ -32,9 +32,11 @@
 - (void)confirmJob:(NSDictionary *)job operation:(NSString *)operation;
 {
   if([operation isEqualToString:@"delete"]?![policy_ canRemove:job]:![policy_ canCancel:job]) return;
+  NSString *item=[NSString stringWithFormat:NSLocalizedString(@"%@ — %@", nil),[job objectForKey:@"title"],[RDLPLibrary qualityDetailForFormat:[job objectForKey:@"format"]]];
+  NSString *explanation=[operation isEqualToString:@"delete"]?NSLocalizedString(@"Deletes this quality and its partial files. Other qualities and playlist membership are retained.", nil):NSLocalizedString(@"Retry restarts this quality from the beginning. Other queued downloads continue.", nil);
   [self confirm:[NSDictionary dictionaryWithObjectsAndKeys:operation,@"operation",[job objectForKey:@"id"],@"job",nil]
-    title:[NSString stringWithFormat:NSLocalizedString(@"%@ %@ — %@?", nil),[operation isEqualToString:@"delete"]?NSLocalizedString(@"Delete", nil):NSLocalizedString(@"Stop", nil),[job objectForKey:@"title"],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]]
-    detail:[operation isEqualToString:@"delete"]?NSLocalizedString(@"Deletes this quality and its partial files. Other qualities and playlist membership are retained.", nil):NSLocalizedString(@"Retry restarts this quality from the beginning. Other queued downloads continue.", nil)
+    title:[operation isEqualToString:@"delete"]?NSLocalizedString(@"Delete Download?", nil):NSLocalizedString(@"Stop Download?", nil)
+    detail:[NSString stringWithFormat:NSLocalizedString(@"%@\n\n%@", nil),item,explanation]
     button:[operation isEqualToString:@"delete"]?NSLocalizedString(@"Delete", nil):NSLocalizedString(@"Stop", nil)];
 }
 - (void)performRow:(NSDictionary *)row;
@@ -52,7 +54,7 @@
   } else if([action isEqualToString:@"play"]) { if([policy_ playable:job]) [RDLPUIKit presentPlayer:self library:library_ job:job]; }
   else if([action isEqualToString:@"delete"]) [self confirmJob:job operation:@"delete"];
   else if([action isEqualToString:@"showQueue"]) [self showJobInQueue:job];
-  else if([action isEqualToString:@"job"] && job) [self showAlert:[job objectForKey:@"title"] detail:[NSString stringWithFormat:NSLocalizedString(@"%@·%@\n%@", nil),[policy_ statusForJob:job],[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")] request:[NSDictionary dictionaryWithObjectsAndKeys:@"jobActions",@"operation",[job objectForKey:@"id"],@"job",nil] buttons:[model_ actionsForJob:job] input:nil];
+  else if([action isEqualToString:@"job"] && job) [self showAlert:[job objectForKey:@"title"] detail:[NSString stringWithFormat:NSLocalizedString(@"%@·%@\n%@", nil),[policy_ statusForJob:job],[RDLPLibrary qualityDetailForFormat:[job objectForKey:@"format"]],([job objectForKey:@"error"]?[job objectForKey:@"error"]:@"")] request:[NSDictionary dictionaryWithObjectsAndKeys:@"jobActions",@"operation",[job objectForKey:@"id"],@"job",nil] buttons:[model_ actionsForJob:job] input:nil];
   else if([action isEqualToString:@"import"]) { if([self enabled:@"import"]) [self requestCookieImport:[self documentsCookiePath] discover:NO]; }
   else if([action isEqualToString:@"clearCookies"]) [self confirm:[NSDictionary dictionaryWithObject:@"clearCookies" forKey:@"operation"] title:NSLocalizedString(@"Remove imported cookies?", nil) detail:NSLocalizedString(@"Only the app’s working copy is removed. Your original export is retained.", nil) button:NSLocalizedString(@"Remove", nil)];
   else if([action isEqualToString:@"guide"]) [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"https://github.com/yt-dlp/yt-dlp/wiki/Extractors"]];
@@ -74,8 +76,8 @@
     NSString *action=[actions objectAtIndex:(NSUInteger)index-1];
     if([action isEqualToString:NSLocalizedString(@"Play", nil)] && [policy_ playable:job]) [RDLPUIKit presentPlayer:self library:library_ job:job];
     else if([action isEqualToString:NSLocalizedString(@"Download Video", nil)] && ([policy_ canRetry:job] || [policy_ canDownloadAgain:job])) { [library_ retryJob:[job objectForKey:@"id"]]; [self showJobInQueue:job]; }
-    else if([action isEqualToString:NSLocalizedString(@"Stop Download…", nil)]) [self confirmJob:job operation:@"stop"];
-    else if([action isEqualToString:NSLocalizedString(@"Delete Download…", nil)]) [self confirmJob:job operation:@"delete"];
+    else if([action isEqualToString:NSLocalizedString(@"Stop…", nil)]) [self confirmJob:job operation:@"stop"];
+    else if([action isEqualToString:NSLocalizedString(@"Delete…", nil)]) [self confirmJob:job operation:@"delete"];
     else if([action isEqualToString:NSLocalizedString(@"Show in Queue", nil)]) [self showJobInQueue:job];
   } else [self performConfirmed:request];
   [self refresh:nil];
