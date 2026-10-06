@@ -36,9 +36,6 @@
 /* macOS/RDLPLibraryWindowController.m */
 "%@ ‘%@’ — %@?" = "%@ ‘%@’ — %@?";
 
-/* shared/RDLPLibrary.m */
-"%@%@" = "%@%@";
-
 /* shared/RDLPVideoRows.m */
 "%@%@, %@" = "%@%@, %@";
 
@@ -58,7 +55,7 @@
 "%@\n\n%@" = "%@\n\n%@";
 
 /* shared/RDLPLibrary.m */
-"%@·%.0f%%%@" = "%@·%.0f%%%@";
+"%@ (%.1f Mbps)" = "%@ (%.1f Mbps)";
 
 /* iOS/RDLPLibrarySections.m */
 "%@·%@" = "%@·%@";
@@ -360,17 +357,14 @@
 /* iOS/RDLPUIKit.m, iOS/RDLPVideoListViewController.m, macOS/RDLPLibraryWindowController.m, shared/RDLPDownloadPolicy.m, shared/RDLPLibrary.m */
 "Downloading" = "Downloading";
 
-/* shared/RDLPLibrary.m: active transfer phase, separate from the job status. */
-"Downloading…" = "Downloading…";
-
 /* shared/RDLPLibrary.m */
-"Downloading audio" = "Audio…";
+"Downloading audio" = "Audio";
 
 /* shared/RDLPLibrary.m */
 "Downloading player script…" = "JavaScript…";
 
 /* shared/RDLPLibrary.m */
-"Downloading video" = "Video…";
+"Downloading video" = "Video";
 
 /* iOS/RDLPLibrarySections.m */
 "Downloads" = "Downloads";
@@ -932,9 +926,6 @@
 
 /* shared/RDLPLibrary.m */
 "seconds" = "seconds";
-
-/* shared/RDLPLibrary.m */
-"·%.1f Mbps" = "·%.1f Mbps";
 
 /* shared/RDLPVideoRows.m */
 "·%@" = "·%@";

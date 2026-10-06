@@ -65,20 +65,23 @@ static void testSharedStatus(NSString *base) {
   }
   [library resolverEvent:RDLP_EVENT_FETCHING_BOOTSTRAP]; statusWait(0.01);
   statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==8,@"Repeated bootstrap does not move the phase bar backward");
-  [library progress:@"Downloading audio" completed:0 expected:100]; statusWait(0.3);
+  [library progress:NSLocalizedString(@"Downloading audio", nil) completed:0 expected:100]; statusWait(0.3);
   statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==0 &&
     [[[library activityProgress] objectForKey:@"expected"] intValue]==100,@"A transfer resets the bar to its own byte range");
-  [library progress:@"Downloading audio" completed:25 expected:100]; statusWait(0.01);
-  statusRequire([[library status] rangeOfString:@"25%"].location!=NSNotFound,@"Transfer text has current byte percentage");
+  [library progress:NSLocalizedString(@"Downloading audio", nil) completed:25 expected:100]; statusWait(0.01);
+  statusRequire([[library status] hasPrefix:@"Audio ("] && [[library status] hasSuffix:@" Mbps)"] &&
+    [[library status] rangeOfString:@"%"].location==NSNotFound &&
+    [[library status] rangeOfString:@"…"].location==NSNotFound,@"Transfer text shows the phase and speed without percentage or ellipsis");
   statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==25 &&
     [[[library activityProgress] objectForKey:@"expected"] intValue]==100,@"Bar uses transfer bytes, not queue counts");
-  [library progress:@"Downloading video" completed:0 expected:200]; statusWait(0.3);
+  [library progress:NSLocalizedString(@"Downloading video", nil) completed:0 expected:200]; statusWait(0.3);
   statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==0 &&
     [[[library activityProgress] objectForKey:@"expected"] intValue]==200,@"The next media transfer resets byte progress again");
-  [library progress:@"Downloading video" completed:50 expected:0]; statusWait(0.01);
+  [library progress:NSLocalizedString(@"Downloading video", nil) completed:50 expected:0]; statusWait(0.01);
   statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==0 &&
     [[[library activityProgress] objectForKey:@"expected"] intValue]==1 &&
-    [[library status] rangeOfString:@"%"].location==NSNotFound,@"Unknown transfer length has an empty determinate track without a byte percentage");
+    [[library status] hasPrefix:@"Video ("] && [[library status] hasSuffix:@" Mbps)"] &&
+    [[library status] rangeOfString:@"%"].location==NSNotFound,@"Unknown transfer length has an empty determinate track and still shows speed");
   [library progress:@"Combining audio and video…" completed:0 expected:0 step:9 total:10]; statusWait(0.01);
   statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==9 &&
     [[[library activityProgress] objectForKey:@"expected"] intValue]==10 &&

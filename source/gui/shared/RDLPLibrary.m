@@ -150,10 +150,10 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   switch(event->type) {
     case RDLP_DOWNLOAD_EVENT_DOWNLOADING_AUDIO: phase=NSLocalizedString(@"Downloading audio", nil); break;
     case RDLP_DOWNLOAD_EVENT_DOWNLOADING_VIDEO: phase=NSLocalizedString(@"Downloading video", nil); break;
-    case RDLP_DOWNLOAD_EVENT_DOWNLOADING_MEDIA: phase=NSLocalizedString(@"Downloading…", nil); break;
+    case RDLP_DOWNLOAD_EVENT_DOWNLOADING_MEDIA: phase=NSLocalizedString(@"Downloading", nil); break;
     case RDLP_DOWNLOAD_EVENT_MUXING: step=9; phase=NSLocalizedString(@"Combining audio and video…", nil); break;
     case RDLP_DOWNLOAD_EVENT_CLEANING_UP: step=10; phase=NSLocalizedString(@"Finishing download…", nil); break;
-    default: phase=NSLocalizedString(@"Downloading…", nil); break;
+    default: phase=NSLocalizedString(@"Downloading", nil); break;
   }
   [(RDLPLibrary *)context progress:phase completed:event->completed_bytes expected:event->expected_bytes step:step total:10];
   [pool drain];
@@ -532,9 +532,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   NSString *message=phase;
   if(completed || expected) {
     double elapsed=now-transferStarted_;
-    NSString *speed=elapsed>0?[NSString stringWithFormat:NSLocalizedString(@"·%.1f Mbps", nil),(double)completed*8.0/elapsed/1000000.0]:@"";
-    message=expected?[NSString stringWithFormat:NSLocalizedString(@"%@·%.0f%%%@", nil),phase,MIN(100.0,100.0*(double)completed/(double)expected),speed]:
-      [NSString stringWithFormat:NSLocalizedString(@"%@%@", nil),phase,speed];
+    if(elapsed>0) message=[NSString stringWithFormat:NSLocalizedString(@"%@ (%.1f Mbps)", nil),
+      phase,(double)completed*8.0/elapsed/1000000.0];
   }
   /* Media transfers each use their own byte range. Unknown lengths show an
      empty determinate track until a total arrives; status still reports speed.
