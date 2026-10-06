@@ -57,6 +57,9 @@
 /* shared/RDLPLibrary.m */
 "%@ (%.1f Mbps)" = "%@ (%.1f Mbps)";
 
+/* shared/RDLPLibrary.m: transfer phase before speed is available. */
+"%@…" = "%@…";
+
 /* iOS/RDLPLibrarySections.m */
 "%@·%@" = "%@·%@";
 

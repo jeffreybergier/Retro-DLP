@@ -529,8 +529,8 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   /* Only repeated byte ticks are throttled. Every new CLI phase is delivered. */
   if(!changed && completed && now-lastProgress_<0.25 && (!expected || completed<expected)) return;
   lastProgress_=now;
-  NSString *message=phase;
-  if(completed || expected) {
+  NSString *message=step?phase:[NSString stringWithFormat:NSLocalizedString(@"%@…", nil),phase];
+  if(completed) {
     double elapsed=now-transferStarted_;
     if(elapsed>0) message=[NSString stringWithFormat:NSLocalizedString(@"%@ (%.1f Mbps)", nil),
       phase,(double)completed*8.0/elapsed/1000000.0];

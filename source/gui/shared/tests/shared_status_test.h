@@ -65,7 +65,10 @@ static void testSharedStatus(NSString *base) {
   }
   [library resolverEvent:RDLP_EVENT_FETCHING_BOOTSTRAP]; statusWait(0.01);
   statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==8,@"Repeated bootstrap does not move the phase bar backward");
+  [library progress:NSLocalizedString(@"Downloading", nil) completed:0 expected:0]; statusWait(0.01);
+  statusRequire([[library status] isEqualToString:@"Downloading…"],@"A transfer with no bytes or total starts with an ellipsis");
   [library progress:NSLocalizedString(@"Downloading audio", nil) completed:0 expected:100]; statusWait(0.3);
+  statusRequire([[library status] isEqualToString:@"Audio…"],@"Audio keeps its ellipsis until speed is available even when the total is known");
   statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==0 &&
     [[[library activityProgress] objectForKey:@"expected"] intValue]==100,@"A transfer resets the bar to its own byte range");
   [library progress:NSLocalizedString(@"Downloading audio", nil) completed:25 expected:100]; statusWait(0.01);
@@ -75,6 +78,7 @@ static void testSharedStatus(NSString *base) {
   statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==25 &&
     [[[library activityProgress] objectForKey:@"expected"] intValue]==100,@"Bar uses transfer bytes, not queue counts");
   [library progress:NSLocalizedString(@"Downloading video", nil) completed:0 expected:200]; statusWait(0.3);
+  statusRequire([[library status] isEqualToString:@"Video…"],@"The next file starts with an ellipsis instead of the previous file's speed");
   statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==0 &&
     [[[library activityProgress] objectForKey:@"expected"] intValue]==200,@"The next media transfer resets byte progress again");
   [library progress:NSLocalizedString(@"Downloading video", nil) completed:50 expected:0]; statusWait(0.01);
