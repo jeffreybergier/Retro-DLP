@@ -149,8 +149,7 @@
   [status_ setStringValue:[library_ status]]; [status_ setToolTip:[library_ status]];
   NSDictionary *progress=[library_ activityProgress]; BOOL active=[[progress objectForKey:@"active"] boolValue];
   double expected=[[progress objectForKey:@"expected"] doubleValue];
-  [progress_ setHidden:!active]; [progress_ setIndeterminate:expected<=0];
-  if(active && expected<=0) [progress_ startAnimation:nil]; else [progress_ stopAnimation:nil];
-  [progress_ setMaxValue:MAX(expected,1)]; [progress_ setDoubleValue:MIN(expected,[[progress objectForKey:@"completed"] doubleValue])];
+  [progress_ setHidden:!active]; [progress_ setIndeterminate:NO];
+  [progress_ setMaxValue:MAX(expected,1)]; [progress_ setDoubleValue:MAX(0,MIN(MAX(expected,1),[[progress objectForKey:@"completed"] doubleValue]))];
 }
 @end

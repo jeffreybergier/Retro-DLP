@@ -4,6 +4,8 @@
 - (void)showStatus:(NSString *)message;
 - (void)resolverEvent:(rdlp_event_type)type;
 - (void)progress:(NSString *)phase completed:(uint64_t)completed expected:(uint64_t)expected;
+- (void)progress:(NSString *)phase completed:(uint64_t)completed expected:(uint64_t)expected
+  step:(NSUInteger)step total:(NSUInteger)total;
 - (void)finished:(NSDictionary *)result;
 - (BOOL)cancelled;
 - (void)beginOperation;
@@ -57,17 +59,37 @@ static void testSharedStatus(NSString *base) {
   unsigned int i;
   for(i=0;i<sizeof(events)/sizeof(events[0]);++i) {
     [library resolverEvent:events[i]]; statusWait(0.01);
-    statusRequire([[library status] isEqualToString:[labels objectAtIndex:i]],@"Every CLI step survives rapid phase changes");
+    statusRequire([[library status] isEqualToString:[labels objectAtIndex:i]],@"Every CLI step survives rapid phase changes without step numbers");
+    statusRequire([[[library activityProgress] objectForKey:@"completed"] unsignedIntValue]==i+1 &&
+      [[[library activityProgress] objectForKey:@"expected"] intValue]==10,@"Resolver phases advance a determinate ten-step bar");
   }
-  [library progress:@"Downloading" completed:25 expected:100]; statusWait(0.01);
+  [library resolverEvent:RDLP_EVENT_FETCHING_BOOTSTRAP]; statusWait(0.01);
+  statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==8,@"Repeated bootstrap does not move the phase bar backward");
+  [library progress:@"Downloading audio" completed:0 expected:100]; statusWait(0.3);
+  statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==0 &&
+    [[[library activityProgress] objectForKey:@"expected"] intValue]==100,@"A transfer resets the bar to its own byte range");
+  [library progress:@"Downloading audio" completed:25 expected:100]; statusWait(0.01);
   statusRequire([[library status] rangeOfString:@"25%"].location!=NSNotFound,@"Transfer text has current byte percentage");
   statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==25 &&
     [[[library activityProgress] objectForKey:@"expected"] intValue]==100,@"Bar uses transfer bytes, not queue counts");
-  [library progress:@"Combining audio and video…" completed:0 expected:0]; statusWait(0.01);
-  statusRequire([[[library activityProgress] objectForKey:@"expected"] intValue]==0,@"Unknown phase has no fabricated percentage");
+  [library progress:@"Downloading video" completed:0 expected:200]; statusWait(0.3);
+  statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==0 &&
+    [[[library activityProgress] objectForKey:@"expected"] intValue]==200,@"The next media transfer resets byte progress again");
+  [library progress:@"Downloading video" completed:50 expected:0]; statusWait(0.01);
+  statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==0 &&
+    [[[library activityProgress] objectForKey:@"expected"] intValue]==1 &&
+    [[library status] rangeOfString:@"%"].location==NSNotFound,@"Unknown transfer length has an empty determinate track without a byte percentage");
+  [library progress:@"Combining audio and video…" completed:0 expected:0 step:9 total:10]; statusWait(0.01);
+  statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==9 &&
+    [[[library activityProgress] objectForKey:@"expected"] intValue]==10 &&
+    [[library status] isEqualToString:@"Combining audio and video…"],@"Combining resumes phase progress without percent or byte speed text");
+  [library progress:@"Finishing download…" completed:0 expected:0 step:10 total:10]; statusWait(0.01);
+  statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==10,@"Finishing fills the phase bar");
 
   [library setValue:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",[NSNumber numberWithBool:YES],@"adding",nil] forKey:@"activeCommand_"];
+  [library setValue:[NSNumber numberWithUnsignedInteger:0] forKey:@"operationStep_"];
   [library resolverEvent:RDLP_EVENT_FETCHING_BOOTSTRAP]; statusWait(0.01);
+  statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==3 && [[[library activityProgress] objectForKey:@"expected"] intValue]==5,@"New playlist work uses its own phase range");
   statusRequire([[library status] isEqualToString:@"Adding…"],@"Adding keeps a simple playlist message");
   [library beginOperation];
   [library finished:[NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithInt:RDLP_OK],@"code",@"Internal service text",@"message",nil]];

@@ -267,12 +267,9 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
 
 + (NSArray *)statusToolbarItems:(RDLPStatusBarView *)status target:(id)target queueAction:(SEL)action;
 {
-  /* Reserve the spinner slot even when it is hidden so hidesWhenStopped never
-   * changes the message layout. Let UIKit size the native Queue button. */
-  UIView *spinnerSlot=[[[UIView alloc] initWithFrame:CGRectMake(0,0,36,30)] autorelease];
-  [[status spinner] setCenter:CGPointMake(18,15)];
-  [spinnerSlot addSubview:[status spinner]];
-  UIBarButtonItem *activity=[[[UIBarButtonItem alloc] initWithCustomView:spinnerSlot] autorelease];
+  /* Balance the native Queue button with a steady leading space. */
+  UIView *leadingSlot=[[[UIView alloc] initWithFrame:CGRectMake(0,0,36,30)] autorelease];
+  UIBarButtonItem *activity=[[[UIBarButtonItem alloc] initWithCustomView:leadingSlot] autorelease];
   UIBarButtonItem *left=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
   UIBarButtonItem *right=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
   UIBarButtonItem *message=[[[UIBarButtonItem alloc] initWithCustomView:status] autorelease];

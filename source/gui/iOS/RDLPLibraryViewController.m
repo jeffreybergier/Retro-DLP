@@ -81,7 +81,7 @@
   NSDictionary *progress=[library_ activityProgress];
   [statusBar_ setStatus:[library_ status] progress:progress busy:[library_ isBusy]];
   double expected=[[progress objectForKey:@"expected"] doubleValue];
-  [progress_ setHidden:![[progress objectForKey:@"active"] boolValue] || expected<=0];
+  [progress_ setHidden:![[progress objectForKey:@"active"] boolValue]];
   [progress_ setProgress:expected>0?(float)MIN(1.0,[[progress objectForKey:@"completed"] doubleValue]/expected):0];
   [progress_ setAccessibilityLabel:[library_ status]]; [status_ setText:[library_ status]];
 }

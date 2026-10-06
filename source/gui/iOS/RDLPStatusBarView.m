@@ -4,7 +4,6 @@
  * text, a 100pt progress track, and a 2pt gap in a 30pt custom view. */
 @implementation RDLPStatusBarView
 @synthesize maximumWidth=maximumWidth_;
-@synthesize spinner=spinner_;
 - (id)initWithFrame:(CGRect)frame;
 {
   self=[super initWithFrame:frame]; if(!self) return nil;
@@ -23,13 +22,11 @@
   [self addSubview:label_];
   progress_=[[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
   [progress_ setHidden:YES]; [self addSubview:progress_];
-  spinner_=[[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:modern?UIActivityIndicatorViewStyleGray:UIActivityIndicatorViewStyleWhite];
-  [spinner_ setHidesWhenStopped:YES];
   return self;
 }
 - (void)dealloc;
 {
-  [spinner_ release]; [label_ release]; [progress_ release]; [super dealloc];
+  [label_ release]; [progress_ release]; [super dealloc];
 }
 - (void)resizeToContent;
 {
@@ -61,11 +58,9 @@
   double completed=[[progress objectForKey:@"completed"] doubleValue];
   double expected=[[progress objectForKey:@"expected"] doubleValue];
   [label_ setFont:[UIFont boldSystemFontOfSize:active?13:15]];
-  [progress_ setHidden:!active || expected<=0];
-  [progress_ setProgress:expected>0?(float)MIN(1.0,completed/expected):0];
+  [progress_ setHidden:!active];
+  [progress_ setProgress:expected>0?(float)MAX(0,MIN(1.0,completed/expected)):0];
   [progress_ setAccessibilityLabel:[label_ text]];
-  if(active && expected<=0) [spinner_ startAnimating]; else [spinner_ stopAnimating];
-  [spinner_ setAccessibilityLabel:[label_ text]];
   [self resizeToContent];
 }
 - (void)layoutSubviews;

@@ -6,10 +6,8 @@
   UILabel *label_;
   UIProgressView *progress_;
   CGFloat maximumWidth_;
-  UIActivityIndicatorView *spinner_;
 }
 @property(nonatomic,assign) CGFloat maximumWidth;
 @property(nonatomic,readonly) BOOL hasStatus;
-@property(nonatomic,readonly) UIActivityIndicatorView *spinner;
 - (void)setStatus:(NSString *)status progress:(NSDictionary *)progress busy:(BOOL)busy;
 @end

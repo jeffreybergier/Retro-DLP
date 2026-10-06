@@ -128,6 +128,8 @@ static int collect(void *context,int count,const char *const *names,const char *
 - (void)queuePlaylistInput:(NSString *)input adding:(BOOL)adding;
 - (void)queueVideoInput:(NSString *)input;
 - (void)progress:(NSString *)phase completed:(uint64_t)completed expected:(uint64_t)expected;
+- (void)progress:(NSString *)phase completed:(uint64_t)completed expected:(uint64_t)expected
+  step:(NSUInteger)step total:(NSUInteger)total;
 @end
 static void store_lock(void *context) { [(NSLock *)context lock]; }
 static void store_unlock(void *context) { [(NSLock *)context unlock]; }
@@ -142,17 +144,18 @@ static void service_changed(void *context) {
 }
 static void download_callback(const rdlp_download_event *event,void *context) {
   NSString *phase;
+  NSUInteger step=0;
   if(!event) return;
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
   switch(event->type) {
     case RDLP_DOWNLOAD_EVENT_DOWNLOADING_AUDIO: phase=NSLocalizedString(@"Downloading audio", nil); break;
     case RDLP_DOWNLOAD_EVENT_DOWNLOADING_VIDEO: phase=NSLocalizedString(@"Downloading video", nil); break;
     case RDLP_DOWNLOAD_EVENT_DOWNLOADING_MEDIA: phase=NSLocalizedString(@"Downloading…", nil); break;
-    case RDLP_DOWNLOAD_EVENT_MUXING: phase=NSLocalizedString(@"Combining audio and video…", nil); break;
-    case RDLP_DOWNLOAD_EVENT_CLEANING_UP: phase=NSLocalizedString(@"Finishing download…", nil); break;
+    case RDLP_DOWNLOAD_EVENT_MUXING: step=9; phase=NSLocalizedString(@"Combining audio and video…", nil); break;
+    case RDLP_DOWNLOAD_EVENT_CLEANING_UP: step=10; phase=NSLocalizedString(@"Finishing download…", nil); break;
     default: phase=NSLocalizedString(@"Downloading…", nil); break;
   }
-  [(RDLPLibrary *)context progress:phase completed:event->completed_bytes expected:event->expected_bytes];
+  [(RDLPLibrary *)context progress:phase completed:event->completed_bytes expected:event->expected_bytes step:step total:10];
   [pool drain];
 }
 @implementation RDLPLibrary
@@ -480,7 +483,23 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (void)resolverEvent:(rdlp_event_type)type;
 {
   NSString *command=[activeCommand_ objectForKey:@"type"], *phase=nil;
+  NSUInteger step=0, total=10;
+  /* Fixed phase positions let cached/optional work skip ahead. A repeated
+     bootstrap or metadata request must not move processing progress backward. */
+  switch(type) {
+    case RDLP_EVENT_AUTHENTICATING: step=1; break;
+    case RDLP_EVENT_LOADING_CONFIGURATION: step=2; break;
+    case RDLP_EVENT_FETCHING_BOOTSTRAP: step=3; break;
+    case RDLP_EVENT_REQUESTING_METADATA: step=4; break;
+    case RDLP_EVENT_REFRESHING_METADATA: step=5; break;
+    case RDLP_EVENT_SELECTING_FORMATS: step=6; break;
+    case RDLP_EVENT_LOADING_PLAYER_JAVASCRIPT: step=7; break;
+    case RDLP_EVENT_SOLVING_CHALLENGES: step=8; break;
+    case RDLP_EVENT_ENUMERATING_PLAYLIST: step=5; break;
+    case RDLP_EVENT_OTHER: return;
+  }
   if(![command isEqualToString:@"download"] && ![command isEqualToString:@"addVideo"]) {
+    total=5; step=MIN(step,total);
     phase=[command isEqualToString:@"discover"]?NSLocalizedString(@"Syncing My Playlists…", nil):
       ([[activeCommand_ objectForKey:@"adding"] boolValue]?NSLocalizedString(@"Adding playlist…", nil):NSLocalizedString(@"Syncing playlist…", nil));
   } else switch(type) {
@@ -495,10 +514,14 @@ static void download_callback(const rdlp_download_event *event,void *context) {
     case RDLP_EVENT_ENUMERATING_PLAYLIST: phase=NSLocalizedString(@"Reading playlist…", nil); break;
     case RDLP_EVENT_OTHER: return;
   }
-  if(phase) [self progress:phase completed:0 expected:0];
+  if(phase) [self progress:phase completed:0 expected:0 step:step total:total];
 }
 - (void)progress:(NSString *)phase completed:(uint64_t)completed expected:(uint64_t)expected;
+{ [self progress:phase completed:completed expected:expected step:0 total:1]; }
+- (void)progress:(NSString *)phase completed:(uint64_t)completed expected:(uint64_t)expected
+  step:(NSUInteger)step total:(NSUInteger)total;
 {
+  if(step) operationStep_=MAX(operationStep_,step);
   struct timeval t; gettimeofday(&t,NULL);
   double now=(double)t.tv_sec+(double)t.tv_usec/1000000.0;
   BOOL changed=![phase isEqualToString:lastPhase_];
@@ -513,9 +536,14 @@ static void download_callback(const rdlp_download_event *event,void *context) {
     message=expected?[NSString stringWithFormat:NSLocalizedString(@"%@·%.0f%%%@", nil),phase,MIN(100.0,100.0*(double)completed/(double)expected),speed]:
       [NSString stringWithFormat:NSLocalizedString(@"%@%@", nil),phase,speed];
   }
+  /* Media transfers each use their own byte range. Unknown lengths show an
+     empty determinate track until a total arrives; status still reports speed.
+     Other phases resume the operation's fixed step range. */
+  uint64_t barCompleted=step?MIN(operationStep_,total):(expected?completed:0);
+  uint64_t barExpected=step?total:(expected?expected:1);
   NSDictionary *update=[NSDictionary dictionaryWithObjectsAndKeys:message,@"message",
-    [NSNumber numberWithUnsignedLongLong:completed],@"completed",
-    [NSNumber numberWithUnsignedLongLong:expected],@"expected",nil];
+    [NSNumber numberWithUnsignedLongLong:barCompleted],@"completed",
+    [NSNumber numberWithUnsignedLongLong:barExpected],@"expected",nil];
   [self performSelectorOnMainThread:@selector(displayProgress:) withObject:update waitUntilDone:NO];
 }
 - (void)displayProgress:(NSDictionary *)progress;
@@ -692,7 +720,10 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   busy_=YES; [cancelLock_ lock]; cancel_=NO; [cancelLock_ unlock];
   activeJob_=identifier([[command objectForKey:@"job"] objectForKey:@"id"]);
   [self beginOperation];
-  transferCompleted_=0; transferExpected_=0; lastProgress_=0;
+  transferCompleted_=0; transferExpected_=
+    ([[command objectForKey:@"type"] isEqualToString:@"download"] ||
+     [[command objectForKey:@"type"] isEqualToString:@"addVideo"])?10:5;
+  operationStep_=0; lastProgress_=0;
   [lastPhase_ release]; lastPhase_=nil;
   NSString *type=[command objectForKey:@"type"];
   if(![type isEqualToString:@"reconcile"]) [self showStatus:[type isEqualToString:@"download"]?NSLocalizedString(@"Resolving video…", nil):

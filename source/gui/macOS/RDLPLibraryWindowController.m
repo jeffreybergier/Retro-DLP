@@ -745,10 +745,9 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   BOOL active=[[progress objectForKey:@"active"] boolValue];
   double expected=[[progress objectForKey:@"expected"] doubleValue];
   [queueProgress_ setHidden:!active];
-  [queueProgress_ setIndeterminate:expected<=0];
-  if(active && expected<=0) [queueProgress_ startAnimation:nil]; else [queueProgress_ stopAnimation:nil];
+  [queueProgress_ setIndeterminate:NO];
   [queueProgress_ setMaxValue:MAX(expected,1)];
-  [queueProgress_ setDoubleValue:MIN(expected,[[progress objectForKey:@"completed"] doubleValue])];
+  [queueProgress_ setDoubleValue:MAX(0,MIN(MAX(expected,1),[[progress objectForKey:@"completed"] doubleValue]))];
   [queueProgress_ setToolTip:[library_ status]];
   [queueWindow_ refreshStatus];
 }

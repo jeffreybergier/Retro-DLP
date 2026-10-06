@@ -964,7 +964,7 @@ static void testQueueWindow(RDLPLibrary *library) {
        local worker cannot finish before inspecting its in-flight state. */
     NSMenuItem *toolbarSync=choice([window_ menuForToolbarIdentifier:@"library"],@"Sync Playlist");
     [NSApp sendAction:[toolbarSync action] to:[toolbarSync target] from:toolbarSync];
-    requireCondition([library_ isBusy] && ![[[library_ queueProgress] objectForKey:@"active"] boolValue] && ![[window_ valueForKey:@"queueProgress_"] isHidden],@"Metadata work uses indeterminate activity progress");
+    requireCondition([library_ isBusy] && ![[[library_ queueProgress] objectForKey:@"active"] boolValue] && ![[window_ valueForKey:@"queueProgress_"] isHidden] && ![[window_ valueForKey:@"queueProgress_"] isIndeterminate] && [[window_ valueForKey:@"queueProgress_"] maxValue]>0,@"Metadata work uses determinate phase progress");
     requireCondition([toolbarButton(window_,@"library") isDefaultEnabled] && ![window_ validateMenuItem:syncItem] && ![toolbarButton(window_,@"remove") isDefaultEnabled],@"Active sync disables duplicate sync and deletion while Library remains available");
     requireCondition([library_ operationCount]==1 && [toolbarButton(window_,@"cookies") isDefaultEnabled] &&
       ![window_ validateMenuItem:choice(cookiesMenu,@"Import Cookies…")],@"Active sync disables cookie changes while its menu and export guide remain available");

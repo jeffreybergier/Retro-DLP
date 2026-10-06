@@ -43,6 +43,7 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
   NSUInteger operationCount_;
   long long activeJob_;
   double lastProgress_;
+  NSUInteger operationStep_;
   NSString *lastPhase_, *lastReadError_;
   double transferStarted_;
   unsigned long long transferCompleted_, transferExpected_;
@@ -90,8 +91,9 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
 - (BOOL)playlist:(NSString *)key containsVideo:(NSString *)video;
 - (NSArray *)jobsForPlaylist:(NSString *)key completedOnly:(BOOL)completed;
 - (NSString *)status;
-/* Current transfer, separate from queue attempt counts. Empty status is idle.
-   Every new status expires after ten seconds, even if its text is unchanged. */
+/* Determinate activity: phase steps, or bytes during each media transfer,
+   separate from queue attempt counts. Empty status is idle. Active status stays
+   visible; each idle status expires after ten seconds. */
 - (NSDictionary *)activityProgress;
 /* Main-thread alert queue; errors never replace status text. */
 - (NSDictionary *)takeError;

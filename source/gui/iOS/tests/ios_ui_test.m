@@ -551,7 +551,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require([bar frame].size.width<=[bar maximumWidth],@"Long status fits beside Queue");
     [library_ setTestProgress:nil]; [root refresh:nil];
     [library_ setTestBusy:YES]; [root refresh:nil];
-    require([barProgress isHidden] && [[bar valueForKey:@"spinner_"] isAnimating],@"Unknown progress uses a spinner, never a fabricated percentage");
+    require(![barProgress isHidden] && [barProgress progress]==0 && [[[[[root toolbarItems] objectAtIndex:0] customView] subviews] count]==0,@"Active work always shows a determinate track without a spinner");
     [library_ setTestBusy:NO]; [root refresh:nil];
     [root queue:nil]; pump(); pump();
     UINavigationController *queueModal=(UINavigationController *)[navigation_ presentedViewController];
