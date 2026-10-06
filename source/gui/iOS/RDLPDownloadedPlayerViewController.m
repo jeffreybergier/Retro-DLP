@@ -173,6 +173,11 @@ static NSArray *RDLPDownloadItemKeys(void) {
   if(!_ready && !_preparing && [_item status]==AVPlayerItemStatusReadyToPlay) {
     double duration=CMTimeGetSeconds([_item duration]);
     _resume=RDLPPlayerResumePosition(_resume,duration);
+    /* Discard an ineligible bookmark before playback starts. The item's
+     * current time can still be invalid immediately after the initial seek. */
+    if(_resume!=_savedPosition) {
+      [_library savePlaybackSeconds:_resume forVideo:_video]; _savedPosition=_resume;
+    }
     _preparing=YES;
     /* Prevent a Play tap or scrub racing the single initial resume seek. */
     [[_playerViewController view] setUserInteractionEnabled:NO];

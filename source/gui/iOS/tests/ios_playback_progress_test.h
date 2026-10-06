@@ -286,20 +286,27 @@ static void testIOSPlaybackProgress(NSString *directory) {
   [controller stop]; [controller release];
   for(NSNumber *position in [NSArray arrayWithObjects:@50,@550,nil]) {
     [library savePlaybackSeconds:position.doubleValue forVideo:video];
+    NSUInteger bookmarkWrites=[library writes];
     controller=playbackController(library,job);
     playbackRequire(CMTimeGetSeconds(controller.player.currentTime)<1,@"Old bookmarks near either end restart at zero");
+    playbackRequire([library playbackSecondsForVideo:video]==0 && [library writes]==bookmarkWrites+1,
+      @"Ignored long-content bookmarks are cleared once during preparation");
     [controller stop]; [controller release];
   }
   /* Existing short-track bookmarks are discarded, including in audio-only mode. */
   [library savePlaybackSeconds:25 forVideo:video];
+  NSUInteger shortWrites=[library writes];
   controller=playbackControllerWithResource(library,job,@"playback-fixture");
   playbackRequire(![[controller playerViewController] longContent] &&
     CMTimeGetSeconds([[controller player] currentTime])<1,@"Short content ignores an old bookmark");
+  playbackRequire([library playbackSecondsForVideo:video]==0 && [library writes]==shortWrites+1,
+    @"Short content clears its old bookmark once before playback starts");
   [[controller player] pause];
   [controller saveProgress];
   playbackRequire([library playbackSecondsForVideo:video]==0,@"Short content clears its old bookmark");
   playbackCheckNavigation(controller,NO);
-  NSUInteger shortWrites=[library writes];
+  playbackRequire([library writes]==shortWrites+1,@"Pause and navigation do not repeat the bookmark reset");
+  shortWrites=[library writes];
   playbackSeek([controller player],25); [controller saveProgress];
   [controller playerViewController:[controller playerViewController] didRequestAudioOnly:YES];
   playbackSeek([controller player],35); [controller saveProgress];
