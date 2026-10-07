@@ -271,7 +271,7 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   UIView *trailingSlot=[[[UIView alloc] initWithFrame:CGRectMake(0,0,36,30)] autorelease];
   UIBarButtonItem *trailing=[[[UIBarButtonItem alloc] initWithCustomView:trailingSlot] autorelease];
   if([self hasHiddenPlayback]) {
-    trailing=[[[UIBarButtonItem alloc] initWithImage:[self playerIcon:RDLPPlayerIconPlay]
+    trailing=[[[UIBarButtonItem alloc] initWithImage:RDLPFontAwesomeImageWithOffset(AIFACompactDisc,18,28,RDLPMainScreenScale(),[UIColor whiteColor],-1)
       style:UIBarButtonItemStyleBordered target:target action:@selector(reopenPlayer:)] autorelease];
     [trailing setAccessibilityLabel:NSLocalizedString(@"Play video", nil)];
   }
