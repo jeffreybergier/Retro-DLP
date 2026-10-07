@@ -537,8 +537,8 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require([root isKindOfClass:[UITableViewController class]] && [root view]==[root tableView],@"Fresh-launch home is a native table controller");
     require([[root title] isEqualToString:@"Playlists"] && [[root tableView] style]==UITableViewStylePlain,@"Plain Playlists home");
     require([[root toolbarItems] count]==5 && ![navigation_ isToolbarHidden],@"ENIL-style home toolbar");
-    UIBarButtonItem *queueButton=[[root toolbarItems] lastObject];
-    require([queueButton image]!=nil && [queueButton action]==@selector(queue:),@"Trailing Queue button");
+    UIBarButtonItem *queueButton=[[root toolbarItems] objectAtIndex:0];
+    require([queueButton image]!=nil && [queueButton action]==@selector(queue:),@"Leading Queue button");
     RDLPStatusBarView *bar=[root valueForKey:@"statusBar_"];
     UIProgressView *barProgress=[bar valueForKey:@"progress_"];
     require(bar!=nil && [barProgress isHidden],@"Idle status is text only");
@@ -551,7 +551,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require([bar frame].size.width<=[bar maximumWidth],@"Long status fits beside Queue");
     [library_ setTestProgress:nil]; [root refresh:nil];
     [library_ setTestBusy:YES]; [root refresh:nil];
-    require(![barProgress isHidden] && [barProgress progress]==0 && [[[[[root toolbarItems] objectAtIndex:0] customView] subviews] count]==0,@"Active work always shows a determinate track without a spinner");
+    require(![barProgress isHidden] && [barProgress progress]==0 && [[[[[root toolbarItems] lastObject] customView] subviews] count]==0,@"Active work always shows a determinate track without a spinner");
     [library_ setTestBusy:NO]; [root refresh:nil];
     [root queue:nil]; pump(); pump();
     UINavigationController *queueModal=(UINavigationController *)[navigation_ presentedViewController];
@@ -636,8 +636,8 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require([[list toolbarItems] count]==5 && [navigation_ isToolbarHidden] && [[list tableView] tableFooterView]==nil,@"Playlist has the parent toolbar, hidden when idle, without a table status footer");
     require([[[list navigationItem] rightBarButtonItem] image]!=nil && [[[[list navigationItem] rightBarButtonItem] accessibilityLabel] isEqualToString:@"Sync"] && [[[list navigationItem] rightBarButtonItem] action]==@selector(sync:),@"Playlist navigation has accessible Sync icon");
     RDLPStatusBarView *playlistBar=[list valueForKey:@"statusBar_"];
-    UIBarButtonItem *playlistQueueButton=[[list toolbarItems] lastObject];
-    require([[[list toolbarItems] objectAtIndex:2] customView]==playlistBar && [playlistQueueButton action]==@selector(queue:),@"Parent layout has centered status and trailing Queue");
+    UIBarButtonItem *playlistQueueButton=[[list toolbarItems] objectAtIndex:0];
+    require([[[list toolbarItems] objectAtIndex:2] customView]==playlistBar && [playlistQueueButton action]==@selector(queue:),@"Parent layout has centered status and leading Queue");
     [library_ setTestBusy:YES];
     [library_ setTestProgress:[NSDictionary dictionaryWithObjectsAndKeys:@YES,@"active",@2,@"processed",@5,@"total",@0,@"failed",@0,@"cancelled",nil]];
     [library_ setTestStatus:@"Downloading video"]; pump(); pump();

@@ -267,20 +267,20 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
 
 + (NSArray *)statusToolbarItems:(RDLPStatusBarView *)status target:(id)target queueAction:(SEL)action;
 {
-  /* Balance the native Queue button with a steady leading space. */
-  UIView *leadingSlot=[[[UIView alloc] initWithFrame:CGRectMake(0,0,36,30)] autorelease];
-  UIBarButtonItem *activity=[[[UIBarButtonItem alloc] initWithCustomView:leadingSlot] autorelease];
+  /* Balance the native Queue button with a steady trailing space. */
+  UIView *trailingSlot=[[[UIView alloc] initWithFrame:CGRectMake(0,0,36,30)] autorelease];
+  UIBarButtonItem *trailing=[[[UIBarButtonItem alloc] initWithCustomView:trailingSlot] autorelease];
   UIBarButtonItem *left=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
   UIBarButtonItem *right=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
   UIBarButtonItem *message=[[[UIBarButtonItem alloc] initWithCustomView:status] autorelease];
   if(!action) {
     UIView *emptySlot=[[[UIView alloc] initWithFrame:CGRectMake(0,0,36,30)] autorelease];
     UIBarButtonItem *empty=[[[UIBarButtonItem alloc] initWithCustomView:emptySlot] autorelease];
-    return [NSArray arrayWithObjects:activity,left,message,right,empty,nil];
+    return [NSArray arrayWithObjects:empty,left,message,right,trailing,nil];
   }
   UIBarButtonItem *queue=[[[UIBarButtonItem alloc] initWithImage:[self queueToolbarIcon] style:UIBarButtonItemStyleBordered target:target action:action] autorelease];
   [queue setAccessibilityLabel:NSLocalizedString(@"Download Queue", nil)];
-  return [NSArray arrayWithObjects:activity,left,message,right,queue,nil];
+  return [NSArray arrayWithObjects:queue,left,message,right,trailing,nil];
 }
 
 + (void)showMessage:(NSString *)message; {
