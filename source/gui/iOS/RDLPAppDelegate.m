@@ -2,6 +2,7 @@
 #import "RDLPLibraryViewController.h"
 #import "RDLPPlaylistsViewController.h"
 #import "RDLPUIKit.h"
+#import "RDLPDownloadedPlayerViewController.h"
 #import <AIFontAwesome.h>
 @interface RDLPAppDelegate (Errors)
 - (void)errorsChanged:(id)sender;
@@ -16,6 +17,12 @@
 @end
 @implementation RDLPAppDelegate
 @synthesize window=window_;
+- (BOOL)canBecomeFirstResponder { return YES; }
+- (void)remoteControlReceivedWithEvent:(UIEvent *)event;
+{
+  if([event type]==UIEventTypeRemoteControl)
+    [[RDLPDownloadedPlayerViewController hiddenPlayback] handlePlaybackRemoteControl:[event subtype]];
+}
 - (id)init;
 { self=[super init]; if(self) backgroundTask_=UIBackgroundTaskInvalid; return self; }
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options;

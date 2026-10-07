@@ -146,7 +146,10 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
   [library savePlaybackSeconds:10 forVideo:@"AAAAAAAAAAA"];
   NSDictionary *job=[NSDictionary dictionaryWithObjectsAndKeys:@"fixture.mp4",@"path",@"AAAAAAAAAAA",@"video_id",
     @"Native playback",@"title",@"Example Channel",@"channel",nil];
-  UIViewController *owner=[window rootViewController];
+  UIViewController *previousRoot=[[window rootViewController] retain];
+  RDLPDownloadsViewController *downloadsScreen=[[[RDLPDownloadsViewController alloc] initWithLibrary:library] autorelease];
+  UINavigationController *owner=[[[UINavigationController alloc] initWithRootViewController:downloadsScreen] autorelease];
+  [window setRootViewController:owner]; pump();
   [RDLPUIKit presentPlayer:owner library:library job:job];
   pump(); pump();
   RDLPDownloadedPlayerViewController *controller=(id)[owner presentedViewController];
@@ -203,9 +206,37 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
     for(NSUInteger i=0;i<100;++i) pump();
   }
   [controller retain];
+  for(NSUInteger mode=0;mode<2;++mode) {
+    [controller playerViewController:presentation didRequestAudioOnly:mode!=0];
+    playbackSeek([controller player],5); [[controller player] play];
+    AVPlayerItem *item=[[controller player] currentItem];
+    [[[controls doneButton] target] performSelector:[[controls doneButton] action] withObject:[controls doneButton]]; pump(); pump();
+    require(![owner presentedViewController] && [RDLPDownloadedPlayerViewController hiddenPlayback]==controller &&
+      [[controller player] rate]==1 && [presentation isAudioOnly] && [presentation valueForKey:@"videoLayer"]==nil,
+      @"Done while playing keeps the same session running without a video layer");
+    require(![owner isToolbarHidden] && [[playbackNowPlayingInfo() objectForKey:MPMediaItemPropertyTitle] isEqualToString:@"Native playback"],
+      @"Hidden playback keeps the toolbar and Now Playing available without a status message");
+    NSNotificationCenter *center=[NSNotificationCenter defaultCenter];
+    [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
+    [center postNotificationName:UIApplicationDidEnterBackgroundNotification object:nil];
+    [center postNotificationName:UIApplicationDidBecomeActiveNotification object:nil];
+    require([presentation isAudioOnly] && [[controller player] rate]==1,@"Foregrounding the app leaves a dismissed player in Audio Only");
+    playbackRemote(controller,UIEventSubtypeRemoteControlPause); pump();
+    UIBarButtonItem *reopen=[[downloadsScreen toolbarItems] lastObject];
+    require([reopen image]!=nil && [reopen action]==@selector(reopenPlayer:) && [[controller player] rate]==0,
+      @"Remote pause leaves the hidden session accessible from the trailing Play button");
+    [[reopen target] performSelector:[reopen action] withObject:reopen]; pump(); pump();
+    require([owner presentedViewController]==controller && [[controller player] currentItem]==item &&
+      [RDLPDownloadedPlayerViewController hiddenPlayback]==nil && [[controller player] rate]==0 &&
+      [presentation isAudioOnly]==(mode!=0),@"Reopen preserves the item and pause, restores temporary video, and preserves explicit Audio Only");
+    require([[[downloadsScreen toolbarItems] lastObject] action]==NULL,@"Reopening removes the trailing Play button");
+  }
+  [[controller player] pause];
   [[[controls doneButton] target] performSelector:[[controls doneButton] action] withObject:[controls doneButton]]; pump(); pump();
-  require(![owner presentedViewController] && [[controller player] rate]==0,@"Done stops playback and returns to the library");
-  require(![playbackNowPlayingInfo() count],@"Done clears Now Playing metadata");
+  require(![owner presentedViewController] && [[controller player] rate]==0,@"Done while paused stops playback and returns to the library");
+  require(![playbackNowPlayingInfo() count],@"Done while paused clears Now Playing metadata");
+  require(![RDLPUIKit hasHiddenPlayback] && [owner isToolbarHidden] &&
+    [[[downloadsScreen toolbarItems] lastObject] action]==NULL,@"Done while paused leaves no reopen button or idle toolbar");
   [controller release];
   /* The session belongs to the modal container, including when its player
    * child is already offscreen and receives no further disappearance event. */
@@ -220,6 +251,25 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
     ![controller valueForKey:@"checkpointObserver"],@"Dismissing from a pushed screen stops the container's playback and checkpoint observer");
   require(![playbackNowPlayingInfo() count],@"Container dismissal clears Now Playing even when the player child was hidden");
   [controller release];
+  [RDLPUIKit presentPlayer:owner library:library job:job]; pump(); pump();
+  controller=[(RDLPDownloadedPlayerViewController *)[owner presentedViewController] retain];
+  playbackWait(controller);
+  [controller playerViewControllerDidRequestDismissal:[controller playerViewController]]; pump(); pump();
+  RDLPAppDelegate *receiver=[[RDLPAppDelegate alloc] init];
+  RDLPPlaybackTestEvent *pause=[[RDLPPlaybackTestEvent alloc] initWithSubtype:UIEventSubtypeRemoteControlPause];
+  [receiver remoteControlReceivedWithEvent:pause]; [pause release]; [receiver release];
+  require([[controller player] rate]==0 && [RDLPDownloadedPlayerViewController hiddenPlayback]==controller,
+    @"App delegate forwards legacy remote controls to the retained hidden session");
+  [RDLPUIKit presentPlayer:owner library:library job:job]; pump(); pump();
+  RDLPDownloadedPlayerViewController *replacement=(id)[owner presentedViewController];
+  playbackWait(replacement);
+  require(replacement!=controller && [[controller valueForKey:@"stopped"] boolValue] &&
+    ![controller valueForKey:@"checkpointObserver"] && ![RDLPUIKit hasHiddenPlayback] &&
+    [[replacement player] rate]==1,@"Selecting another download replaces the hidden session and removes its observers");
+  [controller release];
+  [[replacement player] pause];
+  [replacement playerViewControllerDidRequestDismissal:[replacement playerViewController]]; pump(); pump();
+  [window setRootViewController:previousRoot]; [previousRoot release];
   [library shutdown]; [library release];
 }
 static void testPlaylistSelection(UIWindow *window,NSString *directory) {

@@ -226,16 +226,19 @@ static void testIOSPlaybackProgress(NSString *directory) {
   [[controller player] play]; [controller saveProgress];
   playbackRequire(fabs([library playbackSecondsForVideo:video]-200)<1,@"Foreground playback saves its actual position");
   [controller.player pause];
-  NSUInteger writes=library.writes;
   playbackSeek(controller.player,250);
+  /* Waiting for a real seek may run the debounce timer on slower devices.
+   * Measure the notification burst separately from that asynchronous wait. */
+  NSUInteger writes=library.writes;
+  NSUInteger expectedWrites=writes+(fabs([library playbackSecondsForVideo:video]-250)<0.1?0:1);
   NSNotificationCenter *center=[NSNotificationCenter defaultCenter];
   for(NSUInteger i=0;i<100;++i)
     [center postNotificationName:AVPlayerItemTimeJumpedNotification object:controller.player.currentItem];
   playbackRequire(library.writes==writes,@"A burst of position changes does not write synchronously");
   [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.7]];
-  playbackRequire(library.writes==writes+1 && fabs([library playbackSecondsForVideo:video]-250)<0.1,@"Paused seeks debounce into one write of the final position");
+  playbackRequire(library.writes==expectedWrites && fabs([library playbackSecondsForVideo:video]-250)<0.1,@"Paused seeks debounce into one write of the final position");
   [controller saveProgress]; [controller saveProgress];
-  playbackRequire(library.writes==writes+1,@"An unchanged paused position is not written repeatedly");
+  playbackRequire(library.writes==expectedWrites,@"An unchanged paused position is not written repeatedly");
   [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
   playbackRequire([[controller queue] isAudioOnly] && [[controller playerViewController] isAudioOnly] &&
     [[controller player] rate]==0,@"Inactivity enters Audio Only without starting paused playback");
@@ -441,13 +444,13 @@ static void testIOSNowPlaying(NSString *directory) {
   playbackRequire(controller.player.rate==1,@"Remote Play resumes playback");
   [controller beginInterruption];
   playbackRequire(controller.player.rate==0,@"Interruption pauses playback");
-  [controller endInterruptionWithFlags:AVAudioSessionInterruptionFlags_ShouldResume];
+  [controller endInterruptionWithFlags:1 /* ShouldResume has the same value on iOS 5 and newer. */];
   playbackRequire(controller.player.rate==1,@"Allowed interruption recovery resumes previously playing audio");
   [controller beginInterruption];
   [controller endInterruptionWithFlags:0];
   playbackRequire(controller.player.rate==0,@"Interruption without permission to resume stays paused");
   playbackRemote(controller,UIEventSubtypeRemoteControlPause);
-  [controller beginInterruption]; [controller endInterruptionWithFlags:AVAudioSessionInterruptionFlags_ShouldResume];
+  [controller beginInterruption]; [controller endInterruptionWithFlags:1 /* ShouldResume has the same value on iOS 5 and newer. */];
   playbackRequire(controller.player.rate==0,@"An interruption cannot start user-paused playback");
   RDLPDownloadedPlayerViewController *next=playbackController(library,[NSDictionary dictionaryWithObject:@"AAAAAAAAAAA" forKey:@"video_id"]);
   playbackRequire(controller.player.rate==0,@"Replacement stops the previous session");

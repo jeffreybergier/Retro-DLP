@@ -6,7 +6,8 @@
 #import <math.h>
 
 static void *RDLPDownloadObservation=&RDLPDownloadObservation;
-static RDLPDownloadedPlayerViewController *RDLPActivePlayback=nil; // nonretained
+NSString *const RDLPPlaybackVisibilityDidChangeNotification=@"RDLPPlaybackVisibilityDidChangeNotification";
+static RDLPDownloadedPlayerViewController *RDLPActivePlayback=nil; // retained active session
 static NSArray *RDLPDownloadItemKeys(void) {
   return [NSArray arrayWithObjects:@"status",@"duration",@"playbackBufferEmpty",nil];
 }
@@ -22,6 +23,7 @@ static NSArray *RDLPDownloadItemKeys(void) {
   BOOL _started, _stopped, _ready, _preparing, _finished, _observingRate;
   BOOL _wantsPlay, _resumeAfterInterruption, _selecting, _changingItem;
   BOOL _restoreVideoWhenActive;
+  BOOL _hiddenPlayback;
 }
 - (void)refreshPlayback;
 - (void)playbackRateChanged;
@@ -37,6 +39,22 @@ static NSArray *RDLPDownloadItemKeys(void) {
 
 @implementation RDLPDownloadedPlayerViewController
 @synthesize queue=_queue, playerViewController=_playerViewController;
++ (RDLPDownloadedPlayerViewController *)hiddenPlayback {
+  return RDLPActivePlayback && RDLPActivePlayback->_hiddenPlayback?RDLPActivePlayback:nil;
+}
+- (void)reopenFromViewController:(UIViewController *)owner {
+  UIViewController *presenter=[owner navigationController];
+  if(!presenter) presenter=owner;
+  if(_stopped || !_hiddenPlayback || [presenter presentedViewController]) return;
+  [presenter presentViewController:self animated:YES completion:nil];
+}
+- (void)viewWillAppear:(BOOL)animated {
+  _hiddenPlayback=NO;
+  if(_restoreVideoWhenActive && [[UIApplication sharedApplication] applicationState]==UIApplicationStateActive)
+    [self playerViewController:_playerViewController didRequestAudioOnly:NO];
+  [[NSNotificationCenter defaultCenter] postNotificationName:RDLPPlaybackVisibilityDidChangeNotification object:self];
+  [super viewWillAppear:animated];
+}
 - (AVPlayer *)player { return [_queue player]; }
 - (id)initWithLibrary:(RDLPLibrary *)library job:(NSDictionary *)job URL:(NSURL *)URL {
   return [self initWithLibrary:library jobs:[NSArray arrayWithObject:job]
@@ -132,8 +150,11 @@ static NSArray *RDLPDownloadItemKeys(void) {
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
   if(_stopped) return;
-  if(_started) { [self becomeFirstResponder]; return; }
-  [RDLPActivePlayback stop]; RDLPActivePlayback=self;
+  if(_started) {
+    [[[UIApplication sharedApplication] delegate] resignFirstResponder];
+    [self becomeFirstResponder]; return;
+  }
+  [RDLPActivePlayback stop]; RDLPActivePlayback=[self retain];
   _started=YES; _wantsPlay=YES;
   [RDLPUIKit activatePlaybackAudioSessionForDelegate:self];
   _remoteCommands=[[RDLPUIKit playbackRemoteCommandsForTarget:self] retain];
@@ -145,14 +166,20 @@ static NSArray *RDLPDownloadItemKeys(void) {
   [self refreshPlayback];
 }
 - (void)viewWillDisappear:(BOOL)animated {
-  if([self isBeingDismissed] || [[self navigationController] isBeingDismissed] || [self isMovingFromParentViewController])
+  if(!_hiddenPlayback && ([self isBeingDismissed] || [[self navigationController] isBeingDismissed] || [self isMovingFromParentViewController]))
     [self stop];
   [super viewWillDisappear:animated];
+}
+- (void)viewDidDisappear:(BOOL)animated {
+  [super viewDidDisappear:animated];
+  if(_hiddenPlayback && !_remoteCommands)
+    [[[UIApplication sharedApplication] delegate] becomeFirstResponder];
 }
 - (void)stop {
   if(_stopped) return;
   [self saveProgress]; _stopped=YES; _wantsPlay=NO; _resumeAfterInterruption=NO;
   _restoreVideoWhenActive=NO;
+  _hiddenPlayback=NO;
   if(_checkpointObserver) {
     [[self player] removeTimeObserver:_checkpointObserver]; [_checkpointObserver release]; _checkpointObserver=nil;
   }
@@ -161,12 +188,16 @@ static NSArray *RDLPDownloadItemKeys(void) {
     [[MPNowPlayingInfoCenter defaultCenter] setNowPlayingInfo:nil];
     RDLPActivePlayback=nil;
     [self resignFirstResponder];
+    if(!_remoteCommands) [[[UIApplication sharedApplication] delegate] resignFirstResponder];
     if(_remoteCommands) {
       [RDLPUIKit stopPlaybackRemoteCommands:_remoteCommands];
       [_remoteCommands release]; _remoteCommands=nil;
     } else [[UIApplication sharedApplication] endReceivingRemoteControlEvents];
     [RDLPUIKit deactivatePlaybackAudioSessionForDelegate:self];
+    /* Defer the session's ownership release until this callback returns. */
+    [self autorelease];
   }
+  [[NSNotificationCenter defaultCenter] postNotificationName:RDLPPlaybackVisibilityDidChangeNotification object:self];
 }
 - (void)refreshPlayback {
   if(!_started || _stopped || _changingItem || _item!=[[self player] currentItem]) return;
@@ -282,7 +313,7 @@ static NSArray *RDLPDownloadItemKeys(void) {
 - (void)applicationActive:(NSNotification *)notification {
   (void)notification;
   if(!_started || _stopped) return;
-  if(_restoreVideoWhenActive)
+  if(_restoreVideoWhenActive && !_hiddenPlayback)
     [self playerViewController:_playerViewController didRequestAudioOnly:NO];
   [self updateNowPlaying];
 }
@@ -329,7 +360,12 @@ static NSArray *RDLPDownloadItemKeys(void) {
   (void)controller; [self navigateBackward:NO];
 }
 - (void)playerViewControllerDidRequestDismissal:(RDLPPlayerViewController *)controller {
-  (void)controller; [self stop];
+  (void)controller;
+  if(!_stopped && [[self player] rate]!=0) {
+    _hiddenPlayback=YES;
+    [self applicationInactive:nil];
+    [[NSNotificationCenter defaultCenter] postNotificationName:RDLPPlaybackVisibilityDidChangeNotification object:self];
+  } else [self stop];
   [self dismissViewControllerAnimated:YES completion:nil];
 }
 - (void)play {

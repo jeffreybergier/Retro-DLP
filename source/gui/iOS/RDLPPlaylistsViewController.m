@@ -5,6 +5,7 @@
 #import "RDLPDownloadsViewController.h"
 #import "RDLPSettingsViewController.h"
 #import "RDLPUIKit.h"
+#import "RDLPDownloadedPlayerViewController.h"
 
 @implementation RDLPPlaylistsViewController
 - (id)initWithLibrary:(RDLPLibrary *)library;
@@ -13,6 +14,7 @@
   library_=[library retain]; model_=[[RDLPLibrarySections alloc] initWithLibrary:library];
   [self setTitle:NSLocalizedString(@"Playlists", nil)];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:RDLPLibraryDidChange object:library];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPPlaybackVisibilityDidChangeNotification object:nil];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPLibraryStatusDidChange object:library_];
   return self;
 }
@@ -57,9 +59,14 @@
   [self refreshStatus:nil];
   if(!swipePlaylistID_) [[self tableView] reloadData];
 }
+- (void)reopenPlayer:(id)sender;
+{ (void)sender; [RDLPUIKit reopenPlayer:self]; }
 - (void)refreshStatus:(id)sender;
 {
   (void)sender; if(![self isViewLoaded]) return;
+  UIBarButtonItem *trailing=[[self toolbarItems] lastObject];
+  BOOL showsPlayer=[trailing action]==@selector(reopenPlayer:);
+  if(statusBar_ && showsPlayer!=[RDLPUIKit hasHiddenPlayback]) [self setToolbarItems:[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:@selector(queue:)]];
   [statusBar_ setStatus:[library_ status] progress:[library_ activityProgress] busy:[library_ isBusy]];
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table;

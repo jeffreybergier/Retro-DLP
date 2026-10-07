@@ -43,6 +43,8 @@ typedef enum {
 + (UIImage *)syncIcon;
 + (UIImage *)queueToolbarIcon;
 + (NSArray *)statusToolbarItems:(RDLPStatusBarView *)status target:(id)target queueAction:(SEL)action;
++ (BOOL)hasHiddenPlayback;
++ (void)reopenPlayer:(UIViewController *)owner;
 + (void)showMessage:(NSString *)message;
 + (void)presentPlayer:(UIViewController *)owner library:(RDLPLibrary *)library job:(NSDictionary *)job;
 + (void)presentPlayer:(UIViewController *)owner library:(RDLPLibrary *)library playlist:(NSString *)playlist entry:(NSDictionary *)entry job:(NSDictionary *)job;

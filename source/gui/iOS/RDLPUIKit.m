@@ -270,6 +270,11 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   /* Balance the native Queue button with a steady trailing space. */
   UIView *trailingSlot=[[[UIView alloc] initWithFrame:CGRectMake(0,0,36,30)] autorelease];
   UIBarButtonItem *trailing=[[[UIBarButtonItem alloc] initWithCustomView:trailingSlot] autorelease];
+  if([self hasHiddenPlayback]) {
+    trailing=[[[UIBarButtonItem alloc] initWithImage:[self playerIcon:RDLPPlayerIconPlay]
+      style:UIBarButtonItemStyleBordered target:target action:@selector(reopenPlayer:)] autorelease];
+    [trailing setAccessibilityLabel:NSLocalizedString(@"Play video", nil)];
+  }
   UIBarButtonItem *left=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
   UIBarButtonItem *right=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
   UIBarButtonItem *message=[[[UIBarButtonItem alloc] initWithCustomView:status] autorelease];
@@ -282,6 +287,12 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   [queue setAccessibilityLabel:NSLocalizedString(@"Download Queue", nil)];
   return [NSArray arrayWithObjects:queue,left,message,right,trailing,nil];
 }
+
++ (BOOL)hasHiddenPlayback;
+{ return [RDLPDownloadedPlayerViewController hiddenPlayback]!=nil; }
+
++ (void)reopenPlayer:(UIViewController *)owner;
+{ [[RDLPDownloadedPlayerViewController hiddenPlayback] reopenFromViewController:owner]; }
 
 + (void)showMessage:(NSString *)message; {
   UIAlertView *alert=[[UIAlertView alloc] initWithTitle:NSLocalizedString(@"RetroDLP", nil) message:message delegate:nil cancelButtonTitle:NSLocalizedString(@"OK", nil) otherButtonTitles:nil];

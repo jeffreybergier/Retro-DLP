@@ -57,7 +57,9 @@ if os.environ.get('RDLP_TEST_UI_ONLY') == '1':
     info['RDLPTestUIOnly'] = True
 plist.write_bytes(plistlib.dumps(info))
 objects = root / 'build/apps/iOS/Intermediates'
-cmd = ['/usr/bin/clang', '-target', 'armv7-apple-ios5.0', '-arch', 'armv7',
+cmd = ['/usr/bin/clang', '-target', 'arm64-apple-ios', '-arch', 'armv7', '-arch', 'arm64',
+       '-Xarch_armv7', '-miphoneos-version-min=5.0',
+       '-Xarch_arm64', '-miphoneos-version-min=7.0',
        '-isysroot', '/osxcross/modern/SDK/iPhoneOS8.4.sdk',
        '-B/osxcross/modern/bin', '-g', '-Wall', '-Wextra', '-Werror',
        '-Wno-semicolon-before-method-body',
@@ -83,7 +85,13 @@ for framework in ['UIKit', 'Foundation', 'CoreGraphics', 'CoreText',
 cmd += ['-lobjc', '-lpthread', '-o',
         str(app / 'RetroDLPIOSOfflineTest')]
 subprocess.run(cmd, env=dict(os.environ, PATH='/osxcross/modern/bin:' + os.environ['PATH']), check=True)
-subprocess.run(['ldid', '-S', str(app / 'RetroDLPIOSOfflineTest')], check=True)
+entitlements = app.parent / 'ios-test-entitlements.plist'
+entitlements.write_bytes(plistlib.dumps({
+    'application-identifier': info['CFBundleIdentifier'],
+    'com.apple.private.security.container-required': info['CFBundleIdentifier'],
+}))
+subprocess.run(['ldid', '-S' + str(entitlements),
+                str(app / 'RetroDLPIOSOfflineTest')], check=True)
 subprocess.run(['python3', str(root / 'source/gui/iOS/package_ipa.py'), str(app),
                 str(app.with_suffix('.ipa'))], check=True)
 print(app.with_suffix('.ipa'))
