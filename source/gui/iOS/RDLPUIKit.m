@@ -6,7 +6,72 @@
 #import "RDLPDownloadedPlayerViewController.h"
 #import <AVFoundation/AVFoundation.h>
 #import <MediaPlayer/MediaPlayer.h>
+#import <QuartzCore/QuartzCore.h>
 #import <math.h>
+
+/* UIBarButtonItem does not expose its image view. Keep a real bordered item
+ * behind our own image instead of animating UIKit's button or private views. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunguarded-availability"
+@interface RDLPSpinningPlaybackButton : UIView {
+  UIToolbar *toolbar_;
+  UIImageView *imageView_;
+}
+- (id)initWithImage:(UIImage *)image target:(id)target;
+@end
+@implementation RDLPSpinningPlaybackButton
+- (id)initWithImage:(UIImage *)image target:(id)target {
+  self=[super initWithFrame:CGRectMake(0,0,36,30)]; if(!self) return nil;
+  UIGraphicsBeginImageContextWithOptions([image size],NO,[image scale]);
+  UIImage *blank=UIGraphicsGetImageFromCurrentImageContext();
+  UIGraphicsEndImageContext();
+  toolbar_=[[UIToolbar alloc] initWithFrame:CGRectMake(-8,-7,52,44)];
+  [toolbar_ setBackgroundImage:blank forToolbarPosition:UIBarPositionAny barMetrics:UIBarMetricsDefault];
+  [toolbar_ setBackgroundImage:blank forToolbarPosition:UIBarPositionAny barMetrics:UIBarMetricsLandscapePhone];
+  if([toolbar_ respondsToSelector:@selector(setShadowImage:forToolbarPosition:)])
+    [toolbar_ setShadowImage:blank forToolbarPosition:UIBarPositionAny];
+  UIBarButtonItem *button=[[[UIBarButtonItem alloc] initWithImage:blank
+    style:UIBarButtonItemStyleBordered target:target action:@selector(reopenPlayer:)] autorelease];
+  [button setWidth:36];
+  [button setAccessibilityLabel:NSLocalizedString(@"Play video", nil)];
+  UIBarButtonItem *space=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
+  UIBarButtonItem *right=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
+  [toolbar_ setItems:[NSArray arrayWithObjects:space,button,right,nil]];
+  [self addSubview:toolbar_];
+  imageView_=[[UIImageView alloc] initWithImage:image];
+  [imageView_ setCenter:CGPointMake(18,14)];
+  [imageView_ setUserInteractionEnabled:NO];
+  [self addSubview:imageView_];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateRotation)
+    name:UIApplicationDidBecomeActiveNotification object:nil];
+  return self;
+}
+- (void)didMoveToWindow {
+  [super didMoveToWindow];
+  [self updateRotation];
+}
+- (void)updateRotation {
+  CALayer *layer=[imageView_ layer];
+  if(![self window]) { [layer removeAnimationForKey:@"RDLPPlaybackRotation"]; return; }
+  UIView *parent=[self superview];
+  while(parent && ![parent isKindOfClass:[UIToolbar class]]) parent=[parent superview];
+  if(parent) [toolbar_ setBarStyle:[(UIToolbar *)parent barStyle]];
+  if([layer animationForKey:@"RDLPPlaybackRotation"]) return;
+  CABasicAnimation *rotation=[CABasicAnimation animationWithKeyPath:@"transform.rotation.z"];
+  [rotation setFromValue:[NSNumber numberWithDouble:0]];
+  [rotation setToValue:[NSNumber numberWithDouble:2*M_PI]];
+  [rotation setDuration:2];
+  [rotation setRepeatCount:HUGE_VALF];
+  [rotation setTimingFunction:[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear]];
+  [layer addAnimation:rotation forKey:@"RDLPPlaybackRotation"];
+}
+- (void)dealloc {
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
+  [toolbar_ release]; [imageView_ release]; [super dealloc];
+}
+@end
+#pragma clang diagnostic pop
+
 /* Keep raster pixels and UIImage.scale tied to the same display scale.
    AIFontAwesome also accepts zero for this, but the cache needs the resolved
    value so images created at another screen scale cannot be reused. */
@@ -271,8 +336,10 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
   UIView *trailingSlot=[[[UIView alloc] initWithFrame:CGRectMake(0,0,36,30)] autorelease];
   UIBarButtonItem *trailing=[[[UIBarButtonItem alloc] initWithCustomView:trailingSlot] autorelease];
   if([self hasHiddenPlayback]) {
-    trailing=[[[UIBarButtonItem alloc] initWithImage:RDLPFontAwesomeImageWithOffset(AIFACompactDisc,18,28,RDLPMainScreenScale(),[UIColor whiteColor],-1)
+    UIImage *image=RDLPFontAwesomeImage(AIFACompactDisc,18,28,RDLPMainScreenScale(),[UIColor whiteColor]);
+    trailing=[[[UIBarButtonItem alloc] initWithImage:image
       style:UIBarButtonItemStyleBordered target:target action:@selector(reopenPlayer:)] autorelease];
+    [trailing setCustomView:[[[RDLPSpinningPlaybackButton alloc] initWithImage:image target:target] autorelease]];
     [trailing setAccessibilityLabel:NSLocalizedString(@"Play video", nil)];
   }
   return trailing;
