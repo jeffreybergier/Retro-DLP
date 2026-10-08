@@ -39,7 +39,7 @@
   [toolbar_ setItems:[NSArray arrayWithObjects:space,button,right,nil]];
   [self addSubview:toolbar_];
   imageView_=[[UIImageView alloc] initWithImage:image];
-  [imageView_ setCenter:CGPointMake(18,14)];
+  [imageView_ setCenter:CGPointMake(18,16)];
   [imageView_ setUserInteractionEnabled:NO];
   [self addSubview:imageView_];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateRotation)
@@ -60,7 +60,7 @@
   CABasicAnimation *rotation=[CABasicAnimation animationWithKeyPath:@"transform.rotation.z"];
   [rotation setFromValue:[NSNumber numberWithDouble:0]];
   [rotation setToValue:[NSNumber numberWithDouble:2*M_PI]];
-  [rotation setDuration:2];
+  [rotation setDuration:3];
   [rotation setRepeatCount:HUGE_VALF];
   [rotation setTimingFunction:[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear]];
   [layer addAnimation:rotation forKey:@"RDLPPlaybackRotation"];

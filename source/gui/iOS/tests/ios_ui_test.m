@@ -159,9 +159,9 @@ static void requirePlaybackToolbar(UIViewController *screen,UIBarButtonItem *mes
         if([view isKindOfClass:[UIImageView class]]) icon=(UIImageView *)view;
       CABasicAnimation *rotation=(id)[[icon layer] animationForKey:@"RDLPPlaybackRotation"];
       require(rotation && [[rotation keyPath] isEqualToString:@"transform.rotation.z"] &&
-        fabs([rotation duration]-2)<0.001 &&
+        fabs([rotation duration]-3)<0.001 &&
         fabs([[rotation toValue] doubleValue]-[[rotation fromValue] doubleValue]-2*M_PI)<0.001 &&
-        [rotation repeatCount]>1000,@"The visible CD rotates once every two seconds continuously");
+        [rotation repeatCount]>1000,@"The visible CD rotates once every three seconds continuously");
       require([[[button layer] animationKeys] count]==0 &&
         [[[[[button subviews] objectAtIndex:0] layer] animationKeys] count]==0,
         @"The playback button and native surround remain stationary");
