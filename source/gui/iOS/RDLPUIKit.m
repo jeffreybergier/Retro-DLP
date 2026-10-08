@@ -39,7 +39,7 @@
   [toolbar_ setItems:[NSArray arrayWithObjects:space,button,right,nil]];
   [self addSubview:toolbar_];
   imageView_=[[UIImageView alloc] initWithImage:image];
-  [imageView_ setCenter:CGPointMake(18,16)];
+  [imageView_ setCenter:CGPointMake(18,15)];
   [imageView_ setUserInteractionEnabled:NO];
   [self addSubview:imageView_];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(updateRotation)
