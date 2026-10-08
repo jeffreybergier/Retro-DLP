@@ -396,8 +396,16 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (void)revealSelection:(id)sender;
 { if([self hasTargetVideo]) [self revealTarget:sender]; else if([self contextPlaylist]) [self revealPlaylistFolder:sender]; }
+- (NSDictionary *)libraryToolbarSyncPlaylist;
+{
+  NSDictionary *playlist=libraryContext_==0?[self selectedPlaylist]:nil;
+  /* Added Videos is a local collection, with the same Add behavior as iOS. */
+  return [[playlist objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID]?nil:playlist;
+}
 - (SEL)defaultActionForToolbarIdentifier:(NSString *)identifier;
 {
+  if([identifier isEqualToString:@"library"])
+    return [self libraryToolbarSyncPlaylist]?@selector(sync:):NULL;
   if([identifier isEqualToString:@"play"])
     return [self hasTargetVideo]?@selector(playTargetVideo:):@selector(playTargetPlaylist:);
   if([identifier isEqualToString:@"remove"])
@@ -416,6 +424,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if([sender isKindOfClass:[NSToolbarItem class]] && ![(RDLPToolbarButton *)[(NSToolbarItem *)sender view] isDefaultEnabled]) return;
   [[self window] makeKeyAndOrderFront:sender]; context_=libraryContext_;
   switch([sender tag]) {
+    case 0: if([self libraryToolbarSyncPlaylist]) [self sync:sender]; break;
     case 1: [self performSelector:[self defaultActionForToolbarIdentifier:@"play"] withObject:sender]; break;
     case 3: [self showQueue:sender]; break;
     case 4: [self downloadSelectedVideo:sender]; break;
@@ -733,7 +742,19 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(multiple) [self updateBulkAvailability];
   NSDictionary *job=video && !multiple?(mode_==0?[self jobForEntry:row]:row):nil;
   NSDictionary *playlist=job?[library_ playlistForID:[job objectForKey:@"playlist_id"]]:[self selectedPlaylist];
-  [self setToolbarItem:@"library" title:NSLocalizedString(@"Library", nil) tip:NSLocalizedString(@"Add videos and playlists, or sync your library", nil) icon:[RDLPLibraryViews toolbarIcon:(AIFontAwesomeIcon)0x2b window:[self window]] enabled:YES];
+  NSDictionary *syncPlaylist=[self libraryToolbarSyncPlaylist];
+  BOOL canSync=syncPlaylist && [RDLPLibrary canSyncPlaylist:syncPlaylist] &&
+    ![library_ isSyncPendingForInput:[syncPlaylist objectForKey:@"service_id"]];
+  [self setToolbarItem:@"library" title:NSLocalizedString(@"Library", nil)
+    tip:syncPlaylist?NSLocalizedString(@"Sync Current Playlist", nil):NSLocalizedString(@"Add videos and playlists, or sync your library", nil)
+    icon:[RDLPLibraryViews toolbarIcon:syncPlaylist?AIFAArrowsRotate:(AIFontAwesomeIcon)0x2b window:[self window]]
+    enabled:syncPlaylist?canSync:YES];
+  NSToolbarItem *libraryItem=[toolbarItems_ objectForKey:@"library"];
+  RDLPToolbarButton *libraryButton=(RDLPToolbarButton *)[libraryItem view];
+  id libraryTarget=syncPlaylist?(id)self:(id)libraryButton;
+  SEL libraryAction=syncPlaylist?@selector(toolbarDefault:):@selector(showOptions:);
+  [libraryButton setTarget:libraryTarget]; [libraryButton setAction:libraryAction];
+  [libraryItem setTarget:libraryTarget]; [libraryItem setAction:libraryAction];
   BOOL cancellable=video && [self canCancel:job];
   BOOL retry=video && ([self canRetry:job] || [self canDownloadAgain:job]);
   NSDictionary *matching=video && !multiple?[self jobForPlaylist:[playlist objectForKey:@"id"] video:[row objectForKey:@"video_id"] format:downloadFormat_]:nil;

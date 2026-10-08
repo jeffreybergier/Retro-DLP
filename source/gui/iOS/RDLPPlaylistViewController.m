@@ -51,7 +51,7 @@
   if([[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID]) [self configureAddVideoButton];
   else {
     [[self navigationItem] setRightBarButtonItem:[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit syncIcon] style:UIBarButtonItemStylePlain target:self action:@selector(sync:)] autorelease]];
-    [[[self navigationItem] rightBarButtonItem] setAccessibilityLabel:NSLocalizedString(@"Sync", nil)];
+    [[[self navigationItem] rightBarButtonItem] setAccessibilityLabel:NSLocalizedString(@"Sync Current Playlist", nil)];
   }
   [self refresh:nil];
 }

@@ -11,10 +11,10 @@
   if([title isEqualToString:@"File"]) {
     [self addItemToMenu:menu title:NSLocalizedString(@"Add Video…", nil) action:@selector(addVideo:) target:target];
     [self addItemToMenu:menu title:NSLocalizedString(@"Add Playlist…", nil) action:@selector(addPlaylist:) target:target];
-    [self addItemToMenu:menu title:NSLocalizedString(@"Sync My Playlists…", nil) action:@selector(discover:) target:target];
     [menu addItem:[NSMenuItem separatorItem]];
     [self addItemToMenu:menu title:NSLocalizedString(@"Sync Current Playlist", nil) action:@selector(sync:) target:target];
     [self addItemToMenu:menu title:NSLocalizedString(@"Sync Added Playlists…", nil) action:@selector(syncAll:) target:target];
+    [self addItemToMenu:menu title:NSLocalizedString(@"Sync My Playlists…", nil) action:@selector(discover:) target:target];
     [menu addItem:[NSMenuItem separatorItem]];
     [self addItemToMenu:menu title:NSLocalizedString(@"Download Video", nil) action:@selector(downloadFromMenu:) target:target];
     [self addItemToMenu:menu title:NSLocalizedString(@"Cancel Download…", nil) action:@selector(cancelTarget:) target:target];
@@ -108,10 +108,10 @@
   if(library) {
     [self addItemToMenu:menu title:NSLocalizedString(@"Add Video…", nil) action:@selector(addVideo:) target:target];
     [self addItemToMenu:menu title:NSLocalizedString(@"Add Playlist…", nil) action:@selector(addPlaylist:) target:target];
-    [self addItemToMenu:menu title:NSLocalizedString(@"Sync My Playlists…", nil) action:@selector(discover:) target:target];
     [menu addItem:[NSMenuItem separatorItem]];
     [self addItemToMenu:menu title:NSLocalizedString(@"Sync Current Playlist", nil) action:@selector(sync:) target:target];
     [self addItemToMenu:menu title:NSLocalizedString(@"Sync Added Playlists…", nil) action:@selector(syncAll:) target:target];
+    [self addItemToMenu:menu title:NSLocalizedString(@"Sync My Playlists…", nil) action:@selector(discover:) target:target];
   } else if(download) {
     [self addItemToMenu:menu title:multiple?NSLocalizedString(@"Download Selected Videos", nil):NSLocalizedString(@"Download Video", nil) action:@selector(chooseDownload:) target:target];
     NSString *retryTitle=job?[NSString stringWithFormat:NSLocalizedString(@"Retry Download — %@", nil),[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]]:NSLocalizedString(@"Retry Download", nil);

@@ -253,7 +253,7 @@ static void confirm(RDLPLibraryWindowController *window,BOOL accept) {
 
 static NSArray *titles(NSMenu *menu) {
   NSMutableArray *result=[NSMutableArray array]; NSEnumerator *e=[[menu itemArray] objectEnumerator]; NSMenuItem *item;
-  while((item=[e nextObject])) { [result addObject:[item title]]; if([item submenu]) [result addObject:titles([item submenu])]; }
+  while((item=[e nextObject])) { [result addObject:plainMenuTitle(item)]; if([item submenu]) [result addObject:titles([item submenu])]; }
   return result;
 }
 /* Labels may reflect count or quality, but commands and positions stay fixed. */
@@ -283,9 +283,9 @@ static void requireMenuDefault(RDLPLibraryWindowController *owner,NSString *iden
   requireCondition(defaultCount==(expected?1U:0U),@"Menu has exactly one default, or none when left click only opens the menu");
 }
 static void testContextMenuActions(RDLPLibraryWindowController *owner) {
-  requireMenuDefault(owner,@"library",NULL);
+  requireMenuDefault(owner,@"library",[owner defaultActionForToolbarIdentifier:@"library"]);
   requireMenuDefault(owner,@"cookies",NULL);
-  requireMenuActions([owner menuForToolbarIdentifier:@"library"],@"addVideo:,addPlaylist:,discover:,separator,sync:,syncAll:");
+  requireMenuActions([owner menuForToolbarIdentifier:@"library"],@"addVideo:,addPlaylist:,separator,sync:,syncAll:,discover:");
   NSMenu *download=[owner menuForToolbarIdentifier:@"download"];
   requireMenuActions(download,@"chooseDownload:,retryTarget:,cancelTarget:,separator,submenu");
   requireMenuActions([choice(download,@"Download Quality") submenu],@"chooseDownload:,chooseDownload:,chooseDownload:,chooseDownload:");
@@ -315,7 +315,7 @@ static NSArray *libraryToolbarAppearance(RDLPLibraryWindowController *owner) {
   while((item=[e nextObject])) {
     /* Action tooltips follow selection; visible labels and other icons stay fixed. */
     NSString *title=[item objectAtIndex:0];
-    [appearance addObject:[title isEqualToString:@"Download"]?title:
+    [appearance addObject:([title isEqualToString:@"Download"] || [title isEqualToString:@"Library"])?title:
       ([title isEqualToString:@"Remove"]?[NSArray arrayWithObjects:title,[item objectAtIndex:3],nil]:
       [NSArray arrayWithObjects:title,[item objectAtIndex:1],[item objectAtIndex:3],nil])];
   }
@@ -384,6 +384,15 @@ static void testFixedToolbar(RDLPLibraryWindowController *owner,RDLPLibrary *lib
     requireCondition([appearance isEqual:libraryToolbarAppearance(owner)],@"All labels and all other toolbar appearances stay fixed");
     requireCondition([[toolbarButton(owner,@"remove") toolTip] isEqualToString:scope>=2?@"Delete download…":@"Remove playlist…"],@"Removal tooltip names the selected object");
     requireCondition([toolbarButton(owner,@"library") isDefaultEnabled],@"Library remains available in every selection");
+    RDLPToolbarButton *libraryButton=toolbarButton(owner,@"library");
+    BOOL sync=scope==1;
+    requireCondition([[[libraryButton image] TIFFRepresentation] isEqual:
+      [[RDLPLibraryViews toolbarIcon:sync?AIFAArrowsRotate:(AIFontAwesomeIcon)0x2b window:[owner window]] TIFFRepresentation]],
+      @"Library shows Sync for the selected playlist and Add for no selection or a video");
+    requireCondition([libraryButton target]==(sync?(id)owner:(id)libraryButton) &&
+      [libraryButton action]==(sync?@selector(toolbarDefault:):@selector(showOptions:)),
+      @"Library left click follows the displayed Sync or Add icon");
+    requireMenuDefault(owner,@"library",sync?@selector(sync:):NULL);
     BOOL cancellable=scope==3;
     NSData *expectedIcon=[[RDLPLibraryViews toolbarIcon:cancellable?AIFAOctagon:AIFADownload window:[owner window]] TIFFRepresentation];
     requireCondition([expectedIcon isEqual:[[toolbarButton(owner,@"download") image] TIFFRepresentation]],@"Download uses a stop sign for queued work and an arrow otherwise; deletion has its own button");
@@ -833,7 +842,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition(![window_ validateMenuItem:choice(play,@"Play Video")] &&
       ![window_ validateMenuItem:choice([window_ menuForToolbarIdentifier:@"remove"],@"Delete Download")],
       @"Playlist selection keeps video-only actions visible but disabled");
-    requireCondition([download itemWithTitle:@"Sync Playlist"]!=nil && !menuChoice(download,@"Delete Download") && !menuChoice(download,@"Remove Playlist…"),@"Library owns sync and excludes destructive commands");
+    requireCondition(menuChoice(download,@"Sync Selected Playlist")!=nil && !menuChoice(download,@"Delete Download") && !menuChoice(download,@"Remove Playlist…"),@"Library owns sync and excludes destructive commands");
     requireCondition([download itemWithTitle:@"Download Missing Videos"]==nil && menuChoice(download,@"Download Video")==nil,@"Playlist menu must not offer downloads");
     NSMenuItem *fileDownload=choice(fileMenu,@"Download Video");
     requireCondition(![window_ validateMenuItem:fileDownload] && [[fileDownload title] isEqualToString:@"Download Video"],@"Playlist selection keeps File download disabled with a stable title");
@@ -1036,12 +1045,12 @@ static void testQueueWindow(RDLPLibrary *library) {
       [NSString stringWithFormat:@"Idle playlist can sync from toolbar and menu (Add=%d, Sync=%d, sheet=%d, context=%@, playlist=%@, pending=%d)",
         [toolbarButton(window_,@"library") isDefaultEnabled], [window_ validateMenuItem:syncItem], [window_ hasAttachedSheet],
         [window_ valueForKey:@"context_"], [window_ valueForKey:@"selectedPlaylist_"], [library_ isSyncPendingForInput:@"PLfixture"]]);
-    /* Sync lives in Library’s menu; dispatch without click animation so the
-       local worker cannot finish before inspecting its in-flight state. */
-    NSMenuItem *toolbarSync=choice([window_ menuForToolbarIdentifier:@"library"],@"Sync Playlist");
+    /* Dispatch the actual toolbar default without waiting for click animation. */
+    requireMenuDefault(window_,@"library",@selector(sync:));
+    RDLPToolbarButton *toolbarSync=toolbarButton(window_,@"library");
     [NSApp sendAction:[toolbarSync action] to:[toolbarSync target] from:toolbarSync];
     requireCondition([library_ isBusy] && ![[[library_ queueProgress] objectForKey:@"active"] boolValue] && ![[window_ valueForKey:@"queueProgress_"] isHidden] && ![[window_ valueForKey:@"queueProgress_"] isIndeterminate] && [[window_ valueForKey:@"queueProgress_"] maxValue]>0,@"Metadata work uses determinate phase progress");
-    requireCondition([toolbarButton(window_,@"library") isDefaultEnabled] && ![window_ validateMenuItem:syncItem] && ![toolbarButton(window_,@"remove") isDefaultEnabled],@"Active sync disables duplicate sync and deletion while Library remains available");
+    requireCondition(![toolbarButton(window_,@"library") isDefaultEnabled] && [toolbarButton(window_,@"library") menu]!=nil && ![window_ validateMenuItem:syncItem] && ![toolbarButton(window_,@"remove") isDefaultEnabled],@"Active sync disables the default action and deletion while the Library menu remains available");
     requireCondition([library_ operationCount]==1 && [toolbarButton(window_,@"cookies") isDefaultEnabled] &&
       ![window_ validateMenuItem:choice(cookiesMenu,@"Import Cookies…")],@"Active sync disables cookie changes while its menu and export guide remain available");
     deadline=[NSDate dateWithTimeIntervalSinceNow:20];

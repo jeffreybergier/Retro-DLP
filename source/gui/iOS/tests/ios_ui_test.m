@@ -745,7 +745,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     RDLPPlaylistViewController *list=[self show:RDLPScreenPlaylist playlist:playlist video:nil];
     require([list isKindOfClass:[UITableViewController class]] && [list view]==[list tableView] && [[list tableView] style]==UITableViewStylePlain,@"Playlist detail is a native plain table without a separate status area");
     require([[list toolbarItems] count]==5 && [navigation_ isToolbarHidden] && [[list tableView] tableFooterView]==nil,@"Playlist has the parent toolbar, hidden when idle, without a table status footer");
-    require([[[list navigationItem] rightBarButtonItem] image]!=nil && [[[[list navigationItem] rightBarButtonItem] accessibilityLabel] isEqualToString:@"Sync"] && [[[list navigationItem] rightBarButtonItem] action]==@selector(sync:),@"Playlist navigation has accessible Sync icon");
+    require([[[list navigationItem] rightBarButtonItem] image]!=nil && [[[[list navigationItem] rightBarButtonItem] accessibilityLabel] isEqualToString:@"Sync Selected Playlist"] && [[[list navigationItem] rightBarButtonItem] action]==@selector(sync:),@"Playlist navigation has accessible Sync icon");
     RDLPStatusBarView *playlistBar=[list valueForKey:@"statusBar_"];
     UIBarButtonItem *playlistQueueButton=[[list toolbarItems] objectAtIndex:0];
     require([[[list toolbarItems] objectAtIndex:2] customView]==playlistBar && [playlistQueueButton action]==@selector(queue:),@"Parent layout has centered status and leading Queue");

@@ -790,7 +790,7 @@
 "Sync Added Playlists…" = "Sync Added Playlists…";
 
 /* macOS/RDLPLibraryMenus.m */
-"Sync Current Playlist" = "Sync Playlist";
+"Sync Current Playlist" = "Sync Selected Playlist";
 
 /* iOS/RDLPLibraryActions.m, iOS/RDLPPlaylistsViewController.m, macOS/RDLPLibraryWindowController.m */
 "Sync My Playlists" = "Sync My Playlists";
