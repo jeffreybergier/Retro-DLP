@@ -133,10 +133,31 @@ static void screenshot(UIWindow *window,NSString *path) {
   [[window layer] renderInContext:UIGraphicsGetCurrentContext()];
   [UIImagePNGRepresentation(UIGraphicsGetImageFromCurrentImageContext()) writeToFile:path atomically:YES]; UIGraphicsEndImageContext();
 }
+static void requirePlaybackToolbar(UIViewController *screen,UIBarButtonItem *message,BOOL hiddenPlayback,BOOL downloading) {
+  NSArray *items=[screen toolbarItems];
+  require([items objectAtIndex:2]==message,@"Playback transitions preserve the download status item");
+  UIBarButtonItem *trailing=[items lastObject];
+  require(([trailing action]==@selector(reopenPlayer:))==hiddenPlayback,
+    @"Only a hidden playback session shows the reopen button");
+  RDLPStatusBarView *bar=(id)[message customView];
+  UIProgressView *progress=[bar valueForKey:@"progress_"];
+  if(downloading) {
+    require([[[bar valueForKey:@"label_"] text] isEqualToString:@"Downloading"] &&
+      ![progress isHidden] && fabs([progress progress]-0.6f)<0.01f,
+      @"Playback transitions preserve download text and progress");
+  }
+  UINavigationController *navigation=[screen navigationController];
+  if([navigation topViewController]==screen && ![navigation presentedViewController] && ![navigation isToolbarHidden]) {
+    require([[[navigation toolbar] items] objectAtIndex:2]==message && [bar isDescendantOfView:[navigation toolbar]],
+      @"The visible toolbar still hosts the download status view");
+    require([[[navigation toolbar] items] lastObject]==[items lastObject],
+      @"Visible playback button matches the current screen state");
+  }
+}
 static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
   [[NSFileManager defaultManager] removeItemAtPath:directory error:NULL];
   NSString *support=[directory stringByAppendingPathComponent:@"Support"], *downloads=[directory stringByAppendingPathComponent:@"Downloads"];
-  RDLPLibrary *library=[[RDLPOfflineLibrary alloc] initWithSupportDirectory:support downloadDirectory:downloads];
+  RDLPOfflineLibrary *library=[[RDLPOfflineLibrary alloc] initWithSupportDirectory:support downloadDirectory:downloads];
   rdapp_store *store=NULL;
   require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store) &&
     rdapp_store_add_adhoc(store,"AAAAAAAAAAA","Native playback",NULL),@"Create real-player fixture");
@@ -148,8 +169,20 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
     @"Native playback",@"title",@"Example Channel",@"channel",nil];
   UIViewController *previousRoot=[[window rootViewController] retain];
   RDLPDownloadsViewController *downloadsScreen=[[[RDLPDownloadsViewController alloc] initWithLibrary:library] autorelease];
-  UINavigationController *owner=[[[UINavigationController alloc] initWithRootViewController:downloadsScreen] autorelease];
+  RDLPPlaylistsViewController *home=[[[RDLPPlaylistsViewController alloc] initWithLibrary:library] autorelease];
+  UINavigationController *owner=[[[UINavigationController alloc] initWithRootViewController:home] autorelease];
   [window setRootViewController:owner]; pump();
+  [owner pushViewController:downloadsScreen animated:NO]; pump();
+  RDLPLibraryViewController *legacy=[[[RDLPLibraryViewController alloc] initWithLibrary:library
+    mode:RDLPScreenLibrary playlist:nil video:nil] autorelease];
+  [legacy view];
+  NSArray *screens=[NSArray arrayWithObjects:home,downloadsScreen,legacy,nil];
+  NSMutableArray *messages=[NSMutableArray array];
+  for(UIViewController *screen in screens) [messages addObject:[[screen toolbarItems] objectAtIndex:2]];
+  [library setTestProgress:[NSDictionary dictionaryWithObjectsAndKeys:@YES,@"active",@3,@"processed",@5,@"total",nil]];
+  [library setTestStatus:@"Downloading"]; pump();
+  for(NSUInteger i=0;i<[screens count];++i) requirePlaybackToolbar([screens objectAtIndex:i],[messages objectAtIndex:i],NO,YES);
+  [library setTestProgress:nil]; [library setTestStatus:@""]; pump();
   [RDLPUIKit presentPlayer:owner library:library job:job];
   pump(); pump();
   RDLPDownloadedPlayerViewController *controller=(id)[owner presentedViewController];
@@ -207,6 +240,10 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
   }
   [controller retain];
   for(NSUInteger mode=0;mode<2;++mode) {
+    if(mode) {
+      [library setTestProgress:[NSDictionary dictionaryWithObjectsAndKeys:@YES,@"active",@3,@"processed",@5,@"total",nil]];
+      [library setTestStatus:@"Downloading"];
+    }
     [controller playerViewController:presentation didRequestAudioOnly:mode!=0];
     playbackSeek([controller player],5); [[controller player] play];
     AVPlayerItem *item=[[controller player] currentItem];
@@ -216,6 +253,12 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
       @"Done while playing keeps the same session running without a video layer");
     require(![owner isToolbarHidden] && [[playbackNowPlayingInfo() objectForKey:MPMediaItemPropertyTitle] isEqualToString:@"Native playback"],
       @"Hidden playback keeps the toolbar and Now Playing available without a status message");
+    for(NSUInteger i=0;i<[screens count];++i) requirePlaybackToolbar([screens objectAtIndex:i],[messages objectAtIndex:i],YES,mode!=0);
+    if(mode) {
+      [owner popViewControllerAnimated:NO]; pump();
+      requirePlaybackToolbar(home,[messages objectAtIndex:0],YES,YES);
+      [owner pushViewController:downloadsScreen animated:NO]; pump();
+    }
     NSNotificationCenter *center=[NSNotificationCenter defaultCenter];
     [center postNotificationName:UIApplicationWillResignActiveNotification object:nil];
     [center postNotificationName:UIApplicationDidEnterBackgroundNotification object:nil];
@@ -230,11 +273,15 @@ static void testDownloadedPlayback(UIWindow *window,NSString *directory) {
       [RDLPDownloadedPlayerViewController hiddenPlayback]==nil && [[controller player] rate]==0 &&
       [presentation isAudioOnly]==(mode!=0),@"Reopen preserves the item and pause, restores temporary video, and preserves explicit Audio Only");
     require([[[downloadsScreen toolbarItems] lastObject] action]==NULL,@"Reopening removes the trailing Play button");
+    for(NSUInteger i=0;i<[screens count];++i) requirePlaybackToolbar([screens objectAtIndex:i],[messages objectAtIndex:i],NO,mode!=0);
   }
   [[controller player] pause];
   [[[controls doneButton] target] performSelector:[[controls doneButton] action] withObject:[controls doneButton]]; pump(); pump();
   require(![owner presentedViewController] && [[controller player] rate]==0,@"Done while paused stops playback and returns to the library");
   require(![playbackNowPlayingInfo() count],@"Done while paused clears Now Playing metadata");
+  for(NSUInteger i=0;i<[screens count];++i) requirePlaybackToolbar([screens objectAtIndex:i],[messages objectAtIndex:i],NO,YES);
+  require(![owner isToolbarHidden],@"Stopping playback keeps the active download toolbar visible");
+  [library setTestProgress:nil]; [library setTestStatus:@""]; pump();
   require(![RDLPUIKit hasHiddenPlayback] && [owner isToolbarHidden] &&
     [[[downloadsScreen toolbarItems] lastObject] action]==NULL,@"Done while paused leaves no reopen button or idle toolbar");
   [controller release];

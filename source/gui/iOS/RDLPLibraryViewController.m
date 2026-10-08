@@ -83,9 +83,7 @@
 {
   (void)sender; if(![self isViewLoaded]) return;
   NSDictionary *progress=[library_ activityProgress];
-  UIBarButtonItem *trailing=[[self toolbarItems] lastObject];
-  BOOL showsPlayer=[trailing action]==@selector(reopenPlayer:);
-  if(statusBar_ && showsPlayer!=[RDLPUIKit hasHiddenPlayback]) [self setToolbarItems:[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:@selector(queue:)]];
+  if(statusBar_) [RDLPUIKit refreshStatusToolbarPlayback:self];
   [statusBar_ setStatus:[library_ status] progress:progress busy:[library_ isBusy]];
   double expected=[[progress objectForKey:@"expected"] doubleValue];
   [progress_ setHidden:![[progress objectForKey:@"active"] boolValue]];

@@ -64,9 +64,7 @@
 - (void)refreshStatus:(id)sender;
 {
   (void)sender; if(![self isViewLoaded]) return;
-  UIBarButtonItem *trailing=[[self toolbarItems] lastObject];
-  BOOL showsPlayer=[trailing action]==@selector(reopenPlayer:);
-  if(statusBar_ && showsPlayer!=[RDLPUIKit hasHiddenPlayback]) [self setToolbarItems:[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:@selector(queue:)]];
+  if(statusBar_) [RDLPUIKit refreshStatusToolbarPlayback:self];
   [statusBar_ setStatus:[library_ status] progress:[library_ activityProgress] busy:[library_ isBusy]];
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table;

@@ -265,7 +265,7 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
 + (UIImage *)syncIcon;
 { return RDLPFontAwesomeImageWithOffset(AIFAArrowsRotate,18,26,RDLPMainScreenScale(),[UIColor whiteColor],-1); }
 
-+ (NSArray *)statusToolbarItems:(RDLPStatusBarView *)status target:(id)target queueAction:(SEL)action;
++ (UIBarButtonItem *)statusToolbarPlaybackItem:(id)target;
 {
   /* Balance the native Queue button with a steady trailing space. */
   UIView *trailingSlot=[[[UIView alloc] initWithFrame:CGRectMake(0,0,36,30)] autorelease];
@@ -275,6 +275,26 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
       style:UIBarButtonItemStyleBordered target:target action:@selector(reopenPlayer:)] autorelease];
     [trailing setAccessibilityLabel:NSLocalizedString(@"Play video", nil)];
   }
+  return trailing;
+}
+
++ (void)refreshStatusToolbarPlayback:(UIViewController *)controller;
+{
+  NSArray *items=[controller toolbarItems];
+  if([items count]!=5) return;
+  UIBarButtonItem *trailing=[items lastObject];
+  BOOL showsPlayer=[trailing action]==@selector(reopenPlayer:);
+  if(showsPlayer==[self hasHiddenPlayback]) return;
+  /* Keep the status item and its custom view together. Rewrapping the live
+   * view in a new item lets UIKit detach it while retiring the old item. */
+  NSMutableArray *updated=[[items mutableCopy] autorelease];
+  [updated replaceObjectAtIndex:4 withObject:[self statusToolbarPlaybackItem:controller]];
+  [controller setToolbarItems:updated];
+}
+
++ (NSArray *)statusToolbarItems:(RDLPStatusBarView *)status target:(id)target queueAction:(SEL)action;
+{
+  UIBarButtonItem *trailing=[self statusToolbarPlaybackItem:target];
   UIBarButtonItem *left=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
   UIBarButtonItem *right=[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease];
   UIBarButtonItem *message=[[[UIBarButtonItem alloc] initWithCustomView:status] autorelease];
