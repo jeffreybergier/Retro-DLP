@@ -1,6 +1,7 @@
 #import <AppKit/AppKit.h>
 
 @protocol RDLPLibraryMenuContext
+- (SEL)defaultActionForToolbarIdentifier:(NSString *)identifier;
 - (BOOL)hasTargetVideo;
 - (BOOL)hasMultipleTargetVideos;
 - (NSDictionary *)contextPlaylist;
@@ -15,4 +16,5 @@
 + (NSMenu *)menuForMenuBarTitle:(NSString *)title target:(id<RDLPLibraryMenuContext>)target;
 + (NSMenu *)menuForToolbarIdentifier:(NSString *)identifier target:(id<RDLPLibraryMenuContext>)target;
 + (void)updateMenu:(NSMenu *)menu target:(id<RDLPLibraryMenuContext>)target;
++ (void)updateDefaultAppearanceForItem:(NSMenuItem *)item target:(id<RDLPLibraryMenuContext>)target;
 @end

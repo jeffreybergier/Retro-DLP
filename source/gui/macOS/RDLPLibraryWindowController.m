@@ -396,16 +396,30 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (void)revealSelection:(id)sender;
 { if([self hasTargetVideo]) [self revealTarget:sender]; else if([self contextPlaylist]) [self revealPlaylistFolder:sender]; }
+- (SEL)defaultActionForToolbarIdentifier:(NSString *)identifier;
+{
+  if([identifier isEqualToString:@"play"])
+    return [self hasTargetVideo]?@selector(playTargetVideo:):@selector(playTargetPlaylist:);
+  if([identifier isEqualToString:@"remove"])
+    return [self hasTargetVideo]?@selector(removeTarget:):@selector(removePlaylist:);
+  if([identifier isEqualToString:@"download"]) {
+    NSDictionary *job=[self targetJob];
+    if([self canCancel:job]) return @selector(cancelTarget:);
+    if([self canRetry:job] || [self canDownloadAgain:job]) return @selector(retryTarget:);
+    return @selector(chooseDownload:);
+  }
+  return NULL;
+}
 - (void)toolbarDefault:(id)sender;
 {
   if([self hasAttachedSheet]) return;
   if([sender isKindOfClass:[NSToolbarItem class]] && ![(RDLPToolbarButton *)[(NSToolbarItem *)sender view] isDefaultEnabled]) return;
   [[self window] makeKeyAndOrderFront:sender]; context_=libraryContext_;
   switch([sender tag]) {
-    case 1: [self playSelection:sender]; break;
+    case 1: [self performSelector:[self defaultActionForToolbarIdentifier:@"play"] withObject:sender]; break;
     case 3: [self showQueue:sender]; break;
     case 4: [self downloadSelectedVideo:sender]; break;
-    case 5: if([self hasTargetVideo]) [self removeTarget:sender]; else [self removePlaylist:sender]; break;
+    case 5: [self performSelector:[self defaultActionForToolbarIdentifier:@"remove"] withObject:sender]; break;
   }
 }
 - (void)chooseDownload:(NSMenuItem *)sender;
@@ -896,6 +910,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     NSString *object=[self hasTargetVideo]?NSLocalizedString(@"Video", nil):NSLocalizedString(@"Playlist", nil);
     if(visibilityAction==@selector(playSelection:)) [item setTitle:[NSString stringWithFormat:NSLocalizedString(@"Play %@", nil),object]];
   }
+  [RDLPLibraryMenus updateDefaultAppearanceForItem:item target:self];
   if(visibilityAction==@selector(chooseVideoPlayer:)) {
     NSString *player=[item representedObject];
     [item setState:[[RDLPAppKit videoPlayer] isEqualToString:player]?NSOnState:NSOffState];
@@ -1091,15 +1106,13 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (void)downloadSelectedVideo:(id)sender;
 {
+  (void)sender;
   if([self hasAttachedSheet] || ![self hasTargetVideo]) return;
   if([self hasMultipleTargetVideos]) { [self downloadSelectedVideos]; return; }
-  NSDictionary *job=[self targetJob], *playlist=[self contextPlaylist];
-  if([self canCancel:job]) [self cancelTarget:sender];
-  else if([self canRetry:job] || [self canDownloadAgain:job]) [self retryDownloadJob:job];
-  else if(playlist) {
-    NSMenuItem *command=[[[NSMenuItem alloc] initWithTitle:@"" action:@selector(chooseDownload:) keyEquivalent:@""] autorelease];
-    [self chooseDownload:command];
-  }
+  SEL action=[self defaultActionForToolbarIdentifier:@"download"];
+  /* The toolbar's numeric tag is not a download-quality menu tag. */
+  NSMenuItem *command=[[[NSMenuItem alloc] initWithTitle:@"" action:action keyEquivalent:@""] autorelease];
+  if([self validateMenuItem:command]) [self performSelector:action withObject:command];
 }
 - (void)sync:(id)sender;
 { (void)sender; NSDictionary *playlist=[self contextPlaylist]; if(playlist && [RDLPLibrary canSyncPlaylist:playlist]) [library_ syncPlaylistInput:[playlist objectForKey:@"service_id"]]; }

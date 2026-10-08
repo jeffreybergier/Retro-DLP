@@ -85,6 +85,19 @@
   return menu;
 }
 
+/* Specify only the font so AppKit retains native disabled/highlight colors. */
++ (void)updateDefaultAppearanceForItem:(NSMenuItem *)item target:(id<RDLPLibraryMenuContext>)target;
+{
+  NSString *identifier=[[item menu] title];
+  SEL action=[target defaultActionForToolbarIdentifier:identifier];
+  if(action && [item action]==action && ![item isSeparatorItem]) {
+    NSFont *font=[[NSFontManager sharedFontManager] convertFont:[NSFont menuFontOfSize:0] toHaveTrait:NSBoldFontMask];
+    NSAttributedString *title=[[[NSAttributedString alloc] initWithString:[item title]
+      attributes:[NSDictionary dictionaryWithObject:font forKey:NSFontAttributeName]] autorelease];
+    [item setAttributedTitle:title];
+  } else [item setAttributedTitle:nil];
+}
+
 + (void)updateMenu:(NSMenu *)menu target:(id<RDLPLibraryMenuContext>)target;
 {
   BOOL library=[[menu title] isEqualToString:@"library"];
@@ -118,5 +131,7 @@
     [menu addItem:[NSMenuItem separatorItem]];
     [self addItemToMenu:menu title:NSLocalizedString(@"Show in Finder", nil) action:@selector(revealSelection:) target:target];
   }
+  NSEnumerator *items=[[menu itemArray] objectEnumerator]; NSMenuItem *item;
+  while((item=[items nextObject])) [self updateDefaultAppearanceForItem:item target:target];
 }
 @end

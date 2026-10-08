@@ -261,7 +261,30 @@ static void requireMenuActions(NSMenu *menu,NSString *expected) {
   requireCondition([[actions componentsJoinedByString:@","] isEqualToString:expected],
     [NSString stringWithFormat:@"Context menu %@ keeps every action in a fixed position: %@",[menu title],actions]);
 }
+static void requireMenuDefault(RDLPLibraryWindowController *owner,NSString *identifier,SEL expected) {
+  NSMenu *menu=[owner menuForToolbarIdentifier:identifier];
+  NSUInteger boldCount=0;
+  NSEnumerator *items=[[menu itemArray] objectEnumerator]; NSMenuItem *item;
+  while((item=[items nextObject])) {
+    if([item isSeparatorItem] || [item submenu]) continue;
+    [owner validateMenuItem:item]; /* Validation can change singular/plural titles. */
+    NSAttributedString *title=[item attributedTitle];
+    NSFont *font=[title length]?[title attribute:NSFontAttributeName atIndex:0 effectiveRange:NULL]:nil;
+    BOOL bold=font && ([[NSFontManager sharedFontManager] traitsOfFont:font]&NSBoldFontMask)!=0;
+    requireCondition(bold==([item action]==expected),
+      [NSString stringWithFormat:@"%@ bolds only its left-click action, including after validation: %@",identifier,[item title]]);
+    if(bold) {
+      ++boldCount;
+      requireCondition([[title string] isEqualToString:[item title]] &&
+        ![title attribute:NSForegroundColorAttributeName atIndex:0 effectiveRange:NULL],
+        @"Bold title follows current text and leaves disabled/highlight colors to AppKit");
+    }
+  }
+  requireCondition(boldCount==(expected?1U:0U),@"Menu has exactly one default, or none when left click only opens the menu");
+}
 static void testContextMenuActions(RDLPLibraryWindowController *owner) {
+  requireMenuDefault(owner,@"library",NULL);
+  requireMenuDefault(owner,@"cookies",NULL);
   requireMenuActions([owner menuForToolbarIdentifier:@"library"],@"addVideo:,addPlaylist:,discover:,separator,sync:,syncAll:");
   NSMenu *download=[owner menuForToolbarIdentifier:@"download"];
   requireMenuActions(download,@"chooseDownload:,retryTarget:,cancelTarget:,separator,submenu");
@@ -404,6 +427,7 @@ static void testFixedToolbar(RDLPLibraryWindowController *owner,RDLPLibrary *lib
     requireCondition([[choice(downloads,@"Download Video") title] isEqualToString:@"Download Video"] &&
       [[choice(downloads,@"Retry") title] isEqualToString:@"Retry — Low"],@"Download Video keeps its short title while retry names the original quality");
     testContextMenuActions(owner);
+    requireMenuDefault(owner,@"download",@selector(retryTarget:));
     requireCondition([owner validateMenuItem:choice(downloads,@"Retry")],
       @"Persistent Retry supports failed, interrupted, cancelled, removed and missing-file jobs");
     requireCondition([toolbarButton(owner,@"download") isDefaultEnabled] &&
@@ -416,6 +440,7 @@ static void testFixedToolbar(RDLPLibraryWindowController *owner,RDLPLibrary *lib
   while((state=[states nextObject])) {
     requireCondition(rdapp_store_finish(store,strtoll([jobID UTF8String],NULL,10),[state UTF8String],[format UTF8String],""),@"Set cancellable state");
     [owner refresh:nil]; selectRow(owner,@"table_",0);
+    requireMenuDefault(owner,@"download",@selector(cancelTarget:));
     RDLPToolbarButton *button=toolbarButton(owner,@"download");
     requireCondition([button isDefaultEnabled] && [[button image] isEqual:[RDLPLibraryViews toolbarIcon:AIFAOctagon window:[owner window]]] &&
       [[button toolTip] isEqualToString:@"Stop download…"],@"Queued and running downloads offer an enabled stop sign and cancellation tooltip");
@@ -801,6 +826,9 @@ static void testQueueWindow(RDLPLibrary *library) {
     selectRow(window_,@"sidebar_",1);
     download=[window_ menuForToolbarIdentifier:@"library"]; play=[window_ menuForToolbarIdentifier:@"play"];
     NSArray *playlistTitles=[[titles(download) copy] autorelease];
+    requireMenuDefault(window_,@"play",@selector(playTargetPlaylist:));
+    requireMenuDefault(window_,@"remove",@selector(removePlaylist:));
+    requireMenuDefault(window_,@"download",@selector(chooseDownload:));
     testContextMenuActions(window_);
     requireCondition(![window_ validateMenuItem:choice(play,@"Play Video")] &&
       ![window_ validateMenuItem:choice([window_ menuForToolbarIdentifier:@"remove"],@"Delete Download")],
@@ -872,7 +900,11 @@ static void testQueueWindow(RDLPLibrary *library) {
     download=[window_ menuForToolbarIdentifier:@"download"]; play=[window_ menuForToolbarIdentifier:@"play"];
     requireCondition([playlistTitles isEqual:titles([window_ menuForToolbarIdentifier:@"library"])],@"Library menu keeps its commands across selections");
     testContextMenuActions(window_);
+    requireMenuDefault(window_,@"play",@selector(playTargetVideo:));
+    requireMenuDefault(window_,@"remove",@selector(removeTarget:));
     [videosTable selectAll:nil]; [window_ tableWasUsed:videosTable];
+    requireMenuDefault(window_,@"download",@selector(chooseDownload:));
+    requireMenuDefault(window_,@"remove",@selector(removeTarget:));
     testContextMenuActions(window_);
     requireCondition(![window_ validateMenuItem:choice([window_ menuForToolbarIdentifier:@"play"],@"Play Video")] &&
       ![window_ validateMenuItem:choice([window_ menuForToolbarIdentifier:@"download"],@"Retry Download")],
