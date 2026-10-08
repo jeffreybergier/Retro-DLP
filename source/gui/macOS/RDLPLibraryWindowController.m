@@ -931,7 +931,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     NSDictionary *matching=[self jobForPlaylist:[playlist objectForKey:@"id"] video:[self targetVideoID] format:format];
     return !matching || [self canRetry:matching] || [self canDownloadAgain:matching];
   }
-  if(action==@selector(retryTarget:)) return [self canRetry:job];
+  if(action==@selector(retryTarget:)) return [self canRetry:job] || [self canDownloadAgain:job];
   if(action==@selector(againTarget:)) return [self canDownloadAgain:job];
   if(action==@selector(cancelTarget:)) return [self canCancel:job];
   if(action==@selector(removeTarget:)) {
@@ -1159,7 +1159,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (void)showTargetInQueue:(id)sender; { (void)sender; [self showJobInQueue:[self targetJob]]; }
 - (void)retryTarget:(id)sender;
-{ (void)sender; NSDictionary *job=[self targetJob]; if([self canRetry:job]) [self retryDownloadJob:job]; }
+{ (void)sender; NSDictionary *job=[self targetJob]; if([self canRetry:job] || [self canDownloadAgain:job]) [self retryDownloadJob:job]; }
 - (void)againTarget:(id)sender;
 { (void)sender; NSDictionary *job=[self targetJob]; if([self canDownloadAgain:job]) [self retryDownloadJob:job]; }
 - (void)cancelTarget:(id)sender; { (void)sender; [self confirmJob:[self targetJob] remove:NO]; }

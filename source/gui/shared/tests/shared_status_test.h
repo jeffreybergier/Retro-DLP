@@ -94,7 +94,7 @@ static void testSharedStatus(NSString *base) {
   statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==10,@"Finishing fills the phase bar");
 
   [library setValue:[NSDictionary dictionaryWithObjectsAndKeys:@"sync",@"type",[NSNumber numberWithBool:YES],@"adding",nil] forKey:@"activeCommand_"];
-  [library setValue:[NSNumber numberWithUnsignedInteger:0] forKey:@"operationStep_"];
+  [library setValue:[NSNumber numberWithUnsignedInt:0] forKey:@"operationStep_"];
   [library resolverEvent:RDLP_EVENT_FETCHING_BOOTSTRAP]; statusWait(0.01);
   statusRequire([[[library activityProgress] objectForKey:@"completed"] intValue]==3 && [[[library activityProgress] objectForKey:@"expected"] intValue]==5,@"New playlist work uses its own phase range");
   statusRequire([[library status] isEqualToString:@"Adding…"],@"Adding keeps a simple playlist message");

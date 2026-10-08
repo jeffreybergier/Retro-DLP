@@ -92,7 +92,6 @@
   BOOL removal=[[menu title] isEqualToString:@"remove"];
   if(!library && !download && !removal && ![[menu title] isEqualToString:@"play"]) return;
   while([menu numberOfItems]) [menu removeItemAtIndex:0];
-  BOOL video=[target hasTargetVideo];
   BOOL multiple=[target hasMultipleTargetVideos];
   NSDictionary *job=[target targetJob];
   if(library) {
@@ -104,27 +103,20 @@
     [self addItemToMenu:menu title:NSLocalizedString(@"Sync Added Playlists…", nil) action:@selector(syncAll:) target:target];
   } else if(download) {
     [self addItemToMenu:menu title:multiple?NSLocalizedString(@"Download Selected Videos", nil):NSLocalizedString(@"Download Video", nil) action:@selector(chooseDownload:) target:target];
-    if(video && ([target canRetry:job] || [target canDownloadAgain:job])) {
-      [self addItemToMenu:menu title:[NSString stringWithFormat:NSLocalizedString(@"Retry Download — %@", nil),[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]] action:[target canRetry:job]?@selector(retryTarget:):@selector(againTarget:) target:target];
-    }
+    NSString *retryTitle=job?[NSString stringWithFormat:NSLocalizedString(@"Retry Download — %@", nil),[RDLPLibrary qualityLabelForFormat:[job objectForKey:@"format"]]]:NSLocalizedString(@"Retry Download", nil);
+    [self addItemToMenu:menu title:retryTitle action:@selector(retryTarget:) target:target];
     [self addItemToMenu:menu title:NSLocalizedString(@"Cancel Download…", nil) action:@selector(cancelTarget:) target:target];
     [menu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *quality=[menu addItemWithTitle:NSLocalizedString(@"Download Quality", nil) action:NULL keyEquivalent:@""];
     [quality setSubmenu:[self menuForMenuBarTitle:@"Download Quality" target:target]];
   } else if(removal) {
-    if(video) {
-      [self addItemToMenu:menu title:multiple?NSLocalizedString(@"Delete Selected Downloads…", nil):NSLocalizedString(@"Delete Download", nil) action:@selector(removeTarget:) target:target];
-    } else {
-      [self addItemToMenu:menu title:NSLocalizedString(@"Remove Playlist…", nil) action:@selector(removePlaylist:) target:target];
-    }
+    [self addItemToMenu:menu title:multiple?NSLocalizedString(@"Delete Selected Downloads…", nil):NSLocalizedString(@"Delete Download", nil) action:@selector(removeTarget:) target:target];
+    [self addItemToMenu:menu title:NSLocalizedString(@"Remove Playlist…", nil) action:@selector(removePlaylist:) target:target];
   } else {
-    NSString *object=video?NSLocalizedString(@"Video", nil):NSLocalizedString(@"Playlist", nil);
-    [self addItemToMenu:menu title:[NSString stringWithFormat:NSLocalizedString(@"Play %@", nil),object] action:@selector(playSelection:) target:target];
+    [self addItemToMenu:menu title:[NSString stringWithFormat:NSLocalizedString(@"Play %@", nil),NSLocalizedString(@"Video", nil)] action:@selector(playTargetVideo:) target:target];
+    [self addItemToMenu:menu title:NSLocalizedString(@"Play Playlist", nil) action:@selector(playTargetPlaylist:) target:target];
+    [menu addItem:[NSMenuItem separatorItem]];
     [self addItemToMenu:menu title:NSLocalizedString(@"Show in Finder", nil) action:@selector(revealSelection:) target:target];
-    if(video && [target contextPlaylist]) {
-      [menu addItem:[NSMenuItem separatorItem]];
-      [self addItemToMenu:menu title:NSLocalizedString(@"Play Playlist", nil) action:@selector(playTargetPlaylist:) target:target];
-    }
   }
 }
 @end
