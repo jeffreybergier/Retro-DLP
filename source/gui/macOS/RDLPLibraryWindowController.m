@@ -931,7 +931,6 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     NSString *object=[self hasTargetVideo]?NSLocalizedString(@"Video", nil):NSLocalizedString(@"Playlist", nil);
     if(visibilityAction==@selector(playSelection:)) [item setTitle:[NSString stringWithFormat:NSLocalizedString(@"Play %@", nil),object]];
   }
-  [RDLPLibraryMenus updateDefaultAppearanceForItem:item target:self];
   if(visibilityAction==@selector(chooseVideoPlayer:)) {
     NSString *player=[item representedObject];
     [item setState:[[RDLPAppKit videoPlayer] isEqualToString:player]?NSOnState:NSOffState];

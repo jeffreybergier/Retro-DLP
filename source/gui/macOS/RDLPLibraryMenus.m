@@ -85,17 +85,6 @@
   return menu;
 }
 
-/* Keep the native menu font and colors; validation may run repeatedly. */
-+ (void)updateDefaultAppearanceForItem:(NSMenuItem *)item target:(id<RDLPLibraryMenuContext>)target;
-{
-  SEL action=[target defaultActionForToolbarIdentifier:[[item menu] title]];
-  NSString *title=[item title];
-  if([title hasPrefix:@"✽ "]) title=[title substringFromIndex:2];
-  if(action && [item action]==action && ![item isSeparatorItem])
-    title=[@"✽ " stringByAppendingString:title];
-  if(![[item title] isEqualToString:title]) [item setTitle:title];
-}
-
 + (void)updateMenu:(NSMenu *)menu target:(id<RDLPLibraryMenuContext>)target;
 {
   BOOL library=[[menu title] isEqualToString:@"library"];
@@ -129,7 +118,5 @@
     [menu addItem:[NSMenuItem separatorItem]];
     [self addItemToMenu:menu title:NSLocalizedString(@"Show in Finder", nil) action:@selector(revealSelection:) target:target];
   }
-  NSEnumerator *items=[[menu itemArray] objectEnumerator]; NSMenuItem *item;
-  while((item=[items nextObject])) [self updateDefaultAppearanceForItem:item target:target];
 }
 @end
