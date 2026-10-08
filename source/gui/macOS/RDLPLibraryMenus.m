@@ -85,17 +85,15 @@
   return menu;
 }
 
-/* Specify only the font so AppKit retains native disabled/highlight colors. */
+/* Keep the native menu font and colors; validation may run repeatedly. */
 + (void)updateDefaultAppearanceForItem:(NSMenuItem *)item target:(id<RDLPLibraryMenuContext>)target;
 {
-  NSString *identifier=[[item menu] title];
-  SEL action=[target defaultActionForToolbarIdentifier:identifier];
-  if(action && [item action]==action && ![item isSeparatorItem]) {
-    NSFont *font=[[NSFontManager sharedFontManager] convertFont:[NSFont menuFontOfSize:0] toHaveTrait:NSBoldFontMask];
-    NSAttributedString *title=[[[NSAttributedString alloc] initWithString:[item title]
-      attributes:[NSDictionary dictionaryWithObject:font forKey:NSFontAttributeName]] autorelease];
-    [item setAttributedTitle:title];
-  } else [item setAttributedTitle:nil];
+  SEL action=[target defaultActionForToolbarIdentifier:[[item menu] title]];
+  NSString *title=[item title];
+  if([title hasPrefix:@"✽ "]) title=[title substringFromIndex:2];
+  if(action && [item action]==action && ![item isSeparatorItem])
+    title=[@"✽ " stringByAppendingString:title];
+  if(![[item title] isEqualToString:title]) [item setTitle:title];
 }
 
 + (void)updateMenu:(NSMenu *)menu target:(id<RDLPLibraryMenuContext>)target;

@@ -216,13 +216,17 @@ static void selectRow(RDLPLibraryWindowController *window,NSString *key,NSUInteg
   [[window window] makeKeyAndOrderFront:nil];
   [window tableWasUsed:table]; [table selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO]; [window tableWasUsed:table];
 }
+static NSString *plainMenuTitle(NSMenuItem *item) {
+  NSString *title=[item title];
+  return [title hasPrefix:@"✽ "]?[title substringFromIndex:2]:title;
+}
 static NSMenuItem *menuChoice(NSMenu *menu,NSString *title) {
   NSMenuItem *item=[menu itemWithTitle:title];
   if(item) return item;
   NSString *base=[title hasSuffix:@"…"]?[title substringToIndex:[title length]-1]:title;
   NSString *prefix=[base stringByAppendingString:@" — "];
   NSEnumerator *e=[[menu itemArray] objectEnumerator];
-  while((item=[e nextObject])) if([[item title] hasPrefix:prefix]) return item;
+  while((item=[e nextObject])) if([plainMenuTitle(item) isEqualToString:title] || [plainMenuTitle(item) hasPrefix:prefix]) return item;
   return nil;
 }
 static NSMenuItem *choice(NSMenu *menu,NSString *title) {
@@ -263,24 +267,20 @@ static void requireMenuActions(NSMenu *menu,NSString *expected) {
 }
 static void requireMenuDefault(RDLPLibraryWindowController *owner,NSString *identifier,SEL expected) {
   NSMenu *menu=[owner menuForToolbarIdentifier:identifier];
-  NSUInteger boldCount=0;
+  NSUInteger defaultCount=0;
   NSEnumerator *items=[[menu itemArray] objectEnumerator]; NSMenuItem *item;
   while((item=[items nextObject])) {
     if([item isSeparatorItem] || [item submenu]) continue;
     [owner validateMenuItem:item]; /* Validation can change singular/plural titles. */
-    NSAttributedString *title=[item attributedTitle];
-    NSFont *font=[title length]?[title attribute:NSFontAttributeName atIndex:0 effectiveRange:NULL]:nil;
-    BOOL bold=font && ([[NSFontManager sharedFontManager] traitsOfFont:font]&NSBoldFontMask)!=0;
-    requireCondition(bold==([item action]==expected),
-      [NSString stringWithFormat:@"%@ bolds only its left-click action, including after validation: %@",identifier,[item title]]);
-    if(bold) {
-      ++boldCount;
-      requireCondition([[title string] isEqualToString:[item title]] &&
-        ![title attribute:NSForegroundColorAttributeName atIndex:0 effectiveRange:NULL],
-        @"Bold title follows current text and leaves disabled/highlight colors to AppKit");
-    }
+    [owner validateMenuItem:item];
+    BOOL marked=[[item title] hasPrefix:@"✽ "];
+    requireCondition(marked==([item action]==expected),
+      [NSString stringWithFormat:@"%@ marks only its left-click action after repeated validation: %@",identifier,[item title]]);
+    requireCondition([item attributedTitle]==nil && ![plainMenuTitle(item) hasPrefix:@"✽ "],
+      @"Default marker appears once and uses the normal menu font");
+    if(marked) ++defaultCount;
   }
-  requireCondition(boldCount==(expected?1U:0U),@"Menu has exactly one default, or none when left click only opens the menu");
+  requireCondition(defaultCount==(expected?1U:0U),@"Menu has exactly one default, or none when left click only opens the menu");
 }
 static void testContextMenuActions(RDLPLibraryWindowController *owner) {
   requireMenuDefault(owner,@"library",NULL);
@@ -424,8 +424,8 @@ static void testFixedToolbar(RDLPLibraryWindowController *owner,RDLPLibrary *lib
     requireCondition(rdapp_store_finish(store,strtoll([jobID UTF8String],NULL,10),[state UTF8String],[format UTF8String],""),@"Set retry or missing-file state");
     [owner refresh:nil]; selectRow(owner,@"table_",0);
     NSMenu *downloads=[owner menuForToolbarIdentifier:@"download"];
-    requireCondition([[choice(downloads,@"Download Video") title] isEqualToString:@"Download Video"] &&
-      [[choice(downloads,@"Retry") title] isEqualToString:@"Retry — Low"],@"Download Video keeps its short title while retry names the original quality");
+    requireCondition([plainMenuTitle(choice(downloads,@"Download Video")) isEqualToString:@"Download Video"] &&
+      [plainMenuTitle(choice(downloads,@"Retry")) isEqualToString:@"Retry — Low"],@"Download Video keeps its short title while retry names the original quality");
     testContextMenuActions(owner);
     requireMenuDefault(owner,@"download",@selector(retryTarget:));
     requireCondition([owner validateMenuItem:choice(downloads,@"Retry")],
@@ -857,7 +857,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([[window_ performSelector:@selector(statusForJob:) withObject:available] isEqualToString:@"Downloaded"],@"Any existing quality must show Downloaded");
     requireCondition([window_ performSelector:@selector(selectionPlayFile)]!=nil,@"Any existing quality must remain playable");
     requireCondition([toolbarButton(window_,@"download") isDefaultEnabled] &&
-      [[choice([window_ menuForToolbarIdentifier:@"download"],@"Download Video") title] isEqualToString:@"Download Video"],@"A completed Low copy still allows an explicit High download");
+      [plainMenuTitle(choice([window_ menuForToolbarIdentifier:@"download"],@"Download Video")) isEqualToString:@"Download Video"],@"A completed Low copy still allows an explicit High download");
     NSString *preferred=[RDLPAppKit preferredPlaybackApplication:[library_ fileForJob:complete]];
     if([RDLPAppKit VLCApplication]) requireCondition([preferred isEqual:[RDLPAppKit VLCApplication]],@"Real installed VLC must be the preferred player");
     requireCondition([[toolbarButton(window_,@"play") toolTip] isEqualToString:@"Play video or playlist"],@"Play tooltip stays fixed across selection changes");
@@ -916,10 +916,10 @@ static void testQueueWindow(RDLPLibrary *library) {
     NSMenu *deletion=[window_ menuForToolbarIdentifier:@"remove"];
     NSMenu *add=[window_ menuForToolbarIdentifier:@"library"];
     requireCondition(!menuChoice(add,@"Download Video") && !menuChoice(add,@"Delete Download") && ![add itemWithTitle:@"Cancel Download…"] &&
-      menuChoice(download,@"Download Video") && [download itemWithTitle:@"Cancel Download…"] && !menuChoice(download,@"Delete Download") &&
+      menuChoice(download,@"Download Video") && menuChoice(download,@"Cancel Download…") && !menuChoice(download,@"Delete Download") &&
       menuChoice(deletion,@"Delete Download") && !menuChoice(deletion,@"Download Video") && ![deletion itemWithTitle:@"Cancel Download…"],@"Library, Download and Remove have separate responsibilities");
     requireCondition([window_ validateMenuItem:choice(play,@"Show in Finder")],@"Completed video must reveal");
-    requireCondition([play itemWithTitle:@"Play Playlist"]!=nil && [choice(play,@"Play Playlist") action]==@selector(playTargetPlaylist:),@"Video selection must retain containing-playlist playback");
+    requireCondition(menuChoice(play,@"Play Playlist")!=nil && [choice(play,@"Play Playlist") action]==@selector(playTargetPlaylist:),@"Video selection must retain containing-playlist playback");
     requireCondition(![toolbarButton(window_,@"download") isDefaultEnabled],@"A completed preferred-quality video disables Download");
     [toolbarButton(window_,@"remove") performClick:nil]; pump();
     requireCondition([[toolbarButton(window_,@"library") title] isEqualToString:@"Library"] && [[toolbarButton(window_,@"download") title] isEqualToString:@"Download"],@"Completed selection keeps the Library and Download labels");
@@ -930,7 +930,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     [toolbarButton(window_,@"downloads") performClick:nil]; pump();
     selectRow(window_,@"queue_",1);
     download=[window_ menuForToolbarIdentifier:@"download"];
-    requireCondition([[choice(download,@"Retry") title] isEqualToString:@"Retry — Med"],@"Retry explicitly names the original job quality");
+    requireCondition([plainMenuTitle(choice(download,@"Retry")) isEqualToString:@"Retry — Med"],@"Retry explicitly names the original job quality");
     testContextMenuActions(window_);
     requireCondition([choice(download,@"Download Quality") submenu]!=nil,@"Download quality is accessible in the toolbar menu");
     invoke(window_,choice(quality,@"Med"));
@@ -954,7 +954,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     download=[window_ menuForToolbarIdentifier:@"download"];
     requireCondition(menuChoice(download,@"Download Video")!=nil && [download itemWithTitle:@"Download Missing Videos"]==nil,@"Queue must retain video scope with All Downloads selected");
     play=[window_ menuForToolbarIdentifier:@"play"];
-    requireCondition([play itemWithTitle:@"Play Playlist"]!=nil,@"Queue video must retain containing-playlist options without sidebar selection");
+    requireCondition(menuChoice(play,@"Play Playlist")!=nil,@"Queue video must retain containing-playlist options without sidebar selection");
     requireCondition([window_ validateMenuItem:choice(play,@"Play Playlist")]==([RDLPAppKit preferredPlaybackApplication:[library_ playlistFile:[[library_ playlists] objectAtIndex:0]]]!=nil),@"Playlist playback must use the Queue video’s playlist rather than sidebar");
     requireCondition([[toolbarButton(window_,@"library") title] isEqualToString:@"Library"],@"Queue selection must not change the Library label");
     [window_ hideQueue:nil];
