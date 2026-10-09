@@ -1,5 +1,7 @@
 #import <Foundation/Foundation.h>
 
+BOOL RDLP_isIOSApp(void);
+
 @interface NSThread (RDLP_Foundation)
 + (BOOL)RLDP_isMainThread;
 /* Starts a detached Cocoa worker with a native stack size, including on Tiger.

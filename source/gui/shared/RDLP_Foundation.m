@@ -2,6 +2,14 @@
 #import <TargetConditionals.h>
 #include "rdlp_thread.h"
 
+BOOL RDLP_isIOSApp(void) {
+#if TARGET_OS_IPHONE
+  return YES;
+#else
+  return NO;
+#endif
+}
+
 static void *RDLPThreadMain(void *context) {
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
   NSInvocation *invocation=(NSInvocation *)context;

@@ -177,7 +177,12 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   return titles;
 }
 + (NSArray *)qualityFormats;
-{ return [NSArray arrayWithObjects:@"18",@"136+140/135+140/18",@"137+140/136+140/135+140/18",nil]; }
+{
+  if(RDLP_isIOSApp())
+    return [NSArray arrayWithObjects:@"18",@"136+140/135+140/18",@"137+140/136+140/135+140/18",nil];
+  /* Keep the Mac presets within older PowerPC playback capabilities. */
+  return [NSArray arrayWithObjects:@"18",@"135+140/18",@"136+140/135+140/18",nil];
+}
 + (NSString *)qualityLabelForFormat:(NSString *)format;
 {
   if(![format length]) return @"";

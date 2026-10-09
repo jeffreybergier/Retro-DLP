@@ -984,7 +984,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     selectRow(window_,@"table_",0);
     download=[window_ menuForToolbarIdentifier:@"download"];
     [toolbarButton(window_,@"download") performClick:nil]; pump();
-    requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==initialJobCount+1 && [[RDLPLibrary preferredFormat] isEqualToString:@"137+140/136+140/135+140/18"] && [library_ isPaused],@"Download primary click adds the preferred High quality without deleting the existing Low file");
+    requireCondition([[library_ jobsForPlaylist:nil completedOnly:NO] count]==initialJobCount+1 && [[RDLPLibrary preferredFormat] isEqualToString:@"136+140/135+140/18"] && [library_ isPaused],@"Download primary click adds the preferred High quality without deleting the existing Low file");
     selectRow(window_,@"sidebar_",1);
     NSString *selectedKey=[[[window_ valueForKey:@"selectedPlaylist_"] copy] autorelease];
     [outline collapseItem:@"My Playlists"];
