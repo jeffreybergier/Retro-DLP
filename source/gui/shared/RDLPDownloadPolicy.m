@@ -44,7 +44,7 @@
 { return [RDLPDownloadPolicy job:job hasState:@"removed"] || ([RDLPDownloadPolicy job:job hasState:@"complete"] && ![self playable:job]); }
 
 - (BOOL)canRemove:(NSDictionary *)job;
-{ return job && ![library_ isBusy] && ![RDLPDownloadPolicy job:job hasState:@"running"] && ![RDLPDownloadPolicy job:job hasState:@"removed"]; }
+{ return [library_ canRemoveDownload:job]; }
 
 - (BOOL)canCancel:(NSDictionary *)job;
 { return [RDLPDownloadPolicy job:job hasState:@"queued"] || [RDLPDownloadPolicy job:job hasState:@"running"]; }

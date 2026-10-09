@@ -26,8 +26,9 @@ static void testSharedVideoRows(NSString *base) {
     metadataRequire([[RDLPLibrary qualityLabelForFormat:format] isEqualToString:[labels objectAtIndex:i]],@"Compact presets omit fallback expressions");
     metadataRequire([[RDLPLibrary qualityDetailForFormat:format] rangeOfString:format].location!=NSNotFound,@"Preset inspection preserves the complete fallback expression");
   }
-  metadataRequire([[RDLPLibrary qualityLabelForFormat:@"136+140"] isEqualToString:@"Med"] && [[RDLPLibrary qualityLabelForFormat:@"137+140"] isEqualToString:@"High"],@"Saved legacy formats retain their preset names");
-  metadataRequire([[RDLPLibrary qualityLabelForFormat:@"135+140"] isEqualToString:@"Custom"] && [[RDLPLibrary qualityDetailForFormat:@"135+140"] isEqualToString:@"Custom (135+140)"],@"Custom labels stay compact while inspection identifies the exact format");
+  metadataRequire([[RDLPLibrary qualityLabelForFormat:@"136+140"] isEqualToString:RDLP_isIOSApp()?@"Med":@"High"] && [[RDLPLibrary qualityLabelForFormat:@"137+140"] isEqualToString:@"High"],@"Resolved formats use platform-specific preset names");
+  metadataRequire([[RDLPLibrary qualityLabelForFormat:@"135+140"] isEqualToString:RDLP_isIOSApp()?@"Custom":@"Med"],@"Resolved 480p is Medium on Mac and custom on iOS");
+  metadataRequire([[RDLPLibrary qualityLabelForFormat:@"135+599"] isEqualToString:@"Custom"] && [[RDLPLibrary qualityDetailForFormat:@"135+599"] isEqualToString:@"Custom (135+599)"],@"Custom labels stay compact while inspection identifies the exact format");
   metadataRequire(![[RDLPLibrary qualityLabelForFormat:nil] length] && ![[RDLPLibrary qualityDetailForFormat:@""] length],@"Absent formats have no fabricated quality label");
   NSString *support=[base stringByAppendingPathComponent:@"Support"], *downloads=[base stringByAppendingPathComponent:@"Downloads"];
   RDLPLibrary *library=[[RDLPLibrary alloc] initWithSupportDirectory:support downloadDirectory:downloads];
@@ -84,8 +85,14 @@ static void testSharedVideoRows(NSString *base) {
   [library setValue:[NSDictionary dictionaryWithObject:@"download" forKey:@"type"] forKey:@"activeCommand_"];
   [library setValue:[NSNumber numberWithBool:YES] forKey:@"busy_"];
   metadataRequire([library canRemovePlaylist:parent],@"Active transfers permit playlist removal");
+  NSDictionary *removable=[complete objectAtIndex:1];
+  metadataRequire([policy canRemove:removable],@"Completed downloads remain removable during another transfer");
+  [library setValue:[NSNumber numberWithLongLong:strtoll([[removable objectForKey:@"id"] UTF8String],NULL,10)] forKey:@"activeJob_"];
+  metadataRequire(![policy canRemove:removable],@"The active job identity cannot be deleted even from a stale row");
+  [library setValue:[NSNumber numberWithLongLong:0] forKey:@"activeJob_"];
   [library setValue:[NSDictionary dictionaryWithObject:@"sync" forKey:@"type"] forKey:@"activeCommand_"];
   metadataRequire(![library canRemovePlaylist:parent],@"Active sync serializes playlist removal");
+  metadataRequire(![policy canRemove:removable],@"Active sync still blocks download deletion");
   [library setValue:[NSDictionary dictionaryWithObject:@"download" forKey:@"type"] forKey:@"activeCommand_"];
   [library removePlaylist:parent];
   [library setValue:nil forKey:@"activeCommand_"];
@@ -93,6 +100,13 @@ static void testSharedVideoRows(NSString *base) {
   metadataRequire([library playlistForID:pid]==nil && [[library entriesForPlaylist:pid] count]==0,@"Removal hides playlist and clears membership");
   metadataRequire([[library jobsForPlaylist:nil completedOnly:YES] count]==2,@"Removal retains every completed quality in All Downloads");
   metadataRequire([policy playable:[complete objectAtIndex:1]],@"Retained completed download remains playable");
+  [library setValue:[NSDictionary dictionaryWithObject:@"download" forKey:@"type"] forKey:@"activeCommand_"];
+  [library setValue:[NSNumber numberWithBool:YES] forKey:@"busy_"];
+  [library removeDownload:removable];
+  metadataRequire(![[NSFileManager defaultManager] fileExistsAtPath:[library fileForJob:removable]] &&
+    [[[library jobForID:[removable objectForKey:@"id"]] objectForKey:@"state"] isEqualToString:@"removed"],@"Deletion during an unrelated transfer removes the file and updates its exact job");
+  [library setValue:nil forKey:@"activeCommand_"];
+  [library setValue:[NSNumber numberWithBool:NO] forKey:@"busy_"];
   metadataRequire(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open empty destination fixture");
   metadataRequire(rdapp_store_snapshot(store,"PLempty","Empty",NULL,0,&key),@"Save empty destination playlist");
   rdapp_store_close(store);

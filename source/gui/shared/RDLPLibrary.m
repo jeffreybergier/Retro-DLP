@@ -187,8 +187,9 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 {
   if(![format length]) return @"";
   NSUInteger index=[[self qualityFormats] indexOfObject:format];
-  /* Preserve labels for existing jobs and saved exact-format preferences. */
-  if(index==NSNotFound && [format isEqualToString:@"136+140"]) index=1;
+  /* Label resolved exact formats using the current platform's presets. */
+  if(index==NSNotFound && !RDLP_isIOSApp() && [format isEqualToString:@"135+140"]) index=1;
+  if(index==NSNotFound && [format isEqualToString:@"136+140"]) index=RDLP_isIOSApp()?1:2;
   if(index==NSNotFound && [format isEqualToString:@"137+140"]) index=2;
   NSArray *names=[NSArray arrayWithObjects:NSLocalizedString(@"Low", nil),NSLocalizedString(@"Med", nil),NSLocalizedString(@"High", nil),nil];
   return index==NSNotFound?NSLocalizedString(@"Custom", nil):[names objectAtIndex:index];
@@ -659,11 +660,21 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (void)removeDownload:(NSDictionary *)job;
 {
   NSString *key=[job objectForKey:@"id"];
-  if(busy_) { [self reportError:NSLocalizedString(@"Couldn’t delete download", nil) detail:NSLocalizedString(@"Wait for the current operation to finish.", nil)]; return; }
+  if(![self canRemoveDownload:[self jobForID:key]]) { [self reportError:NSLocalizedString(@"Couldn’t delete download", nil) detail:NSLocalizedString(@"Wait for the current operation to finish.", nil)]; return; }
   [lock_ lock];
   int ok=rdapp_store_remove_file_with_callback(store_,identifier(key),[root_ fileSystemRepresentation],remove_download_file,self);
   NSString *error=ok?nil:[string(rdapp_store_error(store_)) copy];
   [lock_ unlock]; if(error) [self reportError:NSLocalizedString(@"Couldn’t delete download", nil) detail:error]; [error release]; [self changed];
+}
+- (BOOL)canRemoveDownload:(NSDictionary *)job;
+{
+  if(!job || ![[job objectForKey:@"id"] length] ||
+     [[job objectForKey:@"state"] isEqualToString:@"running"] ||
+     [[job objectForKey:@"state"] isEqualToString:@"removed"]) return NO;
+  if(!busy_) return YES;
+  /* Store mutations are locked; unrelated transfers use separate job files. */
+  return [[activeCommand_ objectForKey:@"type"] isEqualToString:@"download"] &&
+    activeJob_!=identifier([job objectForKey:@"id"]);
 }
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
 {

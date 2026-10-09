@@ -641,6 +641,28 @@ static void testQueueWindow(RDLPLibrary *library) {
     NSDate *startupDeadline=[NSDate dateWithTimeIntervalSinceNow:10];
     while([library_ isBusy] && [startupDeadline timeIntervalSinceNow]>0) pump();
     requireCondition(![library_ isBusy] && [library_ operationCount]==0 && ![library_ hasErrors],@"Startup reconciliation completes and releases its operation reference");
+    if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDDownloadDeletionTestOnly"]) {
+      testSharedVideoRows(@"/tmp/retrodlp-toolbar-fixture/Rows");
+      window_=[[RDLPLibraryWindowController alloc] initWithLibrary:library_];
+      [window_ showWindow:nil]; pump();
+      selectRow(window_,@"sidebar_",1); selectRow(window_,@"table_",0);
+      NSTableView *videos=[window_ valueForKey:@"table_"];
+      [library_ setValue:[NSDictionary dictionaryWithObject:@"download" forKey:@"type"] forKey:@"activeCommand_"];
+      [library_ setValue:[NSNumber numberWithBool:YES] forKey:@"busy_"];
+      [window_ tableWasUsed:videos];
+      NSMenuItem *deleteCommand=choice([videos menu],@"Delete Download…");
+      requireCondition([toolbarButton(window_,@"remove") isDefaultEnabled] &&
+        [window_ validateMenuItem:deleteCommand],@"Playlist deletion stays enabled during another transfer");
+      [videos selectAll:nil]; [window_ tableWasUsed:videos];
+      requireCondition([videos numberOfSelectedRows]>1 && [window_ validateMenuItem:deleteCommand],@"Bulk deletion stays enabled during another transfer");
+      [library_ setValue:[NSDictionary dictionaryWithObject:@"sync" forKey:@"type"] forKey:@"activeCommand_"];
+      [window_ refresh:nil];
+      requireCondition(![toolbarButton(window_,@"remove") isDefaultEnabled],@"Sync still blocks deletion");
+      [library_ setValue:nil forKey:@"activeCommand_"];
+      [library_ setValue:[NSNumber numberWithBool:NO] forKey:@"busy_"];
+      [@"PASS: platform quality labels, deletion during unrelated transfers, active-job protection, playlist toolbar/context menu, bulk deletion, and sync protection" writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [library_ shutdown]; [NSApp terminate:nil]; return;
+    }
     if(customization) {
       testToolbarCustomization(library_,[customization isEqualToString:@"restore"]);
       [@"PASS: native toolbar customization, reinserted actions, saved ordering and display settings" writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
@@ -857,6 +879,14 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([[available objectForKey:@"format"] isEqualToString:@"18"],@"High preference must still target the existing Low download");
     requireCondition([[window_ performSelector:@selector(statusForJob:) withObject:available] isEqualToString:@"Downloaded"],@"Any existing quality must show Downloaded");
     requireCondition([window_ performSelector:@selector(selectionPlayFile)]!=nil,@"Any existing quality must remain playable");
+    [library_ setValue:[NSDictionary dictionaryWithObject:@"download" forKey:@"type"] forKey:@"activeCommand_"];
+    [library_ setValue:[NSNumber numberWithBool:YES] forKey:@"busy_"];
+    [window_ tableWasUsed:videosTable];
+    requireCondition([toolbarButton(window_,@"remove") isDefaultEnabled] &&
+      [window_ validateMenuItem:choice([videosTable menu],@"Delete Download…")],@"Playlist toolbar and context-menu deletion remain enabled during another download");
+    [library_ setValue:nil forKey:@"activeCommand_"];
+    [library_ setValue:[NSNumber numberWithBool:NO] forKey:@"busy_"];
+    [window_ tableWasUsed:videosTable];
     requireCondition([toolbarButton(window_,@"download") isDefaultEnabled] &&
       [[choice([window_ menuForToolbarIdentifier:@"download"],@"Download Video") title] isEqualToString:@"Download Video"],@"A completed Low copy still allows an explicit High download");
     NSString *preferred=[RDLPAppKit preferredPlaybackApplication:[library_ fileForJob:complete]];
@@ -931,7 +961,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     [toolbarButton(window_,@"downloads") performClick:nil]; pump();
     selectRow(window_,@"queue_",1);
     download=[window_ menuForToolbarIdentifier:@"download"];
-    requireCondition([[choice(download,@"Retry") title] isEqualToString:@"Retry — Med"],@"Retry explicitly names the original job quality");
+    requireCondition([[choice(download,@"Retry") title] isEqualToString:@"Retry — High"],@"Retry explicitly names the original job quality");
     testContextMenuActions(window_);
     requireCondition([choice(download,@"Download Quality") submenu]!=nil,@"Download quality is accessible in the toolbar menu");
     invoke(window_,choice(quality,@"Med"));

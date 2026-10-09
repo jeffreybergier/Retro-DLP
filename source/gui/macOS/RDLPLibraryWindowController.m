@@ -632,7 +632,6 @@ static const CGFloat RDLPStatusBarHeight=32.0;
    All Downloads rows identify exact jobs and qualities. */
 - (NSArray *)selectedRequestsForRemoval:(BOOL)remove firstOnly:(BOOL)firstOnly;
 {
-  if(remove && [library_ isBusy]) return [NSArray array];
   NSMutableArray *requests=[NSMutableArray array];
   NSMutableSet *seen=[NSMutableSet set];
   NSIndexSet *indexes=[table_ selectedRowIndexes];

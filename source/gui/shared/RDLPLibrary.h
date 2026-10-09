@@ -83,6 +83,7 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
 - (NSUInteger)queuedCount;
 - (BOOL)hasBlockingJobsForPlaylist:(NSString *)key;
 - (BOOL)canRemovePlaylist:(NSDictionary *)playlist;
+- (BOOL)canRemoveDownload:(NSDictionary *)job;
 - (BOOL)hasPlaylistsToSync;
 /* Menu validation uses stored states; explicit bulk planning also checks files. */
 - (BOOL)hasMissingEntriesForPlaylist:(NSString *)key format:(NSString *)format;
