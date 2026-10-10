@@ -205,15 +205,19 @@ docker compose run --rm altivec "make clean app-clean"
 docker compose run --rm altivec "make release apps"
 ```
 
-`release` builds the macOS and iOS command-line tools and libraries; `apps`
-builds both GUIs. The outputs are:
+`release` and `apps` build the macOS/iOS applications, command-line tools
+and libraries. The outputs are:
 
-- Mac app: `build/apps/macOS/RetroDLP.zip`
-- iOS app: `build/apps/iOS/RetroDLP.ipa`
-- macOS CLI: `build/macOS/ppc-i386/retro-dlp` and `build/macOS/cacert.pem`
-- iOS CLI: `build/iOS/retro-dlp` and `build/iOS/cacert.pem`
+- Mac app: `build/macOS/release/RetroDLP.zip`
+- iOS app: `build/iOS/release/RetroDLP.ipa`
+- macOS CLI: `build/macOS/release/retro-dlp.zip` (CLI and `cacert.pem`)
+- iOS CLI: `build/iOS/release/retro-dlp.zip` (CLI and `cacert.pem`)
 
 Keep each CLI binary with its `cacert.pem` when copying it to a device.
+Apple builds consume previously provisioned EJS assets in
+`build/apps/resources/ejs`; they do not download resources. Offline CLI tests
+use that directory or `RETRO_DLP_TEST_EJS_DIR`, validate the pinned asset hashes,
+and copy assets into an isolated test directory.
 
 ### Linux CLI (container only)
 

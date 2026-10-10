@@ -2,41 +2,61 @@ APP_NAME = RetroDLP
 SOURCES = main.m RDLPLibrary+macOS.m RDLPAppDelegate.m RDLPLibraryWindowController.m RDLPQueueWindowController.m RDLPAppKit.m RDLPToolbarButton.m RDLPLibraryViews.m RDLPDownloadPolicy.m RDLPLibraryMenus.m
 SHARED_DIR = ../shared
 BUNDLE_LOCALIZATION_DIRS = $(SHARED_DIR)/Resources
-LOCALIZATION_FILES = $(wildcard $(SHARED_DIR)/Resources/*.lproj/*.strings)
 SOURCE_DIRS = $(SHARED_DIR)
-vpath %.c $(SHARED_DIR)
-vpath %.m $(SHARED_DIR)
 EXTRA_SOURCES = rdapp_strings.c rdapp_store.c rdapp_service.c rdlp_thread.c RDLPLibrary.m RDLPVideoRows.m RDLPDownloadSections.m RDLP_Foundation.m
 INFO_PLIST = Info.plist
 MAC_ICON = Resources/RetroDLP.icns
-ALTIVECCORE_REQUIRED = 1
-ALTIVECCORE_LINKAGE = static
-ALTIVECCOCOA_REQUIRED = 1
-ALTIVECCOCOA_LINKAGE = static
-ROOT = $(abspath ../../..)
-BUILD_DIR = $(ROOT)/build/apps/macOS
-ANALYZE_OUTPUT_DIR = $(BUILD_DIR)/analyze
-# Select a separate final binary so the shared four-architecture link rule is
-# never a build dependency. Keep the shared Clang analyze target and its SDK.
-UNIVERSAL_BIN = $(INT_DIR)/$(APP_NAME)-ppc-i386
-include /altivec/altivec_common_mac.mk
-# Legacy GCC embeds symbols in the executable. Do not regenerate modern dSYMs
-# from stale x64/arm intermediates when updating an existing build directory.
-DSYMUTIL = :
-MAC_FLAGS += -I$(SHARED_DIR) -I$(ROOT)/source/library/shared/include
-LEGACY_GCC_FLAGS += -D_NONSTD_SOURCE
-# The application consumes only public Retro-DLP static archives.
-MAC_LIBS := $(ROOT)/build/macOS/libretrodlp-download.a $(ROOT)/build/macOS/libretrodlp.a $(MAC_LIBS) $(ALTIVECCORE_DIR)/lib/libcrypto.a -framework Foundation -framework CoreFoundation -framework SystemConfiguration -lpthread
-EXTRA_BUNDLE_STEPS = @set -e; cp $(ALTIVECCORE_DIR)/lib/cacert.pem $@/Contents/Resources/cacert.pem; cp -R $(ROOT)/build/apps/resources/ejs $@/Contents/Resources/; chmod 755 $@/Contents/Resources/ejs; chmod 644 $@/Contents/Resources/ejs/*; touch "$@"
-
-.DEFAULT_GOAL := app
-app: validate $(ZIP_FILE)
-$(BUNDLE): Info.plist Makefile $(LOCALIZATION_FILES) $(MAC_ICON) $(ALTIVECCORE_DIR)/lib/cacert.pem $(wildcard $(ROOT)/build/apps/resources/ejs/*)
-$(INT_DIR)/ppc.bin $(INT_DIR)/x86.bin: $(ROOT)/build/macOS/libretrodlp-download.a $(ROOT)/build/macOS/libretrodlp.a
+PROJECT_ROOT := $(abspath ../../..)
+ALTIVEC_ROOT ?= /altivec
+include $(PROJECT_ROOT)/make/apple-sources.mk
+PRODUCTS = RetroDLP retro-dlp retrodlp retrodlp-download
+PACKAGE_PRODUCTS = RetroDLP retro-dlp retrodlp
+VERSION := $(shell python3 -c 'import plistlib; print(plistlib.load(open("$(PROJECT_ROOT)/source/library/shared/Info.plist","rb"))["CFBundleShortVersionString"])')
+BUILD_FLAGS = -I$(PROJECT_ROOT)/source/library/shared/include -I$(PROJECT_ROOT)/source/library/shared -I$(PROJECT_ROOT)/source/cli -I$(QUICKJS_DIR) -I$(LSMASH_DIR) -DRETRO_DLP_VERSION=\"$(VERSION)\"
+retrodlp_TYPE = static
+retrodlp_ARCHIVE_NAME = retro-dlp-library
+retrodlp_PACKAGE_MAIN_PATH = lib/libretrodlp.a
+retrodlp_SOURCES = $(CORE_SOURCES) $(PROJECT_ROOT)/source/library/macOS/platform.c
+retrodlp_GROUPS = quickjs
+retrodlp_CORE = static
+retrodlp_FLAGS = -Wno-unused-parameter
+retrodlp-download_TYPE = static
+retrodlp-download_SOURCES = $(DOWNLOAD_SOURCES)
+retrodlp-download_GROUPS = lsmash
+retrodlp-download_CORE = static
+GROUP_lsmash_SOURCES = $(addprefix $(LSMASH_DIR)/,$(LSMASH_SOURCE_NAMES))
+GROUP_lsmash_FLAGS = -Wno-unused-parameter
+GROUP_quickjs_FLAGS = -I$(QUICKJS_COMPAT) -include $(QUICKJS_COMPAT)/quickjs_compat.h -D_GNU_SOURCE -DCONFIG_VERSION=\"$(QUICKJS_VERSION)\" -funsigned-char -fwrapv -Wno-sign-compare -Wno-missing-field-initializers -Wno-unused-parameter
+retro-dlp_TYPE = executable
+retro-dlp_PACKAGE_RESOURCES = $(ALTIVECCORE_DIR)/lib/cacert.pem=cacert.pem
+retrodlp_PACKAGE_RESOURCES = $(PROJECT_ROOT)/source/library/shared/include=include $(PROJECT_ROOT)/LICENSE=LICENSE $(PROJECT_ROOT)/source/library/shared/examples=examples
+retrodlp_PACKAGE_RESOURCES += $(OUTPUT_DIR)/libretrodlp-download.a=lib/libretrodlp-download.a
+retro-dlp_SOURCES = $(CLI_SOURCES)
+retro-dlp_DEPS = retrodlp-download retrodlp
+retro-dlp_CORE = static
+retro-dlp_STATIC_LIBS = $(ALTIVECCORE_DIR)/lib/libcrypto.a
+retro-dlp_LDFLAGS = -framework Foundation -framework CoreFoundation -framework SystemConfiguration -lobjc -lm -lpthread
+RetroDLP_TYPE = app
+RetroDLP_SOURCES = $(SOURCES) $(EXTRA_SOURCES)
+RetroDLP_FLAGS = -I$(SHARED_DIR)
+RetroDLP_DEPS = retrodlp-download retrodlp
+RetroDLP_CORE = static
+RetroDLP_COCOA = static
+RetroDLP_STATIC_LIBS = $(ALTIVECCORE_DIR)/lib/libcrypto.a
+RetroDLP_PLIST = Info.plist
+RetroDLP_LOCALIZATIONS = $(BUNDLE_LOCALIZATION_DIRS)
+RetroDLP_RESOURCES = $(filter-out Resources/Info.plist,$(wildcard Resources/*)) $(PROJECT_ROOT)/build/apps/resources/ejs
+ARCHS ?= ppc i386
+QUICKJS_COMPAT = $(PROJECT_ROOT)/source/library/macOS/apple-gcc4/QuickJS
+GROUP_quickjs_SOURCES = $(addprefix $(QUICKJS_DIR)/,$(QUICKJS_SOURCE_NAMES)) $(QUICKJS_COMPAT)/quickjs_compat.c
+GROUP_quickjs_FLAGS += -std=gnu99 -Wno-uninitialized
+GROUP_lsmash_SOURCES += $(PROJECT_ROOT)/source/library/macOS/apple-gcc4/L-SMASH/stdio_compat.c
+RetroDLP_FLAGS += -D_NONSTD_SOURCE
+retro-dlp_FLAGS = -D_NONSTD_SOURCE
+retrodlp_FLAGS += -D_NONSTD_SOURCE
+GROUP_quickjs_FLAGS += -U_NONSTD_SOURCE
+GROUP_lsmash_FLAGS += -U_NONSTD_SOURCE
+RetroDLP_LDFLAGS = -framework AppKit -framework Foundation -framework CoreFoundation -framework SystemConfiguration -lobjc -lpthread
+include $(ALTIVEC_ROOT)/altivec_common_mac.mk
+app: package
 .PHONY: app
-
-$(UNIVERSAL_BIN): $(INT_DIR)/ppc.bin $(INT_DIR)/x86.bin Makefile
-	@echo "  > merging macOS application (ppc, i386)"
-	@$(LIPO) -create $(filter %.bin,$^) -output $@
-
-$(PPC_OBJS) $(X86_OBJS): $(SHARED_DIR)/rdapp_strings.h $(SHARED_DIR)/rdapp_strings.def

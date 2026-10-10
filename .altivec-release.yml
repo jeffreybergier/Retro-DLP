@@ -18,26 +18,24 @@ targets:
   - name: macOS CLI
     workdir: .
     build:
-      - make clean-macOS
+      - make macOS-clean
       - make macOS
-      - cd build/macOS && zip -9 -j retro-dlp-macOS-cli.zip ppc-i386/retro-dlp cacert.pem
-    artifact: build/macOS/retro-dlp-macOS-cli.zip
+    artifact: build/macOS/release/retro-dlp.zip
     asset_name: Retro-DLP-{version}-macOS-cli.zip
 
   - name: iOS CLI
     workdir: .
     build:
-      - make clean-iOS
+      - make iOS-clean
       - make iOS
-      - cd build/iOS && zip -9 retro-dlp-iOS-cli.zip retro-dlp cacert.pem
-    artifact: build/iOS/retro-dlp-iOS-cli.zip
+    artifact: build/iOS/release/retro-dlp.zip
     asset_name: Retro-DLP-{version}-iOS-cli.zip
 
   - name: macOS application
     workdir: .
     build:
       - make app-macOS
-    artifact: build/apps/macOS/RetroDLP.zip
+    artifact: build/macOS/release/RetroDLP.zip
     asset_name: Retro-DLP-{version}-macOS-gui.zip
 
   - name: iOS application
@@ -45,7 +43,7 @@ targets:
     build:
       - make app-iOS
       - make app-validate
-    artifact: build/apps/iOS/RetroDLP.ipa
+    artifact: build/iOS/release/RetroDLP.ipa
     asset_name: Retro-DLP-{version}-iOS-gui.ipa
 
   - name: macOS Library
@@ -53,8 +51,7 @@ targets:
     build:
       - make macOS
       - make validate-apple-artifacts
-      - make/package-library.sh macOS build
-    artifact: build/macOS/retro-dlp-library.zip
+    artifact: build/macOS/release/retro-dlp-library.zip
     asset_name: Retro-DLP-{version}-macOS-library.zip
 
   - name: iOS Library
@@ -62,6 +59,5 @@ targets:
     build:
       - make iOS
       - make validate-apple-artifacts
-      - make/package-library.sh iOS build
-    artifact: build/iOS/retro-dlp-library.zip
+    artifact: build/iOS/release/retro-dlp-library.zip
     asset_name: Retro-DLP-{version}-iOS-library.zip

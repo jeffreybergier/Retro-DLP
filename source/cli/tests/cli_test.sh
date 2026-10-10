@@ -118,11 +118,18 @@ printf '%s\n' "$version_output" | \
 asset_status=$($binary assets status)
 printf '%s\n' "$asset_status" | grep -q '"installed":[[:space:]]*false' || \
   fail "fresh asset status was not missing"
-asset_install=$($binary assets install)
-printf '%s\n' "$asset_install" | grep -q '"installed":[[:space:]]*true' || \
-  fail "asset install did not validate both EJS files"
-
+# Tests use pre-provisioned, hash-validated EJS inputs and never download.
+# The public asset API's transport/installation behavior has synthetic tests.
+fixture_assets=${RETRO_DLP_TEST_EJS_DIR:-build/apps/resources/ejs}
+test -f "$fixture_assets/core.min.js" -a -f "$fixture_assets/lib.min.js" || \
+  fail "set RETRO_DLP_TEST_EJS_DIR to the local EJS 0.8.0 fixture directory"
 asset_dir=$test_home/.retro-dlp/cache/assets/ejs/0.8.0
+mkdir -p "$asset_dir"
+cp "$fixture_assets/core.min.js" "$fixture_assets/lib.min.js" "$asset_dir/"
+asset_status=$($binary assets status)
+printf '%s\n' "$asset_status" | grep -q '"installed":[[:space:]]*true' || \
+  fail "local EJS fixtures did not validate"
+
 RETRO_DLP_TEST_EJS_DIR=$asset_dir
 export RETRO_DLP_TEST_EJS_DIR
 cp "$asset_dir/core.min.js" "$asset_dir/core.saved"

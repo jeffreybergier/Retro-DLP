@@ -4,7 +4,7 @@ Paths and commands below are relative to this repository. Retro-DLP is a narrow
 C implementation of video and playlist resolution for older Apple devices. It
 uses libcurl, QuickJS, L-SMASH, and cJSON. Supported targets are Linux, macOS
 10.4+ (PowerPC/i386), and jailbroken iOS 5+ (armv7; arm64 requires iOS 7+).
-Apple builds use the pinned Altivec Intelligence container and user-supplied SDKs.
+Apple builds use the local Altivec Intelligence container and user-supplied SDKs.
 
 ## Layout and builds
 
@@ -12,13 +12,13 @@ Apple builds use the pinned Altivec Intelligence container and user-supplied SDK
   `source/library/shared/`; platform code is in `source/library/{linux,macOS,iOS}/`.
   The CLI is in `source/cli/`. Shared app code and its Foundation bridge are in
   `source/gui/shared/`; native UI is in `source/gui/{macOS,iOS}/`. Build rules
-  are in `make/`; `build/` is ignored generated output. Keep
+  are owned by Altivec modules; `make/` retains portable Linux harnesses and source inventories. `build/` is ignored generated output. Keep
   `source/deps/{cJSON,QuickJS,L-SMASH}` pinned submodules with intact layouts.
 - Build with `make linux`, `make macOS`, `make iOS`, or `make apps`. For Apple
   builds, first run `docker compose run --rm altivec-sdk install`, then
   `docker compose run --rm altivec "make clean release"`. Outputs include
-  `build/macOS/ppc-i386/retro-dlp`, `build/iOS/retro-dlp`, platform static
-  libraries, `build/apps/macOS/RetroDLP.zip`, and `build/apps/iOS/RetroDLP.ipa`.
+  `build/macOS/release/retro-dlp`, `build/iOS/release/retro-dlp`, platform static
+  libraries, `build/macOS/release/RetroDLP.zip`, and `build/iOS/release/RetroDLP.ipa`.
   Apps bundle the CA certificate and version-matched EJS assets. The IPA uses
   jailbreak-oriented `ldid` signing, not Apple distribution signing.
 - Run `make test` for library, CLI, or build changes; `make sanitize` for C
@@ -26,7 +26,8 @@ Apple builds use the pinned Altivec Intelligence container and user-supplied SDK
   Build affected apps with `make app-macOS` or `make app-iOS`, both with
   `make apps` for shared native changes. Use `make app-validate` and
   `make validate-apple-artifacts` for affected Apple packages;
-  `make validate-package` checks an external Linux C consumer.
+  `make validate-package` checks the Apple packages;
+  `make validate-linux-package` checks an external Linux C consumer.
   `make examples` builds public API examples; `make validate-examples` also
   runs the offline custom-transport example. Inspect warnings and clean outputs
   when incremental builds might hide dependency problems. Cross-builds and
@@ -51,8 +52,8 @@ Apple builds use the pinned Altivec Intelligence container and user-supplied SDK
   Higher-quality requests may fail with HTTP 403. Keep credentials, downloaded
   EJS assets, SDK archives, and build outputs out of Git.
 - Release configuration is `.altivec-release.yml`; automation is
-  `.github/workflows/release.yml`. Keep the image digest in `compose.yml`
-  consistent. From a clean committed checkout, use
+  `.github/workflows/release.yml`. Compose defaults to `altivec-intelligence:local`; use `ALTIVEC_IMAGE`
+  to select another image containing the shared product modules. From a clean committed checkout, use
   `docker compose run --rm altivec "altivec-release bump patch"` (or `minor` /
   `major`; `--dry-run` previews). A `v` tag builds macOS/iOS CLI, app, and
   library assets; branch pushes run checks. CI verifies private SDK hashes and

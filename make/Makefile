@@ -151,8 +151,7 @@ LINUX_CONSUMER_TEST_OBJECT := \
 LINUX_DOWNLOAD_CONSUMER_TEST_OBJECT := \
 	$(LINUX_INT_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_SOURCE:.c=.o)
 
-include make/apple-gcc4.mk
-include make/ios-clang.mk
+
 
 OTOOL_MODERN ?= $(MODERN_BIN)/otool
 
@@ -186,13 +185,7 @@ $(IOS_INT_DIR)/source/cli/tests/self_test.o: \
 
 .DEFAULT_GOAL := release
 
-release: macOS iOS
-
-macOS: validate $(MACOS_LEGACY_PROGRAM) $(MACOS_LIBRARY) \
-	$(MACOS_DOWNLOAD_LIBRARY) $(MACOS_CA_BUNDLE)
-
-iOS: validate-iOS $(IOS_BUILD_DIR)/$(PROGRAM) $(IOS_LIBRARY) \
-	$(IOS_DOWNLOAD_LIBRARY) $(IOS_CA_BUNDLE)
+release: linux
 
 linux: $(LINUX_BUILD_DIR)/$(PROGRAM) $(LINUX_LIBRARY) \
 	$(LINUX_DOWNLOAD_LIBRARY)
@@ -232,48 +225,14 @@ validate-package: $(LINUX_LIBRARY) $(LINUX_DOWNLOAD_LIBRARY)
 		"$(abspath .)" "$(abspath $(BUILD_DIR))" "$(CC)" "$(CXX)" \
 		"$(CFLAGS)" "$(LDFLAGS)" "$(LDLIBS)"
 
-package-libraries: linux macOS iOS
+package-libraries: linux
 	@make/package-library.sh linux "$(BUILD_DIR)"
-	@make/package-library.sh macOS "$(BUILD_DIR)"
-	@make/package-library.sh iOS "$(BUILD_DIR)"
-
-validate-apple-artifacts: macOS iOS
-	@make/validate-apple-artifacts.sh \
-		"$(LIPO)" "$(LIPO_MODERN)" "$(OTOOL_MODERN)" "$(BUILD_DIR)"
 
 sanitize:
 	@$(MAKE) --no-print-directory -f make/Makefile \
 		BUILD_DIR="$(BUILD_DIR)/sanitize" \
 		CFLAGS="-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined" \
 		LDFLAGS="-fsanitize=address,undefined" test
-
-$(MACOS_LEGACY_PROGRAM): $(PPC_BINARY) $(I386_BINARY)
-	@echo " [3/3] Merging legacy binary (ppc, i386)..."
-	@mkdir -p $(dir $@)
-	@$(LIPO) -create $^ -output $@
-	@echo "  > $@"
-
-# Re-merge when the architecture configuration changes, including existing builds.
-$(MACOS_LIBRARY): $(PPC_LIBRARY) $(I386_LIBRARY) make/Makefile
-	@echo "  > merging ppc/i386 resolver library"
-	@mkdir -p $(dir $@)
-	@$(LIPO) -create $(filter %.a,$^) -output $@
-
-$(MACOS_DOWNLOAD_LIBRARY): $(PPC_DOWNLOAD_LIBRARY) \
-		$(I386_DOWNLOAD_LIBRARY) make/Makefile
-	@echo "  > merging ppc/i386 optional download library"
-	@mkdir -p $(dir $@)
-	@$(LIPO) -create $(filter %.a,$^) -output $@
-
-$(MACOS_CA_BUNDLE): $(MACOS_CA_SOURCE)
-	@echo "  > copying macOS CA certificate bundle"
-	@mkdir -p $(dir $@)
-	@cp $< $@
-
-$(IOS_CA_BUNDLE): $(IOS_CA_SOURCE)
-	@echo "  > copying iOS CA certificate bundle"
-	@mkdir -p $(dir $@)
-	@cp $< $@
 
 $(LINUX_BUILD_DIR)/$(PROGRAM): $(LINUX_OBJECTS) \
 		$(LINUX_DOWNLOAD_LIBRARY) $(LINUX_LIBRARY)
@@ -359,32 +318,6 @@ $(LINUX_INT_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	@$(CC) $(LINUX_CPPFLAGS) $(COMMON_CFLAGS) $(SOURCE_WARNING_FLAGS) \
 		-MMD -MP -MF $(@:.o=.d) -c $< -o $@
-
-validate:
-	@test -d "$(SDK_PPC_PATH)" || \
-		{ echo "Missing SDK: $(SDK_PPC_PATH)" >&2; exit 1; }
-	@test -d "$(SDK_X86_PATH)" || \
-		{ echo "Missing SDK: $(SDK_X86_PATH)" >&2; exit 1; }
-	@test -n "$(COMPILER_PPC)" -a -x "$(COMPILER_PPC)" || \
-		{ echo "Missing PowerPC compiler" >&2; exit 1; }
-	@test -n "$(COMPILER_X86)" -a -x "$(COMPILER_X86)" || \
-		{ echo "Missing i386 compiler" >&2; exit 1; }
-	@test -f "$(ALTIVECCORE)" || \
-		{ echo "Missing AltivecCore: $(ALTIVECCORE)" >&2; exit 1; }
-	@test -f "$(ALTIVEC_CRYPTO)" || \
-		{ echo "Missing libcrypto: $(ALTIVEC_CRYPTO)" >&2; exit 1; }
-
-validate-iOS:
-	@test -d "$(SDK_IOS_PATH)" || \
-		{ echo "Missing SDK: $(SDK_IOS_PATH)" >&2; exit 1; }
-	@test -n "$(COMPILER_IOS)" -a -x "$(COMPILER_IOS)" || \
-		{ echo "Missing iOS compiler" >&2; exit 1; }
-	@test -f "$(IOS_ALTIVECCORE)" || \
-		{ echo "Missing iOS AltivecCore: $(IOS_ALTIVECCORE)" >&2; exit 1; }
-	@test -f "$(IOS_ALTIVEC_CRYPTO)" || \
-		{ echo "Missing iOS libcrypto: $(IOS_ALTIVEC_CRYPTO)" >&2; exit 1; }
-	@test -f "$(IOS_CA_SOURCE)" || \
-		{ echo "Missing iOS CA bundle: $(IOS_CA_SOURCE)" >&2; exit 1; }
 
 clean: clean-macOS clean-iOS clean-linux
 

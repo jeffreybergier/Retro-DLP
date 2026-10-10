@@ -22,7 +22,7 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
     ('macOS','RetroDLP.zip','Contents/MacOS/RetroDLP','Contents/Info.plist','Contents/Resources',{'ppc','i386'}),
     ('iOS','RetroDLP.ipa','RetroDLP','Info.plist','',{'armv7','arm64'}),
 ]:
-    directory=ROOT/'build/apps'/platform
+    directory=ROOT/'build'/platform/'release'
     bundle=directory/'RetroDLP.app'
     exe=bundle/exe_relative
     found=set(subprocess.check_output(['/osxcross/modern/bin/lipo','-archs',str(exe)],text=True).split())

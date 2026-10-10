@@ -151,7 +151,7 @@ static NSArray *RDLPDownloadItemKeys(void) {
   [super viewDidAppear:animated];
   if(_stopped) return;
   if(_started) {
-    [[[UIApplication sharedApplication] delegate] resignFirstResponder];
+    [(UIResponder *)[[UIApplication sharedApplication] delegate] resignFirstResponder];
     [self becomeFirstResponder]; return;
   }
   [RDLPActivePlayback stop]; RDLPActivePlayback=[self retain];
@@ -173,7 +173,7 @@ static NSArray *RDLPDownloadItemKeys(void) {
 - (void)viewDidDisappear:(BOOL)animated {
   [super viewDidDisappear:animated];
   if(_hiddenPlayback && !_remoteCommands)
-    [[[UIApplication sharedApplication] delegate] becomeFirstResponder];
+    [(UIResponder *)[[UIApplication sharedApplication] delegate] becomeFirstResponder];
 }
 - (void)stop {
   if(_stopped) return;
@@ -188,7 +188,7 @@ static NSArray *RDLPDownloadItemKeys(void) {
     [[MPNowPlayingInfoCenter defaultCenter] setNowPlayingInfo:nil];
     RDLPActivePlayback=nil;
     [self resignFirstResponder];
-    if(!_remoteCommands) [[[UIApplication sharedApplication] delegate] resignFirstResponder];
+    if(!_remoteCommands) [(UIResponder *)[[UIApplication sharedApplication] delegate] resignFirstResponder];
     if(_remoteCommands) {
       [RDLPUIKit stopPlaybackRemoteCommands:_remoteCommands];
       [_remoteCommands release]; _remoteCommands=nil;

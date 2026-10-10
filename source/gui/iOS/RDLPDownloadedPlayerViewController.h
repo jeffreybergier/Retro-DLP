@@ -24,6 +24,8 @@
 /* AVAudioSession's iOS 5 delegate selectors; installed by RDLPUIKit. */
 - (void)beginInterruption;
 - (void)endInterruptionWithFlags:(NSUInteger)flags;
+/* Forward legacy remote-control events while playback is hidden. */
+- (BOOL)handlePlaybackRemoteControl:(UIEventSubtype)subtype;
 - (void)stop;
 @end
 

@@ -72,8 +72,9 @@ for match in re.finditer(r'RDAPP_STRING\(\w+,\s*(' + STRING + r')\)',
 for platform in ('macOS', 'iOS'):
     makefile = (GUI/platform/'Makefile').read_text()
     assert 'BUNDLE_LOCALIZATION_DIRS = $(SHARED_DIR)/Resources' in makefile
-    bundle = '$(BUNDLE)' if platform == 'macOS' else '$(APP_BUNDLE)'
-    assert re.search(re.escape(bundle) + r':[^\n]*\$\(LOCALIZATION_FILES\)', makefile), \
-        f'{platform} must repackage edited translations'
+    assert 'RetroDLP_LOCALIZATIONS = $(BUNDLE_LOCALIZATION_DIRS)' in makefile, \
+        f'{platform} must declare translations as shared-engine resource inputs'
+    assert 'include $(ALTIVEC_ROOT)/altivec_common_' in makefile
+
 
 print(f'PASS: {len(english)} shared strings cover macOS, iOS, and player lookups')
