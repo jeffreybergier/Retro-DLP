@@ -39,7 +39,7 @@
     UINavigationController *navigation=[[UINavigationController alloc] initWithRootViewController:root];
     [window_ setRootViewController:navigation]; [navigation release]; [root release];
   } else {
-    UIViewController *error=[[UIViewController alloc] init]; [window_ setRootViewController:error]; [error release];
+    UITableViewController *error=[[UITableViewController alloc] initWithStyle:UITableViewStylePlain]; [window_ setRootViewController:error]; [error release];
     [RDLPUIKit showMessage:NSLocalizedString(@"Cannot open the RetroDLP library. Check available storage and restart the app.", nil)];
   }
   [window_ makeKeyAndVisible];

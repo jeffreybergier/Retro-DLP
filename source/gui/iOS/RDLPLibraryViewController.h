@@ -2,13 +2,12 @@
 #import "RDLPLibrarySections.h"
 #import "RDLPStatusBarView.h"
 
-@interface RDLPLibraryViewController : UIViewController <UITableViewDataSource, UITableViewDelegate, UIAlertViewDelegate, UIActionSheetDelegate> {
+@interface RDLPLibraryViewController : UITableViewController <UIAlertViewDelegate, UIActionSheetDelegate> {
   RDLPLibrary *library_;
   RDLPDownloadPolicy *policy_;
   RDLPLibrarySections *model_;
   NSDictionary *playlist_, *video_;
   NSArray *sections_;
-  UITableView *tableView_;
   RDLPStatusBarView *statusBar_;
   UILabel *status_;
   UIProgressView *progress_;
@@ -18,7 +17,6 @@
   NSDictionary *request_;
   NSArray *alertActions_;
 }
-@property(nonatomic,readonly) UITableView *tableView;
 - (id)initWithLibrary:(RDLPLibrary *)library mode:(RDLPScreen)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;
 - (void)refresh:(id)sender;
 - (void)pushMode:(RDLPScreen)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;

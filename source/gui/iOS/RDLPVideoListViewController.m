@@ -27,7 +27,7 @@
 }
 - (void)viewDidLoad;
 {
-  [super viewDidLoad]; [RDLPUIKit configureContentEdges:self];
+  [super viewDidLoad];
   statusBar_=[[RDLPStatusBarView alloc] initWithFrame:CGRectZero];
   [statusBar_ setMaximumWidth:MAX(0,[[self view] bounds].size.width-112)];
   [self setToolbarItems:[RDLPUIKit statusToolbarItems:statusBar_ target:self queueAction:[self showsQueueButton]?@selector(queue:):NULL]];

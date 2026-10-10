@@ -29,7 +29,7 @@
 }
 - (void)viewDidLoad;
 {
-  [super viewDidLoad]; [RDLPUIKit configureContentEdges:self];
+  [super viewDidLoad];
   [[self navigationItem] setLeftBarButtonItem:[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit settingsIcon] style:UIBarButtonItemStylePlain target:self action:@selector(settings:)] autorelease]];
   [[[self navigationItem] leftBarButtonItem] setAccessibilityLabel:NSLocalizedString(@"Settings", nil)];
   [[self navigationItem] setRightBarButtonItem:[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit plusIcon] style:UIBarButtonItemStylePlain target:self action:@selector(showPlaylistActions:)] autorelease]];

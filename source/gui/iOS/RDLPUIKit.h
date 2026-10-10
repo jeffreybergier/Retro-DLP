@@ -16,7 +16,6 @@ typedef enum {
 @interface RDLPUIKit : NSObject
 + (UIImage *)playerIcon:(RDLPPlayerIcon)icon;
 + (UIImage *)playerIcon:(RDLPPlayerIcon)icon size:(CGFloat)size canvas:(CGFloat)canvas;
-+ (void)configureContentEdges:(UIViewController *)controller;
 + (void)configurePlayerFullScreenLayout:(UIViewController *)controller;
 + (void)setBorderedStyleForBarButtonItem:(UIBarButtonItem *)item;
 + (void)centerTextInLabel:(UILabel *)label;

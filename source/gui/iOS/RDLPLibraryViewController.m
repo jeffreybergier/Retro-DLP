@@ -6,10 +6,9 @@
 #import "RDLPQueueViewController.h"
 
 @implementation RDLPLibraryViewController
-@synthesize tableView=tableView_;
 - (id)initWithLibrary:(RDLPLibrary *)library mode:(RDLPScreen)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;
 {
-  self=[super init]; if(!self) return nil;
+  self=[super initWithStyle:mode==RDLPScreenLibrary?UITableViewStylePlain:UITableViewStyleGrouped]; if(!self) return nil;
   library_=[library retain]; mode_=mode; playlist_=[playlist copy]; video_=[video copy];
   policy_=[[RDLPDownloadPolicy alloc] initWithLibrary:library]; model_=[[RDLPLibrarySections alloc] initWithLibrary:library];
   [self setTitle:mode==RDLPScreenLibrary?NSLocalizedString(@"Playlists", nil):(mode==RDLPScreenPlaylist?[playlist objectForKey:@"title"]:(mode==RDLPScreenQueue?NSLocalizedString(@"Download Queue", nil):(mode==RDLPScreenDownloads?NSLocalizedString(@"All Downloads", nil):(mode==RDLPScreenSettings?NSLocalizedString(@"Settings", nil):NSLocalizedString(@"Video", nil)))))];
@@ -22,22 +21,17 @@
   [[NSNotificationCenter defaultCenter] removeObserver:self]; [alert_ setDelegate:nil]; [alert_ dismissWithClickedButtonIndex:0 animated:NO];
   [playlistActions_ setDelegate:nil]; [playlistActions_ dismissWithClickedButtonIndex:[playlistActions_ cancelButtonIndex] animated:NO]; [playlistActions_ release];
   [alert_ release]; [request_ release]; [alertActions_ release];
-  [tableView_ setDelegate:nil]; [tableView_ setDataSource:nil]; [tableView_ release];
   [library_ release]; [policy_ release]; [model_ release]; [playlist_ release]; [video_ release]; [sections_ release]; [statusBar_ release]; [status_ release]; [progress_ release]; [super dealloc];
 }
 - (void)viewDidLoad;
 {
   [super viewDidLoad];
-  [RDLPUIKit configureContentEdges:self];
-  [[self view] setBackgroundColor:[UIColor groupTableViewBackgroundColor]];
-  tableView_=[[UITableView alloc] initWithFrame:CGRectMake(0,0,[[self view] bounds].size.width,[[self view] bounds].size.height-(mode_==RDLPScreenLibrary?0:56)) style:mode_==RDLPScreenLibrary?UITableViewStylePlain:UITableViewStyleGrouped];
-  [tableView_ setAutoresizingMask:UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight]; [tableView_ setDelegate:self]; [tableView_ setDataSource:self]; [[self view] addSubview:tableView_];
   if(mode_!=RDLPScreenLibrary) {
-  UIView *footer=[[[UIView alloc] initWithFrame:CGRectMake(0,[[self view] bounds].size.height-56,[[self view] bounds].size.width,56)] autorelease];
-  [footer setAutoresizingMask:UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleTopMargin];
+  UIView *footer=[[[UIView alloc] initWithFrame:CGRectMake(0,0,[[self tableView] bounds].size.width,56)] autorelease];
+  [footer setAutoresizingMask:UIViewAutoresizingFlexibleWidth];
   status_=[[UILabel alloc] initWithFrame:CGRectMake(12,0,[footer bounds].size.width-24,44)];
   [status_ setNumberOfLines:3]; [status_ setFont:[UIFont systemFontOfSize:12]]; [status_ setBackgroundColor:[UIColor clearColor]]; [status_ setAutoresizingMask:UIViewAutoresizingFlexibleWidth]; [footer addSubview:status_];
-  progress_=[[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault]; [progress_ setFrame:CGRectMake(12,48,[footer bounds].size.width-24,4)]; [progress_ setAutoresizingMask:UIViewAutoresizingFlexibleWidth]; [footer addSubview:progress_]; [[self view] addSubview:footer];
+  progress_=[[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault]; [progress_ setFrame:CGRectMake(12,48,[footer bounds].size.width-24,4)]; [progress_ setAutoresizingMask:UIViewAutoresizingFlexibleWidth]; [footer addSubview:progress_]; [[self tableView] setTableFooterView:footer];
   }
   if(mode_==RDLPScreenLibrary) {
     statusBar_=[[RDLPStatusBarView alloc] initWithFrame:CGRectZero];

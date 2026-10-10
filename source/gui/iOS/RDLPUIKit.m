@@ -267,12 +267,6 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
 }
 + (void)stopPlaybackRemoteCommands:(id)registration;
 { [registration invalidate]; }
-+ (void)configureContentEdges:(UIViewController *)controller;
-{
-  /* iOS 7 introduced extended edges. KVC preserves the iOS 5 deployment path. */
-  if([controller respondsToSelector:@selector(setEdgesForExtendedLayout:)])
-    [controller setValue:[NSNumber numberWithUnsignedInteger:0] forKey:@"edgesForExtendedLayout"];
-}
 + (UIImage *)statusIcon:(NSString *)status;
 {
   static NSMutableDictionary *images=nil;

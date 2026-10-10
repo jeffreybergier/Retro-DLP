@@ -19,7 +19,7 @@
   [super dealloc];
 }
 - (void)viewDidLoad;
-{ [super viewDidLoad]; [RDLPUIKit configureContentEdges:self]; [self refresh:nil]; }
+{ [super viewDidLoad]; [self refresh:nil]; }
 - (void)viewWillAppear:(BOOL)animated;
 { [super viewWillAppear:animated]; [[self navigationController] setToolbarHidden:YES animated:animated]; [self refresh:nil]; }
 - (void)refresh:(id)sender;
