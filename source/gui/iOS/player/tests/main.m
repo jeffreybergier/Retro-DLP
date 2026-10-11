@@ -1,3 +1,4 @@
+#import <AIFontAwesome.h>
 #import "RDLPPlayerViewController.h"
 #import "RDLPPlayerNavigationController.h"
 #import "RDLPPlayerControls.h"
@@ -78,6 +79,7 @@ static NSUInteger controllersReleased;
 @implementation PlayerTests
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)options {
   (void)application; (void)options;
+  [AIFontAwesome registerBundledFonts];
   _report=[[NSMutableString alloc] init];
   _window=[[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
   _controller=[[TestController alloc] init];

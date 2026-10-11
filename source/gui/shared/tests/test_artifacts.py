@@ -1,6 +1,7 @@
 """Verify shipped app resources, architecture slices, and archive freshness."""
 from pathlib import Path
 import hashlib
+import os
 import plistlib
 import re
 import stat
@@ -9,6 +10,7 @@ import subprocess
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[4]
+BUILD=Path(os.environ.get('BUILD_ROOT', ROOT/'build')).resolve()
 VERSION=plistlib.loads((ROOT/'source/library/shared/Info.plist').read_bytes())['CFBundleShortVersionString']
 IPHONE_LAUNCH_IMAGES={
     'Default.png': (320,480),
@@ -22,7 +24,7 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
     ('macOS','RetroDLP.zip','Contents/MacOS/RetroDLP','Contents/Info.plist','Contents/Resources',{'ppc','i386'}),
     ('iOS','RetroDLP.ipa','RetroDLP','Info.plist','',{'armv7','arm64'}),
 ]:
-    directory=ROOT/'build'/platform/'release'/'RetroDLP'
+    directory=BUILD/platform/'release'/'RetroDLP'
     bundle=directory/'RetroDLP.app'
     exe=bundle/exe_relative
     found=set(subprocess.check_output(['/osxcross/modern/bin/lipo','-archs',str(exe)],text=True).split())
@@ -98,7 +100,7 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
             mode=archive.getinfo(prefix+relative).external_attr>>16
             assert mode & stat.S_IROTH,platform+' resource is unreadable after installation: '+relative
             if filename.startswith('ejs/'):
-                assert hashlib.sha256(data).digest()==hashlib.sha256((ROOT/'build/generated'/filename).read_bytes()).digest()
+                assert hashlib.sha256(data).digest()==hashlib.sha256((BUILD/'generated'/filename).read_bytes()).digest()
         if platform=='iOS':
             icons=set(plist['CFBundleIconFiles'])
             source=ROOT/'source/gui/iOS/Resources'
