@@ -1106,10 +1106,15 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require([[[sections(all) objectAtIndex:0] objectForKey:@"rows"] count]==1,@"Retried job leaves completed-only All Downloads");
     lowIndex=videoIndex(all,@"AAAAAAAAAAA",@"18");
     [all tableView:[all tableView] willBeginEditingRowAtIndexPath:lowIndex];
-    [library_ setTestBusy:YES];
+    /* The removal policy uses the worker's job identity, not UI busy state. */
+    [library_ setValue:[NSNumber numberWithBool:YES] forKey:@"busy_"];
+    [library_ setValue:[NSDictionary dictionaryWithObject:@"download" forKey:@"type"] forKey:@"activeCommand_"];
+    [library_ setValue:@1 forKey:@"activeJob_"];
     [all tableView:[all tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:lowIndex]; pump();
-    require([policy playable:[model currentJob:@"1"]],@"Work starting during a swipe prevents file removal");
-    [library_ setTestBusy:NO];
+    require([policy playable:[model currentJob:@"1"]],@"Work on the selected job starting during a swipe prevents file removal");
+    [library_ setValue:[NSNumber numberWithBool:NO] forKey:@"busy_"];
+    [library_ setValue:nil forKey:@"activeCommand_"];
+    [library_ setValue:@0 forKey:@"activeJob_"];
     [all tableView:[all tableView] willBeginEditingRowAtIndexPath:lowIndex];
     [all tableView:[all tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:lowIndex]; pump();
     require([all numberOfSectionsInTableView:[all tableView]]==0 && (![all respondsToSelector:@selector(tableView:titleForFooterInSection:)] || [all tableView:[all tableView] titleForFooterInSection:0]==nil),@"Empty All Downloads has no placeholder section footer");
