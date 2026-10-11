@@ -214,6 +214,8 @@ and libraries. The outputs are:
 - iOS CLI: `build/iOS/release/retro-dlp/retro-dlp.zip` (CLI and `cacert.pem`)
 
 Keep each CLI binary with its `cacert.pem` when copying it to a device.
+Run `python3 .github/scripts/provision-ejs.py build/generated/ejs` once while online to download
+and verify the EJS inputs against the pinned library manifest.
 Apple builds consume previously provisioned EJS assets in
 `build/generated/ejs`; they do not download resources. Offline CLI tests
 use that directory or `RETRO_DLP_TEST_EJS_DIR`, validate the pinned asset hashes,

@@ -124,6 +124,9 @@ jobs:
             "$BUILD_IMAGE" \
             preflight
 
+      - name: Provision pinned EJS resources
+        run: python3 .github/scripts/provision-ejs.py build/generated/ejs
+
       - name: Build configured targets and stage assets
         run: |
           set -euo pipefail
