@@ -26,6 +26,7 @@
 }
 @end
 static void statusRequire(BOOL condition,NSString *message) {
+  NSLog(@"%@: %@",condition?@"PASS":@"FAIL",message);
   if(!condition) [NSException raise:@"StatusRegression" format:@"%@",message];
 }
 static void statusWait(NSTimeInterval interval) {
