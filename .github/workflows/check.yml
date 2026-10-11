@@ -17,6 +17,8 @@ jobs:
   linux:
     name: Linux tests
     runs-on: ubuntu-24.04
+    env:
+      BUILD_IMAGE: ghcr.io/jeffreybergier/altivec-intelligence:latest
 
     steps:
       - name: Check out source and dependencies
@@ -24,16 +26,17 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install build dependencies
+      - name: Pull latest build image
+        run: docker pull "$BUILD_IMAGE"
+
+      - name: Provision pinned EJS resources
+        run: python3 .github/scripts/provision-ejs.py build/generated/ejs
+
+      - name: Run offline Linux tests
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes \
-            build-essential \
-            libcurl4-openssl-dev \
-            libssl-dev
-
-      - name: Run tests
-        run: make test
-
-      - name: Run sanitizer tests
-        run: make sanitize
+          docker run --rm --network none \
+            --entrypoint /bin/bash \
+            -v "$GITHUB_WORKSPACE:/repo/user" \
+            -w /repo/user \
+            "$BUILD_IMAGE" \
+            -lc 'make -j2 test && make sanitize'

@@ -19,7 +19,7 @@ jobs:
     name: Build and stage release packages
     runs-on: ubuntu-22.04
     env:
-      BUILD_IMAGE: ghcr.io/jeffreybergier/altivec-intelligence@sha256:c3a8181f6f8fdd4d87857bbfece5d6b9068cac6575662879cd7c2685bae550a9
+      BUILD_IMAGE: ghcr.io/jeffreybergier/altivec-intelligence:latest
     defaults:
       run:
         shell: bash
@@ -59,7 +59,7 @@ jobs:
           fi
           echo "RELEASE_SHA=$actual_sha" >> "$GITHUB_ENV"
 
-      - name: Pull pinned build image
+      - name: Pull latest build image
         run: docker pull "$BUILD_IMAGE"
 
       - name: Check configured release version
@@ -130,7 +130,7 @@ jobs:
       - name: Build configured targets and stage assets
         run: |
           set -euo pipefail
-          docker run --rm \
+          docker run --rm --network none \
             --entrypoint /bin/bash \
             -e IS_SANDBOX=1 \
             -e ALTIVEC_SDK_ARCHIVE_DIR=/altivec-sdk \
