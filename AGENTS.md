@@ -52,8 +52,8 @@ Apple builds use the local Altivec Intelligence container and user-supplied SDKs
   Higher-quality requests may fail with HTTP 403. Keep credentials, downloaded
   EJS assets, SDK archives, and build outputs out of Git.
 - Release configuration is `.altivec-release.yml`; automation is
-  `.github/workflows/release.yml`. Compose defaults to `altivec-intelligence:local`; use `ALTIVEC_IMAGE`
-  to select another image containing the shared product modules. From a clean committed checkout, use
+  `.github/workflows/release.yml`. Compose defaults to `ghcr.io/jeffreybergier/altivec-intelligence:latest`;
+  set `ALTIVEC_IMAGE=altivec-intelligence:local` to use a local build instead. From a clean committed checkout, use
   `docker compose run --rm altivec "altivec-release bump patch"` (or `minor` /
   `major`; `--dry-run` previews). A `v` tag builds macOS/iOS CLI, app, and
   library assets; branch pushes run checks. CI verifies private SDK hashes and
