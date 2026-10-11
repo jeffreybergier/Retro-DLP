@@ -22,7 +22,7 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
     ('macOS','RetroDLP.zip','Contents/MacOS/RetroDLP','Contents/Info.plist','Contents/Resources',{'ppc','i386'}),
     ('iOS','RetroDLP.ipa','RetroDLP','Info.plist','',{'armv7','arm64'}),
 ]:
-    directory=ROOT/'build'/platform/'release'
+    directory=ROOT/'build'/platform/'release'/'RetroDLP'
     bundle=directory/'RetroDLP.app'
     exe=bundle/exe_relative
     found=set(subprocess.check_output(['/osxcross/modern/bin/lipo','-archs',str(exe)],text=True).split())
@@ -98,7 +98,7 @@ for platform,archive_name,exe_relative,plist_relative,resources,architectures in
             mode=archive.getinfo(prefix+relative).external_attr>>16
             assert mode & stat.S_IROTH,platform+' resource is unreadable after installation: '+relative
             if filename.startswith('ejs/'):
-                assert hashlib.sha256(data).digest()==hashlib.sha256((ROOT/'build/apps/resources'/filename).read_bytes()).digest()
+                assert hashlib.sha256(data).digest()==hashlib.sha256((ROOT/'build/generated'/filename).read_bytes()).digest()
         if platform=='iOS':
             icons=set(plist['CFBundleIconFiles'])
             source=ROOT/'source/gui/iOS/Resources'

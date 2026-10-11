@@ -1,3 +1,6 @@
 .DS_Store
 .altivec-sdk/
 build/*
+
+# Shared host/container build locks survive whole-root cleanup.
+.*.altivec-locks/

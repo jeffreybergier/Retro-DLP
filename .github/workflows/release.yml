@@ -138,14 +138,14 @@ jobs:
             -v "${{ github.workspace }}:/repo/user" \
             -w /repo/user \
             "$BUILD_IMAGE" \
-            -lc 'altivec-sdk install && altivec-release build && altivec-release stage "$RELEASE_VERSION"'
-          ls -lh dist
+            -lc 'altivec-sdk install && altivec-release build && altivec-release stage "$RELEASE_VERSION" --dist build/release/artifacts'
+          ls -lh build/release/artifacts
 
       - name: Validate staged release assets
         run: |
           set -euo pipefail
           for package in macOS-cli iOS-cli; do
-            asset="dist/Retro-DLP-${RELEASE_VERSION}-${package}.zip"
+            asset="build/release/artifacts/Retro-DLP-${RELEASE_VERSION}-${package}.zip"
             test -s "$asset"
             unzip -t "$asset" >/dev/null
 
@@ -165,20 +165,20 @@ jobs:
             rm -rf -- "$unpacked"
           done
 
-          macos_app="dist/Retro-DLP-${RELEASE_VERSION}-macOS-gui.zip"
+          macos_app="build/release/artifacts/Retro-DLP-${RELEASE_VERSION}-macOS-gui.zip"
           test -s "$macos_app"
           unzip -t "$macos_app" >/dev/null
           unzip -Z1 "$macos_app" | grep -Fx 'RetroDLP.app/Contents/MacOS/RetroDLP' >/dev/null
           unzip -Z1 "$macos_app" | grep -Fx 'RetroDLP.app/Contents/Info.plist' >/dev/null
 
-          ios_app="dist/Retro-DLP-${RELEASE_VERSION}-iOS-gui.ipa"
+          ios_app="build/release/artifacts/Retro-DLP-${RELEASE_VERSION}-iOS-gui.ipa"
           test -s "$ios_app"
           unzip -t "$ios_app" >/dev/null
           unzip -Z1 "$ios_app" | grep -Fx 'Payload/RetroDLP.app/RetroDLP' >/dev/null
           unzip -Z1 "$ios_app" | grep -Fx 'Payload/RetroDLP.app/Info.plist' >/dev/null
 
           for platform in macOS iOS; do
-            asset="dist/Retro-DLP-${RELEASE_VERSION}-${platform}-library.zip"
+            asset="build/release/artifacts/Retro-DLP-${RELEASE_VERSION}-${platform}-library.zip"
             test -s "$asset"
             unzip -t "$asset" >/dev/null
 
@@ -191,7 +191,7 @@ jobs:
             fi
           done
 
-          sha256sum dist/*.zip dist/*.ipa
+          sha256sum build/release/artifacts/*.zip build/release/artifacts/*.ipa
 
       - name: Create or update GitHub release
         env:
@@ -203,4 +203,4 @@ jobs:
               --target "$RELEASE_SHA" \
               --generate-notes
           fi
-          gh release upload "$RELEASE_TAG" dist/* --clobber
+          gh release upload "$RELEASE_TAG" build/release/artifacts/* --clobber

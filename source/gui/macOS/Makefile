@@ -1,3 +1,7 @@
+ALTIVEC_ROOT ?= /altivec
+include $(ALTIVEC_ROOT)/make/entry.mk
+ifeq ($(_altivec_relocated),)
+PROJECT_ROOT := $(abspath $(dir $(firstword $(MAKEFILE_LIST)))/../../..)
 APP_NAME = RetroDLP
 SOURCES = main.m RDLPLibrary+macOS.m RDLPAppDelegate.m RDLPLibraryWindowController.m RDLPQueueWindowController.m RDLPAppKit.m RDLPToolbarButton.m RDLPLibraryViews.m RDLPDownloadPolicy.m RDLPLibraryMenus.m
 SHARED_DIR = ../shared
@@ -6,8 +10,6 @@ SOURCE_DIRS = $(SHARED_DIR)
 EXTRA_SOURCES = rdapp_strings.c rdapp_store.c rdapp_service.c rdlp_thread.c RDLPLibrary.m RDLPVideoRows.m RDLPDownloadSections.m RDLP_Foundation.m
 INFO_PLIST = Info.plist
 MAC_ICON = Resources/RetroDLP.icns
-PROJECT_ROOT := $(abspath ../../..)
-ALTIVEC_ROOT ?= /altivec
 include $(PROJECT_ROOT)/make/apple-sources.mk
 PRODUCTS = RetroDLP retro-dlp retrodlp retrodlp-download
 PACKAGE_PRODUCTS = RetroDLP retro-dlp retrodlp
@@ -30,7 +32,7 @@ GROUP_quickjs_FLAGS = -I$(QUICKJS_COMPAT) -include $(QUICKJS_COMPAT)/quickjs_com
 retro-dlp_TYPE = executable
 retro-dlp_PACKAGE_RESOURCES = $(ALTIVECCORE_DIR)/lib/cacert.pem=cacert.pem
 retrodlp_PACKAGE_RESOURCES = $(PROJECT_ROOT)/source/library/shared/include=include $(PROJECT_ROOT)/LICENSE=LICENSE $(PROJECT_ROOT)/source/library/shared/examples=examples
-retrodlp_PACKAGE_RESOURCES += $(OUTPUT_DIR)/libretrodlp-download.a=lib/libretrodlp-download.a
+retrodlp_PACKAGE_RESOURCES += $(call product,retrodlp-download)=lib/libretrodlp-download.a
 retro-dlp_SOURCES = $(CLI_SOURCES)
 retro-dlp_DEPS = retrodlp-download retrodlp
 retro-dlp_CORE = static
@@ -45,7 +47,7 @@ RetroDLP_COCOA = static
 RetroDLP_STATIC_LIBS = $(ALTIVECCORE_DIR)/lib/libcrypto.a
 RetroDLP_PLIST = Info.plist
 RetroDLP_LOCALIZATIONS = $(BUNDLE_LOCALIZATION_DIRS)
-RetroDLP_RESOURCES = $(filter-out Resources/Info.plist,$(wildcard Resources/*)) $(PROJECT_ROOT)/build/apps/resources/ejs
+RetroDLP_RESOURCES = $(filter-out Resources/Info.plist,$(wildcard Resources/*)) $(BUILD_ROOT)/generated/ejs
 ARCHS ?= ppc i386
 QUICKJS_COMPAT = $(PROJECT_ROOT)/source/library/macOS/apple-gcc4/QuickJS
 GROUP_quickjs_SOURCES = $(addprefix $(QUICKJS_DIR)/,$(QUICKJS_SOURCE_NAMES)) $(QUICKJS_COMPAT)/quickjs_compat.c
@@ -60,3 +62,4 @@ RetroDLP_LDFLAGS = -framework AppKit -framework Foundation -framework CoreFounda
 include $(ALTIVEC_ROOT)/altivec_common_mac.mk
 app: package
 .PHONY: app
+endif

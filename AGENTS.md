@@ -18,7 +18,7 @@ Apple builds use the local Altivec Intelligence container and user-supplied SDKs
   builds, first run `docker compose run --rm altivec-sdk install`, then
   `docker compose run --rm altivec "make clean release"`. Outputs include
   `build/macOS/release/retro-dlp`, `build/iOS/release/retro-dlp`, platform static
-  libraries, `build/macOS/release/RetroDLP.zip`, and `build/iOS/release/RetroDLP.ipa`.
+  libraries, `build/macOS/release/RetroDLP/RetroDLP.zip`, and `build/iOS/release/RetroDLP/RetroDLP.ipa`.
   Apps bundle the CA certificate and version-matched EJS assets. The IPA uses
   jailbreak-oriented `ldid` signing, not Apple distribution signing.
 - Run `make test` for library, CLI, or build changes; `make sanitize` for C

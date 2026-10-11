@@ -19,7 +19,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 "${MAKE:-make}" --no-print-directory -C "$source_root" install \
-  BUILD_DIR="$build_root" DESTDIR="$temporary/stage" PREFIX=/usr >/dev/null
+  BUILD_ROOT="$build_root" DESTDIR="$temporary/stage" PREFIX=/usr >/dev/null
 
 test -f "$temporary/stage/usr/include/retrodlp/retrodlp.h"
 test -f "$temporary/stage/usr/include/retrodlp/assets.h"

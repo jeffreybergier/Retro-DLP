@@ -4,19 +4,11 @@ set -eu
 
 platform=${1:?usage: package-library.sh PLATFORM BUILD_DIR}
 build_root=${2:?usage: package-library.sh PLATFORM BUILD_DIR}
-platform_root=$build_root/$platform
+platform_root=$build_root
 archive=$platform_root/retro-dlp-library.zip
-stage=$build_root/intermediates/packages/$platform
+stage=$(mktemp -d "$build_root/.package-library.XXXXXX")
+trap 'rm -rf -- "$stage"' EXIT HUP INT TERM
 
-case "$stage" in
-  */intermediates/packages/linux|*/intermediates/packages/macOS|*/intermediates/packages/iOS)
-    rm -rf -- "$stage"
-    ;;
-  *)
-    echo "Refusing unsafe package staging path: $stage" >&2
-    exit 1
-    ;;
-esac
 
 mkdir -p "$stage/include/retrodlp" "$stage/lib" "$stage/examples"
 cp source/library/shared/include/retrodlp/retrodlp.h source/library/shared/include/retrodlp/assets.h \

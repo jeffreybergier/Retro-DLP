@@ -120,7 +120,7 @@ printf '%s\n' "$asset_status" | grep -q '"installed":[[:space:]]*false' || \
   fail "fresh asset status was not missing"
 # Tests use pre-provisioned, hash-validated EJS inputs and never download.
 # The public asset API's transport/installation behavior has synthetic tests.
-fixture_assets=${RETRO_DLP_TEST_EJS_DIR:-build/apps/resources/ejs}
+fixture_assets=${RETRO_DLP_TEST_EJS_DIR:-${BUILD_ROOT:-build}/generated/ejs}
 test -f "$fixture_assets/core.min.js" -a -f "$fixture_assets/lib.min.js" || \
   fail "set RETRO_DLP_TEST_EJS_DIR to the local EJS 0.8.0 fixture directory"
 asset_dir=$test_home/.retro-dlp/cache/assets/ejs/0.8.0

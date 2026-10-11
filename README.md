@@ -208,14 +208,14 @@ docker compose run --rm altivec "make release apps"
 `release` and `apps` build the macOS/iOS applications, command-line tools
 and libraries. The outputs are:
 
-- Mac app: `build/macOS/release/RetroDLP.zip`
-- iOS app: `build/iOS/release/RetroDLP.ipa`
-- macOS CLI: `build/macOS/release/retro-dlp.zip` (CLI and `cacert.pem`)
-- iOS CLI: `build/iOS/release/retro-dlp.zip` (CLI and `cacert.pem`)
+- Mac app: `build/macOS/release/RetroDLP/RetroDLP.zip`
+- iOS app: `build/iOS/release/RetroDLP/RetroDLP.ipa`
+- macOS CLI: `build/macOS/release/retro-dlp/retro-dlp.zip` (CLI and `cacert.pem`)
+- iOS CLI: `build/iOS/release/retro-dlp/retro-dlp.zip` (CLI and `cacert.pem`)
 
 Keep each CLI binary with its `cacert.pem` when copying it to a device.
 Apple builds consume previously provisioned EJS assets in
-`build/apps/resources/ejs`; they do not download resources. Offline CLI tests
+`build/generated/ejs`; they do not download resources. Offline CLI tests
 use that directory or `RETRO_DLP_TEST_EJS_DIR`, validate the pinned asset hashes,
 and copy assets into an isolated test directory.
 
@@ -228,12 +228,12 @@ container:
 docker compose run --rm altivec "make linux"
 ```
 
-The binary is `build/linux/retro-dlp`. It is built for the container's Linux
+The binary is `build/linux/release/retro-dlp/retro-dlp`. It is built for the container's Linux
 environment and is intended to run there, not directly on your Linux host. For
 example, to show its help text:
 
 ```sh
-docker compose run --rm altivec "build/linux/retro-dlp --help"
+docker compose run --rm altivec "build/linux/release/retro-dlp/retro-dlp --help"
 ```
 
 ### Running Tests
@@ -258,7 +258,7 @@ iOS GUI build:
 docker compose run --rm altivec "python3 source/gui/iOS/tests/build_ios_ui_test.py"
 ```
 
-Install `build/apps/tests/RetroDLPIOSOfflineTest.ipa` on a jailbroken test
+Install `build/tests/iOS/RetroDLPIOSOfflineTest.ipa` on a jailbroken test
 device and open it. The result is written to the app's `Documents/result.txt`.
 
 ## Source Code Overview
@@ -290,3 +290,10 @@ examples are in `source/library/shared/tests/` and
 Retro-DLP is licensed under the MIT License; see [LICENSE](LICENSE). This
 project also includes third-party software, such as cJSON, QuickJS, and
 L-SMASH, which retain their own licenses in `source/deps/`.
+
+Build roots are resolved from the project Makefile and inherited by child makes.
+`BUILD_ROOT=custom` is relative to the repository root. Native artifacts live in
+`build/<platform>/<configuration>/<product>/`; `BUILD_VARIANT=name` keeps an
+additional build variant. Use `make macOS-clean PRODUCT=<name>` for one product,
+`make macOS-clean` for a platform, or `make clean-all` for the whole build root.
+CI stages release assets in `build/release` (including the release manifest).

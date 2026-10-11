@@ -1,12 +1,23 @@
 PROGRAM := retro-dlp
 VERSION_PLIST := source/library/shared/Info.plist
 VERSION ?= $(shell awk '/<key>CFBundleShortVersionString<\/key>/{getline; gsub(/.*<string>|<\/string>.*/, ""); print; exit}' $(VERSION_PLIST))
-BUILD_DIR := build
-INTERMEDIATE_DIR := $(BUILD_DIR)/intermediates
+PROJECT_ROOT := $(abspath $(dir $(firstword $(MAKEFILE_LIST)))/..)
+BUILD_ROOT ?= $(PROJECT_ROOT)/build
+override BUILD_ROOT := $(abspath $(if $(filter /%,$(BUILD_ROOT)),$(BUILD_ROOT),$(PROJECT_ROOT)/$(BUILD_ROOT)))
+export BUILD_ROOT
+BUILD_DIR := $(BUILD_ROOT)
+CONFIG ?= release
+ifneq ($(words $(CONFIG)),1)
+$(error CONFIG must select exactly one configuration)
+endif
+ifeq ($(filter $(CONFIG),debug release),)
+$(error CONFIG must be debug or release)
+endif
+INTERMEDIATE_DIR := $(BUILD_DIR)/linux/$(CONFIG)/retro-dlp/Intermediates
 MACOS_BUILD_DIR := $(BUILD_DIR)/macOS
 MACOS_LEGACY_BUILD_DIR := $(MACOS_BUILD_DIR)/ppc-i386
 IOS_BUILD_DIR := $(BUILD_DIR)/iOS
-LINUX_BUILD_DIR := $(BUILD_DIR)/linux
+LINUX_BUILD_DIR := $(BUILD_DIR)/linux/$(CONFIG)/retro-dlp
 
 CLI_SOURCES := source/cli/main.c source/cli/cli.c \
 	source/cli/cli_options.c source/cli/cli_render.c \
@@ -109,7 +120,7 @@ MACOS_BASE_CPPFLAGS := $(CPPFLAGS) $(PROJECT_CPPFLAGS) \
 LINUX_CPPFLAGS := $(CPPFLAGS) $(PROJECT_CPPFLAGS) -I$(CJSON_DIR)
 QUICKJS_CPPFLAGS := -I$(QUICKJS_DIR) -D_GNU_SOURCE \
 	-DCONFIG_VERSION=\"$(QUICKJS_VERSION)\"
-CFLAGS ?= -O3 -g
+CFLAGS ?= $(if $(filter debug,$(CONFIG)),-O0,-O3) -g
 LDFLAGS ?=
 LDLIBS ?=
 PREFIX ?= /usr/local
@@ -128,7 +139,7 @@ MACOS_BASE_LIBRARIES := $(ALTIVECCORE) -framework Foundation \
 
 MACOS_INT_DIR := $(INTERMEDIATE_DIR)/macOS
 IOS_INT_DIR := $(INTERMEDIATE_DIR)/iOS
-LINUX_INT_DIR := $(INTERMEDIATE_DIR)/linux
+LINUX_INT_DIR := $(INTERMEDIATE_DIR)
 QUICKJS_INT_DIR := $(LINUX_INT_DIR)/QuickJS
 QUICKJS_OBJECTS := $(addprefix $(QUICKJS_INT_DIR)/, \
 	$(QUICKJS_SOURCE_NAMES:.c=.o))
@@ -190,17 +201,17 @@ release: linux
 linux: $(LINUX_BUILD_DIR)/$(PROGRAM) $(LINUX_LIBRARY) \
 	$(LINUX_DOWNLOAD_LIBRARY)
 
-test: linux $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM) \
-		$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM) \
-		$(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM) \
+test: linux $(BUILD_ROOT)/tests/linux/cli/$(LINUX_TEST_PROGRAM) \
+		$(BUILD_ROOT)/tests/linux/cli/$(LINUX_CONSUMER_TEST_PROGRAM) \
+		$(BUILD_ROOT)/tests/linux/cli/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM) \
 		validate-package validate-examples
 	@echo "--- Running retro-dlp Linux tests ---"
 	@source/cli/tests/cli_test.sh \
 		"$(abspath $(LINUX_BUILD_DIR)/$(PROGRAM))" \
-		"$(abspath $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM))"
-	@$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM)
+		"$(abspath $(BUILD_ROOT)/tests/linux/cli/$(LINUX_TEST_PROGRAM))"
+	@$(BUILD_ROOT)/tests/linux/cli/$(LINUX_CONSUMER_TEST_PROGRAM)
 	@source/library/linux/tests/download_test.sh \
-		"$(abspath $(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM))"
+		"$(abspath $(BUILD_ROOT)/tests/linux/cli/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM))"
 
 examples: $(LINUX_RESOLVER_EXAMPLES) $(LINUX_DOWNLOAD_EXAMPLE)
 
@@ -222,15 +233,15 @@ install: linux
 
 validate-package: $(LINUX_LIBRARY) $(LINUX_DOWNLOAD_LIBRARY)
 	@source/library/linux/tests/package_consumer_test.sh \
-		"$(abspath .)" "$(abspath $(BUILD_DIR))" "$(CC)" "$(CXX)" \
+		"$(abspath .)" "$(abspath $(BUILD_ROOT))" "$(CC)" "$(CXX)" \
 		"$(CFLAGS)" "$(LDFLAGS)" "$(LDLIBS)"
 
 package-libraries: linux
-	@make/package-library.sh linux "$(BUILD_DIR)"
+	@make/package-library.sh linux "$(LINUX_BUILD_DIR)"
 
 sanitize:
-	@$(MAKE) --no-print-directory -f make/Makefile \
-		BUILD_DIR="$(BUILD_DIR)/sanitize" \
+	@RETRO_DLP_TEST_EJS_DIR="$(BUILD_ROOT)/generated/ejs" $(MAKE) --no-print-directory -f make/Makefile \
+		BUILD_ROOT="$(BUILD_ROOT)/sanitize" \
 		CFLAGS="-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined" \
 		LDFLAGS="-fsanitize=address,undefined" test
 
@@ -243,7 +254,7 @@ $(LINUX_BUILD_DIR)/$(PROGRAM): $(LINUX_OBJECTS) \
 		$(LDLIBS) -o $@
 	@echo "  > $@"
 
-$(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM): $(LINUX_TEST_OBJECTS) \
+$(BUILD_ROOT)/tests/linux/cli/$(LINUX_TEST_PROGRAM): $(LINUX_TEST_OBJECTS) \
 		$(QUICKJS_LIBRARY) $(LINUX_LSMASH_LIBRARY)
 	@echo "--- Building retro-dlp Linux Tests ---"
 	@mkdir -p $(dir $@)
@@ -251,7 +262,7 @@ $(LINUX_BUILD_DIR)/$(LINUX_TEST_PROGRAM): $(LINUX_TEST_OBJECTS) \
 		$(LINUX_TEST_OBJECTS) $(LINUX_LIBRARIES) $(LDLIBS) -o $@
 	@echo "  > $@"
 
-$(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM): \
+$(BUILD_ROOT)/tests/linux/cli/$(LINUX_CONSUMER_TEST_PROGRAM): \
 		$(LINUX_CONSUMER_TEST_OBJECT) $(LINUX_LIBRARY)
 	@echo "--- Building public API consumer test ---"
 	@mkdir -p $(dir $@)
@@ -260,7 +271,7 @@ $(LINUX_BUILD_DIR)/$(LINUX_CONSUMER_TEST_PROGRAM): \
 		$(LDLIBS) -o $@
 	@echo "  > $@"
 
-$(LINUX_BUILD_DIR)/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM): \
+$(BUILD_ROOT)/tests/linux/cli/$(LINUX_DOWNLOAD_CONSUMER_TEST_PROGRAM): \
 		$(LINUX_DOWNLOAD_CONSUMER_TEST_OBJECT) $(LINUX_DOWNLOAD_LIBRARY) \
 		$(LINUX_LIBRARY)
 	@echo "--- Building optional download API consumer test ---"
@@ -319,34 +330,17 @@ $(LINUX_INT_DIR)/%.o: %.c
 	@$(CC) $(LINUX_CPPFLAGS) $(COMMON_CFLAGS) $(SOURCE_WARNING_FLAGS) \
 		-MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
-clean: clean-macOS clean-iOS clean-linux
-
-clean-macOS:
-	@echo "Cleaning retro-dlp macOS build artifacts..."
-	@for dir in $(MACOS_INT_DIR) $(MACOS_BUILD_DIR); do \
-		if [ -d "$$dir" ]; then \
-			find "$$dir" -mindepth 1 -maxdepth 1 \
-				-exec rm -rf {} +; \
-		fi; \
-	done
-
-clean-iOS:
-	@echo "Cleaning retro-dlp iOS build artifacts..."
-	@for dir in $(IOS_INT_DIR) $(IOS_BUILD_DIR); do \
-		if [ -d "$$dir" ]; then \
-			find "$$dir" -mindepth 1 -maxdepth 1 \
-				-exec rm -rf {} +; \
-		fi; \
-	done
-
+# This portable Makefile owns Linux outputs only. Apple cleanup is root-owned.
+clean: clean-linux
 clean-linux:
-	@echo "Cleaning retro-dlp Linux build artifacts..."
-	@for dir in $(LINUX_INT_DIR) $(LINUX_BUILD_DIR); do \
-		if [ -d "$$dir" ]; then \
-			find "$$dir" -mindepth 1 -maxdepth 1 \
-				-exec rm -rf {} +; \
-		fi; \
-	done
+	python3 -c 'import pathlib,shutil,sys; \
+	  p,r=map(lambda s:pathlib.Path(s).resolve(),sys.argv[1:3]); \
+	  targets=list(map(pathlib.Path,sys.argv[3:])); \
+	  assert all(s and not any(c.isspace() for c in s) for s in sys.argv[1:]), "Build paths must be nonempty and contain no whitespace"; \
+	  assert r!=p and r not in p.parents and r!=pathlib.Path.home() and (not r.is_relative_to(p) or r.relative_to(p).parts[0] not in ("source","src",".git","make","tests")), "Unsafe BUILD_ROOT"; \
+	  assert all(t.parent.resolve().is_relative_to(r) for t in targets), "Cleanup parent escapes BUILD_ROOT"; \
+	  assert all(t.is_symlink() or not any(f.suffix in (".c",".m",".h",".py",".mk") for f in t.rglob("*")) for t in targets), "Cleanup contains source files"; \
+	  [(t.unlink() if t.is_symlink() else shutil.rmtree(t,ignore_errors=True)) for t in targets]' "$(PROJECT_ROOT)" "$(BUILD_ROOT)" "$(BUILD_ROOT)/linux" "$(BUILD_ROOT)/tests/linux"
 
 .PHONY: release macOS iOS linux test sanitize install package-libraries \
 	examples validate-examples validate-package validate-apple-artifacts \
