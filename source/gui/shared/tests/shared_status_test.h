@@ -155,7 +155,7 @@ static void testSharedLists(RDLPLibrary *library) {
   statusRequire([copy count]==count && [rows cachedObjectAtIndex:0]==nil && [rows cachedObjectAtIndex:count-1]==nil,@"Copy retains a lazy snapshot");
   [copy release];
   NSDictionary *job=[rows objectAtIndex:0];
-  statusRequire([rows cachedObjectAtIndex:0]==job && (count==1 || [rows cachedObjectAtIndex:count-1]==nil),@"Row access loads and caches only the requested job");
+  statusRequire([rows cachedObjectAtIndex:0]==job && (count<=32 || [rows cachedObjectAtIndex:count-1]==nil),@"Row access caches one bounded page rather than the whole list");
   RDLPLibraryRows *queue=[library queueRows];
   NSUInteger index=[queue indexForIdentity:[job objectForKey:@"id"]];
   statusRequire([queue cachedObjectAtIndex:0]==nil,@"Selection lookup does not materialize queue payloads");

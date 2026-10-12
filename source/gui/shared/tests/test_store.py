@@ -15,6 +15,7 @@ XML_BASE = '{http://www.w3.org/XML/1998/namespace}base'
 META = 'https://github.com/jeffreybergier/Retro-DLP/metadata/'
 
 ROOT = Path(__file__).resolve().parents[4]
+SQLITE = Path(os.environ.get('ALTIVEC_ROOT', '/altivec'))/'libs/cocoa-sqlite'
 BUILD = ROOT / 'build/apps/tests'
 BUILD.mkdir(parents=True, exist_ok=True)
 # Bind archive symbols locally: the shipping static library is not built with PIC.
@@ -23,7 +24,7 @@ subprocess.run(['cc', '-std=c99', '-Wall', '-Wextra', '-Werror', '-shared', '-fP
                 str(ROOT/'source/gui/shared/tests/store_probe.c'),
                 str(ROOT/'source/gui/shared/rdapp_strings.c'),
                 str(ROOT/'build/linux/libretrodlp.a'),
-                '-lsqlite3', '-lcurl', '-lcrypto', '-lm', '-ldl', '-lpthread',
+                '-I'+str(SQLITE), str(SQLITE/'ai_query.c'), '-lsqlite3', '-lcurl', '-lcrypto', '-lm', '-ldl', '-lpthread',
                 '-o', str(BUILD/'store.so')], check=True)
 lib = C.CDLL(str(BUILD/'store.so'))
 lib.rdapp_playlist_can_sync.argtypes=[C.c_char_p]
@@ -59,6 +60,7 @@ for name, args in {
     'added_videos_since':[P,I,I,C.POINTER(I)],
     'page':[P,C.c_int,I,S,S,I,I,CB,P],
     'after':[P,C.c_int,I,S,S,I,CB,P],
+    'after_page':[P,C.c_int,I,S,S,I,I,CB,P],
     'index':[P,C.c_int,I,I,C.POINTER(I)],
     'snapshot':[P,S,S,C.POINTER(Entry),C.c_size_t,C.POINTER(I)],
     'account_snapshot':[P,C.POINTER(PlaylistReference),C.c_size_t],
@@ -146,8 +148,10 @@ class StoreTests(unittest.TestCase):
         args=[store or self.db,kind,self.key if key is None else key,video,format]
         if after is None:
             self.check(lib.rdapp_store_page(*args,offset,limit,callback,None))
-        else:
+        elif limit == 1:
             self.check(lib.rdapp_store_after(*args,after,callback,None))
+        else:
+            self.check(lib.rdapp_store_after_page(*args,after,limit,callback,None))
         return rows
     def index(self, kind, identity, key=None, store=None):
         result=I()
@@ -494,6 +498,14 @@ class StoreTests(unittest.TestCase):
             result=self.page(20,after=identity)
             self.assertEqual(int(result[0]['id']),identity-1 if identity!=1 else 20000)
             self.assertLess(lib.rdapp_test_steps(),500,'Sequential reads must seek, not scan a date bucket')
+
+        for identity in (9999, 5000, 1, 19999, 15000):
+            offset = self.index(20, identity) + 1
+            expected = self.page(20, offset=offset, limit=32)
+            lib.rdapp_test_measure(self.db)
+            actual = self.page(20, after=identity, limit=32)
+            self.assertEqual(actual, expected)
+            self.assertLess(lib.rdapp_test_steps(), 10000)
 
     def test_queue_date_order_paging_seek_and_selection_with_ties(self):
         self.check(self.snapshot([(b'abcdefghijk',b'First',0),(b'lmnopqrstuv',b'Second',1)]))

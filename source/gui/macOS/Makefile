@@ -44,6 +44,7 @@ RetroDLP_FLAGS = -I$(SHARED_DIR)
 RetroDLP_DEPS = retrodlp-download retrodlp
 RetroDLP_CORE = static
 RetroDLP_COCOA = static
+RetroDLP_SQLITE = 1
 RetroDLP_STATIC_LIBS = $(ALTIVECCORE_DIR)/lib/libcrypto.a
 RetroDLP_PLIST = Info.plist
 RetroDLP_LOCALIZATIONS = $(BUNDLE_LOCALIZATION_DIRS)

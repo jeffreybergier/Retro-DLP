@@ -1,3 +1,4 @@
+import os
 """Run real resolver/downloader application workflows using local HTTPS fixtures."""
 from pathlib import Path
 import subprocess
@@ -5,6 +6,7 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[4]
+SQLITE = Path(os.environ.get('ALTIVEC_ROOT', '/altivec'))/'libs/cocoa-sqlite'
 BUILD = ROOT/'build/apps/tests'
 BUILD.mkdir(parents=True, exist_ok=True)
 subprocess.run(['cc', '-std=c99', '-Wall', '-Wextra', '-Werror',
@@ -13,7 +15,7 @@ subprocess.run(['cc', '-std=c99', '-Wall', '-Wextra', '-Werror',
     str(ROOT/'source/gui/shared/rdapp_store.c'), str(ROOT/'source/gui/shared/rdapp_service.c'),
     str(ROOT/'source/gui/shared/rdapp_strings.c'),
     str(ROOT/'build/linux/libretrodlp-download.a'), str(ROOT/'build/linux/libretrodlp.a'),
-    '-lsqlite3', '-lcurl', '-lcrypto', '-lm', '-ldl', '-lpthread',
+    '-I'+str(SQLITE), str(SQLITE/'ai_query.c'), '-lsqlite3', '-lcurl', '-lcrypto', '-lm', '-ldl', '-lpthread',
     '-o',str(BUILD/'service-test')], check=True)
 with tempfile.TemporaryDirectory(prefix='rdapp-service-') as directory:
     folder=Path(directory)

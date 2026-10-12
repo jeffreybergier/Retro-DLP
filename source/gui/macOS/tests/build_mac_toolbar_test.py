@@ -49,6 +49,7 @@ cmd += [str(path) for path in sorted(objects.rglob('*.o'))
         if path.name != 'main.m.o']
 cmd += [str(build / 'macOS/release/libretrodlp-download/libretrodlp-download.a'),
         str(build / 'macOS/release/libretrodlp/libretrodlp.a'),
+        '/altivec/libs/cocoa-sqlite/build-mac/lib/libAltivecCocoaSQLite.a',
         '/altivec/libs/core/build-mac/lib/libAltivecCore.a',
         '/altivec/libs/cocoa/build-mac/lib/libAltivecCocoa.a',
         '/altivec/libs/core/build-mac/lib/libcrypto.a']

@@ -43,6 +43,10 @@ int rdapp_store_page(rdapp_store *, rdapp_query, int64_t key, const char *video,
 /* Indexed seek for sequential scrolling; playlists continue to use offsets. */
 int rdapp_store_after(rdapp_store *, rdapp_query, int64_t key, const char *video,
                       const char *format, int64_t identity, rdapp_row_callback, void *);
+/* Bounded seek page with the same ordering as offset pages. */
+int rdapp_store_after_page(rdapp_store *, rdapp_query, int64_t key, const char *video,
+                           const char *format, int64_t identity, int64_t limit,
+                           rdapp_row_callback, void *);
 /* Position for an entry position or job ID in display order; -1 if absent. */
 int rdapp_store_index(rdapp_store *, rdapp_query, int64_t playlist, int64_t identity, int64_t *index);
 /* Count date prefixes in the same read snapshot as the lazily fetched rows.

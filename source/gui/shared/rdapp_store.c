@@ -4,6 +4,7 @@
 #include "rdapp_store.h"
 #include "rdapp_strings.h"
 #include <sqlite3.h>
+#include <ai_query.h>
 #include <retrodlp/retrodlp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,7 +39,7 @@ static int register_playlist_functions(sqlite3 *db) {
     sqlite3_create_function(db,"rdapp_display_title",2,SQLITE_UTF8,NULL,
       display_title_sql,NULL,NULL)==SQLITE_OK;
 }
-struct rdapp_store { sqlite3 *db; char error[512]; };
+struct rdapp_store { ai_query_snapshot *snapshot; sqlite3 *db; char error[512]; };
 static int failure(rdapp_store *s, const char *message) {
   fprintf(stderr,"RetroDLP store failure: %s (sqlite=%d)\n",message,sqlite3_extended_errcode(s->db));
   snprintf(s->error, sizeof(s->error), "%s", message); return 0;
@@ -50,14 +51,17 @@ static int sql(rdapp_store *s, const char *q) {
 }
 static sqlite3_stmt *prepare(rdapp_store *s, const char *q) {
   sqlite3_stmt *p = NULL;
-  if (sqlite3_prepare_v2(s->db, q, -1, &p, NULL) != SQLITE_OK)
+  if ((s->snapshot ? ai_query_snapshot_prepare(s->snapshot, q, &p) : sqlite3_prepare_v2(s->db, q, -1, &p, NULL)) != SQLITE_OK)
     failure(s, sqlite3_errmsg(s->db));
   return p;
+}
+static int finish_statement(rdapp_store *s, sqlite3_stmt *p) {
+  return s->snapshot ? ai_query_snapshot_return(s->snapshot,p) : sqlite3_finalize(p);
 }
 static int done(rdapp_store *s, sqlite3_stmt *p) {
   int ok = p && sqlite3_step(p) == SQLITE_DONE;
   if (!ok) failure(s, sqlite3_errmsg(s->db));
-  sqlite3_finalize(p); return ok;
+  finish_statement(s,p); return ok;
 }
 static void bind_text(sqlite3_stmt *p, int n, const char *v) {
   sqlite3_bind_text(p, n, v ? v : "", -1, SQLITE_TRANSIENT);
@@ -78,7 +82,7 @@ static int refresh_job_metadata(rdapp_store *s,int64_t key) {
   return done(s,p);
 }
 const char *rdapp_store_error(rdapp_store *s) { return s ? rdapp_localize_key(s->error) : rdapp_string(RDAPP_STRING_CANNOT_OPEN_LIBRARY_DATABASE); }
-void rdapp_store_close(rdapp_store *s) { if (s) { sqlite3_close(s->db); free(s); } }
+void rdapp_store_close(rdapp_store *s) { if (s) { if(s->snapshot) ai_query_snapshot_close(s->snapshot); else sqlite3_close(s->db); free(s); } }
 int rdapp_store_open(const char *path, rdapp_store **out) {
   rdapp_store *s = calloc(1, sizeof(*s));
   sqlite3_stmt *p; int version;
@@ -92,10 +96,10 @@ int rdapp_store_open(const char *path, rdapp_store **out) {
   p = prepare(s, "PRAGMA user_version");
   if (!p || sqlite3_step(p) != SQLITE_ROW || sqlite3_column_int(p,0) > 9) {
     fprintf(stderr,"RetroDLP schema version check failed: error=%s code=%d\n",sqlite3_errmsg(s->db),sqlite3_extended_errcode(s->db));
-    sqlite3_finalize(p); rdapp_store_close(s); return 0;
+    finish_statement(s,p); rdapp_store_close(s); return 0;
   }
   version=sqlite3_column_int(p,0);
-  sqlite3_finalize(p);
+  finish_statement(s,p);
   if (!sql(s, "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; BEGIN IMMEDIATE;"
     "CREATE TABLE IF NOT EXISTS playlists (id INTEGER PRIMARY KEY, service_id TEXT NOT NULL UNIQUE,"
     " title TEXT NOT NULL, directory TEXT NOT NULL, synced_at INTEGER);"
@@ -173,7 +177,7 @@ int rdapp_store_playback_seconds(rdapp_store *s,const char *video,double *second
   bind_text(p,1,video); rc=sqlite3_step(p);
   if(rc==SQLITE_ROW) *seconds=sqlite3_column_double(p,0);
   else if(rc!=SQLITE_DONE) failure(s,sqlite3_errmsg(s->db));
-  sqlite3_finalize(p); return rc==SQLITE_ROW || rc==SQLITE_DONE;
+  finish_statement(s,p); return rc==SQLITE_ROW || rc==SQLITE_DONE;
 }
 int rdapp_store_save_playback_seconds(rdapp_store *s,const char *video,double seconds) {
   sqlite3_stmt *p;
@@ -232,7 +236,7 @@ static int each(rdapp_store *s, sqlite3_stmt *p, rdapp_row_callback cb, void *ct
   int rc, n, i; const char *values[32], *names[32];
   if (!p) return 0;
   n=sqlite3_column_count(p);
-  if (n>32) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_TOO_MANY_RESULT_COLUMNS)); }
+  if (n>32) { finish_statement(s,p); return failure(s,rdapp_string_key(RDAPP_STRING_TOO_MANY_RESULT_COLUMNS)); }
   while ((rc=sqlite3_step(p)) == SQLITE_ROW) {
     for(i=0;i<n;++i) { names[i]=sqlite3_column_name(p,i); values[i]=(const char *)sqlite3_column_text(p,i); }
     /* Translate presentation fields only, never write translations into SQLite. */
@@ -245,16 +249,17 @@ static int each(rdapp_store *s, sqlite3_stmt *p, rdapp_row_callback cb, void *ct
         else if(adhoc && !strcmp(names[i],"title")) values[i]=rdapp_string(RDAPP_STRING_ADDED_VIDEOS);
       }
     }
-    if (cb && !cb(ctx,n,names,values)) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_RESULT_PROCESSING_FAILED)); }
+    if (cb && !cb(ctx,n,names,values)) { finish_statement(s,p); return failure(s,rdapp_string_key(RDAPP_STRING_RESULT_PROCESSING_FAILED)); }
   }
   if(rc!=SQLITE_DONE) failure(s,sqlite3_errmsg(s->db));
-  sqlite3_finalize(p); return rc==SQLITE_DONE;
+  finish_statement(s,p); return rc==SQLITE_DONE;
 }
 int rdapp_store_open_reader(const char *path, rdapp_store **out) {
   rdapp_store *s=calloc(1,sizeof(*s)); *out=NULL;
   if(!s) return 0;
-  if(sqlite3_open_v2(path,&s->db,SQLITE_OPEN_READONLY,NULL)!=SQLITE_OK ||
-     !register_playlist_functions(s->db) || !sql(s,"BEGIN")) { rdapp_store_close(s); return 0; }
+  if(ai_query_snapshot_open(path,&s->snapshot)!=SQLITE_OK) { free(s); return 0; }
+  s->db=ai_query_snapshot_database(s->snapshot);
+  if(!register_playlist_functions(s->db)) { rdapp_store_close(s); return 0; }
   *out=s; return 1;
 }
 /* Keep counting free of row projection, sorting and correlated metadata queries. */
@@ -337,7 +342,7 @@ int rdapp_store_count(rdapp_store *s,rdapp_query kind,int64_t key,const char *vi
   *count=0; if(!p) return 0;
   ok=sqlite3_step(p)==SQLITE_ROW;
   if(ok) *count=sqlite3_column_int64(p,0); else failure(s,sqlite3_errmsg(s->db));
-  sqlite3_finalize(p); return ok;
+  finish_statement(s,p); return ok;
 }
 int rdapp_store_page(rdapp_store *s,rdapp_query kind,int64_t key,const char *video,const char *format,
                      int64_t offset,int64_t limit,rdapp_row_callback cb,void *ctx) {
@@ -348,6 +353,11 @@ int rdapp_store_page(rdapp_store *s,rdapp_query kind,int64_t key,const char *vid
 }
 int rdapp_store_after(rdapp_store *s,rdapp_query kind,int64_t key,const char *video,const char *format,
                       int64_t identity,rdapp_row_callback cb,void *ctx) {
+  return rdapp_store_after_page(s,kind,key,video,format,identity,1,cb,ctx);
+}
+int rdapp_store_after_page(rdapp_store *s,rdapp_query kind,int64_t key,const char *video,const char *format,
+                      int64_t identity,int64_t limit,rdapp_row_callback cb,void *ctx) {
+  if(limit<1 || limit>128) return failure(s,"Invalid seek page size");
   const char *fields,*from,*order; char query[2048]; sqlite3_stmt *p;
   if(!query_parts(kind,key,format,&fields,&from,&order) || kind==RDAPP_PLAYLISTS ||
      kind==RDAPP_ADDED_PLAYLISTS || kind==RDAPP_ACCOUNT_PLAYLISTS || kind==RDAPP_PLAYLIST || kind==RDAPP_PLAYLIST_INPUT ||
@@ -358,27 +368,28 @@ int rdapp_store_after(rdapp_store *s,rdapp_query kind,int64_t key,const char *vi
      columns even when thousands of jobs share one enqueue timestamp. */
   if(kind==RDAPP_QUEUE)
     snprintf(query,sizeof(query),"SELECT * FROM (SELECT %s FROM %s "
-      "AND j.enqueueDate=(SELECT enqueueDate FROM jobs WHERE id=?4) AND j.id<?4 ORDER BY %s LIMIT 1) "
+      "AND j.enqueueDate=(SELECT enqueueDate FROM jobs WHERE id=?4) AND j.id<?4 ORDER BY %s LIMIT ?5) "
       "UNION ALL SELECT * FROM (SELECT %s FROM %s "
-      "AND j.enqueueDate<(SELECT enqueueDate FROM jobs WHERE id=?4) ORDER BY %s LIMIT 1) "
-      "ORDER BY enqueueDate DESC,id DESC LIMIT 1",fields,from,order,fields,from,order);
+      "AND j.enqueueDate<(SELECT enqueueDate FROM jobs WHERE id=?4) ORDER BY %s LIMIT ?5) "
+      "ORDER BY enqueueDate DESC,id DESC LIMIT ?5",fields,from,order,fields,from,order);
   else if(kind==RDAPP_ALL_DOWNLOADS)
     snprintf(query,sizeof(query),"SELECT * FROM (SELECT * FROM (SELECT %s FROM %s "
       "AND coalesce(j.latestDownloadDate,0)=(SELECT coalesce(latestDownloadDate,0) FROM jobs WHERE id=?4) "
-      "AND j.id<?4 ORDER BY j.id DESC LIMIT 1) UNION ALL SELECT * FROM (SELECT %s FROM %s "
+      "AND j.id<?4 ORDER BY j.id DESC LIMIT ?5) UNION ALL SELECT * FROM (SELECT %s FROM %s "
       "AND coalesce(j.latestDownloadDate,0)<(SELECT coalesce(latestDownloadDate,0) FROM jobs WHERE id=?4) "
-      "ORDER BY %s LIMIT 1)) ORDER BY coalesce(latestDownloadDate,0) DESC,id DESC LIMIT 1",fields,from,fields,from,order);
+      "ORDER BY %s LIMIT ?5)) ORDER BY coalesce(latestDownloadDate,0) DESC,id DESC LIMIT ?5",fields,from,fields,from,order);
   else if(kind==RDAPP_ADDED_VIDEOS)
     snprintf(query,sizeof(query),"SELECT * FROM (SELECT * FROM (SELECT %s FROM %s "
       "AND coalesce(e.enqueueDate,0)=(SELECT coalesce(enqueueDate,0) FROM entries WHERE playlist_id=?1 AND position=?4) "
-      "AND e.position<?4 ORDER BY e.position DESC LIMIT 1) UNION ALL SELECT * FROM (SELECT %s FROM %s "
+      "AND e.position<?4 ORDER BY e.position DESC LIMIT ?5) UNION ALL SELECT * FROM (SELECT %s FROM %s "
       "AND coalesce(e.enqueueDate,0)<(SELECT coalesce(enqueueDate,0) FROM entries WHERE playlist_id=?1 AND position=?4) "
-      "ORDER BY %s LIMIT 1)) ORDER BY coalesce(enqueueDate,0) DESC,position DESC LIMIT 1",fields,from,fields,from,order);
-  else snprintf(query,sizeof(query),"SELECT %s FROM %s AND %s%s?4 ORDER BY %s LIMIT 1",fields,from,
+      "ORDER BY %s LIMIT ?5)) ORDER BY coalesce(enqueueDate,0) DESC,position DESC LIMIT ?5",fields,from,fields,from,order);
+  else snprintf(query,sizeof(query),"SELECT %s FROM %s AND %s%s?4 ORDER BY %s LIMIT ?5",fields,from,
     (kind==RDAPP_ENTRIES || kind==RDAPP_VIDEO_ENTRIES || kind==RDAPP_MISSING || kind==RDAPP_DOWNLOAD_CANDIDATES)?"e.position":"j.id",
     (kind==RDAPP_ENTRIES || kind==RDAPP_VIDEO_ENTRIES || kind==RDAPP_MISSING || kind==RDAPP_DOWNLOAD_CANDIDATES)?">":"<",order);
   p=prepare(s,query); if(!p) return 0;
   sqlite3_bind_int64(p,1,key); bind_text(p,2,video); bind_text(p,3,format); sqlite3_bind_int64(p,4,identity);
+  sqlite3_bind_int64(p,5,limit);
   return each(s,p,cb,ctx);
 }
 int rdapp_store_list(rdapp_store *s,rdapp_query kind,int64_t key,rdapp_row_callback cb,void *ctx) {
@@ -399,8 +410,8 @@ int rdapp_store_index(rdapp_store *s,rdapp_query kind,int64_t key,int64_t identi
   p=prepare(s,query); if(!p) return 0;
   sqlite3_bind_int64(p,1,key); sqlite3_bind_int64(p,2,identity);
   ok=sqlite3_step(p)==SQLITE_ROW;
-  if(!ok || !sqlite3_column_int64(p,0)) { sqlite3_finalize(p); return ok; }
-  sqlite3_finalize(p);
+  if(!ok || !sqlite3_column_int64(p,0)) { finish_statement(s,p); return ok; }
+  finish_statement(s,p);
   if(kind==RDAPP_QUEUE)
     snprintf(query,sizeof(query),"SELECT count(*) FROM %s AND (j.enqueueDate,j.id)>(SELECT enqueueDate,id FROM jobs WHERE id=?2)",from);
   else if(kind==RDAPP_ALL_DOWNLOADS)
@@ -414,7 +425,7 @@ int rdapp_store_index(rdapp_store *s,rdapp_query kind,int64_t key,int64_t identi
   sqlite3_bind_int64(p,1,key); sqlite3_bind_int64(p,2,identity);
   ok=sqlite3_step(p)==SQLITE_ROW;
   if(ok) *index=sqlite3_column_int64(p,0); else failure(s,sqlite3_errmsg(s->db));
-  sqlite3_finalize(p); return ok;
+  finish_statement(s,p); return ok;
 }
 int rdapp_store_downloads_since(rdapp_store *s,int64_t timestamp,int64_t *count) {
   sqlite3_stmt *p=prepare(s,"SELECT count(*) FROM jobs WHERE state='complete' AND coalesce(latestDownloadDate,0)>=?1");
@@ -422,7 +433,7 @@ int rdapp_store_downloads_since(rdapp_store *s,int64_t timestamp,int64_t *count)
   if(!p) return 0;
   sqlite3_bind_int64(p,1,timestamp); ok=sqlite3_step(p)==SQLITE_ROW;
   if(ok) *count=sqlite3_column_int64(p,0); else failure(s,sqlite3_errmsg(s->db));
-  sqlite3_finalize(p); return ok;
+  finish_statement(s,p); return ok;
 }
 int rdapp_store_added_videos_since(rdapp_store *s,int64_t key,int64_t timestamp,int64_t *count) {
   sqlite3_stmt *p=prepare(s,"SELECT count(*) FROM entries WHERE playlist_id=?1 AND coalesce(enqueueDate,0)>=?2 "
@@ -431,7 +442,7 @@ int rdapp_store_added_videos_since(rdapp_store *s,int64_t key,int64_t timestamp,
   if(!p) return 0;
   sqlite3_bind_int64(p,1,key); sqlite3_bind_int64(p,2,timestamp); ok=sqlite3_step(p)==SQLITE_ROW;
   if(ok) *count=sqlite3_column_int64(p,0); else failure(s,sqlite3_errmsg(s->db));
-  sqlite3_finalize(p); return ok;
+  finish_statement(s,p); return ok;
 }
 int rdapp_store_playlist(rdapp_store *s,const char *id,const char *title,int64_t *key) {
   char safe[128], directory[256]; sqlite3_stmt *p; int ok;
@@ -448,7 +459,7 @@ int rdapp_store_playlist(rdapp_store *s,const char *id,const char *title,int64_t
   p=prepare(s,"SELECT id FROM playlists WHERE service_id=?"); if(!p) return 0;
   bind_text(p,1,id); ok=sqlite3_step(p)==SQLITE_ROW;
   if(ok && key) *key=sqlite3_column_int64(p,0);
-  sqlite3_finalize(p); return ok;
+  finish_statement(s,p); return ok;
 }
 /* Discovery promotes an existing manual entry without changing its key,
    directory, membership, or downloads. Ordinary sync never demotes it. */
@@ -542,14 +553,14 @@ static int add_adhoc(rdapp_store *s,const char *video_id,const char *title,const
   p=prepare(s,"SELECT position FROM entries WHERE playlist_id=? AND video_id=? ORDER BY position LIMIT 1"); if(!p) goto rollback;
   sqlite3_bind_int64(p,1,k); bind_text(p,2,video_id); exists=sqlite3_step(p)==SQLITE_ROW;
   if(exists) position=sqlite3_column_int64(p,0);
-  sqlite3_finalize(p);
+  finish_statement(s,p);
   if(exists) {
     p=prepare(s,"UPDATE entries SET title=coalesce(?,title) WHERE playlist_id=? AND position=?"); if(!p) goto rollback;
     sqlite3_bind_text(p,1,title,-1,SQLITE_TRANSIENT); sqlite3_bind_int64(p,2,k); sqlite3_bind_int64(p,3,position); if(!done(s,p)) goto rollback;
   } else {
     p=prepare(s,"SELECT coalesce(max(position)+1,0) FROM entries WHERE playlist_id=?"); if(!p) goto rollback;
-    sqlite3_bind_int64(p,1,k); if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); goto rollback; }
-    position=sqlite3_column_int64(p,0); sqlite3_finalize(p);
+    sqlite3_bind_int64(p,1,k); if(sqlite3_step(p)!=SQLITE_ROW) { finish_statement(s,p); goto rollback; }
+    position=sqlite3_column_int64(p,0); finish_statement(s,p);
     p=prepare(s,"INSERT INTO entries(playlist_id,position,video_id,title) VALUES(?,?,?,coalesce(?4,(SELECT title FROM videos WHERE id=?3)))"); if(!p) goto rollback;
     sqlite3_bind_int64(p,1,k); sqlite3_bind_int64(p,2,position); bind_text(p,3,video_id); sqlite3_bind_text(p,4,title,-1,SQLITE_TRANSIENT); if(!done(s,p)) goto rollback;
   }
@@ -594,10 +605,10 @@ int rdapp_store_claim(rdapp_store *s,rdapp_row_callback cb,void *ctx) {
   p=prepare(s,"SELECT id,title FROM jobs WHERE state='queued' ORDER BY id LIMIT 1");
   if(!p) goto fail;
   rc=sqlite3_step(p);
-  if(rc==SQLITE_DONE) { sqlite3_finalize(p); return sql(s,"COMMIT"); }
-  if(rc!=SQLITE_ROW) { failure(s,sqlite3_errmsg(s->db)); sqlite3_finalize(p); goto fail; }
+  if(rc==SQLITE_DONE) { finish_statement(s,p); return sql(s,"COMMIT"); }
+  if(rc!=SQLITE_ROW) { failure(s,sqlite3_errmsg(s->db)); finish_statement(s,p); goto fail; }
   id=sqlite3_column_int64(p,0); rdapp_filename((const char *)sqlite3_column_text(p,1),safe,sizeof(safe));
-  snprintf(file,sizeof(file),"%s [%lld].mp4",safe,(long long)id); sqlite3_finalize(p);
+  snprintf(file,sizeof(file),"%s [%lld].mp4",safe,(long long)id); finish_statement(s,p);
   p=prepare(s,"UPDATE jobs SET state='running', error='', path=(SELECT directory FROM playlists WHERE id=playlist_id)||'/'||? WHERE id=?");
   if(!p) goto fail;
   bind_text(p,1,file); sqlite3_bind_int64(p,2,id); if(!done(s,p)) goto fail;
@@ -613,13 +624,13 @@ int rdapp_store_resolve_job(rdapp_store *s,int64_t key,const char *title,char *p
   p=prepare(s,"SELECT j.path,p.service_id,p.directory FROM jobs j JOIN playlists p ON p.id=j.playlist_id WHERE j.id=? AND j.state='running'");
   if(!p) goto rollback;
   sqlite3_bind_int64(p,1,key);
-  if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); failure(s,rdapp_string_key(RDAPP_STRING_DOWNLOAD_IS_NO_LONGER_RUNNING)); goto rollback; }
+  if(sqlite3_step(p)!=SQLITE_ROW) { finish_statement(s,p); failure(s,rdapp_string_key(RDAPP_STRING_DOWNLOAD_IS_NO_LONGER_RUNNING)); goto rollback; }
   adhoc=!strcmp((const char *)sqlite3_column_text(p,1),RDAPP_ADHOC_PLAYLIST_ID);
   if(adhoc) {
     rdapp_filename(title,safe,sizeof(safe));
     n=snprintf(resolved,sizeof(resolved),"%s/%s [%lld].mp4",sqlite3_column_text(p,2),safe,(long long)key);
   } else n=snprintf(resolved,sizeof(resolved),"%s",sqlite3_column_text(p,0));
-  sqlite3_finalize(p);
+  finish_statement(s,p);
   if(n<0 || n>=(int)sizeof(resolved) || (size_t)n>=capacity) { failure(s,rdapp_string_key(RDAPP_STRING_RESOLVED_PATH_IS_TOO_LONG)); goto rollback; }
   if(adhoc) {
     const char *updates[]={
@@ -731,26 +742,26 @@ int rdapp_store_export(rdapp_store *s,int64_t key,const char *root) {
   sqlite3_stmt *p; char dir[PATH_MAX],path[PATH_MAX],temp[PATH_MAX],legacy[PATH_MAX],legacy_temp[PATH_MAX]; FILE *f,*m; int fd,mfd,rc,adhoc; char query[2048]; struct stat st;
   p=prepare(s,"SELECT directory,title,service_id,source,removed FROM playlists WHERE id=?"); if(!p) return 0;
   sqlite3_bind_int64(p,1,key);
-  if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_PLAYLIST_DOES_NOT_EXIST)); }
+  if(sqlite3_step(p)!=SQLITE_ROW) { finish_statement(s,p); return failure(s,rdapp_string_key(RDAPP_STRING_PLAYLIST_DOES_NOT_EXIST)); }
   adhoc=!strcmp((const char *)sqlite3_column_text(p,2),RDAPP_ADHOC_PLAYLIST_ID);
   rc=snprintf(dir,sizeof(dir),"%s/%s",root,sqlite3_column_text(p,0));
-  if(rc<0 || (size_t)rc>=sizeof(dir)) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_CANNOT_CREATE_PLAYLIST_DIRECTORY)); }
+  if(rc<0 || (size_t)rc>=sizeof(dir)) { finish_statement(s,p); return failure(s,rdapp_string_key(RDAPP_STRING_CANNOT_CREATE_PLAYLIST_DIRECTORY)); }
   if(snprintf(path,sizeof(path),"%s/Playlist.xspf",dir)>=(int)sizeof(path) ||
      snprintf(legacy,sizeof(legacy),"%s/Playlist.m3u8",dir)>=(int)sizeof(legacy) ||
      snprintf(temp,sizeof(temp),"%s/.playlist-XXXXXX",dir)>=(int)sizeof(temp) ||
-     snprintf(legacy_temp,sizeof(legacy_temp),"%s/.playlist-XXXXXX",dir)>=(int)sizeof(legacy_temp)) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_PLAYLIST_PATH_IS_TOO_LONG)); }
+     snprintf(legacy_temp,sizeof(legacy_temp),"%s/.playlist-XXXXXX",dir)>=(int)sizeof(legacy_temp)) { finish_statement(s,p); return failure(s,rdapp_string_key(RDAPP_STRING_PLAYLIST_PATH_IS_TOO_LONG)); }
   if(sqlite3_column_int(p,4)) {
-    sqlite3_finalize(p);
+    finish_statement(s,p);
     if((unlink(path) && errno!=ENOENT) || (unlink(legacy) && errno!=ENOENT)) return failure(s,rdapp_string_key(RDAPP_STRING_CANNOT_REMOVE_PLAYLIST_EXPORTS));
     return 1;
   }
-  if(!rdapp_make_directory(dir)) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_CANNOT_CREATE_PLAYLIST_DIRECTORY)); }
-  fd=mkstemp(temp); if(fd<0) { sqlite3_finalize(p); return failure(s,strerror(errno)); }
-  f=fdopen(fd,"w"); if(!f) { sqlite3_finalize(p); close(fd); unlink(temp); return failure(s,strerror(errno)); }
+  if(!rdapp_make_directory(dir)) { finish_statement(s,p); return failure(s,rdapp_string_key(RDAPP_STRING_CANNOT_CREATE_PLAYLIST_DIRECTORY)); }
+  fd=mkstemp(temp); if(fd<0) { finish_statement(s,p); return failure(s,strerror(errno)); }
+  f=fdopen(fd,"w"); if(!f) { finish_statement(s,p); close(fd); unlink(temp); return failure(s,strerror(errno)); }
   mfd=mkstemp(legacy_temp);
-  if(mfd<0) { sqlite3_finalize(p); fclose(f); unlink(temp); return failure(s,strerror(errno)); }
+  if(mfd<0) { finish_statement(s,p); fclose(f); unlink(temp); return failure(s,strerror(errno)); }
   m=fdopen(mfd,"w");
-  if(!m) { sqlite3_finalize(p); close(mfd); fclose(f); unlink(temp); unlink(legacy_temp); return failure(s,strerror(errno)); }
+  if(!m) { finish_statement(s,p); close(mfd); fclose(f); unlink(temp); unlink(legacy_temp); return failure(s,strerror(errno)); }
   fputs("#EXTM3U\n",m);
   /* VLC 0.9.x requires an explicit base instead of using the playlist's URL.
      Its importer concatenates the base and location, so retain the final slash. */
@@ -762,7 +773,7 @@ int rdapp_store_export(rdapp_store *s,int64_t key,const char *root) {
     xspf_resource(f,"info","https://www.youtube.com/playlist?list=",(const char *)sqlite3_column_text(p,2));
     xspf_resource(f,"identifier","https://www.youtube.com/playlist?list=",(const char *)sqlite3_column_text(p,2));
   }
-  sqlite3_finalize(p);
+  finish_statement(s,p);
   fputs("  <trackList>\n",f);
   snprintf(query,sizeof(query),"SELECT j.path,e.title,e.channel,e.description_snippet,e.video_id,e.position,e.duration,"
     "e.channel_id,e.view_count_text,e.published_text,e.view_count,"
@@ -805,7 +816,7 @@ int rdapp_store_export(rdapp_store *s,int64_t key,const char *root) {
       fputs("  </track>\n",f);
     }
   }
-  sqlite3_finalize(p);
+  finish_statement(s,p);
   fputs("  </trackList>\n</playlist>\n",f);
   { int ok=rc==SQLITE_DONE && !ferror(f) && !ferror(m);
     if(fflush(f) || fsync(fd)) ok=0;
@@ -838,14 +849,14 @@ int rdapp_store_reconcile_job(rdapp_store *s,int64_t key,const char *root) {
     else if(!strcmp(state,"interrupted") && exists && format[0])
       ok=rdapp_store_finish(s,key,"complete",format,rdapp_string_key(RDAPP_STRING_RECOVERED_COMPLETED_DOWNLOAD_AFTER_INTERRUPTION));
   } else if(rc!=SQLITE_DONE) ok=failure(s,sqlite3_errmsg(s->db));
-  sqlite3_finalize(p); return ok;
+  finish_statement(s,p); return ok;
 }
 int rdapp_store_export_removed(rdapp_store *s,const char *root) {
   sqlite3_stmt *p=prepare(s,"SELECT id FROM playlists WHERE removed=1"); int rc,ok=1;
   if(!p) return 0;
   while((rc=sqlite3_step(p))==SQLITE_ROW)
     if(!rdapp_store_export(s,sqlite3_column_int64(p,0),root)) { ok=0; break; }
-  sqlite3_finalize(p); return ok && rc==SQLITE_DONE;
+  finish_statement(s,p); return ok && rc==SQLITE_DONE;
 }
 int rdapp_store_reconcile(rdapp_store *s,const char *root) {
   sqlite3_stmt *p=prepare(s,"SELECT id,path,state,actual_format FROM jobs WHERE state IN ('complete','interrupted')");
@@ -865,14 +876,14 @@ int rdapp_store_reconcile(rdapp_store *s,const char *root) {
       ok=rdapp_store_finish(s,key,"complete",format,rdapp_string_key(RDAPP_STRING_RECOVERED_COMPLETED_DOWNLOAD_AFTER_INTERRUPTION));
     if(!ok) break;
   }
-  sqlite3_finalize(p);
+  finish_statement(s,p);
   if(!ok || rc!=SQLITE_DONE) return 0;
   p=prepare(s,"SELECT id FROM playlists WHERE removed=0");
   if(!p) return 0;
   while((rc=sqlite3_step(p))==SQLITE_ROW) {
     if(!rdapp_store_export(s,sqlite3_column_int64(p,0),root)) { ok=0; break; }
   }
-  sqlite3_finalize(p); return ok && rc==SQLITE_DONE;
+  finish_statement(s,p); return ok && rc==SQLITE_DONE;
 }
 static int remove_download_file(rdapp_store *s,const char *path,rdapp_remove_file_callback remove_file,void *context) {
   struct stat info;
@@ -892,12 +903,12 @@ int rdapp_store_remove_file_with_callback(rdapp_store *s,int64_t key,const char 
   const char *files[]={"video.mp4","video.mp4.part","video.mp4.video.mp4","video.mp4.video.mp4.part","video.mp4.audio.m4a","video.mp4.audio.m4a.part"};
   if(!p) return 0;
   sqlite3_bind_int64(p,1,key);
-  if(sqlite3_step(p)!=SQLITE_ROW) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_JOB_DOES_NOT_EXIST)); }
-  if(!strcmp((const char *)sqlite3_column_text(p,2),"running")) { sqlite3_finalize(p); return failure(s,rdapp_string_key(RDAPP_STRING_CANCEL_THE_ACTIVE_DOWNLOAD_BEFORE_REMOVING_IT)); }
+  if(sqlite3_step(p)!=SQLITE_ROW) { finish_statement(s,p); return failure(s,rdapp_string_key(RDAPP_STRING_JOB_DOES_NOT_EXIST)); }
+  if(!strcmp((const char *)sqlite3_column_text(p,2),"running")) { finish_statement(s,p); return failure(s,rdapp_string_key(RDAPP_STRING_CANCEL_THE_ACTIVE_DOWNLOAD_BEFORE_REMOVING_IT)); }
   playlist=sqlite3_column_int64(p,1);
   n=snprintf(path,sizeof(path),"%s/%s",root,sqlite3_column_text(p,0));
   if(!sqlite3_column_bytes(p,0)) path[0]=0;
-  sqlite3_finalize(p);
+  finish_statement(s,p);
   if(n<0 || (size_t)n>=sizeof(path)) return failure(s,rdapp_string_key(RDAPP_STRING_DOWNLOAD_PATH_IS_TOO_LONG));
   if(path[0] && !remove_download_file(s,path,remove_file,context)) return 0;
   if(snprintf(staging,sizeof(staging),"%s/.staging/%lld",root,(long long)key)>=(int)sizeof(staging)) return failure(s,rdapp_string_key(RDAPP_STRING_STAGING_PATH_IS_TOO_LONG));

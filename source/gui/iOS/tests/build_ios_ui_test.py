@@ -75,7 +75,8 @@ for arch, minimum in [('armv7', '5.0'), ('arm64', '7.0')]:
             if path.name != 'main.m.o']
     cmd += [str(build / 'iOS/release/libretrodlp-download/libretrodlp-download.a'),
             str(build / 'iOS/release/libretrodlp/libretrodlp.a'),
-            '/altivec/libs/core/build-phone/lib/libAltivecCore.a',
+            '/altivec/libs/cocoa-sqlite/build-phone/lib/libAltivecCocoaSQLite.a',
+        '/altivec/libs/core/build-phone/lib/libAltivecCore.a',
             '/altivec/libs/cocoa/build-phone/lib/libAltivecCocoa.a',
             '/altivec/libs/core/build-phone/lib/libcrypto.a']
     for framework in ['UIKit', 'Foundation', 'CoreGraphics', 'CoreText',

@@ -1,10 +1,12 @@
 #import <Foundation/Foundation.h>
+#import <AIPagedRows.h>
+@class AIStoreObserver;
 #import "rdapp_store.h"
 
 /* Immutable, count-first database list. Row payloads are loaded on demand and
    cached in a bounded working set. Each list holds its own WAL read snapshot. */
 @class RDLPLibrary;
-@interface RDLPLibraryRows : NSArray {
+@interface RDLPLibraryRows : AIPagedRows {
 @private
   void *reader_;
   RDLPLibrary *owner_;
@@ -14,11 +16,9 @@
   NSString *video_, *format_;
   NSUInteger count_, lastIndex_;
   long long lastIdentity_;
-  NSMutableDictionary *cache_;
 }
 - (NSUInteger)rowsSinceDate:(NSDate *)date;
 - (NSUInteger)indexForIdentity:(NSString *)identity;
-- (id)cachedObjectAtIndex:(NSUInteger)index;
 /* Resolve a playlist within this list's snapshot, preserving sidebar selection. */
 - (NSDictionary *)playlistForID:(NSString *)key;
 @end
@@ -33,6 +33,7 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
 @interface RDLPLibrary : NSObject {
 @private
   void *store_;
+  AIStoreObserver *storeObserver_;
   NSLock *lock_, *cancelLock_;
   id platformStorage_;
   NSMutableArray *commands_;
