@@ -3,7 +3,7 @@
 - (id)initWithStyle:(UITableViewStyle)style;
 {
   self=[super initWithStyle:style];
-  if(self) [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(pageLoaded:) name:AIPagedRowsDidLoadNotification object:nil];
+  if(self) [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(collectionReadFailed:) name:AICollectionReadFailedNotification object:nil];
   if(self) [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(libraryClosed:) name:RDLPLibraryWillClose object:nil];
   return self;
 }
@@ -79,27 +79,16 @@
 }
 - (void)discardList;
 {
+  [collectionAdapter_ invalidate]; [collectionAdapter_ release]; collectionAdapter_=nil;
   [listLoader_ invalidate]; [listLoader_ release]; listLoader_=nil;
   NSEnumerator *e=[sections_ objectEnumerator]; NSDictionary *section;
   while((section=[e nextObject])) [[section objectForKey:@"rows"] RDLP_invalidateRows];
 }
-- (void)pageLoaded:(NSNotification *)note;
+- (void)collectionReadFailed:(NSNotification *)note;
 {
-  NSEnumerator *e=[sections_ objectEnumerator]; NSDictionary *section;
-  while((section=[e nextObject])) if([[section objectForKey:@"rows"] RDLP_containsRows:[note object]]) {
-    id error=[[note userInfo] objectForKey:@"error"];
-    if(error && error!=[NSNull null]) [[[self listRequest] objectForKey:@"library"] reportListError:[error localizedDescription]];
-    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(reloadPages:) object:nil];
-    [self performSelector:@selector(reloadPages:) withObject:nil afterDelay:0]; break;
-  }
-}
-- (void)reloadPages:(id)ignored;
-{
-  (void)ignored; if(![self canApplyList]) return;
-  CGPoint offset=[[self tableView] contentOffset];
-  NSIndexPath *selection=[[self tableView] indexPathForSelectedRow];
-  [[self tableView] reloadData]; [[self tableView] setContentOffset:offset animated:NO];
-  if(selection) [[self tableView] selectRowAtIndexPath:selection animated:NO scrollPosition:UITableViewScrollPositionNone];
+  if([note object]!=collectionAdapter_) return;
+  [[[self listRequest] objectForKey:@"library"] reportListError:
+    [[[note userInfo] objectForKey:@"error"] localizedDescription]];
 }
 - (void)didLoadList:(NSDictionary *)result;
 {
@@ -108,14 +97,17 @@
   NSEnumerator *e=[sections_ objectEnumerator]; NSDictionary *section;
   while((section=[e nextObject])) [[section objectForKey:@"rows"] RDLP_invalidateRows];
   [sections_ release]; sections_=[[result objectForKey:@"sections"] retain];
-  [[self tableView] reloadData];
+  BOOL restoreFallback=![[collectionAdapter_ snapshot] hasCompleteIdentities] ||
+    ![[result objectForKey:@"collection"] hasCompleteIdentities];
+  if(!collectionAdapter_) collectionAdapter_=[[AICollectionTableAdapter alloc] initWithTableView:[self tableView]];
+  [collectionAdapter_ applySnapshot:[result objectForKey:@"collection"]];
   NSArray *anchor=[result objectForKey:@"anchorIndex"], *selection=[result objectForKey:@"selectionIndex"];
-  if(anchor) {
+  if(restoreFallback && anchor) {
     NSIndexPath *index=[NSIndexPath indexPathForRow:[[anchor objectAtIndex:1] integerValue] inSection:[[anchor objectAtIndex:0] integerValue]];
     CGPoint offset=[[self tableView] contentOffset]; offset.y=[[self tableView] rectForRowAtIndexPath:index].origin.y+[[result objectForKey:@"delta"] doubleValue];
     [[self tableView] setContentOffset:offset animated:NO];
   }
-  if(selection) [[self tableView] selectRowAtIndexPath:[NSIndexPath indexPathForRow:[[selection objectAtIndex:1] integerValue] inSection:[[selection objectAtIndex:0] integerValue]] animated:NO scrollPosition:UITableViewScrollPositionNone];
+  if(restoreFallback && selection) [[self tableView] selectRowAtIndexPath:[NSIndexPath indexPathForRow:[[selection objectAtIndex:1] integerValue] inSection:[[selection objectAtIndex:0] integerValue]] animated:NO scrollPosition:UITableViewScrollPositionNone];
   [self refreshStatus:nil];
 }
 @end

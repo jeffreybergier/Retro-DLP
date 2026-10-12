@@ -64,6 +64,7 @@
 - (NSError *)readError;
 { return [source_ respondsToSelector:@selector(readError)]?[(AIPagedRows *)source_ readError]:nil; }
 - (void)RDLP_invalidateRows; { [source_ RDLP_invalidateRows]; }
+- (NSArray *)RDLP_collectionIdentifiers; { return nil; }
 - (BOOL)RDLP_containsRows:(id)rows; { return [source_ RDLP_containsRows:rows]; }
 - (NSUInteger)indexForIdentity:(NSString *)identity;
 {
@@ -113,7 +114,7 @@
     NSArray *slice=[[[RDLPDownloadRangeRows alloc] initWithRows:rows
       offset:[[section objectForKey:@"offset"] unsignedLongValue]
       count:[[section objectForKey:@"count"] unsignedLongValue] sections:nil] autorelease];
-    [result addObject:[NSDictionary dictionaryWithObjectsAndKeys:[section objectForKey:@"title"],@"title",slice,@"rows",nil]];
+    [result addObject:[NSDictionary dictionaryWithObjectsAndKeys:[section objectForKey:@"title"],@"title",slice,@"rows",rows,@"pageSource",[section objectForKey:@"offset"],@"pageOffset",nil]];
   }
   return result;
 }

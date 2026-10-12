@@ -509,6 +509,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   [window setRootViewController:previous]; [previous release]; pump();
   [navigation release]; [root release]; [library shutdown]; [library release];
 }
+#import "ios_collection_test.h"
 @interface RDLPIOSOfflineTest : UIResponder <UIApplicationDelegate> {
   UIWindow *window_;
   RDLPOfflineLibrary *library_;
@@ -548,6 +549,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   [@"RUNNING" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSString *report=@"PASS";
   @try {
+    collectionTest(window_);
     if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestLocalizationOnly"] boolValue]) {
       testSharedLocalization([documents_ stringByAppendingPathComponent:@"LocalizationFixture"]);
       [@"PASS: native shared bundle localization, owned C UTF-8, translated rows/status, stable identifiers and paths" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
@@ -938,7 +940,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     [queue refresh:nil]; pump(); screenshot(window_,[documents_ stringByAppendingPathComponent:@"queue.png"]);
     [[queue tableView] setContentOffset:CGPointZero animated:NO];
     CGPoint browsingOffset=[[queue tableView] contentOffset]; [queue refresh:nil]; pump();
-    require(CGPointEqualToPoint(browsingOffset,[[queue tableView] contentOffset]),@"Progress refresh must not scroll back to the selected quality");
+    require(CGPointEqualToPoint(browsingOffset,[[queue tableView] contentOffset]),[NSString stringWithFormat:@"Progress refresh must not scroll back to the selected quality (%.2f -> %.2f)",browsingOffset.y,[[queue tableView] contentOffset].y]);
     RDLPStatusBarView *queueBar=[queue valueForKey:@"statusBar_"];
     UIProgressView *progress=[queueBar valueForKey:@"progress_"];
     require([progress isHidden],@"Historical jobs do not activate progress");

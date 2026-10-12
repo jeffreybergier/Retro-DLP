@@ -1,3 +1,4 @@
+#import <AICollectionSnapshot.h>
 #import "RDLPLibrarySections.h"
 #import "RDLPVideoRows.h"
 #import "RDLPDownloadSections.h"
@@ -21,6 +22,7 @@
 { self=[super init]; if(self) { source_=[rows retain]; model_=[model retain]; screen_=screen; playlist_=[playlist copy]; } return self; }
 - (void)dealloc; { [source_ release]; [model_ release]; [playlist_ release]; [super dealloc]; }
 - (NSUInteger)count; { return [source_ count]; }
+- (NSArray *)RDLP_collectionIdentifiers; { return [source_ RDLP_collectionIdentifiers]; }
 - (id)copyWithZone:(NSZone *)zone; { (void)zone; return [self retain]; }
 - (NSArray *)pageAtOffset:(NSUInteger)offset error:(NSError **)error;
 {
@@ -53,6 +55,21 @@
   NSArray *sections=[model sectionsForScreen:(RDLPScreen)[[input objectForKey:@"mode"] intValue] playlist:playlist video:[input objectForKey:@"video"] collapsed:nil];
   NSMutableDictionary *result=[NSMutableDictionary dictionaryWithDictionary:input];
   [result setObject:sections forKey:@"sections"];
+  NSMutableArray *metadata=[NSMutableArray array];
+  NSEnumerator *sectionEnumerator=[sections objectEnumerator]; NSDictionary *item;
+  NSUInteger remaining=AICollectionIdentityLimit;
+  while((item=[sectionEnumerator nextObject])) {
+    NSMutableDictionary *entry=[[item mutableCopy] autorelease];
+    [entry setObject:[item objectForKey:@"title"] forKey:@"id"];
+    NSArray *rows=[item objectForKey:@"rows"];
+    if([rows count]<=remaining) {
+      NSArray *ids=[rows RDLP_collectionIdentifiers];
+      if(ids) [entry setObject:ids forKey:@"identifiers"];
+      remaining-=[rows count];
+    } else remaining=0;
+    [metadata addObject:entry];
+  }
+  [result setObject:[[[AICollectionSnapshot alloc] initWithSections:metadata] autorelease] forKey:@"collection"];
   if(playlist) [result setObject:playlist forKey:@"playlist"];
   NSArray *keys=[NSArray arrayWithObjects:@"anchor",@"selection",nil];
   NSEnumerator *e=[keys objectEnumerator]; NSString *key;

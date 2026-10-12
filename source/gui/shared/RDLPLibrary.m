@@ -1,3 +1,4 @@
+#import <AICollectionSnapshot.h>
 #import <AIStoreObserver.h>
 #import "RDLPListLoader.h"
 #import "RDLPLibrary.h"
@@ -108,6 +109,12 @@ static int listCancelled(void *context) { return [(RDLPListLoader *)context isCa
   [pageReadLock_ unlock];
   if(!ok) return nil;
   return [rows count]?[rows objectAtIndex:0]:nil;
+}
+- (NSArray *)RDLP_collectionIdentifiers;
+{
+  if(count_>AICollectionIdentityLimit || (query_!=RDAPP_ADDED_PLAYLISTS &&
+    query_!=RDAPP_ACCOUNT_PLAYLISTS && query_!=RDAPP_UNSUPPORTED_PLAYLISTS)) return nil;
+  return [[self identities] valueForKey:@"id"];
 }
 - (NSArray *)identities;
 {

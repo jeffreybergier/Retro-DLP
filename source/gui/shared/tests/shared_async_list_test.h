@@ -1,6 +1,7 @@
 #import "../RDLPListLoader.h"
 #import "../RDLPVideoRows.h"
 
+static BOOL asyncProbeCancelled;
 @interface RDLPAsyncProbe : NSObject {
 @public
   NSUInteger deliveries;
@@ -14,6 +15,7 @@
   if(gate) {
     [gate lock]; [gate unlockWithCondition:1];
     [gate lockWhenCondition:2]; [gate unlock];
+    asyncProbeCancelled=[[AICollectionController currentController] isCancelled];
   }
   return [NSDictionary dictionaryWithObjectsAndKeys:[input objectForKey:@"value"],@"value",
     [NSNumber numberWithBool:[NSThread RLDP_isMainThread]],@"main",nil];
@@ -39,15 +41,20 @@ static void testSharedAsyncLists(void) {
   RDLPListLoader *loader=[[RDLPListLoader alloc] initWithTarget:probe builder:[RDLPAsyncProbe class]];
   NSConditionLock *gate=[[[NSConditionLock alloc] initWithCondition:0] autorelease];
   [loader request:[NSDictionary dictionaryWithObjectsAndKeys:gate,@"gate",@"old",@"value",nil]];
-  metadataRequire([gate lockWhenCondition:1 beforeDate:[NSDate dateWithTimeIntervalSinceNow:10]],@"Async snapshot worker starts without blocking main thread");
-  [gate unlock];
+  NSDate *startDeadline=[NSDate dateWithTimeIntervalSinceNow:10];
+  BOOL started=NO;
+  while([startDeadline timeIntervalSinceNow]>0) {
+    if([gate tryLockWhenCondition:1]) { started=YES; [gate unlock]; break; }
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+  }
+  metadataRequire(started,@"Coalesced snapshot worker starts while main run loop stays responsive");
   [loader request:[NSDictionary dictionaryWithObject:@"middle" forKey:@"value"]];
   [loader request:[NSDictionary dictionaryWithObject:@"latest" forKey:@"value"]];
-  metadataRequire([loader isCancelled],@"New generation cancels obsolete count work");
   [gate lock]; [gate unlockWithCondition:2];
   NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:10];
   while(!probe->deliveries && [deadline timeIntervalSinceNow]>0)
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+  metadataRequire(asyncProbeCancelled,@"New generation cancels obsolete count work on the worker");
   metadataRequire(probe->deliveries==1 && [[probe->last objectForKey:@"value"] isEqual:@"latest"] && ![[probe->last objectForKey:@"main"] boolValue],@"Coalesced snapshots deliver only the latest generation from a worker");
   [loader request:[NSDictionary dictionaryWithObject:@"disposed" forKey:@"value"]];
   [loader invalidate]; [loader release];

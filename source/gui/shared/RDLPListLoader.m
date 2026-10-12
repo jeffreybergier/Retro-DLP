@@ -1,59 +1,41 @@
 #import "RDLPListLoader.h"
 @implementation RDLPListLoader
 - (id)initWithTarget:(id)target builder:(Class)builder;
-{ self=[super init]; if(self) { target_=target; builder_=builder; lock_=[[NSLock alloc] init]; } return self; }
-- (void)dealloc;
-{ [lock_ release]; [pending_ release]; [super dealloc]; }
-- (void)request:(NSDictionary *)input;
+{ return [super initWithTarget:target selector:@selector(didLoadList:) builder:builder]; }
+- (id)buildResultForRequest:(NSDictionary *)input;
 {
-  [lock_ lock]; ++generation_;
-  [pending_ release]; pending_=[input copy];
-  BOOL start=!working_ && !invalid_; if(start) working_=YES;
-  [lock_ unlock];
-  if(start) [NSThread detachNewThreadSelector:@selector(work:) toTarget:self withObject:nil];
-}
-- (void)invalidate;
-{
-  [lock_ lock]; invalid_=YES; target_=nil; ++generation_;
-  [pending_ release]; pending_=nil; [lock_ unlock];
-}
-- (BOOL)isCancelled;
-{
-  [lock_ lock]; BOOL cancelled=invalid_ || pending_!=nil; [lock_ unlock];
-  return cancelled;
-}
-- (BOOL)isLoading;
-{ [lock_ lock]; BOOL loading=working_ || pending_!=nil; [lock_ unlock]; return loading; }
-- (void)work:(id)ignored;
-{
-  (void)ignored;
-  for(;;) {
-    NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
-    [lock_ lock];
-    NSDictionary *input=pending_; pending_=nil;
-    unsigned long generation=generation_;
-    if(!input || invalid_) { working_=NO; [lock_ unlock]; [input release]; [pool drain]; return; }
-    [lock_ unlock];
-    [[[NSThread currentThread] threadDictionary] setObject:self forKey:@"RDLPListLoader"];
-    NSDictionary *output=[builder_ buildList:input];
-    NSString *error=[[[NSThread currentThread] threadDictionary] objectForKey:@"RDLPListError"];
+  NSMutableDictionary *thread=[[NSThread currentThread] threadDictionary];
+  [thread setObject:self forKey:@"RDLPListLoader"];
+  id output=nil;
+  @try {
+    output=[super buildResultForRequest:input];
+    NSString *error=[thread objectForKey:@"RDLPListError"];
     if(error) output=[NSDictionary dictionaryWithObject:error forKey:@"error"];
-    [[[NSThread currentThread] threadDictionary] removeObjectForKey:@"RDLPListLoader"];
-    NSDictionary *result=[NSDictionary dictionaryWithObjectsAndKeys:output?output:[NSDictionary dictionary],@"output",
-      [NSNumber numberWithUnsignedLong:generation],@"generation",nil];
-    [self performSelectorOnMainThread:@selector(deliver:) withObject:result waitUntilDone:YES];
-    [[[NSThread currentThread] threadDictionary] removeObjectForKey:@"RDLPListError"];
-    [input release]; [pool drain];
+  } @catch (NSException *exception) {
+    output=[NSDictionary dictionaryWithObject:([exception reason] ?: @"List read failed") forKey:@"error"];
+  } @finally {
+    [thread removeObjectForKey:@"RDLPListLoader"];
+    [thread removeObjectForKey:@"RDLPListError"];
   }
-}
-- (void)deliver:(NSDictionary *)result;
-{
-  [lock_ lock]; BOOL current=!invalid_ && generation_==[[result objectForKey:@"generation"] unsignedLongValue];
-  id target=target_; [lock_ unlock];
-  if(current) [target didLoadList:[result objectForKey:@"output"]];
+  return output;
 }
 @end
 @implementation NSArray (RDLPAsyncRows)
+- (NSArray *)RDLP_collectionIdentifiers;
+{
+  /* Ordinary command rows are already resident. Paged subclasses opt in with
+   * a narrow metadata query; never enumerate their display payloads here. */
+  if([self isKindOfClass:[AIPagedRows class]]) return nil;
+  NSMutableArray *ids=[NSMutableArray array];
+  NSEnumerator *e=[self objectEnumerator]; NSDictionary *row;
+  while((row=[e nextObject])) {
+    id key=[row objectForKey:@"format"] ?: [row objectForKey:@"action"];
+    if(!key) return nil;
+    [ids addObject:key];
+  }
+  return ids;
+}
+
 - (id)RDLP_requestRow:(NSUInteger)index;
 {
   if(index>=[self count]) return nil;
