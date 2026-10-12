@@ -42,6 +42,9 @@ int rdapp_store_list(rdapp_store *, rdapp_query, int64_t playlist, rdapp_row_cal
    video/format narrow VIDEO_JOBS; key identifies a playlist, or a JOB/PLAYLIST. */
 int rdapp_store_count(rdapp_store *, rdapp_query, int64_t key, const char *video,
                       const char *format, int64_t *count);
+/* Bounded identity-only projection, in the same order as the display query. */
+int rdapp_store_identity_page(rdapp_store *, rdapp_query, int64_t key,
+    const char *video, const char *format, int64_t limit, rdapp_row_callback, void *);
 int rdapp_store_page(rdapp_store *, rdapp_query, int64_t key, const char *video,
                      const char *format, int64_t offset, int64_t limit, rdapp_row_callback, void *);
 /* Indexed seek for sequential scrolling; playlists continue to use offsets. */

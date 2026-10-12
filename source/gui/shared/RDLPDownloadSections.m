@@ -1,3 +1,4 @@
+#import <AICollectionSnapshot.h>
 #import "RDLPDownloadSections.h"
 #import "RDLP_Foundation.h"
 #import "RDLPListLoader.h"
@@ -64,7 +65,21 @@
 - (NSError *)readError;
 { return [source_ respondsToSelector:@selector(readError)]?[(AIPagedRows *)source_ readError]:nil; }
 - (void)RDLP_invalidateRows; { [source_ RDLP_invalidateRows]; }
-- (NSArray *)RDLP_collectionIdentifiers; { return nil; }
+- (NSArray *)RDLP_collectionIdentifiers;
+{
+  if (count_ > AICollectionIdentityLimit) return nil;
+  NSArray *sourceIDs = [source_ RDLP_collectionIdentifiers];
+  if (!sourceIDs) return nil;
+  if (!sections_) return [sourceIDs subarrayWithRange:NSMakeRange(offset_,count_)];
+  NSMutableArray *ids = [NSMutableArray array]; NSUInteger index;
+  for (index = 0; index < count_; ++index) {
+    NSUInteger source = [self sourceIndex:index];
+    [ids addObject:source == NSNotFound ?
+        [NSString stringWithFormat:@"section:%@",[[self objectAtIndex:index] objectForKey:@"title"]] :
+        [sourceIDs objectAtIndex:source]];
+  }
+  return ids;
+}
 - (BOOL)RDLP_containsRows:(id)rows; { return [source_ RDLP_containsRows:rows]; }
 - (NSUInteger)indexForIdentity:(NSString *)identity;
 {

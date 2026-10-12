@@ -1,3 +1,5 @@
+#import <AltivecCocoa/AICollectionTableAdapter.h>
+#import <AltivecCocoa/AICollectionOutlineAdapter.h>
 #import <AICookieCutterWindowController.h>
 #import "RDLPLibrary.h"
 #import "RDLPListLoader.h"
@@ -5,6 +7,8 @@
 #import "RDLPLibraryMenus.h"
 @class RDLPQueueWindowController;
 @interface RDLPLibraryWindowController : NSWindowController <RDLPLibraryMenuContext, AISplitViewDelegate> {
+  AICollectionTableAdapter *tableCollection_, *queueCollection_;
+  AICollectionOutlineAdapter *sidebarCollection_;
   NSSplitView *split_;
   CGFloat sidebarWidth_;
   BOOL sidebarCollapsed_;
@@ -35,6 +39,7 @@
   BOOL bulkAvailabilityValid_, bulkCanDownload_, bulkCanRemove_;
   BOOL didRestoreWindowFrame_;
 }
+- (void)refreshTableContent;
 - (id)initWithLibrary:(RDLPLibrary *)library;
 - (NSMenu *)menuForToolbarIdentifier:(NSString *)identifier;
 - (NSMenu *)menuForMenuBarTitle:(NSString *)title;

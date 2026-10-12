@@ -347,6 +347,17 @@ int rdapp_store_count(rdapp_store *s,rdapp_query kind,int64_t key,const char *vi
   if(ok) *count=sqlite3_column_int64(p,0); else failure(s,sqlite3_errmsg(s->db));
   finish_statement(s,p); return ok;
 }
+int rdapp_store_identity_page(rdapp_store *s,rdapp_query kind,int64_t key,
+    const char *video,const char *format,int64_t limit,rdapp_row_callback cb,void *ctx) {
+  const char *fields,*from,*order,*identity; char query[2048]; sqlite3_stmt *p;
+  if(limit<0 || !query_parts(kind,key,format,&fields,&from,&order))
+    return failure(s,rdapp_string_key(RDAPP_STRING_INVALID_LIST_QUERY));
+  identity=!strncmp(from,"entries e",9)?"e.position":(!strncmp(from,"playlists p",11)?"p.id":"j.id");
+  snprintf(query,sizeof(query),"SELECT %s AS identity FROM %s ORDER BY %s LIMIT ?4",identity,from,order);
+  p=prepare(s,query); if(!p) return 0;
+  sqlite3_bind_int64(p,1,key); bind_text(p,2,video); bind_text(p,3,format);
+  sqlite3_bind_int64(p,4,limit); return each(s,p,cb,ctx);
+}
 int rdapp_store_page(rdapp_store *s,rdapp_query kind,int64_t key,const char *video,const char *format,
                      int64_t offset,int64_t limit,rdapp_row_callback cb,void *ctx) {
   sqlite3_stmt *p;

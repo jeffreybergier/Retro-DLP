@@ -61,6 +61,7 @@ for name, args in {
     'downloads_since':[P,I,C.POINTER(I)],
     'added_videos_since':[P,I,I,C.POINTER(I)],
     'page':[P,C.c_int,I,S,S,I,I,CB,P],
+    'identity_page':[P,C.c_int,I,S,S,I,CB,P],
     'after':[P,C.c_int,I,S,S,I,CB,P],
     'after_page':[P,C.c_int,I,S,S,I,I,CB,P],
     'index':[P,C.c_int,I,I,C.POINTER(I)],
@@ -217,6 +218,18 @@ class StoreTests(unittest.TestCase):
         lib.rdapp_store_close(self.db)
         self.check(lib.rdapp_store_open(os.fsencode(self.path/'db.sqlite'),C.byref(self.db)))
         self.assertEqual(self.count(18),4)
+
+    def test_identity_projection_is_bounded_and_omits_payload(self):
+        rows=[]
+        @CB
+        def callback(ctx,n,names,values):
+            rows.append({names[i].decode():values[i].decode() for i in range(n)})
+            return 1
+        self.check(lib.rdapp_store_identity_page(self.db,1,self.key,None,None,2,callback,None))
+        self.assertEqual(rows,[{'identity':'0'},{'identity':'1'}])
+        rows.clear()
+        self.check(lib.rdapp_store_identity_page(self.db,1,self.key,None,None,0,callback,None))
+        self.assertEqual(rows,[])
 
     def test_count_page_seek_and_identity_preserve_membership(self):
         self.check(self.snapshot([(b'abcdefghijk',b'First',3),(b'lmnopqrstuv',b'Second',8),(b'abcdefghijk',b'Duplicate',15)]))

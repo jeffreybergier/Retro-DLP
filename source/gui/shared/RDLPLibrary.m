@@ -112,9 +112,14 @@ static int listCancelled(void *context) { return [(RDLPListLoader *)context isCa
 }
 - (NSArray *)RDLP_collectionIdentifiers;
 {
-  if(count_>AICollectionIdentityLimit || (query_!=RDAPP_ADDED_PLAYLISTS &&
-    query_!=RDAPP_ACCOUNT_PLAYLISTS && query_!=RDAPP_UNSUPPORTED_PLAYLISTS)) return nil;
-  return [[self identities] valueForKey:@"id"];
+  if(count_>AICollectionIdentityLimit) return nil;
+  NSMutableArray *rows=[NSMutableArray array];
+  [pageReadLock_ lock];
+  int ok=rdapp_store_identity_page(reader_,(rdapp_query)query_,key_,[video_ UTF8String],
+      [format_ UTF8String],AICollectionIdentityLimit,collect,rows);
+  [pageReadLock_ unlock];
+  if(!ok || [rows count]!=count_) return nil;
+  return [rows valueForKey:@"identity"];
 }
 - (NSArray *)identities;
 {

@@ -130,7 +130,7 @@
   NSMenuItem *probe=[[[NSMenuItem alloc] initWithTitle:@"" action:action keyEquivalent:@""] autorelease];
   if([owner_ validateMenuItem:probe]) [owner_ performSelector:action withObject:sender];
 }
-- (void)refreshIcons:(id)sender; { (void)sender; [self updateControls]; [queue_ reloadData]; }
+- (void)refreshIcons:(id)sender; { (void)sender; [self updateControls]; [owner_ refreshTableContent]; }
 - (void)updateControls;
 {
   AIFontAwesomeIcon icons[]={AIFARotateRight,AIFAPause,AIFACircleExclamation,AIFATrash};

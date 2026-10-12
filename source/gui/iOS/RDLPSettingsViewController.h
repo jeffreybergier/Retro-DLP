@@ -1,7 +1,8 @@
+#import <AltivecCocoa/AICollectionTableViewController.h>
 #import <UIKit/UIKit.h>
 #import "RDLPLibrarySections.h"
 
-@interface RDLPSettingsViewController : UITableViewController <UIAlertViewDelegate> {
+@interface RDLPSettingsViewController : AICollectionTableViewController <UIAlertViewDelegate> {
   RDLPLibrary *library_;
   RDLPLibrarySections *model_;
   NSArray *sections_;

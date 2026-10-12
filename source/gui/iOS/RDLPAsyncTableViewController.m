@@ -64,6 +64,8 @@
 {
   if(!listLoader_) listLoader_=[[RDLPListLoader alloc] initWithTarget:self builder:[RDLPLibrarySections class]];
   NSMutableDictionary *input=[NSMutableDictionary dictionaryWithDictionary:[self listRequest]];
+  if (![input objectForKey:@"explicitSelection"] && [[input objectForKey:@"selection"] length])
+    [input setObject:[NSNumber numberWithBool:YES] forKey:@"explicitSelection"];
   NSIndexPath *top=[[[self tableView] indexPathsForVisibleRows] count]?[[[self tableView] indexPathsForVisibleRows] objectAtIndex:0]:nil;
   NSString *anchor=[self identityAtIndex:top];
   if(anchor) [input setObject:anchor forKey:@"anchor"];
@@ -107,7 +109,7 @@
     CGPoint offset=[[self tableView] contentOffset]; offset.y=[[self tableView] rectForRowAtIndexPath:index].origin.y+[[result objectForKey:@"delta"] doubleValue];
     [[self tableView] setContentOffset:offset animated:NO];
   }
-  if(restoreFallback && selection) [[self tableView] selectRowAtIndexPath:[NSIndexPath indexPathForRow:[[selection objectAtIndex:1] integerValue] inSection:[[selection objectAtIndex:0] integerValue]] animated:NO scrollPosition:UITableViewScrollPositionNone];
+  if((restoreFallback || [[result objectForKey:@"explicitSelection"] boolValue]) && selection) [[self tableView] selectRowAtIndexPath:[NSIndexPath indexPathForRow:[[selection objectAtIndex:1] integerValue] inSection:[[selection objectAtIndex:0] integerValue]] animated:NO scrollPosition:UITableViewScrollPositionNone];
   [self refreshStatus:nil];
 }
 @end

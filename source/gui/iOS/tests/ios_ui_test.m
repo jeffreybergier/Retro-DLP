@@ -549,7 +549,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   [@"RUNNING" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSString *report=@"PASS";
   @try {
-    collectionTest(window_);
+    collectionTest(window_); formCollectionTest(window_);
     if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestLocalizationOnly"] boolValue]) {
       testSharedLocalization([documents_ stringByAppendingPathComponent:@"LocalizationFixture"]);
       [@"PASS: native shared bundle localization, owned C UTF-8, translated rows/status, stable identifiers and paths" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];

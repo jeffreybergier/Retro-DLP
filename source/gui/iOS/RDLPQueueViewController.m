@@ -15,7 +15,7 @@
 { [selectedJobID_ release]; [jobActions_ release]; [super dealloc]; }
 - (BOOL)showsQueueButton; { return NO; }
 - (NSDictionary *)listRequest;
-{ return [NSDictionary dictionaryWithObjectsAndKeys:library_,@"library",[NSNumber numberWithInt:RDLPScreenQueue],@"mode",selectedJobID_?:@"",@"selection", nil]; }
+{ return [NSDictionary dictionaryWithObjectsAndKeys:library_,@"library",[NSNumber numberWithInt:RDLPScreenQueue],@"mode",selectedJobID_?:@"",@"selection",[NSNumber numberWithBool:revealPending_],@"explicitSelection", nil]; }
 
 - (void)showJobInQueue:(NSDictionary *)job;
 {

@@ -2,6 +2,16 @@
 #import "RDLPUIKit.h"
 
 @implementation RDLPSettingsViewController
+- (id)collectionIdentifierForSection:(NSInteger)section;
+{ return [[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"title"]; }
+- (NSArray *)collectionIdentifiersForSection:(NSInteger)section;
+{
+  NSArray *rows = [[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"rows"];
+  NSMutableArray *identifiers = [NSMutableArray array];
+  for (NSDictionary *row in rows)
+    [identifiers addObject:[row objectForKey:@"format"] ?: [row objectForKey:@"action"]];
+  return identifiers;
+}
 - (id)initWithLibrary:(RDLPLibrary *)library;
 {
   self=[super initWithStyle:UITableViewStyleGrouped]; if(!self) return nil;
@@ -26,7 +36,7 @@
 {
   (void)sender; if(![self isViewLoaded]) return;
   NSArray *sections=[model_ sectionsForScreen:RDLPScreenSettings playlist:nil video:nil collapsed:nil];
-  [sections_ release]; sections_=[sections copy]; [[self tableView] reloadData];
+  [sections_ release]; sections_=[sections copy]; [self refreshCollection];
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table;
 { (void)table; return (NSInteger)[sections_ count]; }

@@ -13,6 +13,7 @@
 }
 - (void)dealloc;
 { [source_ release]; [library_ release]; [playlist_ release]; [policy_ release]; [super dealloc]; }
+- (NSArray *)RDLP_collectionIdentifiers; { return [source_ RDLP_collectionIdentifiers]; }
 - (NSUInteger)count; { return [source_ count]; }
 - (id)copyWithZone:(NSZone *)zone; { (void)zone; return [self retain]; }
 - (NSUInteger)indexForIdentity:(NSString *)identity;
