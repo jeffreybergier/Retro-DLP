@@ -18,10 +18,11 @@
 }
 - (void)dealloc;
 {
+  [NSObject cancelPreviousPerformRequestsWithTarget:self];
   [[NSNotificationCenter defaultCenter] removeObserver:self]; [alert_ setDelegate:nil]; [alert_ dismissWithClickedButtonIndex:0 animated:NO];
   [playlistActions_ setDelegate:nil]; [playlistActions_ dismissWithClickedButtonIndex:[playlistActions_ cancelButtonIndex] animated:NO]; [playlistActions_ release];
   [alert_ release]; [request_ release]; [alertActions_ release];
-  [library_ release]; [policy_ release]; [model_ release]; [playlist_ release]; [video_ release]; [sections_ release]; [statusBar_ release]; [status_ release]; [progress_ release]; [super dealloc];
+  [library_ release]; [policy_ release]; [model_ release]; [playlist_ release]; [video_ release]; [statusBar_ release]; [status_ release]; [progress_ release]; [super dealloc];
 }
 - (void)viewDidLoad;
 {
@@ -51,17 +52,20 @@
   [super viewDidLayoutSubviews];
   [statusBar_ setMaximumWidth:MAX(0,[[self view] bounds].size.width-112)];
 }
-- (void)refresh:(id)sender;
+- (NSDictionary *)listRequest;
 {
-  (void)sender; if(![self isViewLoaded]) return;
-  /* Keep the displayed playlist current after sync or discovery promotion. */
-  NSDictionary *playlist=[library_ playlistForID:[playlist_ objectForKey:@"id"]];
-  if(playlist) {
-    [playlist retain]; [playlist_ release]; playlist_=playlist;
-    if(mode_==RDLPScreenPlaylist) [self setTitle:[playlist objectForKey:@"title"]];
-  }
-  NSArray *sections=[model_ sectionsForScreen:mode_ playlist:playlist_ video:video_ collapsed:nil]; [sections_ release]; sections_=[sections copy];
-  [self refreshStatus:nil];
+  NSMutableDictionary *input=[NSMutableDictionary dictionaryWithObjectsAndKeys:library_,@"library",[NSNumber numberWithInt:mode_],@"mode",nil];
+  if(playlist_) [input setObject:playlist_ forKey:@"playlist"];
+  if(video_) [input setObject:video_ forKey:@"video"];
+  return input;
+}
+- (void)didLoadList:(NSDictionary *)result;
+{
+  if(![self canApplyList]) return;
+  NSDictionary *playlist=[result objectForKey:@"playlist"];
+  if(playlist) { [playlist retain]; [playlist_ release]; playlist_=playlist; }
+  [super didLoadList:result];
+  if(mode_==RDLPScreenPlaylist && playlist) [self setTitle:[playlist objectForKey:@"title"]];
   for(UIBarButtonItem *item in [self toolbarItems]) {
     if([item action]==@selector(sync:)) [item setEnabled:[self enabled:@"sync"]];
     if([item action]==@selector(syncAll:)) [item setEnabled:[self enabled:@"syncAll"]];
@@ -69,7 +73,6 @@
     if([item action]==@selector(downloadAll:)) [item setEnabled:[self enabled:@"bulk"]];
     if([item action]==@selector(removePlaylist:)) [item setEnabled:[self enabled:@"removePlaylist"]];
   }
-  [[self tableView] reloadData];
 }
 - (void)reopenPlayer:(id)sender;
 { (void)sender; [RDLPUIKit reopenPlayer:self]; }
@@ -98,8 +101,7 @@
   if(![[[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"rows"] count]) return NSLocalizedString(@"No items", nil);
   return nil;
 }
-- (NSDictionary *)rowAtIndex:(NSIndexPath *)index;
-{ return [[[sections_ objectAtIndex:(NSUInteger)[index section]] objectForKey:@"rows"] objectAtIndex:(NSUInteger)[index row]]; }
+
 - (UITableViewCell *)tableView:(UITableView *)view cellForRowAtIndexPath:(NSIndexPath *)index;
 {
   NSDictionary *row=[self rowAtIndex:index]; NSString *action=[row objectForKey:@"action"];

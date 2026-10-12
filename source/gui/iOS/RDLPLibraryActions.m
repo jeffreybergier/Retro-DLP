@@ -5,6 +5,7 @@
 @implementation RDLPLibraryViewController (Actions)
 - (BOOL)enabled:(NSString *)action;
 {
+  if(!action || [action isEqualToString:@"placeholder"]) return NO;
   if([action isEqualToString:@"import"]) return ![library_ isBusy] && ![[library_ cookieStatus] isEqualToString:NSLocalizedString(@"Imported", nil)];
   if([action isEqualToString:@"clearCookies"]) return ![library_ isBusy] && ![[library_ cookieStatus] isEqualToString:NSLocalizedString(@"Not Imported", nil)];
   if([action isEqualToString:@"discover"]) return ![library_ isBusy] && ![library_ isDiscoveryPending];

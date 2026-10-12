@@ -1,5 +1,6 @@
 #import "RDLPDownloadSections.h"
 #import "RDLP_Foundation.h"
+#import "RDLPListLoader.h"
 
 @interface RDLPDownloadRangeRows : NSArray {
   NSArray *source_, *sections_;
@@ -53,6 +54,17 @@
   NSUInteger source=[self sourceIndex:index];
   return source==NSNotFound?nil:[(RDLPLibraryRows *)source_ cachedObjectAtIndex:source];
 }
+- (id)RDLP_requestRow:(NSUInteger)index;
+{
+  NSUInteger source=[self sourceIndex:index];
+  return source==NSNotFound?[self objectAtIndex:index]:[source_ RDLP_requestRow:source];
+}
+- (NSArray *)jobsForPlaylist:(NSString *)playlist video:(NSString *)video;
+{ return [(RDLPLibraryRows *)source_ jobsForPlaylist:playlist video:video]; }
+- (NSError *)readError;
+{ return [source_ respondsToSelector:@selector(readError)]?[(AIPagedRows *)source_ readError]:nil; }
+- (void)RDLP_invalidateRows; { [source_ RDLP_invalidateRows]; }
+- (BOOL)RDLP_containsRows:(id)rows; { return [source_ RDLP_containsRows:rows]; }
 - (NSUInteger)indexForIdentity:(NSString *)identity;
 {
   NSUInteger source=[(RDLPLibraryRows *)source_ indexForIdentity:identity];

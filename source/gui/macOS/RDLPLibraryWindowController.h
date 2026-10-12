@@ -1,5 +1,6 @@
 #import <AICookieCutterWindowController.h>
 #import "RDLPLibrary.h"
+#import "RDLPListLoader.h"
 #import "RDLPDownloadPolicy.h"
 #import "RDLPLibraryMenus.h"
 @class RDLPQueueWindowController;
@@ -15,7 +16,6 @@
   NSTableView *table_;
   NSTableView *queue_;
   NSArray *queueRows_, *videoRows_;
-  NSMutableDictionary *queueStatusCache_;
   NSMutableDictionary *sidebarItems_;
   BOOL sidebarLoaded_;
   NSTextField *input_, *status_, *customFormat_, *customError_, *customSummary_;
@@ -24,11 +24,14 @@
   NSAlert *confirmation_;
   NSDictionary *confirmationRequest_;
   NSPanel *addSheet_, *downloadSheet_;
-  NSArray *playlists_, *rows_, *addedPlaylists_, *accountPlaylists_, *unsupportedPlaylists_; NSDictionary *adhocPlaylist_;
+  NSArray *rows_, *addedPlaylists_, *accountPlaylists_, *unsupportedPlaylists_; NSDictionary *adhocPlaylist_;
   NSString *selectedPlaylist_, *downloadFormat_;
   NSDictionary *downloadRequest_;
   int mode_, context_;
-  BOOL refreshing_, addingVideo_;
+  BOOL refreshing_, addingVideo_, listLoading_, listReadFailed_, listClosed_;
+  RDLPListLoader *listLoader_;
+  NSDictionary *selectedPlaylistRow_, *sidebarRows_;
+  NSArray *queueDisplayRows_;
   BOOL bulkAvailabilityValid_, bulkCanDownload_, bulkCanRemove_;
   BOOL didRestoreWindowFrame_;
 }

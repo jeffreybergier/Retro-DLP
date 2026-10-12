@@ -1,13 +1,12 @@
-#import <UIKit/UIKit.h>
+#import "RDLPAsyncTableViewController.h"
 #import "RDLPLibrarySections.h"
 #import "RDLPStatusBarView.h"
 
-@interface RDLPLibraryViewController : UITableViewController <UIAlertViewDelegate, UIActionSheetDelegate> {
+@interface RDLPLibraryViewController : RDLPAsyncTableViewController <UIAlertViewDelegate, UIActionSheetDelegate> {
   RDLPLibrary *library_;
   RDLPDownloadPolicy *policy_;
   RDLPLibrarySections *model_;
   NSDictionary *playlist_, *video_;
-  NSArray *sections_;
   RDLPStatusBarView *statusBar_;
   UILabel *status_;
   UIProgressView *progress_;
@@ -18,7 +17,8 @@
   NSArray *alertActions_;
 }
 - (id)initWithLibrary:(RDLPLibrary *)library mode:(RDLPScreen)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;
-- (void)refresh:(id)sender;
+- (NSDictionary *)listRequest;
+- (void)didLoadList:(NSDictionary *)result;
 - (void)pushMode:(RDLPScreen)mode playlist:(NSDictionary *)playlist video:(NSDictionary *)video;
 - (void)showJobInQueue:(NSDictionary *)job;
 @end

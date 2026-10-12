@@ -1,46 +1,84 @@
 #import "RDLPLibrarySections.h"
 #import "RDLPVideoRows.h"
 #import "RDLPDownloadSections.h"
+#import "RDLPListLoader.h"
 
 /* Formatting belongs to row access, never to section/count construction. */
 @interface RDLPLibrarySections (Rows)
 - (NSDictionary *)displayRow:(NSDictionary *)item screen:(RDLPScreen)screen playlist:(NSString *)playlist;
 @end
-@interface RDLPSectionRows : NSArray {
+@interface RDLPSectionRows : AIPagedRows {
   NSArray *source_;
   RDLPLibrarySections *model_;
   RDLPScreen screen_;
   NSString *playlist_;
-  NSMutableDictionary *cache_;
 }
 - (id)initWithRows:(NSArray *)rows model:(RDLPLibrarySections *)model screen:(RDLPScreen)screen playlist:(NSString *)playlist;
 - (NSUInteger)indexForIdentity:(NSString *)identity;
-- (id)cachedObjectAtIndex:(NSUInteger)index;
 @end
 @implementation RDLPSectionRows
 - (id)initWithRows:(NSArray *)rows model:(RDLPLibrarySections *)model screen:(RDLPScreen)screen playlist:(NSString *)playlist;
-{ self=[super init]; if(self) { cache_=[[NSMutableDictionary alloc] init]; source_=[rows retain]; model_=[model retain]; screen_=screen; playlist_=[playlist copy]; } return self; }
-- (void)dealloc; { [cache_ release]; [source_ release]; [model_ release]; [playlist_ release]; [super dealloc]; }
+{ self=[super init]; if(self) { source_=[rows retain]; model_=[model retain]; screen_=screen; playlist_=[playlist copy]; } return self; }
+- (void)dealloc; { [source_ release]; [model_ release]; [playlist_ release]; [super dealloc]; }
 - (NSUInteger)count; { return [source_ count]; }
 - (id)copyWithZone:(NSZone *)zone; { (void)zone; return [self retain]; }
-- (id)objectAtIndex:(NSUInteger)index;
+- (NSArray *)pageAtOffset:(NSUInteger)offset error:(NSError **)error;
 {
-  NSNumber *key=[NSNumber numberWithUnsignedLong:index];
-  NSDictionary *row=[cache_ objectForKey:key];
-  if(!row) {
-    row=[model_ displayRow:[source_ objectAtIndex:index] screen:screen_ playlist:playlist_];
-    if([cache_ count]>=128) [cache_ removeAllObjects];
-    [cache_ setObject:row forKey:key];
+  NSMutableArray *page=[NSMutableArray array];
+  NSUInteger i, end=MIN(offset+32,[self count]);
+  for(i=offset;i<end;++i) {
+    NSDictionary *row=[source_ objectAtIndex:i];
+    if([source_ respondsToSelector:@selector(readError)] && [(AIPagedRows *)source_ readError]) break;
+    [page addObject:[model_ displayRow:row screen:screen_ playlist:playlist_]];
   }
-  return [[row retain] autorelease];
+  if([source_ respondsToSelector:@selector(readError)] && [(AIPagedRows *)source_ readError]) {
+    if(error) *error=[(AIPagedRows *)source_ readError]; return nil;
+  }
+  return page;
 }
-- (id)cachedObjectAtIndex:(NSUInteger)index;
-{ return [cache_ objectForKey:[NSNumber numberWithUnsignedLong:index]]; }
+- (void)RDLP_invalidateRows;
+{ [self invalidatePages]; [source_ RDLP_invalidateRows]; }
 - (NSUInteger)indexForIdentity:(NSString *)identity;
 { return [(RDLPLibraryRows *)source_ indexForIdentity:identity]; }
 @end
 
 @implementation RDLPLibrarySections
++ (NSDictionary *)buildList:(NSDictionary *)input;
+{
+  RDLPLibrary *library=[input objectForKey:@"library"];
+  RDLPLibrarySections *model=[[[self alloc] initWithLibrary:library] autorelease];
+  NSDictionary *playlist=[input objectForKey:@"playlist"];
+  NSDictionary *current=[library playlistForID:[playlist objectForKey:@"id"]];
+  if(current) playlist=current;
+  NSArray *sections=[model sectionsForScreen:(RDLPScreen)[[input objectForKey:@"mode"] intValue] playlist:playlist video:[input objectForKey:@"video"] collapsed:nil];
+  NSMutableDictionary *result=[NSMutableDictionary dictionaryWithDictionary:input];
+  [result setObject:sections forKey:@"sections"];
+  if(playlist) [result setObject:playlist forKey:@"playlist"];
+  NSArray *keys=[NSArray arrayWithObjects:@"anchor",@"selection",nil];
+  NSEnumerator *e=[keys objectEnumerator]; NSString *key;
+  while((key=[e nextObject])) {
+    NSString *identity=[input objectForKey:key]; NSUInteger section;
+    NSArray *oldRows=[input objectForKey:@"anchorRows"];
+    NSUInteger oldIndex=[[input objectForKey:@"anchorRow"] unsignedLongValue];
+    if(!identity && [key isEqualToString:@"anchor"] && oldIndex<[oldRows count]) {
+      NSDictionary *old=[oldRows objectAtIndex:oldIndex];
+      BOOL playlistMode=[[input objectForKey:@"mode"] intValue]==RDLPScreenPlaylist;
+      identity=playlistMode?[[old objectForKey:@"video"] objectForKey:@"position"]:
+        ([[old objectForKey:@"job"] objectForKey:@"id"]?:[[old objectForKey:@"playlist"] objectForKey:@"id"]);
+    }
+    if(![identity length]) continue;
+    for(section=0;section<[sections count];++section) {
+      NSArray *rows=[[sections objectAtIndex:section] objectForKey:@"rows"];
+      if(![rows respondsToSelector:@selector(indexForIdentity:)]) continue;
+      NSUInteger row=[(RDLPLibraryRows *)rows indexForIdentity:identity];
+      if(row!=NSNotFound) {
+        [result setObject:[NSArray arrayWithObjects:[NSNumber numberWithUnsignedLong:section],[NSNumber numberWithUnsignedLong:row],nil] forKey:[key stringByAppendingString:@"Index"]]; break;
+      }
+    }
+  }
+  [result removeObjectForKey:@"anchorRows"];
+  return result;
+}
 - (id)initWithLibrary:(RDLPLibrary *)library;
 { self=[super init]; if(self) { library_=[library retain]; policy_=[[RDLPDownloadPolicy alloc] initWithLibrary:library]; } return self; }
 - (void)dealloc; { [library_ release]; [policy_ release]; [super dealloc]; }

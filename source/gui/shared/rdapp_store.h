@@ -28,6 +28,10 @@ int rdapp_playlist_can_sync(const char *input);
 int rdapp_store_open(const char *path, rdapp_store **out);
 /* UI reader: no migration or recovery; WAL snapshots do not block the worker. */
 int rdapp_store_open_reader(const char *path, rdapp_store **out);
+/* Thread-safe while the reader is alive; caller still serializes close. */
+void rdapp_store_interrupt(rdapp_store *store);
+/* Serialized reader cancellation during expensive snapshot/count queries. */
+void rdapp_store_progress(rdapp_store *store, int (*cancelled)(void *), void *context);
 void rdapp_store_close(rdapp_store *store);
 /* Known application errors and built-in row labels use rdapp_strings when
    initialized. State/identity/path fields and stored recovery keys stay stable.

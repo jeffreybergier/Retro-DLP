@@ -14,8 +14,9 @@
 }
 - (void)viewDidLoad;
 { [super viewDidLoad]; [self configureAddVideoButton]; }
-- (NSArray *)listSections;
-{ return [model_ sectionsForScreen:RDLPScreenDownloads playlist:nil video:nil collapsed:nil]; }
+- (NSDictionary *)listRequest;
+{ return [NSDictionary dictionaryWithObjectsAndKeys:library_,@"library",[NSNumber numberWithInt:RDLPScreenDownloads],@"mode", nil]; }
+
 - (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section;
 { (void)table; return [[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"title"]; }
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)index;

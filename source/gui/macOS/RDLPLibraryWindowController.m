@@ -48,9 +48,9 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (NSDictionary *)selectedPlaylist;
 - (NSDictionary *)jobForEntry:(NSDictionary *)entry;
 - (NSString *)statusForJob:(NSDictionary *)job;
-- (NSString *)queueStatusForJob:(NSDictionary *)job;
 - (BOOL)playable:(NSDictionary *)job;
 - (void)refresh:(id)sender;
+- (BOOL)tableView:(NSTableView *)view RDLP_isSectionRow:(NSInteger)row;
 - (void)tableWasUsed:(NSTableView *)view;
 - (BOOL)hasTargetVideo;
 - (BOOL)hasMultipleTargetVideos;
@@ -189,6 +189,8 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [NSCalendar RDLP_monitorDateBoundaries];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPLibraryStatusDidChange object:library_];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:NSApplicationDidBecomeActiveNotification object:NSApp];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(libraryClosed:) name:RDLPLibraryWillClose object:library_];
+  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(pageLoaded:) name:AIPagedRowsDidLoadNotification object:nil];
   [self refresh:nil]; return self;
 }
 - (NSSplitView *)AI_splitView; { return split_; }
@@ -233,6 +235,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)showWindow:(id)sender;
 {
   [super showWindow:sender];
+  if(!listLoader_) [self refresh:nil];
   /* Derive content limits from the displayed frame, including Tiger's toolbar. */
   NSWindow *window=[self window];
   NSSize frameSize=[window frame].size,contentSize=[[window contentView] frame].size;
@@ -487,96 +490,183 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (void)dealloc;
 {
+  [listLoader_ invalidate]; [listLoader_ release];
+  [NSObject cancelPreviousPerformRequestsWithTarget:self];
+  [rows_ RDLP_invalidateRows]; [videoRows_ RDLP_invalidateRows]; [queueDisplayRows_ RDLP_invalidateRows];
+  [selectedPlaylistRow_ release]; [sidebarRows_ release]; [queueDisplayRows_ release];
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   [sidebar_ setDelegate:nil]; [sidebar_ setDataSource:nil];
   [table_ setDelegate:nil]; [table_ setDataSource:nil];
   [split_ setDelegate:nil]; [split_ release]; [queueWindow_ close]; [queueWindow_ release];
-  [sidebarItems_ release]; [downloadPolicy_ release]; [library_ release]; [playlists_ release]; [rows_ release]; [videoRows_ release]; [addedPlaylists_ release]; [accountPlaylists_ release]; [unsupportedPlaylists_ release]; [adhocPlaylist_ release]; [selectedPlaylist_ release];
-  [addSheet_ release]; [downloadSheet_ release]; [downloadRequest_ release]; [downloadFormat_ release]; [queueRows_ release]; [queueStatusCache_ release]; [toolbarItems_ release]; [confirmation_ release]; [confirmationRequest_ release]; [super dealloc];
+  [sidebarItems_ release]; [downloadPolicy_ release]; [library_ release]; [rows_ release]; [videoRows_ release]; [addedPlaylists_ release]; [accountPlaylists_ release]; [unsupportedPlaylists_ release]; [adhocPlaylist_ release]; [selectedPlaylist_ release];
+  [addSheet_ release]; [downloadSheet_ release]; [downloadRequest_ release]; [downloadFormat_ release]; [queueRows_ release]; [toolbarItems_ release]; [confirmation_ release]; [confirmationRequest_ release]; [super dealloc];
 }
 - (NSDictionary *)selectedRow;
-{ NSInteger row=[table_ selectedRow];
-  NSDictionary *entry=row>=0 && (NSUInteger)row<[rows_ count]?[rows_ objectAtIndex:(NSUInteger)row]:nil;
+{ if(listLoading_ || listReadFailed_) return nil; NSInteger row=[table_ selectedRow];
+  NSDictionary *entry=row>=0 && (NSUInteger)row<[rows_ count]?[(RDLPLibraryRows *)rows_ cachedObjectAtIndex:(NSUInteger)row]:nil;
   return [[entry objectForKey:@"action"] isEqualToString:@"section"]?nil:entry;
 }
 - (NSDictionary *)selectedJob;
-{ NSInteger row=[queue_ selectedRow]; return row>=0 && (NSUInteger)row<[queueRows_ count]?[queueRows_ objectAtIndex:(NSUInteger)row]:nil; }
+{ NSInteger row=[queue_ selectedRow]; return row>=0 && (NSUInteger)row<[queueRows_ count]?[(RDLPLibraryRows *)queueRows_ cachedObjectAtIndex:(NSUInteger)row]:nil; }
 
 - (NSDictionary *)selectedPlaylist;
-{ return [(RDLPLibraryRows *)playlists_ playlistForID:selectedPlaylist_]; }
+{ return [[selectedPlaylistRow_ objectForKey:@"id"] isEqual:selectedPlaylist_]?selectedPlaylistRow_:nil; }
 - (NSDictionary *)jobForEntry:(NSDictionary *)entry;
 { return [downloadPolicy_ representativeJobForEntry:entry playlist:selectedPlaylist_ jobs:[library_ jobsForPlaylist:selectedPlaylist_ video:[entry objectForKey:@"video_id"]]]; }
 - (NSString *)statusForJob:(NSDictionary *)job;
 { return [downloadPolicy_ statusForJob:job]; }
-- (NSString *)queueStatusForJob:(NSDictionary *)job;
-{
-  NSString *key=[job objectForKey:@"id"];
-  NSString *status=key?[queueStatusCache_ objectForKey:key]:nil;
-  if(status) return status;
-  status=[self statusForJob:job];
-  if(key && status) {
-    if(!queueStatusCache_) queueStatusCache_=[[NSMutableDictionary alloc] init];
-    if([queueStatusCache_ count]>=128) [queueStatusCache_ removeAllObjects];
-    [queueStatusCache_ setObject:status forKey:key];
-  }
-  return status;
-}
-
 - (BOOL)playable:(NSDictionary *)job;
 { return [downloadPolicy_ playable:job]; }
 - (void)downloadDateChanged:(id)sender;
 { if(mode_!=0 || [selectedPlaylist_ isEqualToString:[adhocPlaylist_ objectForKey:@"id"]]) [self refresh:sender]; }
 - (void)refresh:(id)sender;
 {
-  (void)sender; if(refreshing_) return; refreshing_=YES;
-  NSString *key=mode_==0?@"position":@"id";
-  NSMutableArray *selection=[[NSMutableArray alloc] init];
-  NSIndexSet *selectedIndexes=[table_ selectedRowIndexes];
-  NSUInteger selectedIndex=[selectedIndexes firstIndex];
-  while(selectedIndex!=NSNotFound) {
-    NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
-    if(selectedIndex<[rows_ count]) {
-      NSString *identity=[[rows_ objectAtIndex:selectedIndex] objectForKey:key];
-      if(identity) [selection addObject:identity];
-    }
-    [pool drain]; selectedIndex=[selectedIndexes indexGreaterThanIndex:selectedIndex];
+  (void)sender; if(refreshing_ || listClosed_) return;
+  if(!listLoader_) listLoader_=[[RDLPListLoader alloc] initWithTarget:self builder:[self class]];
+  NSInteger top=[table_ rowAtPoint:[[table_ enclosingScrollView] documentVisibleRect].origin];
+  if(top>=0 && [self tableView:table_ RDLP_isSectionRow:top] && (NSUInteger)(top+1)<[rows_ count]) ++top;
+  CGFloat delta=top>=0?[[table_ enclosingScrollView] documentVisibleRect].origin.y-[table_ rectOfRow:top].origin.y:0;
+  NSInteger queueTop=[queue_ rowAtPoint:[[queue_ enclosingScrollView] documentVisibleRect].origin];
+  CGFloat queueDelta=queueTop>=0?[[queue_ enclosingScrollView] documentVisibleRect].origin.y-[queue_ rectOfRow:queueTop].origin.y:0;
+  NSDictionary *request=[NSDictionary dictionaryWithObjectsAndKeys:library_,@"library",
+    [NSNumber numberWithInt:mode_],@"mode",selectedPlaylist_?selectedPlaylist_:@"",@"playlist",
+    rows_?:[NSArray array],@"oldRows",queueRows_?:[NSArray array],@"oldQueue",
+    [[[table_ selectedRowIndexes] copy] autorelease],@"oldSelection",[NSNumber numberWithLong:[queue_ selectedRow]],@"oldQueueSelection",
+    [NSNumber numberWithLong:top],@"top",[NSNumber numberWithDouble:delta],@"delta",
+    [NSNumber numberWithLong:queueTop],@"queueTop",[NSNumber numberWithDouble:queueDelta],@"queueDelta",nil];
+  listLoading_=YES; [listLoader_ request:request]; [self updateControls];
+}
++ (NSDictionary *)buildList:(NSDictionary *)input;
+{
+  RDLPLibrary *library=[input objectForKey:@"library"];
+  NSString *pid=[input objectForKey:@"playlist"];
+  int mode=[[input objectForKey:@"mode"] intValue];
+  NSDictionary *playlist=[library playlistForID:pid], *adhoc=[library adhocPlaylist];
+  if(mode==0 && !playlist) mode=1;
+  BOOL added=mode==0 && [pid isEqualToString:[adhoc objectForKey:@"id"]];
+  NSArray *rows=added?[library addedVideos]:(mode==0?[library entriesForPlaylist:pid]:[library allDownloads]);
+  if(mode!=0 || added) {
+    RDLPDownloadSections *groups=[[[RDLPDownloadSections alloc] initWithRows:(RDLPLibraryRows *)rows date:[NSDate date] calendar:[NSCalendar currentCalendar]] autorelease];
+    rows=[groups tableRows:rows];
   }
-  NSString *queueSelection=[[[self selectedJob] objectForKey:@"id"] copy];
-  NSString *oldGroup=selectedPlaylist_?[RDLPLibraryViews groupForPlaylist:[self selectedPlaylist]]:nil;
-  [playlists_ release]; playlists_=[[library_ playlists] copy];
-  [addedPlaylists_ release]; addedPlaylists_=[[library_ playlistIDsFromAccount:NO] copy];
-  [accountPlaylists_ release]; accountPlaylists_=[[library_ playlistIDsFromAccount:YES] copy];
-  [unsupportedPlaylists_ release]; unsupportedPlaylists_=[[library_ unsupportedPlaylistIDs] copy];
-  [adhocPlaylist_ release]; adhocPlaylist_=[[library_ adhocPlaylist] retain];
-  if(mode_==0 && ![self selectedPlaylist]) { mode_=1; [selectedPlaylist_ release]; selectedPlaylist_=nil; [selection release]; selection=nil; }
-  BOOL added=mode_==0 && [selectedPlaylist_ isEqualToString:[adhocPlaylist_ objectForKey:@"id"]];
-  [rows_ release]; rows_=[(added?[library_ addedVideos]:(mode_==0?[library_ entriesForPlaylist:selectedPlaylist_]:[library_ allDownloads])) copy];
-  if(mode_!=0 || added) {
-    RDLPDownloadSections *groups=[[[RDLPDownloadSections alloc] initWithRows:(RDLPLibraryRows *)rows_ date:[NSDate date] calendar:[NSCalendar currentCalendar]] autorelease];
-    NSArray *grouped=[[groups tableRows:rows_] retain]; [rows_ release]; rows_=grouped;
+  NSArray *queue=[library queueRows];
+  NSMutableDictionary *result=[NSMutableDictionary dictionaryWithDictionary:input];
+  NSArray *oldRows=[input objectForKey:@"oldRows"], *oldQueue=[input objectForKey:@"oldQueue"];
+  NSString *identityKey=mode==0?@"position":@"id";
+  NSMutableArray *identities=[NSMutableArray array]; NSIndexSet *oldSelection=[input objectForKey:@"oldSelection"];
+  BOOL sameMode=mode==[[input objectForKey:@"mode"] intValue];
+  NSUInteger oldIndex=sameMode?[oldSelection firstIndex]:NSNotFound;
+  while(oldIndex!=NSNotFound) {
+    if(oldIndex<[oldRows count]) { NSString *identity=[[oldRows objectAtIndex:oldIndex] objectForKey:identityKey]; if(identity) [identities addObject:identity]; }
+    if([[[[NSThread currentThread] threadDictionary] objectForKey:@"RDLPListLoader"] isCancelled]) break;
+    oldIndex=[oldSelection indexGreaterThanIndex:oldIndex];
   }
-  [queueRows_ release]; queueRows_=[[library_ queueRows] copy];
-  [queueStatusCache_ removeAllObjects];
-  [videoRows_ release]; videoRows_=[[RDLPVideoRows alloc] initWithRows:rows_ library:library_ playlist:mode_==0?selectedPlaylist_:nil];
+  [result setObject:identities forKey:@"selection"];
+  NSInteger oldTop=[[input objectForKey:@"top"] longValue], oldQueueIndex=[[input objectForKey:@"oldQueueSelection"] longValue], queueTop=[[input objectForKey:@"queueTop"] longValue];
+  NSString *anchor=sameMode && oldTop>=0 && (NSUInteger)oldTop<[oldRows count]?[[oldRows objectAtIndex:(NSUInteger)oldTop] objectForKey:identityKey]:nil;
+  NSString *queueID=oldQueueIndex>=0 && (NSUInteger)oldQueueIndex<[oldQueue count]?[[oldQueue objectAtIndex:(NSUInteger)oldQueueIndex] objectForKey:@"id"]:nil;
+  NSString *queueAnchor=queueTop>=0 && (NSUInteger)queueTop<[oldQueue count]?[[oldQueue objectAtIndex:(NSUInteger)queueTop] objectForKey:@"id"]:nil;
+  [result setObject:anchor?:@"" forKey:@"anchor"]; [result setObject:queueID?:@"" forKey:@"queueID"];
+  [result setObject:[NSNumber numberWithUnsignedLong:queueAnchor?[(RDLPLibraryRows *)queue indexForIdentity:queueAnchor]:NSNotFound] forKey:@"queueAnchorIndex"];
+  [result removeObjectForKey:@"oldRows"]; [result removeObjectForKey:@"oldQueue"];
+  [result setObject:[NSNumber numberWithInt:mode] forKey:@"mode"];
+  if(playlist) [result setObject:playlist forKey:@"selectedPlaylist"];
+  if(adhoc) [result setObject:adhoc forKey:@"adhoc"];
+  [result setObject:rows?rows:[NSArray array] forKey:@"rows"];
+  [result setObject:queue?queue:[NSArray array] forKey:@"queue"];
+  [result setObject:[[[RDLPVideoRows alloc] initWithRows:rows library:library playlist:mode==0?pid:nil] autorelease] forKey:@"videos"];
+  [result setObject:[[[RDLPVideoRows alloc] initWithRows:queue library:library playlist:nil] autorelease] forKey:@"queueDisplay"];
+  NSArray *addedRows=[library playlistsFromAccount:NO], *accountRows=[library playlistsFromAccount:YES], *unsupportedRows=[library unsupportedPlaylists];
+  [result setObject:addedRows?[(RDLPLibraryRows *)addedRows identities]:[NSArray array] forKey:@"added"];
+  [result setObject:accountRows?[(RDLPLibraryRows *)accountRows identities]:[NSArray array] forKey:@"account"];
+  [result setObject:unsupportedRows?[(RDLPLibraryRows *)unsupportedRows identities]:[NSArray array] forKey:@"unsupported"];
+  [result setObject:[NSDictionary dictionaryWithObjectsAndKeys:
+    addedRows?:[NSArray array],@"Added Playlists",accountRows?:[NSArray array],@"My Playlists",unsupportedRows?:[NSArray array],@"Unsupported Playlists",nil] forKey:@"sidebar"];
+  NSMutableIndexSet *selection=[NSMutableIndexSet indexSet];
+  NSEnumerator *e=[[result objectForKey:@"selection"] objectEnumerator]; NSString *identity;
+  while((identity=[e nextObject])) {
+    NSUInteger index=[(RDLPLibraryRows *)rows indexForIdentity:identity];
+    if(index!=NSNotFound) [selection addIndex:index];
+  }
+  [result setObject:selection forKey:@"indexes"];
+  [result setObject:[NSNumber numberWithUnsignedLong:[[result objectForKey:@"anchor"] length]?[(RDLPLibraryRows *)rows indexForIdentity:[result objectForKey:@"anchor"]]:NSNotFound] forKey:@"anchorIndex"];
+  [result setObject:[NSNumber numberWithUnsignedLong:[[result objectForKey:@"queueID"] length]?[(RDLPLibraryRows *)queue indexForIdentity:[result objectForKey:@"queueID"]]:NSNotFound] forKey:@"queueIndex"];
+  return result;
+}
+- (void)didLoadList:(NSDictionary *)result;
+{
+  listLoading_=NO; listReadFailed_=NO;
+  if([result objectForKey:@"error"]) { listReadFailed_=YES; [library_ reportListError:[result objectForKey:@"error"]]; [self updateControls]; return; }
+  refreshing_=YES;
+  [rows_ RDLP_invalidateRows]; [videoRows_ RDLP_invalidateRows]; [queueDisplayRows_ RDLP_invalidateRows]; [queueRows_ RDLP_invalidateRows];
+  NSEnumerator *old=[[sidebarRows_ allValues] objectEnumerator]; NSArray *list;
+  while((list=[old nextObject])) [list RDLP_invalidateRows];
+  [rows_ release]; rows_=[[result objectForKey:@"rows"] retain];
+  [videoRows_ release]; videoRows_=[[result objectForKey:@"videos"] retain];
+  [queueRows_ release]; queueRows_=[[result objectForKey:@"queue"] retain];
+  [queueDisplayRows_ release]; queueDisplayRows_=[[result objectForKey:@"queueDisplay"] retain];
+  [addedPlaylists_ release]; addedPlaylists_=[[result objectForKey:@"added"] retain];
+  [accountPlaylists_ release]; accountPlaylists_=[[result objectForKey:@"account"] retain];
+  [unsupportedPlaylists_ release]; unsupportedPlaylists_=[[result objectForKey:@"unsupported"] retain];
+  [sidebarRows_ release]; sidebarRows_=[[result objectForKey:@"sidebar"] retain];
+  [selectedPlaylistRow_ release]; selectedPlaylistRow_=[[result objectForKey:@"selectedPlaylist"] retain];
+  [adhocPlaylist_ release]; adhocPlaylist_=[[result objectForKey:@"adhoc"] retain];
+  mode_=[[result objectForKey:@"mode"] intValue];
+  if(mode_!=0) { [selectedPlaylist_ release]; selectedPlaylist_=nil; }
   [sidebar_ reloadData]; [table_ reloadData]; [queue_ reloadData];
   if(!sidebarLoaded_) {
     [sidebar_ expandItem:@"System"]; [sidebar_ expandItem:@"Added Playlists"]; [sidebar_ expandItem:@"My Playlists"]; [sidebar_ expandItem:@"Unsupported Playlists"]; sidebarLoaded_=YES;
-  } else if(selectedPlaylist_ && ![oldGroup isEqualToString:[RDLPLibraryViews groupForPlaylist:[self selectedPlaylist]]]) {
-    [sidebar_ expandItem:[RDLPLibraryViews groupForPlaylist:[self selectedPlaylist]]];
   }
-  id selectedItem=mode_==0?(selectedPlaylist_?[sidebarItems_ objectForKey:selectedPlaylist_]:nil):@"All Downloads";
-  NSInteger selectedSidebar=[sidebar_ rowForItem:selectedItem];
-  if(selectedSidebar>=0) [sidebar_ selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)selectedSidebar] byExtendingSelection:NO];
-  else [sidebar_ deselectAll:nil];
-  NSMutableIndexSet *restored=[NSMutableIndexSet indexSet];
-  NSEnumerator *identities=[selection objectEnumerator]; NSString *identity;
-  while((identity=[identities nextObject])) {
-    NSUInteger index=[(RDLPLibraryRows *)rows_ indexForIdentity:identity];
-    if(index!=NSNotFound) [restored addIndex:index];
+  if(selectedPlaylistRow_) [sidebar_ expandItem:[RDLPLibraryViews groupForPlaylist:selectedPlaylistRow_]];
+  NSInteger sidebarIndex=[sidebar_ rowForItem:mode_==0?(id)selectedPlaylist_:(id)@"All Downloads"];
+  if(sidebarIndex>=0) [sidebar_ selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)sidebarIndex] byExtendingSelection:NO];
+  [table_ selectRowIndexes:[result objectForKey:@"indexes"] byExtendingSelection:NO];
+  NSUInteger q=[[result objectForKey:@"queueIndex"] unsignedLongValue];
+  [queue_ selectRowIndexes:q==NSNotFound?[NSIndexSet indexSet]:[NSIndexSet indexSetWithIndex:q] byExtendingSelection:NO];
+  NSUInteger anchor=[[result objectForKey:@"anchorIndex"] unsignedLongValue];
+  if(anchor!=NSNotFound && anchor<[rows_ count]) {
+    NSClipView *clip=[[table_ enclosingScrollView] contentView];
+    NSPoint point=[clip bounds].origin; point.y=[table_ rectOfRow:(NSInteger)anchor].origin.y+[[result objectForKey:@"delta"] doubleValue];
+    [clip scrollToPoint:point]; [[table_ enclosingScrollView] reflectScrolledClipView:clip];
   }
-  [table_ selectRowIndexes:restored byExtendingSelection:NO];
-  [RDLPLibraryViews restoreSelection:queue_ rows:queueRows_ key:@"id" value:queueSelection];
-  [selection release]; [queueSelection release]; refreshing_=NO; bulkAvailabilityValid_=NO; [self updateCustomSummary]; [self updateControls];
+  NSUInteger queueAnchor=[[result objectForKey:@"queueAnchorIndex"] unsignedLongValue];
+  if(queueAnchor!=NSNotFound && queueAnchor<[queueRows_ count]) {
+    NSClipView *clip=[[queue_ enclosingScrollView] contentView]; NSPoint point=[clip bounds].origin;
+    point.y=[queue_ rectOfRow:(NSInteger)queueAnchor].origin.y+[[result objectForKey:@"queueDelta"] doubleValue];
+    [clip scrollToPoint:point]; [[queue_ enclosingScrollView] reflectScrolledClipView:clip];
+  }
+  refreshing_=NO; bulkAvailabilityValid_=NO; [self updateCustomSummary]; [self updateControls];
+}
+- (void)libraryClosed:(NSNotification *)note;
+{
+  if([note object]==library_) listClosed_=YES;
+  [listLoader_ invalidate]; [listLoader_ release]; listLoader_=nil;
+  [rows_ RDLP_invalidateRows]; [videoRows_ RDLP_invalidateRows]; [queueDisplayRows_ RDLP_invalidateRows]; [queueRows_ RDLP_invalidateRows];
+  NSEnumerator *e=[[sidebarRows_ allValues] objectEnumerator]; NSArray *list;
+  while((list=[e nextObject])) [list RDLP_invalidateRows];
+  [rows_ release]; rows_=nil; [videoRows_ release]; videoRows_=nil;
+  [queueRows_ release]; queueRows_=nil; [queueDisplayRows_ release]; queueDisplayRows_=nil;
+  [sidebarRows_ release]; sidebarRows_=nil;
+  [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(reloadPages:) object:nil];
+}
+- (void)pageLoaded:(NSNotification *)note;
+{
+  id source=[note object];
+  BOOL relevant=[videoRows_ RDLP_containsRows:source] || [queueDisplayRows_ RDLP_containsRows:source];
+  NSEnumerator *e=[[sidebarRows_ allValues] objectEnumerator]; NSArray *rows;
+  while((rows=[e nextObject])) if([rows RDLP_containsRows:source]) relevant=YES;
+  if(relevant) {
+    id error=[[note userInfo] objectForKey:@"error"];
+    if(error && error!=[NSNull null]) [library_ reportListError:[error localizedDescription]];
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(reloadPages:) object:nil];
+    [self performSelector:@selector(reloadPages:) withObject:nil afterDelay:0];
+  }
+}
+- (void)reloadPages:(id)ignored;
+{
+  (void)ignored; refreshing_=YES;
+  [table_ reloadData]; [queue_ reloadData]; [sidebar_ reloadData]; refreshing_=NO;
+  [self updateControls];
 }
 - (void)tableWasUsed:(NSTableView *)view;
 {
@@ -813,7 +903,13 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 {
   (void)outline; (void)column;
   if([RDLPLibraryViews isSidebarGroup:item] || [item isEqual:@"All Downloads"]) return NSLocalizedString(item, nil);
-  NSDictionary *playlist=[library_ playlistForID:item];
+  NSDictionary *playlist=[item isEqual:[adhocPlaylist_ objectForKey:@"id"]]?adhocPlaylist_:nil;
+  NSArray *groups=[NSArray arrayWithObjects:@"Added Playlists",@"My Playlists",@"Unsupported Playlists",nil];
+  NSArray *ids=[NSArray arrayWithObjects:addedPlaylists_?:[NSArray array],accountPlaylists_?:[NSArray array],unsupportedPlaylists_?:[NSArray array],nil];
+  NSUInteger g,i;
+  for(g=0;!playlist && g<3;++g) for(i=0;i<[[ids objectAtIndex:g] count];++i)
+    if([[[[ids objectAtIndex:g] objectAtIndex:i] objectForKey:@"id"] isEqual:item]) { playlist=[[sidebarRows_ objectForKey:[groups objectAtIndex:g]] RDLP_requestRow:i]; break; }
+  if([[playlist objectForKey:@"action"] isEqualToString:@"placeholder"]) return [playlist objectForKey:@"title"];
   return playlist?[NSString stringWithFormat:NSLocalizedString(@"%@ (%@)", nil),[playlist objectForKey:@"title"],[playlist objectForKey:@"count"]]:@"";
 }
 - (void)outlineView:(NSOutlineView *)outline willDisplayCell:(id)cell forTableColumn:(NSTableColumn *)column item:(id)item;
@@ -829,7 +925,9 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (id)tableView:(NSTableView *)view objectValueForTableColumn:(NSTableColumn *)column row:(NSInteger)row;
 {
   BOOL queue=view==queue_;
-  NSDictionary *entry=[(queue?queueRows_:videoRows_) objectAtIndex:(NSUInteger)row]; NSString *key=[column identifier];
+  NSDictionary *display=[(queue?queueDisplayRows_:videoRows_) RDLP_requestRow:(NSUInteger)row];
+  NSDictionary *entry=queue?[display objectForKey:@"job"]:display; NSString *key=[column identifier];
+  if([[display objectForKey:@"action"] isEqualToString:@"placeholder"]) return [key isEqualToString:@"title"]?[display objectForKey:@"title"]:nil;
   if(!queue && [[entry objectForKey:@"action"] isEqualToString:@"section"]) return (!column || [key isEqualToString:@"state"] || [key isEqualToString:@"title"])?[entry objectForKey:@"title"]:nil;
   NSDictionary *job=entry;
   if(!queue && ![key isEqualToString:@"state"]) return [entry objectForKey:key];
@@ -844,7 +942,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     return [actual length] && ![actual isEqualToString:format]?[label stringByAppendingFormat:NSLocalizedString(@" → %@", nil),[RDLPLibrary qualityLabelForFormat:actual]]:label;
   }
   if([key isEqualToString:@"state"]) {
-    NSString *status=queue?[self queueStatusForJob:job]:[entry objectForKey:@"status"]; AIFontAwesomeIcon icon=0;
+    NSString *status=[display objectForKey:@"status"]; AIFontAwesomeIcon icon=0;
     if([status isEqualToString:NSLocalizedString(@"Downloaded", nil)]) icon=AIFACircleCheck;
     else if([status isEqualToString:NSLocalizedString(@"Downloading", nil)]) icon=AIFAArrowDown;
     else if([status isEqualToString:NSLocalizedString(@"Queued", nil)]) icon=AIFAClock;
@@ -864,7 +962,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (BOOL)tableView:(NSTableView *)view isGroupRow:(NSInteger)row;
 { return [view RDLP_supportsGroupRows] && [self tableView:view RDLP_isSectionRow:row]; }
 - (BOOL)tableView:(NSTableView *)view shouldSelectRow:(NSInteger)row;
-{ return ![self tableView:view RDLP_isSectionRow:row]; }
+{ return !listLoading_ && !listReadFailed_ && ![self tableView:view RDLP_isSectionRow:row] && [(AIPagedRows *)(view==queue_?queueDisplayRows_:videoRows_) cachedObjectAtIndex:(NSUInteger)row]!=nil; }
 - (NSCell *)tableView:(NSTableView *)view dataCellForTableColumn:(NSTableColumn *)column row:(NSInteger)row;
 {
   if([self tableView:view RDLP_isSectionRow:row]) {
@@ -876,14 +974,15 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)tableView:(NSTableView *)view willDisplayCell:(id)cell forTableColumn:(NSTableColumn *)column row:(NSInteger)row;
 {
   if([[column identifier] isEqualToString:@"state"]) {
-    NSDictionary *entry=[(view==queue_?queueRows_:videoRows_) objectAtIndex:(NSUInteger)row];
-    [cell setRepresentedObject:view==queue_?[self queueStatusForJob:entry]:[entry objectForKey:@"status"]];
+    NSDictionary *display=[(view==queue_?queueDisplayRows_:videoRows_) RDLP_requestRow:(NSUInteger)row];
+    [cell setRepresentedObject:[display objectForKey:@"status"]];
   }
 }
 - (NSString *)tableView:(NSTableView *)view toolTipForCell:(NSCell *)cell rect:(NSRectPointer)rect tableColumn:(NSTableColumn *)column row:(NSInteger)row mouseLocation:(NSPoint)point;
 {
   (void)cell; (void)rect; (void)point;
-  NSDictionary *entry=[(view==queue_?queueRows_:videoRows_) objectAtIndex:(NSUInteger)row];
+  NSDictionary *display=[(view==queue_?queueDisplayRows_:videoRows_) RDLP_requestRow:(NSUInteger)row];
+    NSDictionary *entry=view==queue_?[display objectForKey:@"job"]:display;
   if([[column identifier] isEqualToString:@"quality"]) {
     NSDictionary *job=[entry objectForKey:@"job"]; if(!job) job=entry;
     NSString *format=[job objectForKey:@"format"], *actual=[job objectForKey:@"actual_format"];
@@ -898,7 +997,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     return [value isKindOfClass:[NSString class]]?value:[value description];
   }
   NSDictionary *job=entry;
-  NSString *status=[self queueStatusForJob:job], *error=[job objectForKey:@"error"];
+  NSString *status=[display objectForKey:@"status"], *error=[job objectForKey:@"error"];
   return [error length]?[NSString stringWithFormat:NSLocalizedString(@"%@: %@", nil),status,error]:status;
 }
 - (void)tableViewSelectionDidChange:(NSNotification *)notification;

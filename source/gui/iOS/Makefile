@@ -3,13 +3,13 @@ include $(ALTIVEC_ROOT)/make/entry.mk
 ifeq ($(_altivec_relocated),)
 PROJECT_ROOT := $(abspath $(dir $(firstword $(MAKEFILE_LIST)))/../../..)
 APP_NAME = RetroDLP
-SOURCES = main.m RDLPLibrary+iOS.m RDLPAppDelegate.m RDLPLibraryViewController.m RDLPLibraryActions.m RDLPLibrarySections.m RDLPUIKit.m RDLPDownloadPolicy.m RDLPStatusBarView.m RDLPSettingsViewController.m RDLPPlaylistsViewController.m RDLPPlaylistViewController.m RDLPVideoListViewController.m RDLPDownloadsViewController.m RDLPQueueViewController.m
+SOURCES = RDLPAsyncTableViewController.m main.m RDLPLibrary+iOS.m RDLPAppDelegate.m RDLPLibraryViewController.m RDLPLibraryActions.m RDLPLibrarySections.m RDLPUIKit.m RDLPDownloadPolicy.m RDLPStatusBarView.m RDLPSettingsViewController.m RDLPPlaylistsViewController.m RDLPPlaylistViewController.m RDLPVideoListViewController.m RDLPDownloadsViewController.m RDLPQueueViewController.m
 SHARED_DIR = ../shared
 BUNDLE_LOCALIZATION_DIRS = $(SHARED_DIR)/Resources
 SOURCES += RDLPDownloadedPlayerViewController.m
 SOURCES += RDLPPlayerControls.m RDLPPlayerViewController.m RDLPPlayerQueue.m RDLPPlayerNavigationController.m
 SOURCE_DIRS = $(SHARED_DIR) player
-EXTRA_SOURCES = rdapp_strings.c rdapp_store.c rdapp_service.c rdlp_thread.c RDLPLibrary.m RDLPVideoRows.m RDLPDownloadSections.m RDLP_Foundation.m
+EXTRA_SOURCES = rdapp_strings.c rdapp_store.c rdapp_service.c rdlp_thread.c RDLPLibrary.m RDLPVideoRows.m RDLPListLoader.m RDLPDownloadSections.m RDLP_Foundation.m
 INFO_PLIST = Info.plist
 RES_DIR = Resources
 include $(PROJECT_ROOT)/make/apple-sources.mk

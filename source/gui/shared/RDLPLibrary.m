@@ -1,4 +1,5 @@
 #import <AIStoreObserver.h>
+#import "RDLPListLoader.h"
 #import "RDLPLibrary.h"
 #import "RDLPLibrary+Platform.h"
 #import "RDLP_Foundation.h"
@@ -16,6 +17,7 @@
 #include <errno.h>
 #include <stdlib.h>
 
+NSString * const RDLPLibraryWillClose = @"RDLPLibraryWillClose";
 NSString * const RDLPLibraryDidChange = @"RetroDLPLibraryDidChange";
 NSString * const RDLPLibraryStatusDidChange = @"RetroDLPLibraryStatusDidChange";
 NSString * const RDLPLibraryErrorDidOccur = @"RetroDLPLibraryErrorDidOccur";
@@ -50,18 +52,25 @@ static int collect(void *context,int count,const char *const *names,const char *
 @interface RDLPLibraryRows (Private)
 - (id)initWithLibrary:(RDLPLibrary *)library path:(NSString *)path query:(rdapp_query)query key:(NSString *)key video:(NSString *)video format:(NSString *)format;
 @end
+static int listCancelled(void *context) { return [(RDLPListLoader *)context isCancelled]; }
 @implementation RDLPLibraryRows
 - (id)initWithLibrary:(RDLPLibrary *)library path:(NSString *)path query:(rdapp_query)query key:(NSString *)key video:(NSString *)video format:(NSString *)format;
 {
   self=[super init]; if(!self) return nil;
   owner_=[library retain]; query_=(int)query; key_=identifier(key); video_=[video copy]; format_=[format copy];
   int64_t count=0;
-  if(!rdapp_store_open_reader([path fileSystemRepresentation],(rdapp_store **)&reader_) ||
-     !rdapp_store_count(reader_,query,key_,[video UTF8String],[format UTF8String],&count)) { [self release]; return nil; }
+  RDLPListLoader *loader=[[[NSThread currentThread] threadDictionary] objectForKey:@"RDLPListLoader"];
+  if([loader isCancelled] || !rdapp_store_open_reader([path fileSystemRepresentation],(rdapp_store **)&reader_)) { [self release]; return nil; }
+  rdapp_store_progress(reader_,loader?listCancelled:NULL,loader);
+  int ok=rdapp_store_count(reader_,query,key_,[video UTF8String],[format UTF8String],&count);
+  rdapp_store_progress(reader_,NULL,NULL);
+  if(!ok) { [self release]; return nil; }
   count_=(NSUInteger)count; lastIndex_=NSNotFound; return self;
 }
 - (void)dealloc;
 { rdapp_store_close(reader_); [owner_ release]; [video_ release]; [format_ release]; [super dealloc]; }
+- (void)invalidatePages;
+{ rdapp_store_interrupt(reader_); [super invalidatePages]; }
 - (NSUInteger)count; { return count_; }
 - (id)copyWithZone:(NSZone *)zone; { (void)zone; return [self retain]; }
 - (NSArray *)pageAtOffset:(NSUInteger)index error:(NSError **)error;
@@ -85,7 +94,7 @@ static int collect(void *context,int count,const char *const *names,const char *
 - (void)recordReadError:(NSError *)error;
 {
   [super recordReadError:error];
-  if(!readFailed_ && error) {
+  if(!readFailed_ && error && [NSThread RLDP_isMainThread]) {
     readFailed_=YES;
     [owner_ reportError:NSLocalizedString(@"Couldn’t read library", nil) detail:[error localizedDescription]];
   }
@@ -100,13 +109,42 @@ static int collect(void *context,int count,const char *const *names,const char *
   if(!ok) return nil;
   return [rows count]?[rows objectAtIndex:0]:nil;
 }
+- (NSArray *)identities;
+{
+  NSMutableArray *ids=[NSMutableArray array]; NSUInteger offset;
+  rdapp_query query=query_==RDAPP_ADDED_PLAYLISTS?RDAPP_ADDED_IDS:(query_==RDAPP_ACCOUNT_PLAYLISTS?RDAPP_ACCOUNT_IDS:RDAPP_UNSUPPORTED_IDS);
+  [pageReadLock_ lock];
+  RDLPListLoader *loader=[[[NSThread currentThread] threadDictionary] objectForKey:@"RDLPListLoader"];
+  for(offset=0;offset<count_;offset+=32) {
+    if([loader isCancelled]) break;
+    if(!rdapp_store_page(reader_,query,0,NULL,NULL,(int64_t)offset,32,collect,ids)) {
+      [owner_ reportListError:string(rdapp_store_error(reader_))]; break;
+    }
+  }
+  [pageReadLock_ unlock]; return ids;
+}
+- (NSArray *)jobsForPlaylist:(NSString *)playlist video:(NSString *)video;
+{
+  NSMutableArray *rows=[NSMutableArray array]; int64_t count=0, offset;
+  [pageReadLock_ lock];
+  int ok=rdapp_store_count(reader_,RDAPP_VIDEO_JOBS,identifier(playlist),[video UTF8String],NULL,&count);
+  for(offset=0;ok && offset<count;offset+=32)
+    ok=rdapp_store_page(reader_,RDAPP_VIDEO_JOBS,identifier(playlist),[video UTF8String],NULL,offset,32,collect,rows);
+  NSError *error=ok?nil:[NSError errorWithDomain:@"RetroDLP.Read" code:1 userInfo:[NSDictionary dictionaryWithObject:string(rdapp_store_error(reader_)) forKey:NSLocalizedDescriptionKey]];
+  [pageReadLock_ unlock];
+  if(error) [super recordReadError:error];
+  return ok?rows:nil;
+}
 - (NSUInteger)rowsSinceDate:(NSDate *)date;
 {
   int64_t count=0;
   int64_t timestamp=(int64_t)[date timeIntervalSince1970];
   [pageReadLock_ lock];
+  RDLPListLoader *loader=[[[NSThread currentThread] threadDictionary] objectForKey:@"RDLPListLoader"];
+  rdapp_store_progress(reader_,loader?listCancelled:NULL,loader);
   int ok=query_==RDAPP_ADDED_VIDEOS?rdapp_store_added_videos_since(reader_,key_,timestamp,&count):
     (query_==RDAPP_ALL_DOWNLOADS && rdapp_store_downloads_since(reader_,timestamp,&count));
+  rdapp_store_progress(reader_,NULL,NULL);
   [pageReadLock_ unlock];
   if(!ok) [owner_ reportError:NSLocalizedString(@"Couldn’t read date sections", nil) detail:string(rdapp_store_error(reader_))];
   return (NSUInteger)count;
@@ -116,7 +154,10 @@ static int collect(void *context,int count,const char *const *names,const char *
   int64_t index=-1;
   if(!identity) return NSNotFound;
   [pageReadLock_ lock];
+  RDLPListLoader *loader=[[[NSThread currentThread] threadDictionary] objectForKey:@"RDLPListLoader"];
+  rdapp_store_progress(reader_,loader?listCancelled:NULL,loader);
   int ok=rdapp_store_index(reader_,(rdapp_query)query_,key_,identifier(identity),&index);
+  rdapp_store_progress(reader_,NULL,NULL);
   [pageReadLock_ unlock];
   if(!ok) return NSNotFound;
   return index<0?NSNotFound:(NSUInteger)index;
@@ -302,7 +343,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 {
   [NSObject cancelPreviousPerformRequestsWithTarget:self];
   [storeObserver_ invalidate]; [storeObserver_ release];
-  [lastPhase_ release]; [lastReadError_ release]; [errors_ release];
+  [lastPhase_ release]; [errors_ release];
   [platformStorage_ release];
   rdapp_store_close(store_); [lock_ release]; [cancelLock_ release]; [commands_ release]; [activeCommand_ release]; [support_ release]; [root_ release];
   [ca_ release]; [assets_ release]; [cookies_ release]; [status_ release]; [super dealloc];
@@ -333,10 +374,20 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 }
 - (void)reportError:(NSString *)title detail:(NSString *)detail;
 {
+  NSMutableDictionary *thread=[ [NSThread currentThread] threadDictionary];
+  if([thread objectForKey:@"RDLPListLoader"]) {
+    [thread setObject:detail?detail:title forKey:@"RDLPListError"]; return;
+  }
+  if(![NSThread RLDP_isMainThread]) {
+    [self performSelectorOnMainThread:@selector(reportListError:) withObject:detail?detail:title waitUntilDone:NO]; return;
+  }
+  if(stopping_) return;
   NSDictionary *error=[NSDictionary dictionaryWithObjectsAndKeys:title,@"title",detail?detail:@"",@"detail",nil];
   if(![errors_ containsObject:error]) [errors_ addObject:error];
   [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryErrorDidOccur object:self];
 }
+- (void)reportListError:(NSString *)detail;
+{ [self reportError:NSLocalizedString(@"Couldn’t read library",nil) detail:detail]; }
 - (NSDictionary *)takeError;
 {
   if(![errors_ count]) return nil;
@@ -406,10 +457,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
 - (RDLPLibraryRows *)rows:(rdapp_query)query playlist:(NSString *)key video:(NSString *)video format:(NSString *)format;
 {
   RDLPLibraryRows *rows=[[[RDLPLibraryRows alloc] initWithLibrary:self path:[support_ stringByAppendingPathComponent:@"retrodlp.sqlite"] query:query key:key video:video format:format] autorelease];
-  if(!rows && !lastReadError_) {
-    lastReadError_=[NSLocalizedString(@"Could not open a library read snapshot.", nil) copy];
-    [self reportError:NSLocalizedString(@"Couldn’t read library", nil) detail:lastReadError_];
-  } else if(rows) { [lastReadError_ release]; lastReadError_=nil; }
+  if(!rows) [self reportListError:NSLocalizedString(@"Could not open a library read snapshot.",nil)];
   return rows;
 }
 - (NSArray *)rows:(rdapp_query)query playlist:(NSString *)key;
@@ -501,7 +549,7 @@ static void download_callback(const rdlp_download_event *event,void *context) {
   [self startNext];
 }
 - (void)shutdown;
-{ [storeObserver_ invalidate]; stopping_=YES; [NSObject cancelPreviousPerformRequestsWithTarget:self]; [commands_ removeAllObjects]; [cancelLock_ lock]; cancel_=YES; [cancelLock_ unlock]; }
+{ [[NSNotificationCenter defaultCenter] postNotificationName:RDLPLibraryWillClose object:self]; [storeObserver_ invalidate]; stopping_=YES; [NSObject cancelPreviousPerformRequestsWithTarget:self]; [commands_ removeAllObjects]; [cancelLock_ lock]; cancel_=YES; [cancelLock_ unlock]; }
 - (BOOL)cancelled;
 { BOOL value; [cancelLock_ lock]; value=cancel_; [cancelLock_ unlock]; return value; }
 - (void)resolverEvent:(rdlp_event_type)type;

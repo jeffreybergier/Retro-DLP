@@ -16,8 +16,9 @@
   return self;
 }
 - (void)dealloc; { [playlist_ release]; [super dealloc]; }
-- (NSArray *)listSections;
-{ return [model_ sectionsForScreen:RDLPScreenPlaylist playlist:playlist_ video:nil collapsed:nil]; }
+- (NSDictionary *)listRequest;
+{ return [NSDictionary dictionaryWithObjectsAndKeys:library_,@"library",[NSNumber numberWithInt:RDLPScreenPlaylist],@"mode",playlist_,@"playlist", nil]; }
+
 - (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section;
 {
   (void)table;
@@ -58,12 +59,15 @@
 - (void)refresh:(id)sender;
 {
   if(![self isViewLoaded]) return;
-  NSDictionary *playlist=[library_ playlistForID:[playlist_ objectForKey:@"id"]];
-  if(playlist) {
-    [playlist retain]; [playlist_ release]; playlist_=playlist; [self setTitle:[playlist objectForKey:@"title"]];
-  }
   [[[self navigationItem] rightBarButtonItem] setEnabled:[[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] || ([RDLPLibrary canSyncPlaylist:playlist_] && ![library_ isSyncPendingForInput:[playlist_ objectForKey:@"service_id"]])];
   [super refresh:sender];
+}
+- (void)didLoadList:(NSDictionary *)result;
+{
+  if(![self canApplyList]) return;
+  NSDictionary *playlist=[result objectForKey:@"playlist"];
+  if(playlist) { [playlist retain]; [playlist_ release]; playlist_=playlist; [self setTitle:[playlist objectForKey:@"title"]]; }
+  [super didLoadList:result];
 }
 - (void)sync:(id)sender;
 {

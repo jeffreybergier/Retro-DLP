@@ -52,7 +52,7 @@ static void testBulkSelection(void) {
   requireCondition([table allowsMultipleSelection],@"Video table supports multiple selection");
   NSIndexSet *all=[NSIndexSet indexSetWithIndexesInRange:NSMakeRange(0,4)];
   [table selectRowIndexes:all byExtendingSelection:NO]; [owner tableWasUsed:table];
-  [owner refresh:nil];
+  [owner refresh:nil]; waitForList(owner);
   requireCondition([[table selectedRowIndexes] isEqual:all],@"Refresh preserves every playlist occurrence");
   requireCondition([toolbarButton(owner,@"download") isDefaultEnabled] && [toolbarButton(owner,@"remove") isDefaultEnabled] && ![toolbarButton(owner,@"play") isDefaultEnabled],@"Mixed selection enables bulk download/delete, without first-row playback");
   NSMenu *menu=[owner menuForToolbarIdentifier:@"download"];

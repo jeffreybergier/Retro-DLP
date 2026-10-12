@@ -22,7 +22,7 @@
   [NSObject cancelPreviousPerformRequestsWithTarget:self];
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   [alert_ setDelegate:nil]; [alert_ dismissWithClickedButtonIndex:[alert_ cancelButtonIndex] animated:NO];
-  [alert_ release]; [retryRequest_ release]; [swipeJobID_ release]; [sections_ release]; [statusBar_ release];
+  [alert_ release]; [retryRequest_ release]; [swipeJobID_ release]; [statusBar_ release];
   [model_ release]; [policy_ release]; [library_ release]; [super dealloc];
 }
 - (void)viewDidLoad;
@@ -51,8 +51,8 @@
   BOOL hidden=[self shouldHideToolbar];
   if([[self navigationController] isToolbarHidden]!=hidden) [[self navigationController] setToolbarHidden:hidden animated:animated];
 }
+- (BOOL)canApplyList; { return [super canApplyList] && !swipeJobID_; }
 - (BOOL)showsQueueButton; { return YES; }
-- (NSArray *)listSections; { return [NSArray array]; }
 - (BOOL)containsEntryForRetry:(NSDictionary *)entry; { (void)entry; return YES; }
 - (NSString *)downloadFormatForJob:(NSDictionary *)job;
 { return job?[job objectForKey:@"format"]:[RDLPLibrary preferredFormat]; }
@@ -72,18 +72,6 @@
   if(statusBar_) [RDLPUIKit refreshStatusToolbarPlayback:self];
   [statusBar_ setStatus:[library_ status] progress:[library_ activityProgress] busy:[library_ isBusy]];
   [self updateToolbarAnimated:YES];
-}
-- (void)refresh:(id)sender;
-{
-  (void)sender; if(![self isViewLoaded]) return;
-  /* Keep the swiped row stable while its Delete button is visible. Status and
-   * progress still update; ending the gesture applies the latest snapshot. */
-  if(!swipeJobID_) {
-    NSArray *sections=[self listSections];
-    [sections_ release]; sections_=[sections copy];
-  }
-  [self refreshStatus:nil];
-  if(!swipeJobID_) [[self tableView] reloadData];
 }
 - (void)queue:(id)sender;
 {
@@ -111,8 +99,7 @@
 { (void)table; return (NSInteger)[sections_ count]; }
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section;
 { (void)table; return (NSInteger)[[[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"rows"] count]; }
-- (NSDictionary *)rowAtIndex:(NSIndexPath *)index;
-{ return [[[sections_ objectAtIndex:(NSUInteger)[index section]] objectForKey:@"rows"] objectAtIndex:(NSUInteger)[index row]]; }
+
 - (BOOL)canDeleteJob:(NSDictionary *)job;
 {
   return !alert_ && ![self presentedViewController] && ![[self navigationController] presentedViewController] &&
@@ -185,7 +172,9 @@
 }
 - (void)tableView:(UITableView *)table didSelectRowAtIndexPath:(NSIndexPath *)index;
 {
-  NSDictionary *row=[[[self rowAtIndex:index] retain] autorelease], *entry=[row objectForKey:@"video"];
+  NSDictionary *row=[[[self rowAtIndex:index] retain] autorelease];
+  if([[row objectForKey:@"action"] isEqualToString:@"placeholder"]) return;
+  NSDictionary *entry=[row objectForKey:@"video"];
   [table deselectRowAtIndexPath:index animated:YES];
   if(alert_ || [self presentedViewController] || [[self navigationController] presentedViewController]) return;
   NSString *pid=[row objectForKey:@"playlist_id"];

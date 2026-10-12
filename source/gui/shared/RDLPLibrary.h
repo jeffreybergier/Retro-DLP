@@ -17,12 +17,15 @@
   NSUInteger count_, lastIndex_;
   long long lastIdentity_;
 }
+- (NSArray *)identities;
+- (NSArray *)jobsForPlaylist:(NSString *)playlist video:(NSString *)video;
 - (NSUInteger)rowsSinceDate:(NSDate *)date;
 - (NSUInteger)indexForIdentity:(NSString *)identity;
 /* Resolve a playlist within this list's snapshot, preserving sidebar selection. */
 - (NSDictionary *)playlistForID:(NSString *)key;
 @end
 extern NSString * const RDLPLibraryDidChange;
+extern NSString * const RDLPLibraryWillClose;
 extern NSString * const RDLPLibraryStatusDidChange;
 extern NSString * const RDLPLibraryErrorDidOccur;
 extern NSString * const RDLPLibraryActivityDidChange;
@@ -45,7 +48,7 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
   long long activeJob_;
   double lastProgress_;
   NSUInteger operationStep_;
-  NSString *lastPhase_, *lastReadError_;
+  NSString *lastPhase_;
   double transferStarted_;
   unsigned long long transferCompleted_, transferExpected_;
   NSMutableArray *errors_;
@@ -98,6 +101,7 @@ extern NSString * const RDLPLibraryDownloadDidComplete;
    visible; each idle status expires after ten seconds. */
 - (NSDictionary *)activityProgress;
 /* Main-thread alert queue; errors never replace status text. */
+- (void)reportListError:(NSString *)detail;
 - (NSDictionary *)takeError;
 - (BOOL)hasErrors;
 - (BOOL)isBusy;

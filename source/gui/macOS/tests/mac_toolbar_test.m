@@ -32,6 +32,7 @@
 #import "../../shared/tests/shared_worker_test.h"
 #import "../../shared/tests/shared_metadata_test.h"
 #import "../../shared/tests/shared_video_rows_test.h"
+#import "../../shared/tests/shared_async_list_test.h"
 #import "../../shared/tests/shared_download_sections_test.h"
 
 static void requireCondition(BOOL condition,NSString *message) {
@@ -193,7 +194,15 @@ static void pump(void) { [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWi
 static RDLPToolbarButton *toolbarButton(RDLPLibraryWindowController *window,NSString *key) {
   return (RDLPToolbarButton *)[[[window valueForKey:@"toolbarItems_"] objectForKey:key] view];
 }
+static void waitForList(RDLPLibraryWindowController *window) {
+  NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:10];
+  while([[window valueForKey:@"listLoading_"] boolValue] && [deadline timeIntervalSinceNow]>0)
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+  requireCondition(![[window valueForKey:@"listLoading_"] boolValue],@"Async list refresh finishes within ten seconds");
+  pump();
+}
 static void selectRow(RDLPLibraryWindowController *window,NSString *key,NSUInteger row) {
+  waitForList(window);
   NSTableView *table=[window valueForKey:key];
   if([key isEqualToString:@"queue_"]) {
     [window showJobInQueue:[[window valueForKey:@"queueRows_"] objectAtIndex:row]];
@@ -208,13 +217,13 @@ static void selectRow(RDLPLibraryWindowController *window,NSString *key,NSUInteg
   }
   if([table isKindOfClass:[NSOutlineView class]]) {
     NSOutlineView *outline=(NSOutlineView *)table;
-    id item=row==0?@"All Downloads":[[[window valueForKey:@"playlists_"] objectAtIndex:row-1] objectForKey:@"id"];
+    id item=row==0?@"All Downloads":[[[[window valueForKey:@"library_"] playlists] objectAtIndex:row-1] objectForKey:@"id"];
     if(row>0) item=[[window valueForKey:@"sidebarItems_"] objectForKey:item];
     [outline expandItem:@"System"]; [outline expandItem:@"Added Playlists"]; [outline expandItem:@"My Playlists"]; [outline expandItem:@"Unsupported Playlists"];
     row=(NSUInteger)[outline rowForItem:item];
   }
   [[window window] makeKeyAndOrderFront:nil];
-  [window tableWasUsed:table]; [table selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO]; [window tableWasUsed:table];
+  [window tableWasUsed:table]; [table selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO]; waitForList(window); [window tableWasUsed:table];
 }
 static NSMenuItem *menuChoice(NSMenu *menu,NSString *title) {
   NSMenuItem *item=[menu itemWithTitle:title];
@@ -230,7 +239,7 @@ static NSMenuItem *choice(NSMenu *menu,NSString *title) {
 }
 static void invoke(RDLPLibraryWindowController *window,NSMenuItem *item) {
   requireCondition([window validateMenuItem:item],[NSString stringWithFormat:@"Unexpected disabled action %@ (context=%@, queue job=%@)",[item title],[window valueForKey:@"context_"],[window selectedJob]]);
-  [[item target] performSelector:[item action] withObject:item]; pump();
+  [[item target] performSelector:[item action] withObject:item]; pump(); waitForList(window);
 }
 static void confirm(RDLPLibraryWindowController *window,BOOL accept) {
   NSAlert *alert=[window valueForKey:@"confirmation_"];
@@ -244,6 +253,7 @@ static void confirm(RDLPLibraryWindowController *window,BOOL accept) {
     NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:5];
     while([[[library jobForID:[request objectForKey:@"job"]] objectForKey:@"state"] isEqual:@"queued"] && [deadline timeIntervalSinceNow]>0) pump();
   }
+  waitForList(window);
 }
 #import "mac_bulk_selection_test.h"
 
@@ -402,7 +412,7 @@ static void testFixedToolbar(RDLPLibraryWindowController *owner,RDLPLibrary *lib
   rdapp_entry entry; memset(&entry,0,sizeof(entry)); entry.video_id="CCCCCCCCCCC"; entry.title="New toolbar video";
   requireCondition(rdapp_store_open("/tmp/retrodlp-toolbar-fixture/Support/retrodlp.sqlite",&store) &&
     rdapp_store_snapshot(store,"PLdelete","Disposable playlist",&entry,1,&pid),@"Create removable local playlist");
-  rdapp_store_close(store); [owner refresh:nil];
+  rdapp_store_close(store); [owner refresh:nil]; waitForList(owner);
   NSString *key=[NSString stringWithFormat:@"%lld",(long long)pid];
   NSOutlineView *outline=[owner valueForKey:@"sidebar_"];
   id item=[[owner valueForKey:@"sidebarItems_"] objectForKey:key];
@@ -423,7 +433,7 @@ static void testFixedToolbar(RDLPLibraryWindowController *owner,RDLPLibrary *lib
   NSEnumerator *states=[retryStates objectEnumerator]; NSString *state;
   while((state=[states nextObject])) {
     requireCondition(rdapp_store_finish(store,strtoll([jobID UTF8String],NULL,10),[state UTF8String],[format UTF8String],""),@"Set retry or missing-file state");
-    [owner refresh:nil]; selectRow(owner,@"table_",0);
+    [owner refresh:nil]; waitForList(owner); selectRow(owner,@"table_",0);
     NSMenu *downloads=[owner menuForToolbarIdentifier:@"download"];
     requireCondition([[choice(downloads,@"Download Video") title] isEqualToString:@"Download Video"] &&
       [[choice(downloads,@"Retry") title] isEqualToString:@"Retry — Low"],@"Download Video keeps its short title while retry names the original quality");
@@ -440,7 +450,7 @@ static void testFixedToolbar(RDLPLibraryWindowController *owner,RDLPLibrary *lib
   states=[cancelStates objectEnumerator];
   while((state=[states nextObject])) {
     requireCondition(rdapp_store_finish(store,strtoll([jobID UTF8String],NULL,10),[state UTF8String],[format UTF8String],""),@"Set cancellable state");
-    [owner refresh:nil]; selectRow(owner,@"table_",0);
+    [owner refresh:nil]; waitForList(owner); selectRow(owner,@"table_",0);
     requireToolbarDefault(owner,@"download",@selector(cancelTarget:));
     RDLPToolbarButton *button=toolbarButton(owner,@"download");
     requireCondition([button isDefaultEnabled] && [[button image] isEqual:[RDLPLibraryViews toolbarIcon:AIFAOctagon window:[owner window]]] &&
@@ -496,7 +506,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     if(scope==2) selectRow(owner,@"table_",0);
     NSArray *libraryState=[[libraryToolbarState(owner) copy] autorelease];
     for(jobIndex=0;jobIndex<3;++jobIndex) {
-      selectRow(owner,@"queue_",jobIndex); [owner refresh:nil];
+      selectRow(owner,@"queue_",jobIndex); [owner refresh:nil]; waitForList(owner);
       requireCondition([libraryState isEqual:libraryToolbarState(owner)],@"Queue selection and refresh preserve library toolbar labels, tooltips, icons, and enabled state");
     }
   }
@@ -564,6 +574,16 @@ static void testQueueWindow(RDLPLibrary *library) {
     if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestLocalizationOnly"] boolValue]) {
       testSharedLocalization(@"/tmp/retrodlp-localization-fixture");
       [@"PASS: native shared bundle localization, owned C UTF-8, translated rows/status, stable identifiers and paths" writeToFile:@"/tmp/retrodlp-localization-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [NSApp terminate:nil]; return;
+    }
+    if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDBulkSelectionTestOnly"]) {
+      testBulkSelection();
+      [@"PASS: asynchronous multi-selection and removal" writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [NSApp terminate:nil]; return;
+    }
+    if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDAsyncListTestOnly"]) {
+      testSharedAsyncLists();
+      [@"PASS: latest-generation snapshots, disposal, bounded async pages and main-thread budget" writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
       [NSApp terminate:nil]; return;
     }
     NSString *customization=[[[NSProcessInfo processInfo] environment] objectForKey:@"RDToolbarCustomizationTest"];
@@ -642,7 +662,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     while([library_ isBusy] && [startupDeadline timeIntervalSinceNow]>0) pump();
     requireCondition(![library_ isBusy] && [library_ operationCount]==0 && ![library_ hasErrors],@"Startup reconciliation completes and releases its operation reference");
     if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDDownloadDeletionTestOnly"]) {
-      testSharedVideoRows(@"/tmp/retrodlp-toolbar-fixture/Rows");
+      testSharedVideoRows(@"/tmp/retrodlp-toolbar-fixture/Rows"); testSharedAsyncLists();
       window_=[[RDLPLibraryWindowController alloc] initWithLibrary:library_];
       [window_ showWindow:nil]; pump();
       selectRow(window_,@"sidebar_",1); selectRow(window_,@"table_",0);
@@ -656,7 +676,7 @@ static void testQueueWindow(RDLPLibrary *library) {
       [videos selectAll:nil]; [window_ tableWasUsed:videos];
       requireCondition([videos numberOfSelectedRows]>1 && [window_ validateMenuItem:deleteCommand],@"Bulk deletion stays enabled during another transfer");
       [library_ setValue:[NSDictionary dictionaryWithObject:@"sync" forKey:@"type"] forKey:@"activeCommand_"];
-      [window_ refresh:nil];
+      [window_ refresh:nil]; waitForList(window_);
       requireCondition(![toolbarButton(window_,@"remove") isDefaultEnabled],@"Sync still blocks deletion");
       [library_ setValue:nil forKey:@"activeCommand_"];
       [library_ setValue:[NSNumber numberWithBool:NO] forKey:@"busy_"];
@@ -688,7 +708,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     testSharedLists(library_);
     testSharedMetadata();
     testDownloadSections();
-    testSharedVideoRows(@"/tmp/retrodlp-toolbar-fixture/Rows");
+    testSharedVideoRows(@"/tmp/retrodlp-toolbar-fixture/Rows"); testSharedAsyncLists();
     testBulkSelection();
     RDLPDownloadPolicy *policy=[[[RDLPDownloadPolicy alloc] initWithLibrary:library_] autorelease];
     requireCondition(![policy playable:nil] && ![policy canRetry:nil] && ![policy canCancel:nil] &&
@@ -796,7 +816,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([[[window_ selectedJob] objectForKey:@"state"] isEqual:@"failed"],@"Failed job is directly selectable");
     NSString *failureTip=[window_ tableView:queueTable toolTipForCell:nil rect:NULL tableColumn:[queueColumns objectAtIndex:1] row:failedRow mouseLocation:NSZeroPoint];
     requireCondition([failureTip rangeOfString:@"Synthetic failure"].location!=NSNotFound,@"Status tooltip retains the full failure reason");
-    [window_ refresh:nil];
+    [window_ refresh:nil]; waitForList(window_);
     requireCondition([queueTable selectedRow]==failedRow && [[[window_ selectedJob] objectForKey:@"id"] isEqual:failedKey],@"Refresh preserves the selected download");
     selectRow(window_,@"queue_",2);
     requireCondition(![[[queueColumns objectAtIndex:1] dataCellForRow:[queueTable selectedRow]] isKindOfClass:[NSButtonCell class]],@"Status column uses the playlist image cell, with actions in menus");
@@ -808,7 +828,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     NSOutlineView *outline=[window_ valueForKey:@"sidebar_"];
     requireCondition([outline isKindOfClass:[NSOutlineView class]],@"Sidebar must be an outline");
     requireCondition([outline numberOfRows]==6 && [[outline itemAtRow:0] isEqual:@"System"] && [[outline itemAtRow:2] isEqual:@"Added Playlists"] && [[outline itemAtRow:4] isEqual:@"My Playlists"],@"Expected four groups and fixture children");
-    [outline collapseItem:@"Added Playlists"]; [window_ refresh:nil];
+    [outline collapseItem:@"Added Playlists"]; [window_ refresh:nil]; waitForList(window_);
     requireCondition(![outline isItemExpanded:@"Added Playlists"],@"Refresh must retain collapsed group");
     [outline expandItem:@"Added Playlists"];
     NSDictionary *items=[window_ valueForKey:@"toolbarItems_"];
@@ -1021,13 +1041,13 @@ static void testQueueWindow(RDLPLibrary *library) {
     rdapp_store *discoveryStore=NULL;
     requireCondition(rdapp_store_open("/tmp/retrodlp-toolbar-fixture/Support/retrodlp.sqlite",&discoveryStore),@"Could not open isolated discovery store");
     requireCondition(rdapp_store_discovered_playlist(discoveryStore,"PLfixture","Offline test playlist"),@"Discovery promotion failed");
-    rdapp_store_close(discoveryStore); [window_ refresh:nil];
-    requireCondition([[window_ valueForKey:@"playlists_"] count]==1 && [outline numberOfRows]==6,@"Discovery must not duplicate playlist");
+    rdapp_store_close(discoveryStore); [window_ refresh:nil]; waitForList(window_);
+    requireCondition([[library_ playlists] count]==1 && [outline numberOfRows]==6,@"Discovery must not duplicate playlist");
     requireCondition([[outline itemAtRow:3] isEqual:@"My Playlists"] && [[outline itemAtRow:4] isEqual:selectedKey],@"Discovered playlist must move to My Playlists");
     requireCondition([[window_ valueForKey:@"selectedPlaylist_"] isEqual:selectedKey] && [outline selectedRow]==4,@"Promotion must preserve selected playlist");
     requireCondition(rdapp_store_open("/tmp/retrodlp-toolbar-fixture/Support/retrodlp.sqlite",&discoveryStore),@"Open unsupported playlist fixture");
     requireCondition(rdapp_store_discovered_playlist(discoveryStore,"WL","Watch Later") && rdapp_store_discovered_playlist(discoveryStore,"HL","History"),@"Discover unsupported playlists");
-    rdapp_store_close(discoveryStore); [window_ refresh:nil];
+    rdapp_store_close(discoveryStore); [window_ refresh:nil]; waitForList(window_);
     requireCondition([window_ outlineView:outline numberOfChildrenOfItem:@"My Playlists"]==1 && [window_ outlineView:outline numberOfChildrenOfItem:@"Unsupported Playlists"]==2,@"Unsupported types have a separate outline group");
     [outline expandItem:@"Unsupported Playlists"];
     NSArray *unsupported=[library_ unsupportedPlaylists];
@@ -1043,7 +1063,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     [library_ syncPlaylistInput:@"WL"]; [library_ syncPlaylistInput:@"https://www.youtube.com/playlist?list=HL"];
     requireCondition([[library_ valueForKey:@"commands_"] count]==commandsBefore && ![library_ isBusy],@"Direct and automatic submissions cannot schedule unsupported syncs");
     [library_ removePlaylist:[unsupported objectAtIndex:0]]; [library_ removePlaylist:[unsupported objectAtIndex:1]];
-    [window_ refresh:nil]; selectRow(window_,@"sidebar_",1);
+    [window_ refresh:nil]; waitForList(window_); selectRow(window_,@"sidebar_",1);
     /* Missing CA makes these real worker attempts fail locally before networking. */
     NSUInteger attempts=0; NSEnumerator *jobEnumerator=[[library_ jobsForPlaylist:nil completedOnly:NO] objectEnumerator]; NSDictionary *pendingJob;
     while((pendingJob=[jobEnumerator nextObject])) if([[pendingJob objectForKey:@"state"] isEqualToString:@"queued"]) ++attempts;
@@ -1094,7 +1114,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition(![[[library_ queueProgress] objectForKey:@"active"] boolValue],@"Retried run did not drain");
     requireCondition(rdapp_store_open("/tmp/retrodlp-toolbar-fixture/Support/retrodlp.sqlite",&discoveryStore),@"Open Ad-Hoc fixture");
     requireCondition(rdapp_store_add_adhoc(discoveryStore,"ABCDEFGHIJK","Individual video",NULL),@"Add Ad-Hoc fixture");
-    rdapp_store_close(discoveryStore); [window_ refresh:nil];
+    rdapp_store_close(discoveryStore); [window_ refresh:nil]; waitForList(window_);
     NSDictionary *adhoc=[library_ adhocPlaylist];
     requireCondition(adhoc!=nil && [[library_ playlistsFromAccount:NO] count]==0 && [[library_ playlistsFromAccount:YES] count]==1,@"Ad-Hoc stays outside playlist groups");
     requireCondition([window_ outlineView:outline numberOfChildrenOfItem:@"System"]==2,@"System contains Ad-Hoc");
@@ -1117,7 +1137,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     [addedTable selectRowIndexes:[NSIndexSet indexSetWithIndex:3] byExtendingSelection:NO];
     NSString *addedPosition=[[[addedRows objectAtIndex:3] objectForKey:@"position"] copy];
     [library_ enqueuePlaylist:[adhoc objectForKey:@"id"] video:@"ABCDEFGHIJK" format:@"22"];
-    [window_ refresh:nil];
+    [window_ refresh:nil]; waitForList(window_);
     addedRows=[window_ valueForKey:@"rows_"];
     requireCondition([addedTable selectedRow]>=0 && [[[[addedRows objectAtIndex:(NSUInteger)[addedTable selectedRow]] objectForKey:@"position"] description] isEqual:addedPosition],@"Added Videos selection follows occurrence identity when its date section changes");
     [addedPosition release];

@@ -51,7 +51,9 @@ METADATA_FIELDS = ('channel', 'channel_id', 'view_count_text', 'published_text',
 ENTRY_FIELDS = {'playlist_id', 'position', 'video_id', 'title', 'enqueueDate', *METADATA_FIELDS}
 CB = C.CFUNCTYPE(C.c_int, P, C.c_int, C.POINTER(S), C.POINTER(S))
 REMOVE_CB = C.CFUNCTYPE(P, P, S)
+PROGRESS = C.CFUNCTYPE(C.c_int, P)
 for name, args in {
+    'progress':[P,PROGRESS,P],
     'open':[S,C.POINTER(P)], 'open_reader':[S,C.POINTER(P)], 'close':[P], 'error':[P],
     'playback_seconds':[P,S,C.POINTER(C.c_double)],
     'save_playback_seconds':[P,S,C.c_double],
@@ -76,7 +78,7 @@ for name, args in {
 }.items():
     fn=getattr(lib, 'rdapp_store_'+name)
     fn.argtypes=args
-    fn.restype=S if name=='error' else (None if name=='close' else C.c_int)
+    fn.restype=S if name=='error' else (None if name in ('close','progress') else C.c_int)
 
 lib.rdapp_test_measure.argtypes=[P]
 lib.rdapp_test_measure.restype=None
@@ -157,6 +159,30 @@ class StoreTests(unittest.TestCase):
         result=I()
         self.check(lib.rdapp_store_index(store or self.db,kind,self.key if key is None else key,identity,C.byref(result)))
         return result.value
+
+    def test_cancelled_snapshot_count_releases_reader(self):
+        self.check(self.snapshot([(b'abcdefghijk', b'Fixture', i) for i in range(10000)]))
+        reader=P()
+        self.check(lib.rdapp_store_open_reader(os.fsencode(self.path/'db.sqlite'),C.byref(reader)))
+        calls=[]
+        @PROGRESS
+        def cancel(context):
+            calls.append(1)
+            return 1
+        try:
+            lib.rdapp_store_progress(reader,cancel,None)
+            count=I()
+            self.assertEqual(lib.rdapp_store_count(reader,1,self.key,None,None,C.byref(count)),0)
+            self.assertTrue(calls)
+            self.assertIn(b'interrupted',lib.rdapp_store_error(reader).lower())
+        finally:
+            lib.rdapp_store_close(reader)
+        self.assertEqual(self.count(1),10000)
+        self.check(lib.rdapp_store_open_reader(os.fsencode(self.path/'db.sqlite'),C.byref(reader)))
+        try:
+            self.assertEqual(self.count(1,store=reader),10000)
+        finally:
+            lib.rdapp_store_close(reader)
 
     def test_playlist_capability_and_groups(self):
         for value in (b'PLtest', b'UUtest', b'FLtest', b'OLtest', b'RDtest',

@@ -1089,3 +1089,5 @@
 
 /* iOS/RDLPLibrarySections.m: format expression appended to spoken detail. */
 ", %@" = ", %@";
+
+"Loading…" = "Loading…";

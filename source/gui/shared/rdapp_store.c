@@ -82,6 +82,9 @@ static int refresh_job_metadata(rdapp_store *s,int64_t key) {
   return done(s,p);
 }
 const char *rdapp_store_error(rdapp_store *s) { return s ? rdapp_localize_key(s->error) : rdapp_string(RDAPP_STRING_CANNOT_OPEN_LIBRARY_DATABASE); }
+void rdapp_store_interrupt(rdapp_store *s) { if(s) sqlite3_interrupt(s->db); }
+void rdapp_store_progress(rdapp_store *s, int (*cancelled)(void *), void *context)
+{ sqlite3_progress_handler(s->db, cancelled ? 1000 : 0, cancelled, context); }
 void rdapp_store_close(rdapp_store *s) { if (s) { if(s->snapshot) ai_query_snapshot_close(s->snapshot); else sqlite3_close(s->db); free(s); } }
 int rdapp_store_open(const char *path, rdapp_store **out) {
   rdapp_store *s = calloc(1, sizeof(*s));

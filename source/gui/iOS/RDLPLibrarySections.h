@@ -1,4 +1,5 @@
 #import "RDLPDownloadPolicy.h"
+#import "RDLPListLoader.h"
 
 typedef enum {
   RDLPScreenLibrary, RDLPScreenPlaylist, RDLPScreenQueue,

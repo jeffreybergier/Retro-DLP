@@ -1,11 +1,10 @@
-#import <UIKit/UIKit.h>
+#import "RDLPAsyncTableViewController.h"
 #import "RDLPLibrarySections.h"
 #import "RDLPStatusBarView.h"
 
-@interface RDLPPlaylistsViewController : UITableViewController <UIAlertViewDelegate, UIActionSheetDelegate> {
+@interface RDLPPlaylistsViewController : RDLPAsyncTableViewController <UIAlertViewDelegate, UIActionSheetDelegate> {
   RDLPLibrary *library_;
   RDLPLibrarySections *model_;
-  NSArray *sections_;
   RDLPStatusBarView *statusBar_;
   UIAlertView *alert_;
   UIActionSheet *playlistActions_;
@@ -14,7 +13,6 @@
   NSString *swipePlaylistID_;
 }
 - (id)initWithLibrary:(RDLPLibrary *)library;
-- (void)refresh:(id)sender;
 - (BOOL)enabled:(NSString *)action;
 - (void)performRow:(NSDictionary *)row;
 - (void)showPlaylistActions:(id)sender;

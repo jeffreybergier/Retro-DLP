@@ -7,7 +7,7 @@ SOURCES = main.m RDLPLibrary+macOS.m RDLPAppDelegate.m RDLPLibraryWindowControll
 SHARED_DIR = ../shared
 BUNDLE_LOCALIZATION_DIRS = $(SHARED_DIR)/Resources
 SOURCE_DIRS = $(SHARED_DIR)
-EXTRA_SOURCES = rdapp_strings.c rdapp_store.c rdapp_service.c rdlp_thread.c RDLPLibrary.m RDLPVideoRows.m RDLPDownloadSections.m RDLP_Foundation.m
+EXTRA_SOURCES = rdapp_strings.c rdapp_store.c rdapp_service.c rdlp_thread.c RDLPLibrary.m RDLPVideoRows.m RDLPListLoader.m RDLPDownloadSections.m RDLP_Foundation.m
 INFO_PLIST = Info.plist
 MAC_ICON = Resources/RetroDLP.icns
 include $(PROJECT_ROOT)/make/apple-sources.mk

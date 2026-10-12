@@ -25,7 +25,7 @@
   [alert_ setDelegate:nil]; [alert_ dismissWithClickedButtonIndex:0 animated:NO];
   [playlistActions_ setDelegate:nil]; [playlistActions_ dismissWithClickedButtonIndex:[playlistActions_ cancelButtonIndex] animated:NO];
   [alert_ release]; [playlistActions_ release]; [request_ release]; [alertActions_ release];
-  [swipePlaylistID_ release]; [sections_ release]; [statusBar_ release]; [model_ release]; [library_ release]; [super dealloc];
+  [swipePlaylistID_ release]; [statusBar_ release]; [model_ release]; [library_ release]; [super dealloc];
 }
 - (void)viewDidLoad;
 {
@@ -48,17 +48,9 @@
 }
 - (void)viewDidLayoutSubviews;
 { [super viewDidLayoutSubviews]; [statusBar_ setMaximumWidth:MAX(0,[[self view] bounds].size.width-112)]; }
-- (void)refresh:(id)sender;
-{
-  (void)sender; if(![self isViewLoaded]) return;
-  /* Keep the row under UIKit's Delete confirmation stable during refreshes. */
-  if(!swipePlaylistID_) {
-    NSArray *sections=[model_ sectionsForScreen:RDLPScreenLibrary playlist:nil video:nil collapsed:nil];
-    [sections_ release]; sections_=[sections copy];
-  }
-  [self refreshStatus:nil];
-  if(!swipePlaylistID_) [[self tableView] reloadData];
-}
+- (NSDictionary *)listRequest;
+{ return [NSDictionary dictionaryWithObjectsAndKeys:library_,@"library",[NSNumber numberWithInt:RDLPScreenLibrary],@"mode",nil]; }
+- (BOOL)canApplyList; { return [super canApplyList] && !swipePlaylistID_; }
 - (void)reopenPlayer:(id)sender;
 { (void)sender; [RDLPUIKit reopenPlayer:self]; }
 - (void)refreshStatus:(id)sender;
@@ -73,8 +65,7 @@
 { (void)table; return (NSInteger)[[[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"rows"] count]; }
 - (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section;
 { (void)table; return [[sections_ objectAtIndex:(NSUInteger)section] objectForKey:@"title"]; }
-- (NSDictionary *)rowAtIndex:(NSIndexPath *)index;
-{ return [[[sections_ objectAtIndex:(NSUInteger)[index section]] objectForKey:@"rows"] objectAtIndex:(NSUInteger)[index row]]; }
+
 - (BOOL)canDeletePlaylist:(NSDictionary *)playlist;
 {
   return !alert_ && !playlistActions_ && ![self presentedViewController] &&
@@ -143,6 +134,7 @@
 }
 - (BOOL)enabled:(NSString *)action;
 {
+  if(!action || [action isEqualToString:@"placeholder"]) return NO;
   if([action isEqualToString:@"discover"]) return ![library_ isBusy] && ![library_ isDiscoveryPending];
   if([action isEqualToString:@"syncAll"]) return [library_ hasPlaylistsToSync];
   return ![action isEqualToString:@"removePlaylist"];

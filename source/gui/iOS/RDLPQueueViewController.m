@@ -14,28 +14,23 @@
 - (void)dealloc;
 { [selectedJobID_ release]; [jobActions_ release]; [super dealloc]; }
 - (BOOL)showsQueueButton; { return NO; }
-- (NSArray *)listSections;
-{ return [model_ sectionsForScreen:RDLPScreenQueue playlist:nil video:nil collapsed:nil]; }
-- (NSIndexPath *)selectedJobIndex;
-{
-  NSArray *rows=[[sections_ lastObject] objectForKey:@"rows"];
-  if(!selectedJobID_ || ![rows count]) return nil;
-  NSUInteger index=[(RDLPLibraryRows *)rows indexForIdentity:selectedJobID_];
-  return index==NSNotFound?nil:[NSIndexPath indexPathForRow:(NSInteger)index inSection:0];
-}
-- (void)refresh:(id)sender;
-{
-  [super refresh:sender];
-  if(![self isViewLoaded] || swipeJobID_) return;
-  NSIndexPath *index=[self selectedJobIndex];
-  if(index) [[self tableView] selectRowAtIndexPath:index animated:NO scrollPosition:UITableViewScrollPositionNone];
-}
+- (NSDictionary *)listRequest;
+{ return [NSDictionary dictionaryWithObjectsAndKeys:library_,@"library",[NSNumber numberWithInt:RDLPScreenQueue],@"mode",selectedJobID_?:@"",@"selection", nil]; }
+
 - (void)showJobInQueue:(NSDictionary *)job;
 {
-  [selectedJobID_ release]; selectedJobID_=[[job objectForKey:@"id"] copy];
+  [selectedJobID_ release]; selectedJobID_=[[job objectForKey:@"id"] copy]; revealPending_=YES;
   [self view]; [self refresh:nil];
-  NSIndexPath *index=[self selectedJobIndex];
-  if(index) [[self tableView] selectRowAtIndexPath:index animated:NO scrollPosition:UITableViewScrollPositionMiddle];
+}
+- (void)didLoadList:(NSDictionary *)result;
+{
+  if(![self canApplyList]) return;
+  [super didLoadList:result];
+  if(revealPending_ && ![result objectForKey:@"error"]) {
+    NSIndexPath *index=[[self tableView] indexPathForSelectedRow];
+    if(index) [[self tableView] scrollToRowAtIndexPath:index atScrollPosition:UITableViewScrollPositionMiddle animated:NO];
+    revealPending_=NO;
+  }
 }
 - (void)dismissQueue:(id)sender;
 { (void)sender; [[self navigationController] dismissViewControllerAnimated:YES completion:nil]; }

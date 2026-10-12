@@ -1,4 +1,5 @@
 #import "RDLPVideoRows.h"
+#import "RDLPListLoader.h"
 
 @implementation RDLPVideoRows
 - (id)initWithRows:(NSArray *)rows library:(RDLPLibrary *)library playlist:(NSString *)playlist;
@@ -6,16 +7,14 @@
   self=[super init];
   if(self) {
     source_=[rows retain]; library_=[library retain]; playlist_=[playlist copy];
-    policy_=[[RDLPDownloadPolicy alloc] initWithLibrary:library]; cache_=[[NSMutableDictionary alloc] init];
+    policy_=[[RDLPDownloadPolicy alloc] initWithLibrary:library];
   }
   return self;
 }
 - (void)dealloc;
-{ [source_ release]; [library_ release]; [playlist_ release]; [policy_ release]; [cache_ release]; [super dealloc]; }
+{ [source_ release]; [library_ release]; [playlist_ release]; [policy_ release]; [super dealloc]; }
 - (NSUInteger)count; { return [source_ count]; }
 - (id)copyWithZone:(NSZone *)zone; { (void)zone; return [self retain]; }
-- (id)cachedObjectAtIndex:(NSUInteger)index;
-{ return [cache_ objectForKey:[NSNumber numberWithUnsignedLong:index]]; }
 - (NSUInteger)indexForIdentity:(NSString *)identity;
 { return [(RDLPLibraryRows *)source_ indexForIdentity:identity]; }
 - (NSDictionary *)displayRow:(NSDictionary *)entry;
@@ -23,7 +22,7 @@
   if([[entry objectForKey:@"action"] isEqualToString:@"section"]) return entry;
   NSDictionary *file=nil, *job=entry;
   if(playlist_) {
-    NSArray *jobs=[library_ jobsForPlaylist:playlist_ video:[entry objectForKey:@"video_id"]];
+    NSArray *jobs=[(RDLPLibraryRows *)source_ jobsForPlaylist:playlist_ video:[entry objectForKey:@"video_id"]];
     job=[policy_ representativeJobForEntry:entry playlist:playlist_ jobs:jobs localFile:&file];
   } else file=[policy_ localFileForJob:job];
   NSString *pid=playlist_?playlist_:[entry objectForKey:@"playlist_id"];
@@ -72,15 +71,20 @@
   if(file) [row setObject:file forKey:@"local_file"];
   return row;
 }
-- (id)objectAtIndex:(NSUInteger)index;
+- (NSArray *)pageAtOffset:(NSUInteger)offset error:(NSError **)error;
 {
-  NSNumber *key=[NSNumber numberWithUnsignedLong:index];
-  NSDictionary *row=[cache_ objectForKey:key];
-  if(!row) {
-    row=[self displayRow:[source_ objectAtIndex:index]];
-    if([cache_ count]>=128) [cache_ removeAllObjects];
-    [cache_ setObject:row forKey:key];
+  NSMutableArray *page=[NSMutableArray array];
+  NSUInteger i, end=MIN(offset+32,[self count]);
+  for(i=offset;i<end;++i) {
+    NSDictionary *row=[source_ objectAtIndex:i];
+    if([source_ respondsToSelector:@selector(readError)] && [(AIPagedRows *)source_ readError]) break;
+    [page addObject:[self displayRow:row]];
   }
-  return [[row retain] autorelease];
+  if([source_ respondsToSelector:@selector(readError)] && [(AIPagedRows *)source_ readError]) {
+    if(error) *error=[(AIPagedRows *)source_ readError]; return nil;
+  }
+  return page;
 }
+- (void)RDLP_invalidateRows;
+{ [self invalidatePages]; [source_ RDLP_invalidateRows]; }
 @end

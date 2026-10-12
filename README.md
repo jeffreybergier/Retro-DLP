@@ -263,6 +263,19 @@ docker compose run --rm altivec "python3 source/gui/iOS/tests/build_ios_ui_test.
 Install `build/tests/iOS/RetroDLPIOSOfflineTest.ipa` on a jailbroken test
 device and open it. The result is written to the app's `Documents/result.txt`.
 
+The native library lists build SQLite snapshots, counts and date sections on a
+background worker. Table callbacks return cached presentation rows or loading
+placeholders and request 32-row pages with a 128-row cache bound per source.
+Refreshes coalesce, discard obsolete results and preserve selection and scroll
+anchors by record identity. Closing a library cancels queued deliveries; read
+failures are reported separately from empty results. Explicit actions and bulk
+operations still use synchronous domain APIs and recheck records before writes.
+
+Native async regressions cover superseded requests, disposal, placeholder
+paging and a deterministic 100,000-row presentation fixture. The fixture checks
+bounded reads and a 50 ms main-thread request budget on legacy devices; it is
+not a substitute for end-to-end SQL query-plan, scrolling and WAL benchmarks.
+
 ## Source Code Overview
 
 Most of the behavior lives in portable C under `source/library/shared/`.
