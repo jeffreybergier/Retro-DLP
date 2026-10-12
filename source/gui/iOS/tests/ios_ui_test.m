@@ -553,6 +553,12 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
       [@"PASS: native shared bundle localization, owned C UTF-8, translated rows/status, stable identifiers and paths" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
       [[UIApplication sharedApplication] setIdleTimerDisabled:idleTimerDisabled]; return;
     }
+    if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestNotificationsOnly"] boolValue]) {
+      testIOSLifecycle([documents_ stringByAppendingPathComponent:@"LifecycleFixture"]);
+      testIOSDownloadNotifications([documents_ stringByAppendingPathComponent:@"NotificationFixture"]);
+      [@"PASS: production scheduler/delegate notifications, foreground suppression, foreground alert/badge cleanup, and background lifecycle" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      return;
+    }
     /* UI-only runs still exercise the shared bridge and native interactions;
        the independent playback suite can be run separately on the device. */
     if(![[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestUIOnly"] boolValue]) {

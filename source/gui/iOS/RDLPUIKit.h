@@ -22,9 +22,6 @@ typedef enum {
 + (void)truncateMiddleInLabel:(UILabel *)label;
 + (BOOL)legacyStatusBarHidden;
 + (void)setLegacyStatusBarHidden:(BOOL)hidden;
-+ (void)registerDownloadNotificationsForApplication:(UIApplication *)application;
-+ (id)downloadCompletionNotificationForTitle:(NSString *)title;
-+ (void)presentDownloadNotification:(id)notification;
 + (void)activatePlaybackAudioSessionForDelegate:(id)delegate;
 + (void)deactivatePlaybackAudioSessionForDelegate:(id)delegate;
 + (BOOL)shouldResumePlaybackAfterInterruptionFlags:(NSUInteger)flags;

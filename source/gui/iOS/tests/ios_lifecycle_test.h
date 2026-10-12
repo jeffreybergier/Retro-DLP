@@ -1,3 +1,4 @@
+#import <AILocalNotificationCenter.h>
 /* Real scheduler and delegate, with only the worker and OS task grant faked.
    No network requests or production-library access. */
 #include <sys/xattr.h>
@@ -8,25 +9,70 @@
 - (UIBackgroundTaskIdentifier)beginBackgroundTask;
 - (void)endBackgroundTask:(UIBackgroundTaskIdentifier)task;
 - (void)downloadCompleted:(NSNotification *)notification;
-- (void)presentDownloadNotification:(id)notification;
+- (AILocalNotificationCenter *)notificationCenter;
+@end
+@interface RDLPNotificationRecorder : NSObject <AILocalNotificationBackend> {
+@public
+  NSMutableArray *notifications_;
+  NSUInteger clears_;
+  int badge_;
+}
+@end
+@implementation RDLPNotificationRecorder
+- (id)init;
+{ self=[super init]; if(self) notifications_=[[NSMutableArray alloc] init]; return self; }
+- (void)dealloc; { [notifications_ release]; [super dealloc]; }
+- (AINotificationAuthorizationStatus)authorizationStatus;
+{ return AINotificationAuthorizationAuthorized; }
+- (void)requestAuthorization; {}
+- (BOOL)isApplicationInBackground; { return NO; }
+- (BOOL)submitTitle:(NSString *)title body:(NSString *)body userInfo:(NSDictionary *)info;
+{
+  (void)title; (void)info;
+  statusRequire([NSThread isMainThread],@"Deliver notifications on main thread");
+  [notifications_ addObject:body]; return YES;
+}
+- (void)clearNotifications; { ++clears_; }
+- (void)setBadgeCount:(int)count; { badge_=count; }
 @end
 @interface RDLPBackgroundTestDelegate : RDLPAppDelegate {
 @public
   NSUInteger starts_, ends_;
   BOOL deny_;
   NSMutableArray *notifications_;
+  RDLPNotificationRecorder *recorder_;
+  AILocalNotificationCenter *notificationCenter_;
 }
 @end
 @implementation RDLPBackgroundTestDelegate
 - (id)init;
-{ self=[super init]; if(self) notifications_=[[NSMutableArray alloc] init]; return self; }
-- (void)dealloc;
-{ [notifications_ release]; [super dealloc]; }
-- (void)presentDownloadNotification:(id)notification;
 {
-  statusRequire([NSThread isMainThread],@"Deliver local notifications on the main thread");
+  self=[super init];
+  if(self) {
+    recorder_=[[RDLPNotificationRecorder alloc] init];
+    notifications_=recorder_->notifications_;
+    notificationCenter_=[[AILocalNotificationCenter alloc] initWithBackend:recorder_];
+  }
+  return self;
+}
+- (void)dealloc;
+{ [notificationCenter_ release]; [recorder_ release]; [super dealloc]; }
+- (AILocalNotificationCenter *)notificationCenter; { return notificationCenter_; }
+- (void)downloadCompleted:(NSNotification *)notification;
+{
   statusRequire(starts_>ends_,@"Deliver before releasing background execution");
-  [notifications_ addObject:notification];
+  [super downloadCompleted:notification];
+}
+- (void)applicationDidEnterBackground:(UIApplication *)application;
+{
+  [[NSNotificationCenter defaultCenter] postNotificationName:UIApplicationDidEnterBackgroundNotification object:application];
+  [super applicationDidEnterBackground:application];
+}
+- (void)applicationWillEnterForeground:(UIApplication *)application;
+{
+  [[NSNotificationCenter defaultCenter] postNotificationName:UIApplicationWillEnterForegroundNotification object:application];
+  [super applicationWillEnterForeground:application];
+  [[NSNotificationCenter defaultCenter] postNotificationName:UIApplicationDidBecomeActiveNotification object:application];
 }
 - (UIBackgroundTaskIdentifier)beginBackgroundTask;
 { ++starts_; return deny_?UIBackgroundTaskInvalid:starts_; }
@@ -170,11 +216,13 @@ static void testIOSDownloadNotifications(NSString *base) {
     statusRequire([delegate->notifications_ count]==(i==5?2:1),@"Only successful, persisted background downloads send alerts");
     statusRequire([library operationCount]==0,@"Notification completion balances execution time");
   }
-  UILocalNotification *alert=[delegate->notifications_ objectAtIndex:0];
-  statusRequire([alert.alertBody isEqualToString:@"Download Complete 'Alice's Video 日本語'"],@"Alert uses exact wording and the resolved Unicode title");
-  statusRequire([alert.soundName isEqualToString:UILocalNotificationDefaultSoundName],@"Completion uses the default notification sound");
+  NSString *alert=[delegate->notifications_ objectAtIndex:0];
+  statusRequire([alert isEqualToString:@"Download Complete 'Alice's Video 日本語'"],@"Alert uses exact wording and the resolved Unicode title");
+  [[delegate notificationCenter] setBadgeCount:5];
+  NSUInteger clearsBefore=delegate->recorder_->clears_;
   [delegate applicationWillEnterForeground:[UIApplication sharedApplication]];
   statusRequire([delegate->notifications_ count]==2,@"Foreground return does not repeat completion alerts");
+  statusRequire(delegate->recorder_->clears_==clearsBefore+1 && delegate->recorder_->badge_==0,@"Foreground clears alerts and resets the badge through AltivecCocoa");
   rdapp_store_close(store);
   [[NSNotificationCenter defaultCenter] removeObserver:delegate];
   [delegate release]; [library release];

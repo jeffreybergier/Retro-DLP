@@ -198,31 +198,6 @@ static UIImage *RDLPFontAwesomeImage(AIFontAwesomeIcon icon,CGFloat size,CGFloat
 {
   [[UIApplication sharedApplication] setStatusBarHidden:hidden withAnimation:UIStatusBarAnimationNone];
 }
-+ (void)registerDownloadNotificationsForApplication:(UIApplication *)application;
-{
-  /* iOS 8 asks for alert and sound permission; iOS 5-7 need no registration. */
-#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 80000
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunguarded-availability"
-  if(![application respondsToSelector:@selector(registerUserNotificationSettings:)] ||
-     ![UIUserNotificationSettings respondsToSelector:@selector(settingsForTypes:categories:)]) return;
-  UIUserNotificationSettings *settings=[UIUserNotificationSettings settingsForTypes:
-    UIUserNotificationTypeSound|UIUserNotificationTypeAlert categories:nil];
-  [application registerUserNotificationSettings:settings];
-#pragma clang diagnostic pop
-#endif
-}
-+ (id)downloadCompletionNotificationForTitle:(NSString *)title;
-{
-  UILocalNotification *alert=[[[UILocalNotification alloc] init] autorelease];
-  [alert setAlertBody:[NSString stringWithFormat:NSLocalizedString(@"Download Complete '%@'", nil),title]];
-  [alert setSoundName:UILocalNotificationDefaultSoundName];
-  return alert;
-}
-+ (void)presentDownloadNotification:(id)notification;
-{
-  [[UIApplication sharedApplication] presentLocalNotificationNow:notification];
-}
 + (void)activatePlaybackAudioSessionForDelegate:(id)delegate;
 {
   AVAudioSession *session=[AVAudioSession sharedInstance]; NSError *error=nil;

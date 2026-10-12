@@ -1,3 +1,4 @@
+#import <AILocalNotificationCenter.h>
 #import "RDLPAppDelegate.h"
 #import "RDLPLibraryViewController.h"
 #import "RDLPPlaylistsViewController.h"
@@ -13,7 +14,7 @@
 - (void)finishBackgroundTask;
 - (void)backgroundTimeExpired;
 - (void)downloadCompleted:(NSNotification *)notification;
-- (void)presentDownloadNotification:(id)notification;
+- (AILocalNotificationCenter *)notificationCenter;
 @end
 @implementation RDLPAppDelegate
 @synthesize window=window_;
@@ -33,7 +34,7 @@
   library_=[[RDLPLibrary alloc] initWithSupportDirectory:support downloadDirectory:[documents stringByAppendingPathComponent:@"RetroDLP"]];
   window_=[[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
   if(library_) {
-    [RDLPUIKit registerDownloadNotificationsForApplication:application];
+    [[self notificationCenter] requestAuthorization];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(downloadCompleted:) name:RDLPLibraryDownloadDidComplete object:library_];
     RDLPPlaylistsViewController *root=[[RDLPPlaylistsViewController alloc] initWithLibrary:library_];
     UINavigationController *navigation=[[UINavigationController alloc] initWithRootViewController:root];
@@ -48,19 +49,28 @@
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(activityChanged:) name:RDLPLibraryActivityDidChange object:library_];
     [self errorsChanged:nil]; [library_ startDownloads];
   }
+  UILocalNotification *launchNote=[options objectForKey:UIApplicationLaunchOptionsLocalNotificationKey];
+  [[self notificationCenter] activateWithUserInfo:[launchNote userInfo]];
   return YES;
+}
+- (void)application:(UIApplication *)application
+    didReceiveLocalNotification:(UILocalNotification *)notification;
+{
+  if([application applicationState]==UIApplicationStateInactive)
+    [[self notificationCenter] activateWithUserInfo:[notification userInfo]];
 }
 - (void)downloadCompleted:(NSNotification *)notification;
 {
-  if(!backgrounded_) return;
   NSString *title=[[notification userInfo] objectForKey:@"title"];
   if(![title length]) title=[[notification userInfo] objectForKey:@"video_id"];
   if(![title length]) title=NSLocalizedString(@"Video", nil);
-  [self presentDownloadNotification:[RDLPUIKit downloadCompletionNotificationForTitle:title]];
+  [[self notificationCenter] postNotificationWithTitle:nil
+      body:[NSString stringWithFormat:NSLocalizedString(@"Download Complete '%@'", nil),title]
+      userInfo:[notification userInfo]];
 }
-- (void)presentDownloadNotification:(id)notification;
+- (AILocalNotificationCenter *)notificationCenter;
 {
-  [RDLPUIKit presentDownloadNotification:notification];
+  return [AILocalNotificationCenter defaultCenter];
 }
 - (void)applicationDidEnterBackground:(UIApplication *)application;
 { (void)application; backgrounded_=YES; [self activityChanged:nil]; }

@@ -47,6 +47,8 @@ info.update(CFBundleExecutable='RetroDLPIOSOfflineTest',
             CFBundleIdentifier='test.retrodlp.ios',
             CFBundleURLTypes=[dict(CFBundleURLName='Offline Test',
                                   CFBundleURLSchemes=['retrodlp-offline-test'])])
+if os.environ.get('RDLP_TEST_NOTIFICATIONS_ONLY') == '1':
+    info['RDLPTestNotificationsOnly'] = True
 if os.environ.get('RDLP_TEST_ICONS_ONLY') == '1':
     info['RDLPTestIconsOnly'] = True
 if os.environ.get('RDLP_TEST_PLAYBACK_ONLY') == '1':
