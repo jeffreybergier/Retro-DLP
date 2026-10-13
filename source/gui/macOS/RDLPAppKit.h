@@ -23,6 +23,7 @@
 + (void)beginAlertSheet:(NSAlert *)alert forWindow:(NSWindow *)window delegate:(id)delegate didEnd:(SEL)didEnd;
 + (NSImage *)controlIcon:(AIFontAwesomeIcon)icon style:(AIFontAwesomeStyle)style iconSize:(CGFloat)iconSize canvasSize:(CGFloat)canvasSize scale:(CGFloat)scale;
 + (NSImage *)youTubeIconForScale:(CGFloat)scale;
++ (NSImage *)statusIcon:(AIFontAwesomeIcon)icon scale:(CGFloat)scale;
 + (NSString *)chooseCookieFile;
 + (void)revealInFinder:(NSString *)path;
 + (BOOL)moveFileToTrash:(NSString *)path;

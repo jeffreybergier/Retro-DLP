@@ -59,6 +59,23 @@
 + (NSColor *)controlIconColor {
   return [NSColor blackColor];
 }
++ (NSImage *)statusIcon:(AIFontAwesomeIcon)icon scale:(CGFloat)scale;
+{
+  if(!icon || !isfinite(scale) || scale<1 || scale>8) return nil;
+  /* Table callbacks run on the main thread. Reuse the template image across
+   * rows and windows, retaining separate rasterizations for each display scale. */
+  static NSMutableDictionary *images=nil;
+  if(!images) images=[[NSMutableDictionary alloc] init];
+  NSArray *key=[NSArray arrayWithObjects:[NSNumber numberWithUnsignedInt:(unsigned int)icon],
+    [NSNumber numberWithDouble:scale],nil];
+  NSImage *image=[images objectForKey:key];
+  if(!image) {
+    image=[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid
+      iconSize:12 canvasSize:16 scale:scale];
+    if(image) [images setObject:image forKey:key];
+  }
+  return image;
+}
 + (NSImage *)controlIcon:(AIFontAwesomeIcon)icon style:(AIFontAwesomeStyle)style iconSize:(CGFloat)iconSize canvasSize:(CGFloat)canvasSize scale:(CGFloat)scale {
   if(!isfinite(iconSize) || !isfinite(canvasSize) || !isfinite(scale) ||
      iconSize<=0 || canvasSize<iconSize || scale<1 || canvasSize*scale>4096) return nil;

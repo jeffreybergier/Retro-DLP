@@ -993,7 +993,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     else if([status isEqualToString:NSLocalizedString(@"Queued", nil)]) icon=AIFAClock;
     else if([status isEqualToString:NSLocalizedString(@"Cancelled", nil)]) icon=AIFACirclePause;
     else if(![status isEqualToString:NSLocalizedString(@"Not downloaded", nil)]) icon=AIFATriangleExclamation;
-    return icon?[AIFontAwesome imageForIcon:icon style:AIFontAwesomeStyleSolid iconSize:12 canvasSize:16 scale:[RDLPAppKit backingScaleForWindow:[view window]]]:nil;
+    return icon?[RDLPAppKit statusIcon:icon scale:[RDLPAppKit backingScaleForWindow:[view window]]]:nil;
   }
   return [entry objectForKey:key];
 }

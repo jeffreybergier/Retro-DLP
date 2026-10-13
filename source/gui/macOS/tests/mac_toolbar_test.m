@@ -616,6 +616,46 @@ static void testQueueWindow(RDLPLibrary *library) {
         downloadDirectory:@"/tmp/retrodlp-icon-scale-test/Downloads"];
       requireCondition(library_!=nil,@"Icon test library failed to open");
       window_=[[RDLPLibraryWindowController alloc] initWithLibrary:library_]; [window_ showWindow:nil]; pump();
+      /* Exercise the real cell callback with resident rows, isolating redraw
+       * cost from database paging and file checks. All Downloads has an icon
+       * on every row, so rasterizing here used to dominate scrolling. */
+      NSArray *savedRows=[[window_ valueForKey:@"videoRows_"] retain];
+      NSArray *statuses=[NSArray arrayWithObjects:@"Downloaded",@"Downloading",@"Queued",@"Cancelled",@"Failed",@"Not downloaded",nil];
+      NSMutableArray *statusRows=[NSMutableArray array];
+      for(i=0;i<[statuses count];++i) [statusRows addObject:[NSDictionary dictionaryWithObject:NSLocalizedString([statuses objectAtIndex:i],nil) forKey:@"status"]];
+      [window_ setValue:statusRows forKey:@"videoRows_"];
+      NSTableView *statusTable=[window_ valueForKey:@"table_"];
+      NSTableColumn *statusColumn=[statusTable tableColumnWithIdentifier:@"state"];
+      BOOL reused=YES;
+      NSTimeInterval began=[NSDate timeIntervalSinceReferenceDate];
+      for(i=0;i<5;++i) {
+        NSImage *first=[[window_ tableView:statusTable objectValueForTableColumn:statusColumn row:i] retain];
+        unsigned int draw;
+        for(draw=0;draw<128;++draw) {
+          NSAutoreleasePool *drawPool=[[NSAutoreleasePool alloc] init];
+          NSImage *next=[window_ tableView:statusTable objectValueForTableColumn:statusColumn row:i];
+          if(next!=first) reused=NO;
+          [drawPool drain];
+        }
+        requireCondition(first!=nil,@"Every download state has a status glyph");
+        [first release];
+      }
+      NSLog(@"Status cell redraws: 640 callbacks in %.3f ms; reused=%@",([NSDate timeIntervalSinceReferenceDate]-began)*1000,reused?@"YES":@"NO");
+      requireCondition([window_ tableView:statusTable objectValueForTableColumn:statusColumn row:5]==nil,@"Undownloaded playlist rows keep their empty status cell");
+      [window_ setValue:savedRows forKey:@"videoRows_"]; [savedRows release];
+      requireCondition(reused,@"Status cell redraws must reuse images instead of rasterizing each row");
+      AIFontAwesomeIcon statusGlyphs[]={AIFACircleCheck,AIFAArrowDown,AIFAClock,AIFACirclePause,AIFATriangleExclamation};
+      for(i=0;i<5;++i) {
+        NSImage *one=[RDLPAppKit statusIcon:statusGlyphs[i] scale:1];
+        NSImage *two=[RDLPAppKit statusIcon:statusGlyphs[i] scale:2];
+        requireCondition(one && two && one!=two && one==[RDLPAppKit statusIcon:statusGlyphs[i] scale:1],@"Status cache distinguishes backing scales and retains old-scale images");
+        for(scale=1;scale<=2;++scale) {
+          NSImage *image=[RDLPAppKit statusIcon:statusGlyphs[i] scale:scale];
+          requireCondition([image size].width==16 && [image size].height==16,@"Status icons preserve their logical size at either backing scale");
+          NSImage *original=[AIFontAwesome imageForIcon:statusGlyphs[i] style:AIFontAwesomeStyleSolid iconSize:12 canvasSize:16 scale:scale];
+          requireCondition([[image TIFFRepresentation] isEqual:[original TIFFRepresentation]],@"Caching preserves the existing status glyph pixels");
+        }
+      }
       CGFloat backingScale=[RDLPAppKit backingScaleForWindow:[window_ window]];
       RDLPToolbarButton *queue=toolbarButton(window_,@"downloads");
       NSImage *wrongScale=[RDLPAppKit controlIcon:AIFACaretDown style:AIFontAwesomeStyleSolid

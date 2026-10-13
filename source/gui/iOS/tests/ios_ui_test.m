@@ -560,6 +560,11 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   [@"RUNNING" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSString *report=@"PASS";
   @try {
+    if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestIconsOnly"] boolValue]) {
+      testIOSIconScale();
+      [@"PASS: icon pixels, screen scale, status cache reuse, and compatible template rendering" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [[UIApplication sharedApplication] setIdleTimerDisabled:idleTimerDisabled]; return;
+    }
     collectionTest(window_); formCollectionTest(window_);
     if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestLocalizationOnly"] boolValue]) {
       testSharedLocalization([documents_ stringByAppendingPathComponent:@"LocalizationFixture"]);
@@ -593,10 +598,6 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
       return;
     }
     testIOSIconScale();
-    if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestIconsOnly"] boolValue]) {
-      [@"PASS: white icon pixels, screen scale, and compatible template rendering" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
-      return;
-    }
     testSharedMetadata();
     testDownloadSections();
     testSharedVideoRows([documents_ stringByAppendingPathComponent:@"RowFixture"]); testSharedAsyncLists();
