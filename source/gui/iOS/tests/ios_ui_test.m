@@ -120,7 +120,7 @@ static void nativeDelete(UITableViewController *controller,NSIndexPath *index) {
   UIControl *button=editingControl(table,@"DeleteConfirmation");
   require(button!=nil,@"UIKit exposes its Delete confirmation button");
   [button sendActionsForControlEvents:UIControlEventTouchUpInside]; pump(); pump();
-  [table setEditing:NO animated:NO]; pump();
+  [table setEditing:NO animated:NO]; pump(); sections(controller);
 }
 static void confirmAt(id controller,BOOL accept,int line) {
   UIAlertView *alert=[controller valueForKey:@"alert_"];
@@ -536,7 +536,25 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   if([navigation_ presentedViewController]) {
     [navigation_ dismissViewControllerAnimated:NO completion:nil]; pump(); pump();
   }
-  [navigation_ setViewControllers:[NSArray arrayWithObject:controller] animated:NO]; [controller view]; [controller refresh:nil]; pump(); return controller;
+  [controller view];
+  NSArray *initial=[[controller valueForKey:@"sections_"] retain];
+  require(initial!=nil && ![[controller valueForKey:@"listLoader_"] isLoading],@"Initial screen data is ready before presentation");
+  NSEnumerator *sections=[initial objectEnumerator]; NSDictionary *section;
+  while((section=[sections nextObject])) {
+    NSArray *rows=[section objectForKey:@"rows"]; NSUInteger row;
+    for(row=0;row<[rows count];++row)
+      require([(RDLPLibraryRows *)rows cachedObjectAtIndex:row]!=nil &&
+        ![[[rows objectAtIndex:row] objectForKey:@"action"] isEqual:@"placeholder"],@"Every initial row is ready before cell creation");
+  }
+  [navigation_ setViewControllers:[NSArray arrayWithObject:controller] animated:NO];
+  require([controller valueForKey:@"sections_"]==initial && ![[controller valueForKey:@"listLoader_"] isLoading],@"Appearance retains prepared data without another request");
+  UIViewController *cover=[[[UIViewController alloc] init] autorelease];
+  [navigation_ pushViewController:cover animated:NO];
+  require([controller valueForKey:@"sections_"]==initial,@"Navigating away retains prepared content");
+  [navigation_ popViewControllerAnimated:NO];
+  require([controller valueForKey:@"sections_"]==initial && ![[controller valueForKey:@"listLoader_"] isLoading],@"Returning does not reload unchanged content");
+  [initial release];
+  [controller refresh:nil]; pump(); return controller;
 }
 - (void)run;
 {
@@ -658,6 +676,13 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     [navigation_ setViewControllers:[NSArray arrayWithObject:emptyQueue] animated:NO]; [emptyQueue view]; [emptyQueue refresh:nil]; pump();
     require([[emptyQueue tableView] numberOfRowsInSection:0]==0 && [navigation_ isToolbarHidden] && [[emptyQueue tableView] tableFooterView]==nil && ![emptyQueue respondsToSelector:@selector(tableView:titleForFooterInSection:)],@"Empty Queue has no placeholder section, footer, or idle toolbar");
     [RDLPLibrary savePreferredFormat:@"137+140"];
+    RDLPQueueViewController *revealQueue=[[[RDLPQueueViewController alloc] initWithLibrary:library_] autorelease];
+    [revealQueue showJobInQueue:[[library_ queueRows] objectAtIndex:0]];
+    require(![[revealQueue valueForKey:@"listLoader_"] isLoading] && [[revealQueue tableView] indexPathForSelectedRow]!=nil,@"Fresh Queue reveal prepares selection without a second background load");
+    [revealQueue setView:nil]; [revealQueue performSelector:@selector(viewDidUnload)];
+    require([revealQueue valueForKey:@"collectionAdapter_"]==nil && [revealQueue valueForKey:@"listLoader_"]==nil,@"Legacy view disposal detaches the borrowed table adapter and worker");
+    [revealQueue view];
+    require([revealQueue valueForKey:@"sections_"]!=nil && ![[revealQueue valueForKey:@"listLoader_"] isLoading],@"Recreated views prepare content before presentation again");
     RDLPPlaylistsViewController *root=[self show:RDLPScreenLibrary playlist:nil video:nil];
     testIOSIconImage([[[root navigationItem] rightBarButtonItem] image],26,[[UIScreen mainScreen] scale],YES);
     require([root isKindOfClass:[UITableViewController class]] && [root view]==[root tableView],@"Fresh-launch home is a native table controller");
@@ -1053,7 +1078,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require(downloadCount==2,@"All Downloads keeps both completed qualities and excludes pending/failed jobs");
     NSIndexPath *lowIndex=videoIndex(all,@"AAAAAAAAAAA",@"18"), *highIndex=videoIndex(all,@"AAAAAAAAAAA",@"137+140");
     UITableViewCell *lowCell=[all tableView:[all tableView] cellForRowAtIndexPath:lowIndex], *highCell=[all tableView:[all tableView] cellForRowAtIndexPath:highIndex];
-    require(sections(list)==nil,@"Offscreen playlist releases its SQLite snapshots");
+    require(sections(list)!=nil,@"Offscreen playlist retains prepared content for return navigation");
     RDLPPlaylistViewController *comparison=[[[RDLPPlaylistViewController alloc] initWithLibrary:library_ playlist:playlist] autorelease];
     [comparison view];
     NSString *representativeFormat=[[[[[sections(comparison) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:0] objectForKey:@"job"] objectForKey:@"format"];
@@ -1084,7 +1109,7 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     require([[NSFileManager defaultManager] fileExistsAtPath:highFile],@"Dismissing swipe without Delete preserves the download");
     [all tableView:[all tableView] willBeginEditingRowAtIndexPath:highIndex];
     [all refresh:nil]; pump();
-    [all tableView:[all tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:highIndex]; pump();
+    [all tableView:[all tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:highIndex]; pump(); sections(all);
     require(![[NSFileManager defaultManager] fileExistsAtPath:highFile] && [policy playable:[model currentJob:@"1"]] && [RDLPDownloadPolicy job:[model currentJob:@"4"] hasState:@"removed"],@"Swipe Delete removes exactly the selected completed quality and preserves its sibling");
     require([all tableView:[all tableView] numberOfRowsInSection:0]==1 && [[library_ entriesForPlaylist:[playlist objectForKey:@"id"]] count]==membershipCount,@"All Downloads drops deleted row while playlist membership is retained");
     require(videoIndex(comparison,@"AAAAAAAAAAA",@"18")!=nil,@"Playlist switches to its remaining playable quality after deletion");
@@ -1128,13 +1153,13 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
     [library_ setValue:[NSNumber numberWithBool:YES] forKey:@"busy_"];
     [library_ setValue:[NSDictionary dictionaryWithObject:@"download" forKey:@"type"] forKey:@"activeCommand_"];
     [library_ setValue:@1 forKey:@"activeJob_"];
-    [all tableView:[all tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:lowIndex]; pump();
+    [all tableView:[all tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:lowIndex]; pump(); sections(all);
     require([policy playable:[model currentJob:@"1"]],@"Work on the selected job starting during a swipe prevents file removal");
     [library_ setValue:[NSNumber numberWithBool:NO] forKey:@"busy_"];
     [library_ setValue:nil forKey:@"activeCommand_"];
     [library_ setValue:@0 forKey:@"activeJob_"];
     [all tableView:[all tableView] willBeginEditingRowAtIndexPath:lowIndex];
-    [all tableView:[all tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:lowIndex]; pump();
+    [all tableView:[all tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:lowIndex]; pump(); sections(all);
     require([all numberOfSectionsInTableView:[all tableView]]==0 && (![all respondsToSelector:@selector(tableView:titleForFooterInSection:)] || [all tableView:[all tableView] titleForFooterInSection:0]==nil),@"Empty All Downloads has no placeholder section footer");
     list=[self show:RDLPScreenPlaylist playlist:playlist video:nil];
     /* Each stopped/failed quality may retain final, video, audio, and .part files. */
@@ -1152,19 +1177,19 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
         [list tableView:[list tableView] willBeginEditingRowAtIndexPath:newIndex];
         [library_ retryJob:[newJob objectForKey:@"id"]];
         require([[[[[sections(list) objectAtIndex:0] objectForKey:@"rows"] objectAtIndex:(NSUInteger)[newIndex row]] objectForKey:@"status"] isEqualToString:@"Failed"],@"Refresh preserves the swiped row snapshot until editing ends");
-        [list tableView:[list tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:newIndex]; pump();
+        [list tableView:[list tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:newIndex]; pump(); sections(list);
         require([RDLPDownloadPolicy job:[model currentJob:[newJob objectForKey:@"id"]] hasState:@"queued"] && [[NSFileManager defaultManager] fileExistsAtPath:staging],@"Delete revalidates a quality queued during the swipe and preserves its fragments");
         require(![list tableView:[list tableView] canEditRowAtIndexPath:newIndex],@"Requeued partial download disables swipe Delete");
         require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open running fixture");
-        require(rdapp_store_finish(store,[[newJob objectForKey:@"id"] longLongValue],"running","",""),@"Start partial fixture"); rdapp_store_close(store); [list refresh:nil]; pump();
+        require(rdapp_store_finish(store,[[newJob objectForKey:@"id"] longLongValue],"running","",""),@"Start partial fixture"); rdapp_store_close(store); [list refresh:nil]; pump(); sections(list);
         require(![list tableView:[list tableView] canEditRowAtIndexPath:newIndex],@"Running partial download disables swipe Delete");
-        [list tableView:[list tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:newIndex]; pump();
+        [list tableView:[list tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:newIndex]; pump(); sections(list);
         require([[NSFileManager defaultManager] fileExistsAtPath:staging],@"Even a stale Delete callback cannot remove running partial files");
         require(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open stopped fixture");
-        require(rdapp_store_finish(store,[[newJob objectForKey:@"id"] longLongValue],"failed","","Retained partial download"),@"Stop partial fixture"); rdapp_store_close(store); [list refresh:nil]; pump();
+        require(rdapp_store_finish(store,[[newJob objectForKey:@"id"] longLongValue],"failed","","Retained partial download"),@"Stop partial fixture"); rdapp_store_close(store); [list refresh:nil]; pump(); sections(list);
       }
       [list tableView:[list tableView] willBeginEditingRowAtIndexPath:newIndex];
-      [list tableView:[list tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:newIndex]; pump();
+      [list tableView:[list tableView] commitEditingStyle:UITableViewCellEditingStyleDelete forRowAtIndexPath:newIndex]; pump(); sections(list);
       require(![[NSFileManager defaultManager] fileExistsAtPath:staging] && [RDLPDownloadPolicy job:[model currentJob:[newJob objectForKey:@"id"]] hasState:@"removed"],@"Swipe Delete cleans all partial files and records removal");
       require([[library_ entriesForPlaylist:[playlist objectForKey:@"id"]] count]==membershipCount && ![list tableView:[list tableView] canEditRowAtIndexPath:newIndex],@"Deleted partial quality retains playlist row and no longer offers Delete");
     }

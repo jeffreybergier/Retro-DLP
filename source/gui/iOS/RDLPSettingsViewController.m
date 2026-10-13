@@ -31,7 +31,7 @@
 - (void)viewDidLoad;
 { [super viewDidLoad]; [self refresh:nil]; }
 - (void)viewWillAppear:(BOOL)animated;
-{ [super viewWillAppear:animated]; [[self navigationController] setToolbarHidden:YES animated:animated]; [self refresh:nil]; }
+{ [super viewWillAppear:animated]; [[self navigationController] setToolbarHidden:YES animated:animated]; }
 - (void)refresh:(id)sender;
 {
   (void)sender; if(![self isViewLoaded]) return;

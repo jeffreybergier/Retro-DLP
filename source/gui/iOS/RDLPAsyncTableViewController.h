@@ -6,7 +6,7 @@
   NSArray *sections_;
   RDLPListLoader *listLoader_;
   AICollectionTableAdapter *collectionAdapter_;
-  BOOL listSuspended_, listClosed_;
+  BOOL listClosed_;
 }
 - (NSDictionary *)listRequest;
 - (BOOL)canApplyList;

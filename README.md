@@ -263,18 +263,22 @@ docker compose run --rm altivec "python3 source/gui/iOS/tests/build_ios_ui_test.
 Install `build/tests/iOS/RetroDLPIOSOfflineTest.ipa` on a jailbroken test
 device and open it. The result is written to the app's `Documents/result.txt`.
 
-The native library lists build SQLite snapshots, counts and date sections on a
-background worker. Table callbacks return cached presentation rows or loading
-placeholders and request 32-row pages with a 128-row cache bound per source.
+Native tables prepare complete immutable presentation rows before first display,
+including text for offscreen rows. Initial preparation is synchronous; its time
+and memory cost scale with the displayed list. Cell callbacks read ready rows,
+without loading placeholders or page requests. Database queries still use bounded
+pages. Navigation retains prepared content and appearance does not reload it.
+Actual data changes and explicit refreshes build replacement snapshots on a
+background worker, preserving visible content until the new rows are ready.
 Refreshes coalesce, discard obsolete results and preserve selection and scroll
 anchors by record identity. Closing a library cancels queued deliveries; read
-failures are reported separately from empty results. Explicit actions and bulk
-operations still use synchronous domain APIs and recheck records before writes.
+failures are reported separately from empty results. Explicit actions recheck
+records and files before writes.
 
-Native async regressions cover superseded requests, disposal, placeholder
-paging and a deterministic 100,000-row presentation fixture. The fixture checks
-bounded reads and a 50 ms main-thread request budget on legacy devices; it is
-not a substitute for end-to-end SQL query-plan, scrolling and WAL benchmarks.
+Native regressions cover initial readiness, appearance without reloads, retained
+navigation content, scrolling beyond the query cache without additional reads,
+superseded requests and disposal. The generic asynchronous paging API retains
+its separate 100,000-row bounded-cache regression.
 
 ## Source Code Overview
 

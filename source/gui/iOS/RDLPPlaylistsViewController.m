@@ -40,7 +40,7 @@
   [self refresh:nil];
 }
 - (void)viewWillAppear:(BOOL)animated;
-{ [super viewWillAppear:animated]; [[self navigationController] setToolbarHidden:NO animated:animated]; [self refresh:nil]; }
+{ [super viewWillAppear:animated]; [[self navigationController] setToolbarHidden:NO animated:animated]; }
 - (void)viewWillDisappear:(BOOL)animated;
 {
   [[self tableView] setEditing:NO animated:NO];

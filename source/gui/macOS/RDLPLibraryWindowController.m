@@ -49,6 +49,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (NSDictionary *)jobForEntry:(NSDictionary *)entry;
 - (NSString *)statusForJob:(NSDictionary *)job;
 - (BOOL)playable:(NSDictionary *)job;
+- (void)loadListReplacingContent:(BOOL)replace;
 - (void)refresh:(id)sender;
 - (BOOL)tableView:(NSTableView *)view RDLP_isSectionRow:(NSInteger)row;
 - (void)tableWasUsed:(NSTableView *)view;
@@ -188,7 +189,6 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(downloadDateChanged:) name:RDLPDateBoundariesDidChange object:nil];
   [NSCalendar RDLP_monitorDateBoundaries];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshStatus:) name:RDLPLibraryStatusDidChange object:library_];
-  [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refresh:) name:NSApplicationDidBecomeActiveNotification object:NSApp];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(libraryClosed:) name:RDLPLibraryWillClose object:library_];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(pageLoaded:) name:AIPagedRowsDidLoadNotification object:nil];
   [self refresh:nil]; return self;
@@ -235,7 +235,6 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)showWindow:(id)sender;
 {
   [super showWindow:sender];
-  if(!listLoader_) [self refresh:nil];
   /* Derive content limits from the displayed frame, including Tiger's toolbar. */
   NSWindow *window=[self window];
   NSSize frameSize=[window frame].size,contentSize=[[window contentView] frame].size;
@@ -523,8 +522,11 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)downloadDateChanged:(id)sender;
 { if(mode_!=0 || [selectedPlaylist_ isEqualToString:[adhocPlaylist_ objectForKey:@"id"]]) [self refresh:sender]; }
 - (void)refresh:(id)sender;
+{ (void)sender; [self loadListReplacingContent:NO]; }
+- (void)loadListReplacingContent:(BOOL)replace;
 {
-  (void)sender; if(refreshing_ || listClosed_) return;
+  if(refreshing_ || listClosed_) return;
+  replace=replace || !rows_;
   if(!listLoader_) listLoader_=[[RDLPListLoader alloc] initWithTarget:self builder:[self class]];
   NSInteger top=[table_ rowAtPoint:[[table_ enclosingScrollView] documentVisibleRect].origin];
   if(top>=0 && [self tableView:table_ RDLP_isSectionRow:top] && (NSUInteger)(top+1)<[rows_ count]) ++top;
@@ -533,11 +535,14 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   CGFloat queueDelta=queueTop>=0?[[queue_ enclosingScrollView] documentVisibleRect].origin.y-[queue_ rectOfRow:queueTop].origin.y:0;
   NSDictionary *request=[NSDictionary dictionaryWithObjectsAndKeys:library_,@"library",
     [NSNumber numberWithInt:mode_],@"mode",selectedPlaylist_?selectedPlaylist_:@"",@"playlist",
-    rows_?:[NSArray array],@"oldRows",queueRows_?:[NSArray array],@"oldQueue",
-    [[[table_ selectedRowIndexes] copy] autorelease],@"oldSelection",[NSNumber numberWithLong:[queue_ selectedRow]],@"oldQueueSelection",
-    [NSNumber numberWithLong:top],@"top",[NSNumber numberWithDouble:delta],@"delta",
-    [NSNumber numberWithLong:queueTop],@"queueTop",[NSNumber numberWithDouble:queueDelta],@"queueDelta",nil];
-  listLoading_=YES; [listLoader_ request:request]; [self updateControls];
+    replace?[NSArray array]:(rows_?:[NSArray array]),@"oldRows",queueRows_?:[NSArray array],@"oldQueue",
+    replace?[NSIndexSet indexSet]:[[[table_ selectedRowIndexes] copy] autorelease],@"oldSelection",[NSNumber numberWithLong:[queue_ selectedRow]],@"oldQueueSelection",
+    [NSNumber numberWithLong:replace?-1:top],@"top",[NSNumber numberWithDouble:delta],@"delta",
+    [NSNumber numberWithLong:queueTop],@"queueTop",[NSNumber numberWithDouble:queueDelta],@"queueDelta",[NSNumber numberWithBool:replace],@"replacement",nil];
+  listLoading_=YES;
+  if(replace) { [listLoader_ cancel]; [self didLoadList:[listLoader_ buildResultForRequest:request]]; }
+  else [listLoader_ request:request];
+  [self updateControls];
 }
 + (NSDictionary *)buildList:(NSDictionary *)input;
 {
@@ -552,7 +557,8 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     RDLPDownloadSections *groups=[[[RDLPDownloadSections alloc] initWithRows:(RDLPLibraryRows *)rows date:[NSDate date] calendar:[NSCalendar currentCalendar]] autorelease];
     rows=[groups tableRows:rows];
   }
-  NSArray *queue=[library queueRows];
+  rows=[rows RDLP_preparedRows];
+  NSArray *queue=[[library queueRows] RDLP_preparedRows];
   NSMutableDictionary *result=[NSMutableDictionary dictionaryWithDictionary:input];
   NSArray *oldRows=[input objectForKey:@"oldRows"], *oldQueue=[input objectForKey:@"oldQueue"];
   NSString *identityKey=mode==0?@"position":@"id";
@@ -577,12 +583,13 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(adhoc) [result setObject:adhoc forKey:@"adhoc"];
   [result setObject:rows?rows:[NSArray array] forKey:@"rows"];
   [result setObject:queue?queue:[NSArray array] forKey:@"queue"];
-  [result setObject:[[[RDLPVideoRows alloc] initWithRows:rows library:library playlist:mode==0?pid:nil] autorelease] forKey:@"videos"];
-  [result setObject:[[[RDLPVideoRows alloc] initWithRows:queue library:library playlist:nil] autorelease] forKey:@"queueDisplay"];
+  [result setObject:[[[[RDLPVideoRows alloc] initWithRows:rows library:library playlist:mode==0?pid:nil] autorelease] RDLP_preparedRows] forKey:@"videos"];
+  [result setObject:[[[[RDLPVideoRows alloc] initWithRows:queue library:library playlist:nil] autorelease] RDLP_preparedRows] forKey:@"queueDisplay"];
   NSArray *addedRows=[library playlistsFromAccount:NO], *accountRows=[library playlistsFromAccount:YES], *unsupportedRows=[library unsupportedPlaylists];
   [result setObject:addedRows?[(RDLPLibraryRows *)addedRows identities]:[NSArray array] forKey:@"added"];
   [result setObject:accountRows?[(RDLPLibraryRows *)accountRows identities]:[NSArray array] forKey:@"account"];
   [result setObject:unsupportedRows?[(RDLPLibraryRows *)unsupportedRows identities]:[NSArray array] forKey:@"unsupported"];
+  addedRows=[addedRows RDLP_preparedRows]; accountRows=[accountRows RDLP_preparedRows]; unsupportedRows=[unsupportedRows RDLP_preparedRows];
   [result setObject:[NSDictionary dictionaryWithObjectsAndKeys:
     addedRows?:[NSArray array],@"Added Playlists",accountRows?:[NSArray array],@"My Playlists",unsupportedRows?:[NSArray array],@"Unsupported Playlists",nil] forKey:@"sidebar"];
   NSMutableIndexSet *selection=[NSMutableIndexSet indexSet];
@@ -642,6 +649,9 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   [adhocPlaylist_ release]; adhocPlaylist_=[[result objectForKey:@"adhoc"] retain];
   mode_=[[result objectForKey:@"mode"] intValue];
   if(mode_!=0) { [selectedPlaylist_ release]; selectedPlaylist_=nil; }
+  if([[result objectForKey:@"replacement"] boolValue]) {
+    [tableCollection_ invalidate]; [tableCollection_ release]; tableCollection_=nil;
+  }
   if (!tableCollection_) tableCollection_ = [[AICollectionTableAdapter alloc] initWithTableView:table_];
   if (!queueCollection_) queueCollection_ = [[AICollectionTableAdapter alloc] initWithTableView:queue_];
   if (!sidebarCollection_) sidebarCollection_ = [[AICollectionOutlineAdapter alloc] initWithOutlineView:sidebar_];
@@ -1049,7 +1059,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     id item=[sidebar_ itemAtRow:row]; if([RDLPLibraryViews isSidebarGroup:item]) return;
     mode_=[item isEqual:@"All Downloads"]?1:0; [selectedPlaylist_ release];
     selectedPlaylist_=mode_==0?[item copy]:nil;
-    [self refresh:nil];
+    [self loadListReplacingContent:YES];
   } else [self updateControls];
 }
 - (BOOL)validateToolbarItem:(NSToolbarItem *)item;

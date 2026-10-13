@@ -42,6 +42,7 @@ static void collectionTest(UIWindow *window)
   NSArray *rows=[NSArray arrayWithObjects:@"a",@"b",@"c",nil];
   source->sections_=[NSArray arrayWithObject:collectionSection(@"main",rows)];
   [adapter applySnapshot:[[[AICollectionSnapshot alloc] initWithSections:source->sections_] autorelease]]; pump();
+  require(table->partial_==0,@"Initial snapshot does not schedule a second row reload");
   [table selectRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:0] animated:NO scrollPosition:UITableViewScrollPositionNone];
   NSUInteger full=table->full_;
   rows=[NSArray arrayWithObjects:@"x",@"a",@"b",nil];
@@ -104,7 +105,10 @@ static void formCollectionTest(UIWindow *window)
   form->ids_ = [NSArray arrayWithObjects:@"field",@"status",nil];
   [window setRootViewController:form]; [form refreshCollection]; pump();
   RDLPCollectionTestTable *table = (id)[form tableView];
-  NSUInteger full = table->full_;
+  NSUInteger full = table->full_, partial = table->partial_;
+  [form beginAppearanceTransition:NO animated:NO]; [form endAppearanceTransition];
+  [form beginAppearanceTransition:YES animated:NO]; [form endAppearanceTransition]; pump();
+  require(table->full_==full && table->partial_==partial,@"Collection controller appearance does not reload content");
   [form->field_ setText:@"unsaved value"]; [form->field_ becomeFirstResponder]; pump();
   [[form collectionTableAdapter] refreshVisibleRows]; pump();
   require([form->field_ isFirstResponder] && [[form->field_ text] isEqual:@"unsaved value"],@"Content refresh preserves active field and text");

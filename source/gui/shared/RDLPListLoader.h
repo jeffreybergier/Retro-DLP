@@ -11,6 +11,8 @@
 - (void)didLoadList:(NSDictionary *)result;
 @end
 @interface NSArray (RDLPAsyncRows)
+/* Materialize immutable display data before exposing its row count to a view. */
+- (NSArray *)RDLP_preparedRows;
 - (NSArray *)RDLP_collectionIdentifiers;
 - (id)RDLP_requestRow:(NSUInteger)index;
 - (void)RDLP_invalidateRows;

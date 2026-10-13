@@ -129,10 +129,14 @@ Apple builds use the local Altivec Intelligence container and user-supplied SDKs
   Do not suppress deprecated-API warnings in app-owned code. Tiger PPC code
   cannot use blocks; the existing iOS player can. Preserve `RDLP` names and
   persisted keys, notification names, and window identifiers.
-- Table counts and copies must not load all rows. `RDLPLibraryRows` fetches
-  displayed rows on demand and caches at most 128; keep indexed sequential
-  reads and bounded caches. Do not scan every job for every entry or check
-  offscreen files during rendering. Preserve playlist occurrence identity,
+- Database counts and copies must not load all rows. `RDLPLibraryRows` uses
+  indexed sequential reads and a bounded 128-row query cache. Native tables
+  explicitly prepare complete immutable presentation rows before first display;
+  cell callbacks must not fetch or format missing data or show loading placeholders.
+  Prepare initial content before presentation, never in appearance callbacks.
+  Keep prepared rows across navigation. Actual data changes and explicit reloads
+  build replacements in the background while existing content remains visible.
+  Do not scan every job for every entry or check files during rendering. Preserve playlist occurrence identity,
   duplicate entries, stable job IDs, and read-only SQLite snapshots. Recheck
   identities and files before write actions. Drain autorelease pools in long
   loops; measure scrolling and bulk work on target devices.

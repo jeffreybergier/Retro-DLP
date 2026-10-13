@@ -1,5 +1,6 @@
 #import "../RDLPListLoader.h"
 #import "../RDLPVideoRows.h"
+#import "../RDLPDownloadSections.h"
 
 static BOOL asyncProbeCancelled;
 @interface RDLPAsyncProbe : NSObject {
@@ -24,10 +25,10 @@ static BOOL asyncProbeCancelled;
 { ++deliveries; [last release]; last=[result copy]; }
 - (void)dealloc; { [last release]; [super dealloc]; }
 @end
-@interface RDLPAsyncFixture : NSArray { @public NSUInteger reads; BOOL mainRead; }
+@interface RDLPAsyncFixture : NSArray { @public NSUInteger reads, total; BOOL mainRead; }
 @end
 @implementation RDLPAsyncFixture
-- (NSUInteger)count; { return 100000; }
+- (NSUInteger)count; { return total?total:100000; }
 - (id)objectAtIndex:(NSUInteger)index;
 {
   ++reads; if([NSThread RLDP_isMainThread]) mainRead=YES;
@@ -67,7 +68,7 @@ static void testSharedAsyncLists(void) {
   NSTimeInterval maximum=0;
   for(i=0;i<5;++i) {
     NSTimeInterval start=[NSDate timeIntervalSinceReferenceDate];
-    NSDictionary *placeholder=[rows RDLP_requestRow:indexes[i]];
+    NSDictionary *placeholder=[rows requestObjectAtIndex:indexes[i] placeholder:[NSDictionary dictionaryWithObject:@"placeholder" forKey:@"action"]];
     maximum=MAX(maximum,[NSDate timeIntervalSinceReferenceDate]-start);
     metadataRequire([[placeholder objectForKey:@"action"] isEqual:@"placeholder"] && ![placeholder objectForKey:@"job"],@"Missing page returns a non-actionable placeholder");
     deadline=[NSDate dateWithTimeIntervalSinceNow:10];
@@ -79,5 +80,24 @@ static void testSharedAsyncLists(void) {
   metadataRequire(![rows cachedObjectAtIndex:0],@"Old pages leave the bounded presentation cache");
   NSLog(@"Async 100000-row fixture: %lu source rows, max main request %.3f ms (budget 50 ms)",(unsigned long)source->reads,maximum*1000);
   metadataRequire(maximum<0.05,@"Placeholder callbacks meet the legacy-device 50 ms budget");
-  [rows RDLP_invalidateRows]; [pool drain];
+  [rows RDLP_invalidateRows];
+  RDLPAsyncFixture *readySource=[[[RDLPAsyncFixture alloc] init] autorelease]; readySource->total=2048;
+  RDLPVideoRows *lazy=[[[RDLPVideoRows alloc] initWithRows:readySource library:nil playlist:nil] autorelease];
+  NSTimeInterval preparation=[NSDate timeIntervalSinceReferenceDate];
+  NSArray *ready=[lazy RDLP_preparedRows];
+  preparation=[NSDate timeIntervalSinceReferenceDate]-preparation;
+  metadataRequire([ready count]==2048 && readySource->reads==2048,@"Initial presentation prepares every row before exposing it");
+  metadataRequire([[ready downloadHeaderIndexes] firstIndex]==NSNotFound,@"Ungrouped prepared rows have an empty header index set");
+  [lazy invalidatePages];
+  NSUInteger reads=readySource->reads;
+  NSUInteger jumps[]={0,2047,512,1024,32,1536,0};
+  for(i=0;i<7;++i) {
+    NSDictionary *row=[ready RDLP_requestRow:jumps[i]];
+    metadataRequire([[row objectForKey:@"title"] isEqual:@"Fixture"] && [row objectForKey:@"detail"] &&
+      [[[row objectForKey:@"job"] objectForKey:@"id"] intValue]==(int)jumps[i],
+      @"Scrolling beyond the page cache and back always returns complete matching text");
+  }
+  metadataRequire(readySource->reads==reads,@"Prepared cell access performs no additional source reads");
+  NSLog(@"Prepared 2048 presentation rows in %.3f seconds; scrolling reads: %lu",preparation,(unsigned long)(readySource->reads-reads));
+  [pool drain];
 }

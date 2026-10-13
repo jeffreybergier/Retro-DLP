@@ -19,8 +19,10 @@
 
 - (void)showJobInQueue:(NSDictionary *)job;
 {
+  BOOL loaded=[self isViewLoaded];
   [selectedJobID_ release]; selectedJobID_=[[job objectForKey:@"id"] copy]; revealPending_=YES;
-  [self view]; [self refresh:nil];
+  [self view];
+  if(loaded) [self refresh:nil];
 }
 - (void)didLoadList:(NSDictionary *)result;
 {

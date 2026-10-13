@@ -10,7 +10,7 @@
 - (void)libraryClosed:(NSNotification *)note;
 {
   if([note object]!=[[self listRequest] objectForKey:@"library"]) return;
-  listClosed_=YES; listSuspended_=YES; [self discardList]; [sections_ release]; sections_=nil;
+  listClosed_=YES; [self discardList]; [sections_ release]; sections_=nil;
 }
 - (void)dealloc;
 {
@@ -20,19 +20,19 @@
 }
 - (NSDictionary *)listRequest;
 { [self doesNotRecognizeSelector:_cmd]; return nil; }
-- (BOOL)canApplyList; { return !listSuspended_ && !listClosed_; }
+- (BOOL)canApplyList; { return !listClosed_; }
 - (void)refreshStatus:(id)sender; { (void)sender; }
 - (void)refresh:(id)sender;
 {
   (void)sender; if(![self isViewLoaded] || ![self canApplyList]) return;
   [self requestList]; [self refreshStatus:nil];
 }
-- (void)viewWillAppear:(BOOL)animated;
-{ listSuspended_=NO; [super viewWillAppear:animated]; }
-- (void)viewWillDisappear:(BOOL)animated;
+- (void)viewDidUnload;
 {
-  listSuspended_=YES; [self discardList]; [sections_ release]; sections_=nil;
-  [super viewWillDisappear:animated];
+  /* iOS 5 can dispose the table under memory pressure. Its borrowed adapter
+   * must go with it; the next viewDidLoad prepares a fresh initial snapshot. */
+  [self discardList]; [sections_ release]; sections_=nil;
+  [super viewDidUnload];
 }
 - (NSDictionary *)rowAtIndex:(NSIndexPath *)index;
 {
@@ -77,7 +77,8 @@
   [input setObject:[NSNumber numberWithDouble:delta] forKey:@"delta"];
   NSString *selection=[self identityAtIndex:[[self tableView] indexPathForSelectedRow]];
   if(selection && ![input objectForKey:@"selection"]) [input setObject:selection forKey:@"selection"];
-  [listLoader_ request:input];
+  if(!sections_) [self didLoadList:[listLoader_ buildResultForRequest:input]];
+  else [listLoader_ request:input];
 }
 - (void)discardList;
 {

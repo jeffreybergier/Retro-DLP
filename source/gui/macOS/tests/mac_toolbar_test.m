@@ -583,7 +583,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     }
     if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDAsyncListTestOnly"]) {
       testSharedAsyncLists();
-      [@"PASS: latest-generation snapshots, disposal, bounded async pages and main-thread budget" writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [@"PASS: latest-generation snapshots, disposal, paging and prepared presentation rows" writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
       [NSApp terminate:nil]; return;
     }
     NSString *customization=[[[NSProcessInfo processInfo] environment] objectForKey:@"RDToolbarCustomizationTest"];
@@ -737,7 +737,15 @@ static void testQueueWindow(RDLPLibrary *library) {
       [NSArray arrayWithObjects:newest,variant,nil]]==newest,@"Equal states must retain newest-first ordering");
     requireCondition([policy representativeJobForEntry:entry playlist:@"unrelated" jobs:fixtureJobs]==nil,
       @"Representative jobs must stay within the requested playlist");
-    window_=[[RDLPLibraryWindowController alloc] initWithLibrary:library_]; [window_ showWindow:nil]; [NSApp activateIgnoringOtherApps:YES]; pump();
+    window_=[[RDLPLibraryWindowController alloc] initWithLibrary:library_];
+    requireCondition(![[window_ valueForKey:@"listLoading_"] boolValue] && [window_ valueForKey:@"rows_"]!=nil,@"Mac initial rows are ready before showing the window");
+    NSArray *initialRows=[[window_ valueForKey:@"videoRows_"] retain];
+    NSUInteger initialIndex;
+    for(initialIndex=0;initialIndex<[initialRows count];++initialIndex)
+      requireCondition([(RDLPLibraryRows *)initialRows cachedObjectAtIndex:initialIndex]!=nil,@"Mac cell data is prepared before presentation");
+    [window_ showWindow:nil];
+    requireCondition([window_ valueForKey:@"videoRows_"]==initialRows && ![[window_ valueForKey:@"listLoading_"] boolValue],@"Showing the window does not request another load");
+    [initialRows release]; [NSApp activateIgnoringOtherApps:YES]; pump();
     NSMenu *cookiesMenu=[window_ menuForMenuBarTitle:@"Cookies"];
     NSData *cookieIcon=[[[toolbarButton(window_,@"cookies") image] TIFFRepresentation] retain];
     requireCondition([toolbarButton(window_,@"cookies") isDefaultEnabled] &&

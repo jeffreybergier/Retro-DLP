@@ -36,7 +36,7 @@
 - (void)viewWillAppear:(BOOL)animated;
 {
   [super viewWillAppear:animated];
-  [self refresh:nil]; visible_=YES; [self updateToolbarAnimated:animated];
+  visible_=YES; [self updateToolbarAnimated:animated];
 }
 - (void)viewWillDisappear:(BOOL)animated;
 {

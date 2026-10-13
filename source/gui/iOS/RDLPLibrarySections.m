@@ -52,7 +52,15 @@
   NSDictionary *playlist=[input objectForKey:@"playlist"];
   NSDictionary *current=[library playlistForID:[playlist objectForKey:@"id"]];
   if(current) playlist=current;
-  NSArray *sections=[model sectionsForScreen:(RDLPScreen)[[input objectForKey:@"mode"] intValue] playlist:playlist video:[input objectForKey:@"video"] collapsed:nil];
+  NSArray *lazySections=[model sectionsForScreen:(RDLPScreen)[[input objectForKey:@"mode"] intValue] playlist:playlist video:[input objectForKey:@"video"] collapsed:nil];
+  NSMutableArray *sections=[NSMutableArray array];
+  NSEnumerator *preparedEnumerator=[lazySections objectEnumerator]; NSDictionary *lazySection;
+  while((lazySection=[preparedEnumerator nextObject])) {
+    NSMutableDictionary *section=[[lazySection mutableCopy] autorelease];
+    [section setObject:[[lazySection objectForKey:@"rows"] RDLP_preparedRows] forKey:@"rows"];
+    [section removeObjectForKey:@"pageSource"]; [section removeObjectForKey:@"pageOffset"];
+    [sections addObject:section];
+  }
   NSMutableDictionary *result=[NSMutableDictionary dictionaryWithDictionary:input];
   [result setObject:sections forKey:@"sections"];
   NSMutableArray *metadata=[NSMutableArray array];

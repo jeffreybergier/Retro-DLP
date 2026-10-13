@@ -54,7 +54,7 @@
     [[self navigationItem] setRightBarButtonItem:[[[UIBarButtonItem alloc] initWithImage:[RDLPUIKit syncIcon] style:UIBarButtonItemStylePlain target:self action:@selector(sync:)] autorelease]];
     [[[self navigationItem] rightBarButtonItem] setAccessibilityLabel:NSLocalizedString(@"Sync Current Playlist", nil)];
   }
-  [self refresh:nil];
+  [[[self navigationItem] rightBarButtonItem] setEnabled:[[playlist_ objectForKey:@"service_id"] isEqualToString:@RDAPP_ADHOC_PLAYLIST_ID] || ([RDLPLibrary canSyncPlaylist:playlist_] && ![library_ isSyncPendingForInput:[playlist_ objectForKey:@"service_id"]])];
 }
 - (void)refresh:(id)sender;
 {

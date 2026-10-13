@@ -46,7 +46,7 @@
   [self refresh:nil];
 }
 - (void)viewWillAppear:(BOOL)animated;
-{ [super viewWillAppear:animated]; [[self navigationController] setToolbarHidden:![[self toolbarItems] count] animated:animated]; [self refresh:nil]; }
+{ [super viewWillAppear:animated]; [[self navigationController] setToolbarHidden:![[self toolbarItems] count] animated:animated]; }
 - (void)viewDidLayoutSubviews;
 {
   [super viewDidLayoutSubviews];
@@ -166,8 +166,10 @@
   if(!queue) {
     if(presented || alert_ || playlistActions_) return;
     queue=[[[RDLPQueueViewController alloc] initWithLibrary:library_] autorelease];
+    [queue showJobInQueue:job];
     UINavigationController *modal=[[[UINavigationController alloc] initWithRootViewController:queue] autorelease];
     [navigation presentViewController:modal animated:YES completion:nil];
+    return;
   }
   [queue showJobInQueue:job];
 }
