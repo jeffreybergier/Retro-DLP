@@ -26,6 +26,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Test EJS provisioning
+        run: python3 .github/scripts/test_provision_ejs.py
+
       - name: Pull latest build image
         run: docker pull "$BUILD_IMAGE"
 

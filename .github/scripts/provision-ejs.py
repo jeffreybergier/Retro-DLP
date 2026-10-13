@@ -30,3 +30,12 @@ for filename, base_url, remote_name, size, digest in assets:
         temporary.replace(target)
     target.chmod(0o644)
     print('Verified EJS ' + version + ': ' + filename)
+
+notice = destination / 'NOTICE.txt'
+notice.write_text(
+    'yt-dlp-ejs ' + version + '\n'
+    'Upstream: https://github.com/yt-dlp/ejs\n'
+    'License: Unlicense\n\n'
+    'lib.min.js retains the complete ISC notice for Meriyah and the MIT notice '
+    'for Astring in its source banner.\n', encoding='utf-8')
+notice.chmod(0o644)
