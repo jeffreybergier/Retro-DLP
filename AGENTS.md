@@ -51,11 +51,12 @@ Apple builds use the local Altivec Intelligence container and user-supplied SDKs
   tokens or support WebM, VP9, AV1, Opus, transcoding, or yt-dlp selectors.
   Higher-quality requests may fail with HTTP 403. Keep credentials, downloaded
   EJS assets, SDK archives, and build outputs out of Git.
-- Release configuration is `.altivec-release.yml`; automation is
+- Release configuration is `.altivec-release.json`; automation is
   `.github/workflows/release.yml`. Compose defaults to `ghcr.io/jeffreybergier/altivec-intelligence:latest`;
   set `ALTIVEC_IMAGE=altivec-intelligence:local` to use a local build instead. From a clean committed checkout, use
-  `docker compose run --rm altivec "altivec-release bump patch"` (or `minor` /
-  `major`; `--dry-run` previews). A `v` tag builds macOS/iOS CLI, app, and
+  `docker compose run --rm altivec "altivec-release prepare patch"` (or
+  `minor` / `major`; `--dry-run` previews), then review and commit/tag on the
+  host. Publish with an explicit host push. A `v` tag builds macOS/iOS CLI, app, and
   library assets; branch pushes run checks. CI verifies private SDK hashes and
   layouts and validates packages before upload. Linux users build from source.
 
