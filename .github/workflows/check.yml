@@ -30,7 +30,13 @@ jobs:
         run: docker pull "$BUILD_IMAGE"
 
       - name: Provision pinned EJS resources
-        run: python3 .github/scripts/provision-ejs.py build/generated/ejs
+        run: |
+          docker run --rm \
+            --entrypoint /bin/bash \
+            -v "$GITHUB_WORKSPACE:/repo/user" \
+            -w /repo/user \
+            "$BUILD_IMAGE" \
+            -lc 'python3 /altivec/make/build.py safe-root "$PWD" "$PWD/build" && python3 .github/scripts/provision-ejs.py build/generated/ejs'
 
       - name: Run offline Linux tests
         run: |
