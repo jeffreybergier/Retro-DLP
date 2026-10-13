@@ -1,6 +1,5 @@
 #import "../RDLPListLoader.h"
 #import "../RDLPVideoRows.h"
-#import "../RDLPDownloadSections.h"
 
 static BOOL asyncProbeCancelled;
 @interface RDLPAsyncProbe : NSObject {
@@ -81,23 +80,20 @@ static void testSharedAsyncLists(void) {
   NSLog(@"Async 100000-row fixture: %lu source rows, max main request %.3f ms (budget 50 ms)",(unsigned long)source->reads,maximum*1000);
   metadataRequire(maximum<0.05,@"Placeholder callbacks meet the legacy-device 50 ms budget");
   [rows RDLP_invalidateRows];
-  RDLPAsyncFixture *readySource=[[[RDLPAsyncFixture alloc] init] autorelease]; readySource->total=2048;
-  RDLPVideoRows *lazy=[[[RDLPVideoRows alloc] initWithRows:readySource library:nil playlist:nil] autorelease];
-  NSTimeInterval preparation=[NSDate timeIntervalSinceReferenceDate];
-  NSArray *ready=[lazy RDLP_preparedRows];
-  preparation=[NSDate timeIntervalSinceReferenceDate]-preparation;
-  metadataRequire([ready count]==2048 && readySource->reads==2048,@"Initial presentation prepares every row before exposing it");
-  metadataRequire([[ready downloadHeaderIndexes] firstIndex]==NSNotFound,@"Ungrouped prepared rows have an empty header index set");
-  [lazy invalidatePages];
-  NSUInteger reads=readySource->reads;
-  NSUInteger jumps[]={0,2047,512,1024,32,1536,0};
+  RDLPAsyncFixture *readySource=[[[RDLPAsyncFixture alloc] init] autorelease];
+  RDLPVideoRows *ready=[[[RDLPVideoRows alloc] initWithRows:readySource library:nil playlist:nil] autorelease];
+  metadataRequire([ready count]==100000 && readySource->reads==0,@"Initial count does not materialize presentation rows");
+  NSUInteger jumps[]={0,99999,512,1024,32,1536,0};
   for(i=0;i<7;++i) {
+    NSUInteger before=readySource->reads;
     NSDictionary *row=[ready RDLP_requestRow:jumps[i]];
     metadataRequire([[row objectForKey:@"title"] isEqual:@"Fixture"] && [row objectForKey:@"detail"] &&
       [[[row objectForKey:@"job"] objectForKey:@"id"] intValue]==(int)jumps[i],
-      @"Scrolling beyond the page cache and back always returns complete matching text");
+      @"Each cell request immediately returns complete matching text, including evicted pages");
+    metadataRequire(readySource->reads>before && readySource->reads-before<=32,@"A cache miss reads only one bounded page");
+    if(i==5) metadataRequire([ready cachedObjectAtIndex:0]==nil,@"Synchronous presentation also evicts old pages");
   }
-  metadataRequire(readySource->reads==reads,@"Prepared cell access performs no additional source reads");
-  NSLog(@"Prepared 2048 presentation rows in %.3f seconds; scrolling reads: %lu",preparation,(unsigned long)(readySource->reads-reads));
+  metadataRequire(readySource->mainRead && readySource->reads<=224,@"Cell text resolves synchronously without enumerating the list");
+  NSLog(@"Synchronous 100000-row fixture: %lu source rows for seven distant cell requests",(unsigned long)readySource->reads);
   [pool drain];
 }

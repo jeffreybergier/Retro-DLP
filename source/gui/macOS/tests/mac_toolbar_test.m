@@ -583,7 +583,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     }
     if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDAsyncListTestOnly"]) {
       testSharedAsyncLists();
-      [@"PASS: latest-generation snapshots, disposal, paging and prepared presentation rows" writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [@"PASS: latest-generation snapshots, disposal, paging and bounded synchronous presentation rows" writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
       [NSApp terminate:nil]; return;
     }
     NSString *customization=[[[NSProcessInfo processInfo] environment] objectForKey:@"RDToolbarCustomizationTest"];
@@ -740,9 +740,6 @@ static void testQueueWindow(RDLPLibrary *library) {
     window_=[[RDLPLibraryWindowController alloc] initWithLibrary:library_];
     requireCondition(![[window_ valueForKey:@"listLoading_"] boolValue] && [window_ valueForKey:@"rows_"]!=nil,@"Mac initial rows are ready before showing the window");
     NSArray *initialRows=[[window_ valueForKey:@"videoRows_"] retain];
-    NSUInteger initialIndex;
-    for(initialIndex=0;initialIndex<[initialRows count];++initialIndex)
-      requireCondition([(RDLPLibraryRows *)initialRows cachedObjectAtIndex:initialIndex]!=nil,@"Mac cell data is prepared before presentation");
     [window_ showWindow:nil];
     requireCondition([window_ valueForKey:@"videoRows_"]==initialRows && ![[window_ valueForKey:@"listLoading_"] boolValue],@"Showing the window does not request another load");
     [initialRows release]; [NSApp activateIgnoringOtherApps:YES]; pump();
@@ -1135,7 +1132,7 @@ static void testQueueWindow(RDLPLibrary *library) {
     requireCondition([[[window_ valueForKey:@"addSheet_"] title] isEqualToString:@"Add Video"],@"Mac Add Video sheet opens");
     [library_ setPaused:YES];
     [[window_ valueForKey:@"input_"] setStringValue:@"https://youtu.be/LMNOPQRSTUV"];
-    [NSApp endSheet:[window_ valueForKey:@"addSheet_"] returnCode:1]; pump();
+    [NSApp endSheet:[window_ valueForKey:@"addSheet_"] returnCode:1]; pump(); waitForList(window_);
     NSDictionary *addedJob=[library_ jobForPlaylist:[adhoc objectForKey:@"id"] video:@"LMNOPQRSTUV" format:[RDLPLibrary preferredFormat]];
     requireCondition([[addedJob objectForKey:@"state"] isEqualToString:@"queued"] && [[addedJob objectForKey:@"title"] isEqualToString:@"LMNOPQRSTUV"],@"Mac Add Video sheet queues immediately without network access");
     NSTableView *addedTable=[window_ valueForKey:@"table_"];

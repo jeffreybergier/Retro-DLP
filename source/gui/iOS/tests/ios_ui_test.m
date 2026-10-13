@@ -539,18 +539,11 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   [controller view];
   NSArray *initial=[[controller valueForKey:@"sections_"] retain];
   require(initial!=nil && ![[controller valueForKey:@"listLoader_"] isLoading],@"Initial screen data is ready before presentation");
-  NSEnumerator *sections=[initial objectEnumerator]; NSDictionary *section;
-  while((section=[sections nextObject])) {
-    NSArray *rows=[section objectForKey:@"rows"]; NSUInteger row;
-    for(row=0;row<[rows count];++row)
-      require([(RDLPLibraryRows *)rows cachedObjectAtIndex:row]!=nil &&
-        ![[[rows objectAtIndex:row] objectForKey:@"action"] isEqual:@"placeholder"],@"Every initial row is ready before cell creation");
-  }
   [navigation_ setViewControllers:[NSArray arrayWithObject:controller] animated:NO];
-  require([controller valueForKey:@"sections_"]==initial && ![[controller valueForKey:@"listLoader_"] isLoading],@"Appearance retains prepared data without another request");
+  require([controller valueForKey:@"sections_"]==initial && ![[controller valueForKey:@"listLoader_"] isLoading],@"Appearance retains row sources without another request");
   UIViewController *cover=[[[UIViewController alloc] init] autorelease];
   [navigation_ pushViewController:cover animated:NO];
-  require([controller valueForKey:@"sections_"]==initial,@"Navigating away retains prepared content");
+  require([controller valueForKey:@"sections_"]==initial,@"Navigating away retains row sources");
   [navigation_ popViewControllerAnimated:NO];
   require([controller valueForKey:@"sections_"]==initial && ![[controller valueForKey:@"listLoader_"] isLoading],@"Returning does not reload unchanged content");
   [initial release];

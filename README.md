@@ -263,20 +263,20 @@ docker compose run --rm altivec "python3 source/gui/iOS/tests/build_ios_ui_test.
 Install `build/tests/iOS/RetroDLPIOSOfflineTest.ipa` on a jailbroken test
 device and open it. The result is written to the app's `Documents/result.txt`.
 
-Native tables prepare complete immutable presentation rows before first display,
-including text for offscreen rows. Initial preparation is synchronous; its time
-and memory cost scale with the displayed list. Cell callbacks read ready rows,
-without loading placeholders or page requests. Database queries still use bounded
-pages. Navigation retains prepared content and appearance does not reload it.
-Actual data changes and explicit refreshes build replacement snapshots on a
-background worker, preserving visible content until the new rows are ready.
+Native tables expose row counts without loading all display data. Initial row
+sources are installed synchronously before presentation. Cell callbacks resolve
+complete text on demand through bounded 32-row pages, with at most 128 cached
+rows per source; they do not return loading placeholders or patch text later.
+Navigation retains row sources and appearance does not reload them. Initial loads
+are unanimated. Actual data changes and explicit refreshes build replacement
+sources on a background worker, preserving visible content until they are ready.
 Refreshes coalesce, discard obsolete results and preserve selection and scroll
 anchors by record identity. Closing a library cancels queued deliveries; read
 failures are reported separately from empty results. Explicit actions recheck
 records and files before writes.
 
 Native regressions cover initial readiness, appearance without reloads, retained
-navigation content, scrolling beyond the query cache without additional reads,
+navigation content, scrolling beyond the query cache with bounded synchronous reads,
 superseded requests and disposal. The generic asynchronous paging API retains
 its separate 100,000-row bounded-cache regression.
 

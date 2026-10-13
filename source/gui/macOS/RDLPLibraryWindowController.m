@@ -505,11 +505,11 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 }
 - (NSDictionary *)selectedRow;
 { if(listLoading_ || listReadFailed_) return nil; NSInteger row=[table_ selectedRow];
-  NSDictionary *entry=row>=0 && (NSUInteger)row<[rows_ count]?[(RDLPLibraryRows *)rows_ cachedObjectAtIndex:(NSUInteger)row]:nil;
+  NSDictionary *entry=row>=0 && (NSUInteger)row<[rows_ count]?[rows_ objectAtIndex:(NSUInteger)row]:nil;
   return [[entry objectForKey:@"action"] isEqualToString:@"section"]?nil:entry;
 }
 - (NSDictionary *)selectedJob;
-{ NSInteger row=[queue_ selectedRow]; return row>=0 && (NSUInteger)row<[queueRows_ count]?[(RDLPLibraryRows *)queueRows_ cachedObjectAtIndex:(NSUInteger)row]:nil; }
+{ NSInteger row=[queue_ selectedRow]; return row>=0 && (NSUInteger)row<[queueRows_ count]?[queueRows_ objectAtIndex:(NSUInteger)row]:nil; }
 
 - (NSDictionary *)selectedPlaylist;
 { return [[selectedPlaylistRow_ objectForKey:@"id"] isEqual:selectedPlaylist_]?selectedPlaylistRow_:nil; }
@@ -557,8 +557,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
     RDLPDownloadSections *groups=[[[RDLPDownloadSections alloc] initWithRows:(RDLPLibraryRows *)rows date:[NSDate date] calendar:[NSCalendar currentCalendar]] autorelease];
     rows=[groups tableRows:rows];
   }
-  rows=[rows RDLP_preparedRows];
-  NSArray *queue=[[library queueRows] RDLP_preparedRows];
+  NSArray *queue=[library queueRows];
   NSMutableDictionary *result=[NSMutableDictionary dictionaryWithDictionary:input];
   NSArray *oldRows=[input objectForKey:@"oldRows"], *oldQueue=[input objectForKey:@"oldQueue"];
   NSString *identityKey=mode==0?@"position":@"id";
@@ -583,13 +582,12 @@ static const CGFloat RDLPStatusBarHeight=32.0;
   if(adhoc) [result setObject:adhoc forKey:@"adhoc"];
   [result setObject:rows?rows:[NSArray array] forKey:@"rows"];
   [result setObject:queue?queue:[NSArray array] forKey:@"queue"];
-  [result setObject:[[[[RDLPVideoRows alloc] initWithRows:rows library:library playlist:mode==0?pid:nil] autorelease] RDLP_preparedRows] forKey:@"videos"];
-  [result setObject:[[[[RDLPVideoRows alloc] initWithRows:queue library:library playlist:nil] autorelease] RDLP_preparedRows] forKey:@"queueDisplay"];
+  [result setObject:[[[RDLPVideoRows alloc] initWithRows:rows library:library playlist:mode==0?pid:nil] autorelease] forKey:@"videos"];
+  [result setObject:[[[RDLPVideoRows alloc] initWithRows:queue library:library playlist:nil] autorelease] forKey:@"queueDisplay"];
   NSArray *addedRows=[library playlistsFromAccount:NO], *accountRows=[library playlistsFromAccount:YES], *unsupportedRows=[library unsupportedPlaylists];
   [result setObject:addedRows?[(RDLPLibraryRows *)addedRows identities]:[NSArray array] forKey:@"added"];
   [result setObject:accountRows?[(RDLPLibraryRows *)accountRows identities]:[NSArray array] forKey:@"account"];
   [result setObject:unsupportedRows?[(RDLPLibraryRows *)unsupportedRows identities]:[NSArray array] forKey:@"unsupported"];
-  addedRows=[addedRows RDLP_preparedRows]; accountRows=[accountRows RDLP_preparedRows]; unsupportedRows=[unsupportedRows RDLP_preparedRows];
   [result setObject:[NSDictionary dictionaryWithObjectsAndKeys:
     addedRows?:[NSArray array],@"Added Playlists",accountRows?:[NSArray array],@"My Playlists",unsupportedRows?:[NSArray array],@"Unsupported Playlists",nil] forKey:@"sidebar"];
   NSMutableIndexSet *selection=[NSMutableIndexSet indexSet];
@@ -1009,7 +1007,7 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (BOOL)tableView:(NSTableView *)view isGroupRow:(NSInteger)row;
 { return [view RDLP_supportsGroupRows] && [self tableView:view RDLP_isSectionRow:row]; }
 - (BOOL)tableView:(NSTableView *)view shouldSelectRow:(NSInteger)row;
-{ return !listLoading_ && !listReadFailed_ && ![self tableView:view RDLP_isSectionRow:row] && [(AIPagedRows *)(view==queue_?queueDisplayRows_:videoRows_) cachedObjectAtIndex:(NSUInteger)row]!=nil; }
+{ return !listLoading_ && !listReadFailed_ && row>=0 && (NSUInteger)row<[(view==queue_?queueRows_:rows_) count] && ![self tableView:view RDLP_isSectionRow:row]; }
 - (NSCell *)tableView:(NSTableView *)view dataCellForTableColumn:(NSTableColumn *)column row:(NSInteger)row;
 {
   if([self tableView:view RDLP_isSectionRow:row]) {

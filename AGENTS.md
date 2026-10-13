@@ -131,12 +131,13 @@ Apple builds use the local Altivec Intelligence container and user-supplied SDKs
   persisted keys, notification names, and window identifiers.
 - Database counts and copies must not load all rows. `RDLPLibraryRows` uses
   indexed sequential reads and a bounded 128-row query cache. Native tables
-  explicitly prepare complete immutable presentation rows before first display;
-  cell callbacks must not fetch or format missing data or show loading placeholders.
-  Prepare initial content before presentation, never in appearance callbacks.
-  Keep prepared rows across navigation. Actual data changes and explicit reloads
+  expose counts without materializing display rows. Cell callbacks synchronously
+  fetch and format complete text through bounded 32-row pages (128 cached rows);
+  do not show loading placeholders or patch text after cell creation.
+  Prepare initial row sources before presentation, never in appearance callbacks.
+  Keep row sources across navigation. Actual data changes and explicit reloads
   build replacements in the background while existing content remains visible.
-  Do not scan every job for every entry or check files during rendering. Preserve playlist occurrence identity,
+  Do not scan every job for every entry or scan offscreen files beyond the requested page. Preserve playlist occurrence identity,
   duplicate entries, stable job IDs, and read-only SQLite snapshots. Recheck
   identities and files before write actions. Drain autorelease pools in long
   loops; measure scrolling and bulk work on target devices.
