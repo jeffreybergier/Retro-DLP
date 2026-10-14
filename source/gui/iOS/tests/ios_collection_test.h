@@ -1,4 +1,5 @@
 #import <AICollectionTableAdapter.h>
+#import <AICollectionController.h>
 @interface RDLPCollectionTestTable : UITableView {
 @public NSUInteger full_, partial_, inserted_, removed_;
 }
@@ -13,10 +14,20 @@
 { removed_+=[paths count]; [super deleteRowsAtIndexPaths:paths withRowAnimation:animation]; }
 @end
 @interface RDLPCollectionTestSource : NSObject <UITableViewDataSource> {
-@public NSArray *sections_;
+@public NSArray *sections_; AICollectionController *loader_; AICollectionTableAdapter *adapter_;
 }
 @end
 @implementation RDLPCollectionTestSource
+- (void)receive:(NSDictionary *)result;
+{
+  require([NSThread isMainThread], @"Snapshot receipt and table update stay on main");
+  if ([loader_ prepareResult:result snapshotKey:@"collection"
+      previousSnapshot:[adapter_ snapshot]]) return;
+  [sections_ release]; sections_ = [[result objectForKey:@"sections"] retain];
+  [adapter_ applySnapshot:[result objectForKey:@"collection"]];
+}
+- (void)dealloc;
+{ [loader_ invalidate]; [loader_ release]; [sections_ release]; [super dealloc]; }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table;
 { (void)table; return [sections_ count]; }
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section;
@@ -31,6 +42,21 @@
 @end
 static NSDictionary *collectionSection(NSString *key, NSArray *rows)
 { return [NSDictionary dictionaryWithObjectsAndKeys:key,@"id",rows,@"rows",rows,@"identifiers",nil]; }
+static void applyCollection(RDLPCollectionTestSource *source,
+                            AICollectionTableAdapter *adapter, NSArray *sections)
+{
+  source->adapter_ = adapter;
+  if (!source->loader_) source->loader_ = [[AICollectionController alloc]
+      initWithTarget:source selector:@selector(receive:) builder:Nil];
+  AICollectionSnapshot *snapshot = [[[AICollectionSnapshot alloc]
+      initWithSections:sections] autorelease];
+  [source receive:[NSDictionary dictionaryWithObjectsAndKeys:
+      sections, @"sections", snapshot, @"collection", nil]];
+  NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:5];
+  while ([source->loader_ isLoading] && [deadline timeIntervalSinceNow] > 0) pump();
+  require(![source->loader_ isLoading], @"Worker diff completes before deadline");
+  pump();
+}
 static void collectionTest(UIWindow *window)
 {
   UIViewController *previous=[[window rootViewController] retain];
@@ -40,14 +66,12 @@ static void collectionTest(UIWindow *window)
   [table setDataSource:source]; [controller setView:table]; [window setRootViewController:controller];
   AICollectionTableAdapter *adapter=[[AICollectionTableAdapter alloc] initWithTableView:table];
   NSArray *rows=[NSArray arrayWithObjects:@"a",@"b",@"c",nil];
-  source->sections_=[NSArray arrayWithObject:collectionSection(@"main",rows)];
-  [adapter applySnapshot:[[[AICollectionSnapshot alloc] initWithSections:source->sections_] autorelease]]; pump();
+  applyCollection(source,adapter,[NSArray arrayWithObject:collectionSection(@"main",rows)]);
   require(table->partial_==0,@"Initial snapshot does not schedule a second row reload");
   [table selectRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:0] animated:NO scrollPosition:UITableViewScrollPositionNone];
   NSUInteger full=table->full_;
   rows=[NSArray arrayWithObjects:@"x",@"a",@"b",nil];
-  source->sections_=[NSArray arrayWithObject:collectionSection(@"main",rows)];
-  [adapter applySnapshot:[[[AICollectionSnapshot alloc] initWithSections:source->sections_] autorelease]]; pump();
+  applyCollection(source,adapter,[NSArray arrayWithObject:collectionSection(@"main",rows)]);
   require(table->full_==full && table->inserted_==1 && table->removed_==1,@"Collection uses native row insert/delete");
   require([[table indexPathForSelectedRow] row]==2,@"Collection preserves selected identity");
   [table setContentInset:UIEdgeInsetsMake(64,0,0,0)];
@@ -57,15 +81,13 @@ static void collectionTest(UIWindow *window)
     userInfo:[NSDictionary dictionaryWithObject:[NSNumber numberWithInt:0] forKey:@"offset"]]; pump();
   require(table->full_==full && table->partial_>partial,@"Page arrival reloads rows without reloading table");
   require(CGPointEqualToPoint([table contentOffset],CGPointZero),@"Page refresh preserves deliberate offset in short inset table");
-  [adapter applySnapshot:[[[AICollectionSnapshot alloc] initWithSections:source->sections_] autorelease]]; pump();
+  applyCollection(source,adapter,source->sections_);
   require(CGPointEqualToPoint([table contentOffset],CGPointZero),@"Unchanged snapshot preserves deliberate offset in short inset table");
-  source->sections_=[NSArray arrayWithObjects:collectionSection(@"new",[NSArray arrayWithObject:@"z"]),
-    collectionSection(@"main",[NSArray arrayWithObjects:@"b",@"a",nil]),nil];
-  [adapter applySnapshot:[[[AICollectionSnapshot alloc] initWithSections:source->sections_] autorelease]]; pump();
+  applyCollection(source,adapter,[NSArray arrayWithObjects:collectionSection(@"new",[NSArray arrayWithObject:@"z"]),
+    collectionSection(@"main",[NSArray arrayWithObjects:@"b",@"a",nil]),nil]);
   require(table->full_==full && [table numberOfSections]==2 && [[table indexPathForSelectedRow] section]==1 &&
     [[table indexPathForSelectedRow] row]==0,@"Section insertion and row reorder preserve identity");
-  source->sections_=[NSArray array];
-  [adapter applySnapshot:[[[AICollectionSnapshot alloc] initWithSections:source->sections_] autorelease]]; pump();
+  applyCollection(source,adapter,[NSArray array]);
   require(table->full_==full && [table numberOfSections]==0,@"Section deletion to empty is incremental");
   [adapter invalidate]; [adapter release]; [table setDataSource:nil]; [source release];
   [window setRootViewController:previous]; [previous release]; [controller release]; [table release];
@@ -115,6 +137,6 @@ static void formCollectionTest(UIWindow *window)
   [form->field_ resignFirstResponder];
   form->ids_ = [NSArray arrayWithObjects:@"field",@"inserted",@"status",nil];
   [form refreshCollection]; pump();
-  require(table->full_ == full && table->inserted_ == 1 && [table numberOfRowsInSection:0] == 3,@"Controller base applies form insertion incrementally");
+  require(table->full_ == full + 1 && [table numberOfRowsInSection:0] == 3,@"Immediate form mutation reloads safely without a main-thread diff");
   [window setRootViewController:previous]; [previous release]; [form release];
 }

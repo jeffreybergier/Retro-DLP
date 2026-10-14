@@ -96,7 +96,15 @@
 - (void)didLoadList:(NSDictionary *)result;
 {
   if(![self canApplyList]) return;
-  if([result objectForKey:@"error"]) { [[[self listRequest] objectForKey:@"library"] reportListError:[result objectForKey:@"error"]]; return; }
+  id error = [result objectForKey:@"error"];
+  if (error) {
+    NSString *message = [error isKindOfClass:[NSError class]] ?
+        [error localizedDescription] : error;
+    [[[self listRequest] objectForKey:@"library"] reportListError:message];
+    return;
+  }
+  if ([listLoader_ prepareResult:result snapshotKey:@"collection"
+      previousSnapshot:[collectionAdapter_ snapshot]]) return;
   NSEnumerator *e=[sections_ objectEnumerator]; NSDictionary *section;
   while((section=[e nextObject])) [[section objectForKey:@"rows"] RDLP_invalidateRows];
   [sections_ release]; sections_=[[result objectForKey:@"sections"] retain];

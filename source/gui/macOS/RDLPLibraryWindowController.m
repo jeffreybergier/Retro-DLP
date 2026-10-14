@@ -630,7 +630,20 @@ static const CGFloat RDLPStatusBarHeight=32.0;
 - (void)didLoadList:(NSDictionary *)result;
 {
   listLoading_=NO; listReadFailed_=NO;
-  if([result objectForKey:@"error"]) { listReadFailed_=YES; [library_ reportListError:[result objectForKey:@"error"]]; [self updateControls]; return; }
+  id error = [result objectForKey:@"error"];
+  if (error) {
+    NSString *message = [error isKindOfClass:[NSError class]] ?
+        [error localizedDescription] : error;
+    listReadFailed_=YES; [library_ reportListError:message];
+    [self updateControls]; return;
+  }
+  if (![[result objectForKey:@"replacement"] boolValue] &&
+      [listLoader_ prepareResult:result previousSnapshots:
+        [NSDictionary dictionaryWithObjectsAndKeys:
+          [tableCollection_ snapshot] ?: (id)[NSNull null], @"tableCollection",
+          [queueCollection_ snapshot] ?: (id)[NSNull null], @"queueCollection",
+          [sidebarCollection_ snapshot] ?: (id)[NSNull null], @"sidebarCollection",
+          nil]]) { listLoading_=YES; return; }
   refreshing_=YES;
   [rows_ RDLP_invalidateRows]; [videoRows_ RDLP_invalidateRows]; [queueDisplayRows_ RDLP_invalidateRows]; [queueRows_ RDLP_invalidateRows];
   NSEnumerator *old=[[sidebarRows_ allValues] objectEnumerator]; NSArray *list;
