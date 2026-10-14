@@ -1,0 +1,415 @@
+{
+  "date": "2026-10-14",
+  "app_commit": "258b5a0a10b86116771211fecb745a902f9265c4",
+  "altivec_commit": "bca419569c1de64ce7c52c10c6bb7aa1ca25099d",
+  "optimization": "-O3",
+  "scenario": "native-collection-v1",
+  "devices": {
+    "x4-vm": {
+      "hardware": "Virtual PowerMac3,1, PowerPC, 1 CPU, 512 MiB RAM",
+      "runs": [
+        {
+          "checkpoint_result": 0,
+          "concurrent_commits": 485,
+          "initial_display_ms": 2641.984650399536,
+          "initial_max_main_loop_gap_ms": 2643.1711800396442,
+          "initial_sql_statements": 115,
+          "os": "Version 10.4.11 (Build 8S165)",
+          "phases": [
+            {
+              "gaps_over_50ms": 45,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 179.09403424710035,
+              "max_ms": 160.31464142724872,
+              "max_source_cached_rows": 128,
+              "p50_ms": 34.73852388560772,
+              "p95_ms": 98.6851011402905,
+              "peak_sampled_resident_bytes": 29958144,
+              "phase": "sequential",
+              "sql_statements": 957,
+              "sample_count": 120
+            },
+            {
+              "gaps_over_50ms": 80,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 247.18646286055446,
+              "max_ms": 247.10342567414045,
+              "max_source_cached_rows": 128,
+              "p50_ms": 125.5381004884839,
+              "p95_ms": 204.48738103732467,
+              "peak_sampled_resident_bytes": 29659136,
+              "phase": "random_jumps",
+              "sql_statements": 4719,
+              "sample_count": 80
+            },
+            {
+              "gaps_over_50ms": 80,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 202.22737127915025,
+              "max_ms": 202.1683449856937,
+              "max_source_cached_rows": 128,
+              "p50_ms": 112.46725963428617,
+              "p95_ms": 178.2376505434513,
+              "peak_sampled_resident_bytes": 29966336,
+              "phase": "scroll_during_writes",
+              "sql_statements": 5003,
+              "sample_count": 80
+            },
+            {
+              "gaps_over_50ms": 40,
+              "max_display_cached_rows": 32,
+              "max_main_loop_gap_ms": 306.54298793524504,
+              "max_ms": 430.90256163850427,
+              "max_source_cached_rows": 32,
+              "p50_ms": 356.707404833287,
+              "p95_ms": 390.1013280265033,
+              "peak_sampled_resident_bytes": 30715904,
+              "phase": "refresh_during_writes",
+              "sql_statements": 1531,
+              "sample_count": 20
+            }
+          ],
+          "rows": 10000,
+          "scenario": "native-collection-v1",
+          "wal_after_release_bytes": 0,
+          "wal_with_old_snapshot_bytes": 2002352
+        },
+        {
+          "checkpoint_result": 0,
+          "concurrent_commits": 495,
+          "initial_display_ms": 2175.380134023726,
+          "initial_max_main_loop_gap_ms": 2177.1129085682333,
+          "initial_sql_statements": 115,
+          "os": "Version 10.4.11 (Build 8S165)",
+          "phases": [
+            {
+              "gaps_over_50ms": 43,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 268.73109117150307,
+              "max_ms": 262.3572424054146,
+              "max_source_cached_rows": 128,
+              "p50_ms": 34.37135927379131,
+              "p95_ms": 71.2768523953855,
+              "peak_sampled_resident_bytes": 16969728,
+              "phase": "sequential",
+              "sql_statements": 957,
+              "sample_count": 120
+            },
+            {
+              "gaps_over_50ms": 80,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 158.7869585491717,
+              "max_ms": 158.64589530974627,
+              "max_source_cached_rows": 128,
+              "p50_ms": 82.55589287728071,
+              "p95_ms": 120.67392701283097,
+              "peak_sampled_resident_bytes": 16662528,
+              "phase": "random_jumps",
+              "sql_statements": 4719,
+              "sample_count": 80
+            },
+            {
+              "gaps_over_50ms": 80,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 209.94682097807527,
+              "max_ms": 209.77374305948615,
+              "max_source_cached_rows": 128,
+              "p50_ms": 113.20158746093512,
+              "p95_ms": 187.30470212176442,
+              "peak_sampled_resident_bytes": 16965632,
+              "phase": "scroll_during_writes",
+              "sql_statements": 5010,
+              "sample_count": 80
+            },
+            {
+              "gaps_over_50ms": 41,
+              "max_display_cached_rows": 32,
+              "max_main_loop_gap_ms": 315.4809824191034,
+              "max_ms": 517.7693809382617,
+              "max_source_cached_rows": 32,
+              "p50_ms": 356.6463780589402,
+              "p95_ms": 393.2397309690714,
+              "peak_sampled_resident_bytes": 17711104,
+              "phase": "refresh_during_writes",
+              "sql_statements": 1536,
+              "sample_count": 20
+            }
+          ],
+          "rows": 10000,
+          "scenario": "native-collection-v1",
+          "wal_after_release_bytes": 0,
+          "wal_with_old_snapshot_bytes": 2043552
+        },
+        {
+          "checkpoint_result": 0,
+          "concurrent_commits": 490,
+          "initial_display_ms": 1886.764157563448,
+          "initial_max_main_loop_gap_ms": 1888.7220318429172,
+          "initial_sql_statements": 115,
+          "os": "Version 10.4.11 (Build 8S165)",
+          "phases": [
+            {
+              "gaps_over_50ms": 44,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 116.98927916586399,
+              "max_ms": 116.75717635080218,
+              "max_source_cached_rows": 128,
+              "p50_ms": 35.41982779279351,
+              "p95_ms": 67.49115977436304,
+              "peak_sampled_resident_bytes": 16973824,
+              "phase": "sequential",
+              "sql_statements": 957,
+              "sample_count": 120
+            },
+            {
+              "gaps_over_50ms": 80,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 174.5980242267251,
+              "max_ms": 166.62846272811294,
+              "max_source_cached_rows": 128,
+              "p50_ms": 91.18674974888563,
+              "p95_ms": 144.9017534032464,
+              "peak_sampled_resident_bytes": 16666624,
+              "phase": "random_jumps",
+              "sql_statements": 4719,
+              "sample_count": 80
+            },
+            {
+              "gaps_over_50ms": 80,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 230.2168793976307,
+              "max_ms": 230.1598535850644,
+              "max_source_cached_rows": 128,
+              "p50_ms": 109.48592703789473,
+              "p95_ms": 186.81548489257693,
+              "peak_sampled_resident_bytes": 16969728,
+              "phase": "scroll_during_writes",
+              "sql_statements": 4997,
+              "sample_count": 80
+            },
+            {
+              "gaps_over_50ms": 42,
+              "max_display_cached_rows": 32,
+              "max_main_loop_gap_ms": 502.887730486691,
+              "max_ms": 620.8694535307586,
+              "max_source_cached_rows": 32,
+              "p50_ms": 360.88127037510276,
+              "p95_ms": 529.6797025948763,
+              "peak_sampled_resident_bytes": 17715200,
+              "phase": "refresh_during_writes",
+              "sql_statements": 1542,
+              "sample_count": 20
+            }
+          ],
+          "rows": 10000,
+          "scenario": "native-collection-v1",
+          "wal_after_release_bytes": 0,
+          "wal_with_old_snapshot_bytes": 2022952
+        }
+      ]
+    },
+    "koolphone5": {
+      "hardware": "iPhone5,2, armv7, iOS 8.4.1",
+      "runs": [
+        {
+          "checkpoint_result": 0,
+          "concurrent_commits": 154,
+          "initial_display_ms": 217.9251249999652,
+          "initial_max_main_loop_gap_ms": 217.3873750000439,
+          "initial_sql_statements": 68,
+          "os": "Version 8.4.1 (Build 12H321)",
+          "phases": [
+            {
+              "gaps_over_50ms": 3,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 51.83758333350852,
+              "max_ms": 34.024166666768,
+              "max_source_cached_rows": 128,
+              "p50_ms": 17.238458333167728,
+              "p95_ms": 31.164291666527788,
+              "peak_sampled_resident_bytes": 15441920,
+              "phase": "sequential",
+              "sql_statements": 990,
+              "sample_count": 120
+            },
+            {
+              "gaps_over_50ms": 40,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 113.16712499979076,
+              "max_ms": 57.81324999998105,
+              "max_source_cached_rows": 128,
+              "p50_ms": 42.279166666730816,
+              "p95_ms": 55.877624999993714,
+              "peak_sampled_resident_bytes": 15630336,
+              "phase": "random_jumps",
+              "sql_statements": 3729,
+              "sample_count": 80
+            },
+            {
+              "gaps_over_50ms": 41,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 116.46362500005125,
+              "max_ms": 60.31020833347611,
+              "max_source_cached_rows": 128,
+              "p50_ms": 43.15249999990556,
+              "p95_ms": 57.55229166675235,
+              "peak_sampled_resident_bytes": 15941632,
+              "phase": "scroll_during_writes",
+              "sql_statements": 3837,
+              "sample_count": 80
+            },
+            {
+              "gaps_over_50ms": 4,
+              "max_display_cached_rows": 96,
+              "max_main_loop_gap_ms": 98.90041666653815,
+              "max_ms": 110.18637500001205,
+              "max_source_cached_rows": 96,
+              "p50_ms": 64.66150000005655,
+              "p95_ms": 69.5332083332687,
+              "peak_sampled_resident_bytes": 15966208,
+              "phase": "refresh_during_writes",
+              "sql_statements": 983,
+              "sample_count": 20
+            }
+          ],
+          "rows": 10000,
+          "scenario": "native-collection-v1",
+          "wal_after_release_bytes": 0,
+          "wal_with_old_snapshot_bytes": 638632
+        },
+        {
+          "checkpoint_result": 0,
+          "concurrent_commits": 151,
+          "initial_display_ms": 218.68570833362355,
+          "initial_max_main_loop_gap_ms": 218.86304166673654,
+          "initial_sql_statements": 68,
+          "os": "Version 8.4.1 (Build 12H321)",
+          "phases": [
+            {
+              "gaps_over_50ms": 2,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 60.68045833308133,
+              "max_ms": 39.42787500000122,
+              "max_source_cached_rows": 128,
+              "p50_ms": 17.153291666545556,
+              "p95_ms": 31.290583333429822,
+              "peak_sampled_resident_bytes": 15470592,
+              "phase": "sequential",
+              "sql_statements": 990,
+              "sample_count": 120
+            },
+            {
+              "gaps_over_50ms": 40,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 111.42287500001657,
+              "max_ms": 56.301791666783174,
+              "max_source_cached_rows": 128,
+              "p50_ms": 41.98529166660592,
+              "p95_ms": 55.24925000008807,
+              "peak_sampled_resident_bytes": 15609856,
+              "phase": "random_jumps",
+              "sql_statements": 3729,
+              "sample_count": 80
+            },
+            {
+              "gaps_over_50ms": 40,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 129.34591666680717,
+              "max_ms": 59.78420833321252,
+              "max_source_cached_rows": 128,
+              "p50_ms": 43.216041666710225,
+              "p95_ms": 56.69208333347342,
+              "peak_sampled_resident_bytes": 16265216,
+              "phase": "scroll_during_writes",
+              "sql_statements": 3833,
+              "sample_count": 80
+            },
+            {
+              "gaps_over_50ms": 5,
+              "max_display_cached_rows": 96,
+              "max_main_loop_gap_ms": 86.4622916665212,
+              "max_ms": 110.50987499993425,
+              "max_source_cached_rows": 96,
+              "p50_ms": 65.82879166671773,
+              "p95_ms": 72.43141666685915,
+              "peak_sampled_resident_bytes": 16334848,
+              "phase": "refresh_during_writes",
+              "sql_statements": 984,
+              "sample_count": 20
+            }
+          ],
+          "rows": 10000,
+          "scenario": "native-collection-v1",
+          "wal_after_release_bytes": 0,
+          "wal_with_old_snapshot_bytes": 626272
+        },
+        {
+          "checkpoint_result": 0,
+          "concurrent_commits": 149,
+          "initial_display_ms": 185.44249999990825,
+          "initial_max_main_loop_gap_ms": 185.6770833335304,
+          "initial_sql_statements": 68,
+          "os": "Version 8.4.1 (Build 12H321)",
+          "phases": [
+            {
+              "gaps_over_50ms": 2,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 63.58870833355468,
+              "max_ms": 38.28904166675784,
+              "max_source_cached_rows": 128,
+              "p50_ms": 16.807249999828855,
+              "p95_ms": 31.32416666676363,
+              "peak_sampled_resident_bytes": 15446016,
+              "phase": "sequential",
+              "sql_statements": 990,
+              "sample_count": 120
+            },
+            {
+              "gaps_over_50ms": 40,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 133.34858333314514,
+              "max_ms": 60.26816666690138,
+              "max_source_cached_rows": 128,
+              "p50_ms": 42.697374999988824,
+              "p95_ms": 55.31237499985764,
+              "peak_sampled_resident_bytes": 15650816,
+              "phase": "random_jumps",
+              "sql_statements": 3729,
+              "sample_count": 80
+            },
+            {
+              "gaps_over_50ms": 41,
+              "max_display_cached_rows": 128,
+              "max_main_loop_gap_ms": 114.08508333352074,
+              "max_ms": 58.84929166677466,
+              "max_source_cached_rows": 128,
+              "p50_ms": 42.916083333466304,
+              "p95_ms": 56.24704166666561,
+              "peak_sampled_resident_bytes": 15949824,
+              "phase": "scroll_during_writes",
+              "sql_statements": 3834,
+              "sample_count": 80
+            },
+            {
+              "gaps_over_50ms": 5,
+              "max_display_cached_rows": 96,
+              "max_main_loop_gap_ms": 98.3732916668032,
+              "max_ms": 108.65216666661581,
+              "max_source_cached_rows": 96,
+              "p50_ms": 61.31016666677169,
+              "p95_ms": 66.8169166667667,
+              "peak_sampled_resident_bytes": 15937536,
+              "phase": "refresh_during_writes",
+              "sql_statements": 981,
+              "sample_count": 20
+            }
+          ],
+          "rows": 10000,
+          "scenario": "native-collection-v1",
+          "wal_after_release_bytes": 0,
+          "wal_with_old_snapshot_bytes": 618032
+        }
+      ]
+    }
+  }
+}

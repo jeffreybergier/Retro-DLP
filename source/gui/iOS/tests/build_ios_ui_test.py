@@ -13,32 +13,36 @@ import zipfile
 
 root = Path(__file__).resolve().parents[4]
 build = Path(os.environ.get('BUILD_ROOT', root / 'build')).resolve()
-app = build / 'tests/iOS/RetroDLPIOSOfflineTest.app'
+altivec = Path(os.environ.get('ALTIVEC_ROOT', '/altivec')).resolve()
+performance = os.environ.get('RDLP_TEST_PERFORMANCE') == '1'
+app = build / ('tests/iOS/RetroDLPIOSPerformance.app' if performance
+               else 'tests/iOS/RetroDLPIOSOfflineTest.app')
 if app.exists():
     shutil.rmtree(app)
 shutil.copytree(build / 'iOS/release/RetroDLP/RetroDLP.app', app)
 (app / 'cacert.pem').unlink()
 (app / 'RetroDLP').unlink()
-fixture = build / 'tests/iOS/ios-fixture.mp4'
-if not fixture.exists():
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-f', 'lavfi',
-                    '-i', 'testsrc2=size=320x180:rate=15', '-t', '3',
-                    '-c:v', 'libx264', '-profile:v', 'baseline', '-level', '3.0',
-                    '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(fixture)], check=True)
-shutil.copyfile(fixture, app / 'fixture.mp4')
-playback_fixture = build / 'tests/iOS/ios-playback-audio-fixture.mp4'
-if not playback_fixture.exists():
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-stream_loop', '19',
-                    '-i', str(fixture), '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono',
-                    '-c:v', 'copy', '-c:a', 'aac', '-t', '60', str(playback_fixture)], check=True)
-shutil.copyfile(playback_fixture, app / 'playback-fixture.mp4')
-long_fixture = build / 'tests/iOS/ios-playback-long-audio-fixture.mp4'
-if not long_fixture.exists():
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-stream_loop', '199',
-                    '-i', str(fixture), '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono',
-                    '-c:v', 'copy', '-c:a', 'aac', '-t', '600',
-                    str(long_fixture)], check=True)
-shutil.copyfile(long_fixture, app / 'playback-long-fixture.mp4')
+if not performance:
+    fixture = build / 'tests/iOS/ios-fixture.mp4'
+    if not fixture.exists():
+        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-f', 'lavfi',
+                        '-i', 'testsrc2=size=320x180:rate=15', '-t', '3',
+                        '-c:v', 'libx264', '-profile:v', 'baseline', '-level', '3.0',
+                        '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(fixture)], check=True)
+    shutil.copyfile(fixture, app / 'fixture.mp4')
+    playback_fixture = build / 'tests/iOS/ios-playback-audio-fixture.mp4'
+    if not playback_fixture.exists():
+        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-stream_loop', '19',
+                        '-i', str(fixture), '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono',
+                        '-c:v', 'copy', '-c:a', 'aac', '-t', '60', str(playback_fixture)], check=True)
+    shutil.copyfile(playback_fixture, app / 'playback-fixture.mp4')
+    long_fixture = build / 'tests/iOS/ios-playback-long-audio-fixture.mp4'
+    if not long_fixture.exists():
+        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-stream_loop', '199',
+                        '-i', str(fixture), '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono',
+                        '-c:v', 'copy', '-c:a', 'aac', '-t', '600',
+                        str(long_fixture)], check=True)
+    shutil.copyfile(long_fixture, app / 'playback-long-fixture.mp4')
 plist = app / 'Info.plist'
 info = plistlib.loads(plist.read_bytes())
 info.update(CFBundleExecutable='RetroDLPIOSOfflineTest',
@@ -47,6 +51,11 @@ info.update(CFBundleExecutable='RetroDLPIOSOfflineTest',
             CFBundleIdentifier='test.retrodlp.ios',
             CFBundleURLTypes=[dict(CFBundleURLName='Offline Test',
                                   CFBundleURLSchemes=['retrodlp-offline-test'])])
+if performance:
+    info.update(CFBundleIdentifier='test.retrodlp.performance',
+                CFBundleDisplayName='RDLP Performance',
+                CFBundleURLTypes=[dict(CFBundleURLName='Performance',
+                    CFBundleURLSchemes=['retrodlp-performance'])])
 if os.environ.get('RDLP_TEST_NOTIFICATIONS_ONLY') == '1':
     info['RDLPTestNotificationsOnly'] = True
 if os.environ.get('RDLP_TEST_ICONS_ONLY') == '1':
@@ -66,21 +75,23 @@ for arch, minimum in [('armv7', '5.0'), ('arm64', '7.0')]:
     output = app.parent / ('RetroDLPIOSOfflineTest-' + arch)
     cmd = ['/usr/bin/clang', '-target', arch + '-apple-ios' + minimum,
            '-isysroot', '/osxcross/modern/SDK/iPhoneOS8.4.sdk',
-           '-B/osxcross/modern/bin', '-g', '-Wall', '-Wextra', '-Werror',
+           '-B/osxcross/modern/bin', '-O3', '-g', '-Wall', '-Wextra', '-Werror',
            '-fblocks', '-Wno-semicolon-before-method-body',
            '-isystem', str(root / 'source/deps/QuickJS'),
-           '-I/altivec/libs/cocoa/build-phone/include',
+           '-I' + str(altivec / 'libs/cocoa/build-phone/include'),
+           '-I' + str(altivec / 'libs/core/build-phone/include'),
            '-I' + str(root / 'source/gui/shared'),
            '-I' + str(root / 'source/library/shared/include'),
-           str(root / 'source/gui/iOS/tests/ios_ui_test.m')]
+           str(root / ('source/gui/iOS/tests/ios_performance_test.m' if performance
+                       else 'source/gui/iOS/tests/ios_ui_test.m'))]
     cmd += [str(path) for path in sorted(objects.rglob('*.o'))
             if path.name != 'main.m.o']
     cmd += [str(build / 'iOS/release/libretrodlp-download/libretrodlp-download.a'),
             str(build / 'iOS/release/libretrodlp/libretrodlp.a'),
-            '/altivec/libs/cocoa-sqlite/build-phone/lib/libAltivecCocoaSQLite.a',
-        '/altivec/libs/core/build-phone/lib/libAltivecCore.a',
-            '/altivec/libs/cocoa/build-phone/lib/libAltivecCocoa.a',
-            '/altivec/libs/core/build-phone/lib/libcrypto.a']
+            str(altivec / 'libs/cocoa-sqlite/build-phone/lib/libAltivecCocoaSQLite.a'),
+            str(altivec / 'libs/core/build-phone/lib/libAltivecCore.a'),
+            str(altivec / 'libs/cocoa/build-phone/lib/libAltivecCocoa.a'),
+            str(altivec / 'libs/core/build-phone/lib/libcrypto.a')]
     for framework in ['UIKit', 'Foundation', 'CoreGraphics', 'CoreText',
                       'CoreFoundation', 'SystemConfiguration', 'Security',
                       'MediaPlayer', 'AVFoundation', 'CoreMedia', 'QuartzCore']:
