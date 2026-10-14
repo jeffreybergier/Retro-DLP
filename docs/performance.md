@@ -96,7 +96,7 @@ job-heavy playlists, filesystem checks, or downloaded-library sections. Worker
 queue and SQL time are included in refresh latency but are not separately timed.
 Keep these limitations when comparing the baseline with everyday app use.
 
-## Baseline and budgets
+## Baseline and comparison method
 
 Record OS/device, Retro-DLP commit, Altivec commit, build optimization, fixture
 size, and raw reports alongside a summary. Run at least three times on each
@@ -104,9 +104,9 @@ otherwise idle device before treating small differences as regressions.
 
 Hard correctness budgets are 128 rows per cache, successful concurrent commits,
 a fresh snapshot on each refresh, and zero retained WAL after readers close.
-The 50 ms main-loop threshold is a diagnostic target. Timing and memory budgets
-must be calibrated from device runs; do not fail builds on arbitrary universal
-latency limits or compare virtualized Tiger times directly with iPhone times.
+The 50 ms main-loop threshold is a diagnostic bucket. Evaluate timing and
+memory changes relative to a contemporaneous baseline on the same device;
+do not fail builds on universal latency limits.
 
 ### 2026-10-14 baseline
 
@@ -135,23 +135,38 @@ excluded. The fixtures contain 10,000 entries and no jobs.
 | Maximum display/source cached rows | 128 / 128 | 128 / 128 |
 | WAL after release and checkpoint | 0 bytes | 0 bytes |
 
-Provisional investigation thresholds for this fixture and these devices:
+### Relative regression comparisons
 
-| Metric | x4-vm | koolphone5 |
-| --- | ---: | ---: |
-| Initial display | 5,000 ms | 300 ms |
-| Sequential scroll p95 | 125 ms | 40 ms |
-| Random jump p95 | 275 ms | 75 ms |
-| Scroll during writes p95 | 250 ms | 75 ms |
-| Refresh during writes p95 | 700 ms | 100 ms |
-| Sampled resident memory | 40 MiB | 20 MiB |
+Absolute times above describe the test environment; they are not product targets
+or pass/fail budgets. In particular, x4-vm is deliberately very slow. Its value is
+showing relative changes under the same conditions, not predicting real Mac
+latency. Do not compare Tiger and iPhone timings as a performance ranking.
 
-These are review thresholds with headroom over the observed range, not assertions
-in the runner. Repeat three runs under comparable conditions when a threshold is
-exceeded; inspect the raw samples before changing application behavior. The Tiger
-initial-display threshold also allows for the 3.9-second first exploratory launch.
-The 50 ms loop-gap target remains unmet on both devices. Passing the provisional
-thresholds does not establish smooth scrolling.
+For each proposed optimization or suspected regression:
+
+1. Build the baseline and candidate with the same toolchain, dependencies,
+   optimization flags, fixture, and instrumentation. Change only the code under
+   investigation.
+2. Run both on the same device with the same foreground/background conditions.
+   Use one unrecorded warm-up per build, then at least three measured launches
+   each. Alternate baseline and candidate launches to reduce host-load drift,
+   especially for the VM. Compare cold launches separately if needed.
+3. For each phase, compare the median of the per-run p95 values. Compare initial
+   display, statement counts, and sampled resident memory using their per-run
+   medians as well. Report `(candidate / baseline - 1) * 100` percent change,
+   alongside each build's range; negative latency changes are improvements.
+4. Use a repeatable increase above 25% as a provisional investigation trigger,
+   not an automatic failure. If ranges overlap substantially or VM load varies,
+   collect more paired runs before attributing the change to code. Re-measure
+   the baseline alongside the candidate rather than relying solely on this
+   historical snapshot.
+
+The three-run results above are a starting reference, not a paired comparison:
+there was no candidate optimization in this change and no controlled warm-up.
+No speedup or regression is inferred from them. The 50 ms loop-gap counter is a
+fixed diagnostic bucket, not a Tiger performance requirement. Cache occupancy
+(128 rows per layer) and WAL release (zero bytes after checkpoint) remain hard
+correctness checks independent of device speed.
 
 Next investigation: separate synchronous row formatting/SQL from native drawing
 on Tiger, especially random jumps and initial presentation. Statement counts show
