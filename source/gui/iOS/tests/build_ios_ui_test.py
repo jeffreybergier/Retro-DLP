@@ -56,6 +56,8 @@ if performance:
                 CFBundleDisplayName='RDLP Performance',
                 CFBundleURLTypes=[dict(CFBundleURLName='Performance',
                     CFBundleURLSchemes=['retrodlp-performance'])])
+if os.environ.get('RDLP_TEST_ROWS_ONLY') == '1':
+    info['RDLPTestRowsOnly'] = True
 if os.environ.get('RDLP_TEST_NOTIFICATIONS_ONLY') == '1':
     info['RDLPTestNotificationsOnly'] = True
 if os.environ.get('RDLP_TEST_ICONS_ONLY') == '1':

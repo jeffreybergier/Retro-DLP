@@ -47,6 +47,11 @@ int rdapp_store_identity_page(rdapp_store *, rdapp_query, int64_t key,
     const char *video, const char *format, int64_t limit, rdapp_row_callback, void *);
 int rdapp_store_page(rdapp_store *, rdapp_query, int64_t key, const char *video,
                      const char *format, int64_t offset, int64_t limit, rdapp_row_callback, void *);
+/* Batch lookup in this reader's snapshot for at most 32 video IDs. Emits at
+   most 129 jobs (newest first within each video); 129 signals that the caller
+   must discard the batch and use per-video reads rather than truncate results. */
+int rdapp_store_video_jobs_batch(rdapp_store *, int64_t playlist,
+    const char *const *videos, size_t count, rdapp_row_callback, void *);
 /* Indexed seek for sequential scrolling; playlists continue to use offsets. */
 int rdapp_store_after(rdapp_store *, rdapp_query, int64_t key, const char *video,
                       const char *format, int64_t identity, rdapp_row_callback, void *);

@@ -365,6 +365,28 @@ int rdapp_store_page(rdapp_store *s,rdapp_query kind,int64_t key,const char *vid
   p=list_statement(s,kind,key,video,format,0); if(!p) return 0;
   sqlite3_bind_int64(p,4,limit); sqlite3_bind_int64(p,5,offset); return each(s,p,cb,ctx);
 }
+int rdapp_store_video_jobs_batch(rdapp_store *s,int64_t playlist,
+    const char *const *videos,size_t count,rdapp_row_callback cb,void *ctx) {
+  size_t i; sqlite3_stmt *p;
+  if(count>32 || (count && !videos)) return failure(s,"Invalid video batch");
+  for(i=0;i<count;++i) if(!videos[i]) return failure(s,"Invalid video batch");
+  if(!count) return 1;
+  /* Video-first order uses the playlist/video index instead of walking every
+     job in playlist-ID order. Only within-video newest-first order matters. */
+  p=prepare(s,"SELECT j.*,rdapp_display_title(p.service_id,p.title) AS playlist_title "
+    "FROM jobs j JOIN playlists p ON p.id=j.playlist_id "
+    "WHERE j.playlist_id=?1 AND j.video_id IN "
+    "(?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,"
+    "?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33) "
+    "ORDER BY j.video_id,j.id DESC LIMIT 129");
+  if(!p) return 0;
+  sqlite3_bind_int64(p,1,playlist);
+  for(i=0;i<32;++i) {
+    if(i<count) bind_text(p,(int)i+2,videos[i]);
+    else sqlite3_bind_null(p,(int)i+2);
+  }
+  return each(s,p,cb,ctx);
+}
 int rdapp_store_after(rdapp_store *s,rdapp_query kind,int64_t key,const char *video,const char *format,
                       int64_t identity,rdapp_row_callback cb,void *ctx) {
   return rdapp_store_after_page(s,kind,key,video,format,identity,1,cb,ctx);

@@ -147,6 +147,31 @@ static int listCancelled(void *context) { return [(RDLPListLoader *)context isCa
   if(error) [super recordReadError:error];
   return ok?rows:nil;
 }
+- (NSDictionary *)jobsByVideoForPlaylist:(NSString *)playlist videos:(NSArray *)videos;
+{
+  if([videos count]>32) return nil;
+  const char *ids[32]; NSUInteger i;
+  for(i=0;i<[videos count];++i) ids[i]=[[videos objectAtIndex:i] UTF8String];
+  NSMutableArray *rows=[NSMutableArray array];
+  [pageReadLock_ lock];
+  int ok=rdapp_store_video_jobs_batch(reader_,identifier(playlist),ids,
+      [videos count],collect,rows);
+  NSError *error=ok?nil:[NSError errorWithDomain:@"RetroDLP.Read" code:1
+      userInfo:[NSDictionary dictionaryWithObject:string(rdapp_store_error(reader_))
+          forKey:NSLocalizedDescriptionKey]];
+  [pageReadLock_ unlock];
+  if(error) [super recordReadError:error];
+  if(!ok || [rows count]>128) return nil;
+  NSMutableDictionary *byVideo=[NSMutableDictionary dictionary];
+  NSEnumerator *e=[rows objectEnumerator]; NSDictionary *job;
+  while((job=[e nextObject])) {
+    NSString *video=[job objectForKey:@"video_id"];
+    NSMutableArray *jobs=[byVideo objectForKey:video];
+    if(!jobs) { jobs=[NSMutableArray array]; [byVideo setObject:jobs forKey:video]; }
+    [jobs addObject:job];
+  }
+  return byVideo;
+}
 - (NSUInteger)rowsSinceDate:(NSDate *)date;
 {
   int64_t count=0;

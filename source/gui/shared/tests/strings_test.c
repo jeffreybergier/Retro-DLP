@@ -96,6 +96,16 @@ int main(int argc,char **argv) {
   assert(rdapp_store_list(reader,RDAPP_PLAYLISTS,0,playlist_row,NULL));
   assert(rdapp_store_list(reader,RDAPP_JOBS,playlist,job_row,&job));
   assert(job>0);
+  {
+    const char *videos[32];
+    for(i=0;i<32;++i) videos[i]="abcdefghijk";
+    job=0;
+    assert(rdapp_store_video_jobs_batch(reader,playlist,videos,32,job_row,&job));
+    assert(job>0); /* Batch presentation translates errors exactly like list. */
+    assert(rdapp_store_video_jobs_batch(reader,playlist,NULL,0,job_row,&job));
+    assert(!rdapp_store_video_jobs_batch(reader,playlist,videos,33,job_row,&job));
+    assert(!rdapp_store_video_jobs_batch(reader,playlist,NULL,1,job_row,&job));
+  }
   rdapp_store_close(reader);
   assert(sqlite3_open(argv[1],&raw)==SQLITE_OK);
   assert(sqlite3_prepare_v2(raw,"SELECT p.title,j.error,j.state FROM playlists p JOIN jobs j ON j.playlist_id=p.id WHERE p.service_id='adhoc'",-1,&statement,NULL)==SQLITE_OK);

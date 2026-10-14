@@ -61,6 +61,7 @@ for name, args in {
     'downloads_since':[P,I,C.POINTER(I)],
     'added_videos_since':[P,I,I,C.POINTER(I)],
     'page':[P,C.c_int,I,S,S,I,I,CB,P],
+    'video_jobs_batch':[P,I,C.POINTER(S),C.c_size_t,CB,P],
     'identity_page':[P,C.c_int,I,S,S,I,CB,P],
     'after':[P,C.c_int,I,S,S,I,CB,P],
     'after_page':[P,C.c_int,I,S,S,I,I,CB,P],
@@ -160,6 +161,58 @@ class StoreTests(unittest.TestCase):
         result=I()
         self.check(lib.rdapp_store_index(store or self.db,kind,self.key if key is None else key,identity,C.byref(result)))
         return result.value
+
+    def batch_jobs(self, videos, store=None, key=None):
+        rows=[]
+        @CB
+        def callback(ctx,n,names,values):
+            rows.append({names[i].decode():values[i].decode() if values[i] else '' for i in range(n)})
+            return 1
+        self.check(lib.rdapp_store_video_jobs_batch(store or self.db,
+            self.key if key is None else key,(S*len(videos))(*videos),len(videos),callback,None))
+        return rows
+
+    def test_video_job_batch_snapshot_duplicates_and_bound(self):
+        a,b=b'abcdefghijk',b'lmnopqrstuv'
+        for video in (a,b):
+            for fmt in (b'18',b'22'):
+                self.check(lib.rdapp_store_enqueue(self.db,self.key,video,fmt))
+        reader=P()
+        self.check(lib.rdapp_store_open_reader(os.fsencode(self.path/'db.sqlite'),C.byref(reader)))
+        try:
+            self.assertEqual(self.count(1,store=reader),3)  # Pin before writer changes.
+            self.check(lib.rdapp_store_enqueue(self.db,self.key,a,b'137+140'))
+            batch=self.batch_jobs([b,a,a,b'no_jobs0000'],store=reader)
+            expected=self.page(9,video=a,limit=-1,store=reader)+self.page(9,video=b,limit=-1,store=reader)
+            self.assertEqual(batch,expected)  # Exact fields, order, duplicates, old snapshot.
+            self.assertEqual(len(self.batch_jobs([a,b])),5)
+            self.assertEqual(self.batch_jobs([]),[])
+            self.assertEqual(self.batch_jobs([a],key=I(self.key.value+999)),[])
+            self.assertEqual(self.batch_jobs([b"x') OR 1=1 --"]),[])
+            self.assertEqual(self.batch_jobs([a]*32),self.page(9,video=a,limit=-1))
+            for i in range(130):
+                self.check(lib.rdapp_store_enqueue(self.db,self.key,a,str(1000+i).encode()))
+            self.assertEqual(len(self.batch_jobs([a,b])),129)  # Overflow sentinel, no unbounded copy.
+            self.assertEqual(self.batch_jobs([b]),self.page(9,video=b,limit=-1))  # Cached bindings reset.
+            self.assertEqual(len(self.batch_jobs([a],store=reader)),2)
+            @CB
+            def reject(*args): return 0
+            self.assertEqual(lib.rdapp_store_video_jobs_batch(self.db,self.key,(S*1)(a),1,reject,None),0)
+            self.assertEqual(lib.rdapp_store_video_jobs_batch(self.db,self.key,(S*33)(*([a]*33)),33,reject,None),0)
+            self.assertEqual(lib.rdapp_store_video_jobs_batch(self.db,self.key,None,1,reject,None),0)
+        finally:
+            lib.rdapp_store_close(reader)
+
+    def test_video_job_batch_does_not_scan_unrelated_jobs(self):
+        # Same playlist, many off-page videos: assert indexed work rather than
+        # timing, so this also catches an ORDER BY plan that scans the playlist.
+        with sqlite3.connect(self.path/'db.sqlite') as db:
+            db.executemany("INSERT INTO jobs(playlist_id,video_id,title,format,state) VALUES(?,?,?,?,?)",
+                [(self.key.value,f'X{i:010}', 'Off page','18','queued') for i in range(10000)])
+        self.check(lib.rdapp_store_enqueue(self.db,self.key,b'abcdefghijk',b'18'))
+        lib.rdapp_test_measure(self.db)
+        self.assertEqual(len(self.batch_jobs([b'abcdefghijk',b'lmnopqrstuv'])),1)
+        self.assertLess(lib.rdapp_test_steps(),2000)
 
     def test_cancelled_snapshot_count_releases_reader(self):
         self.check(self.snapshot([(b'abcdefghijk', b'Fixture', i) for i in range(10000)]))

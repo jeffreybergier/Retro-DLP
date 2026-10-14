@@ -560,6 +560,11 @@ static void testPlaylistSwipeDeletion(UIWindow *window,NSString *directory) {
   [@"RUNNING" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
   NSString *report=@"PASS";
   @try {
+    if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestRowsOnly"] boolValue]) {
+      testSharedVideoRows([documents_ stringByAppendingPathComponent:[[NSProcessInfo processInfo] globallyUniqueString]]);
+      [@"PASS: shared video rows and bounded job batches" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [[UIApplication sharedApplication] setIdleTimerDisabled:idleTimerDisabled]; return;
+    }
     if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestIconsOnly"] boolValue]) {
       testIOSIconScale();
       [@"PASS: icon pixels, screen scale, status cache reuse, and compatible template rendering" writeToFile:[documents_ stringByAppendingPathComponent:@"result.txt"] atomically:YES encoding:NSUTF8StringEncoding error:NULL];

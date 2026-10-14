@@ -1,5 +1,6 @@
 #import "../RDLP_Foundation.h"
 #import "../RDLPVideoRows.h"
+#import "../RDLPDownloadSections.h"
 #import "../rdapp_store.h"
 
 @interface RDLPCountingFilePolicy : RDLPDownloadPolicy { @public NSUInteger probes; }
@@ -17,7 +18,78 @@
 { [policy retain]; [policy_ release]; policy_=policy; }
 @end
 
+static void testBatchedVideoRows(NSString *base) {
+  NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
+  NSString *support=[base stringByAppendingPathComponent:@"Support"];
+  RDLPLibrary *library=[[RDLPLibrary alloc] initWithSupportDirectory:support
+      downloadDirectory:[base stringByAppendingPathComponent:@"Downloads"]];
+  metadataRequire(library!=nil,@"Open batched row fixture");
+  rdapp_store *store=NULL; int64_t key=0; NSUInteger i;
+  metadataRequire(rdapp_store_open([[support stringByAppendingPathComponent:@"retrodlp.sqlite"] fileSystemRepresentation],&store),@"Open batch writer");
+  rdapp_entry entries[34]; char ids[34][12]; memset(entries,0,sizeof(entries));
+  for(i=0;i<34;++i) {
+    snprintf(ids[i],sizeof(ids[i]),"B%010lu",(unsigned long)(i==1?0:i));
+    entries[i].video_id=ids[i]; entries[i].title=i==1?"Duplicate occurrence":"Batch row";
+    entries[i].position=(int)i;
+  }
+  metadataRequire(rdapp_store_snapshot(store,"PLbatch","Batch",entries,34,&key),@"Seed batch boundary and duplicate");
+  metadataRequire(rdapp_store_enqueue(store,key,ids[0],"18") &&
+      rdapp_store_enqueue(store,key,ids[0],"22") &&
+      rdapp_store_enqueue(store,key,ids[33],"18"),@"Seed multiple qualities and off-page job");
+  NSString *pid=[NSString stringWithFormat:@"%lld",(long long)key];
+  metadataRequire(rdapp_store_claim(store,NULL,NULL) && rdapp_store_claim(store,NULL,NULL) &&
+      rdapp_store_claim(store,NULL,NULL),@"Assign paths for representative-job fixtures");
+  NSDictionary *oldest=[[library jobsForPlaylist:pid video:[NSString stringWithUTF8String:ids[0]]] lastObject];
+  NSString *file=[library fileForJob:oldest];
+  metadataRequire(rdapp_make_directory([[file stringByDeletingLastPathComponent] fileSystemRepresentation]) &&
+      [[NSData dataWithBytes:"fixture" length:7] writeToFile:file atomically:YES],@"Publish older playable quality");
+  metadataRequire(rdapp_store_finish(store,strtoll([[oldest objectForKey:@"id"] UTF8String],NULL,10),"complete","18",""),@"Complete older quality before snapshot");
+  RDLPLibraryRows *source=(RDLPLibraryRows *)[library entriesForPlaylist:pid];
+  NSArray *videos=[NSArray arrayWithObjects:[NSString stringWithUTF8String:ids[0]],
+      [NSString stringWithUTF8String:ids[0]],[NSString stringWithUTF8String:ids[2]],nil];
+  NSDictionary *batch=[source jobsByVideoForPlaylist:pid videos:videos];
+  metadataRequire([batch count]==1 && [[batch objectForKey:[videos objectAtIndex:0]] count]==2,@"Batch groups qualities and deduplicates IDs, omitting empty/off-page results");
+  metadataRequire(rdapp_store_enqueue(store,key,ids[0],"137+140"),@"Write after read snapshot");
+  metadataRequire([[source jobsByVideoForPlaylist:pid videos:videos] isEqual:batch],@"Batch remains in original read snapshot during writes");
+  RDLPTestVideoRows *display=[[[RDLPTestVideoRows alloc] initWithRows:source library:library playlist:pid] autorelease];
+  RDLPDownloadPolicy *policy=[[[RDLPDownloadPolicy alloc] initWithLibrary:library] autorelease];
+  for(i=0;i<32;++i) {
+    NSDictionary *entry=[source objectAtIndex:i];
+    NSArray *jobs=[source jobsForPlaylist:pid video:[entry objectForKey:@"video_id"]];
+    NSDictionary *expected=[policy representativeJobForEntry:entry playlist:pid jobs:jobs];
+    NSDictionary *actual=[[display objectAtIndex:i] objectForKey:@"job"];
+    metadataRequire(actual==expected || [actual isEqual:expected],@"Batched representative matches legacy per-video policy");
+  }
+  metadataRequire([[[display objectAtIndex:1] objectForKey:@"title"] isEqualToString:@"Duplicate occurrence"] &&
+      [display cachedObjectAtIndex:32]==nil && [source cachedObjectAtIndex:32]==nil,@"Duplicate text and page boundaries remain intact");
+  for(i=0;i<130;++i) {
+    char format[16]; snprintf(format,sizeof(format),"%lu",(unsigned long)i+1000);
+    metadataRequire(rdapp_store_enqueue(store,key,ids[0],format),@"Seed overflow qualities");
+  }
+  RDLPLibraryRows *fresh=(RDLPLibraryRows *)[library entriesForPlaylist:pid];
+  metadataRequire([fresh jobsByVideoForPlaylist:pid videos:videos]==nil && ![fresh readError],@"Oversized batch requests fallback without a read error");
+  RDLPVideoRows *overflow=[[[RDLPVideoRows alloc] initWithRows:fresh library:library playlist:pid] autorelease];
+  NSDictionary *entry=[fresh objectAtIndex:0];
+  NSDictionary *expected=[policy representativeJobForEntry:entry playlist:pid
+      jobs:[fresh jobsForPlaylist:pid video:[entry objectForKey:@"video_id"]]];
+  metadataRequire([[[overflow objectAtIndex:0] objectForKey:@"job"] isEqual:expected] &&
+      [[expected objectForKey:@"id"] isEqual:[oldest objectForKey:@"id"]],@"Overflow fallback preserves older playable quality beyond the batch limit");
+  metadataRequire(rdapp_store_add_adhoc_download(store,"C0000000000","Sectioned video","18",&key),@"Seed sectioned Added Videos");
+  NSString *adhoc=[NSString stringWithFormat:@"%lld",(long long)key];
+  RDLPLibraryRows *added=[library addedVideos];
+  RDLPDownloadSections *groups=[[[RDLPDownloadSections alloc] initWithRows:added
+      date:[NSDate date] calendar:[NSCalendar currentCalendar]] autorelease];
+  NSArray *table=[groups tableRows:added];
+  NSArray *slice=[[[groups sectionsWithRows:added] objectAtIndex:0] objectForKey:@"rows"];
+  RDLPVideoRows *sectioned=[[[RDLPVideoRows alloc] initWithRows:table library:library playlist:adhoc] autorelease];
+  RDLPVideoRows *sliced=[[[RDLPVideoRows alloc] initWithRows:slice library:library playlist:adhoc] autorelease];
+  metadataRequire([[[sectioned objectAtIndex:0] objectForKey:@"action"] isEqual:@"section"] &&
+      [[[sectioned objectAtIndex:1] objectForKey:@"job"] isEqual:[[sliced objectAtIndex:0] objectForKey:@"job"]],@"Header and slice wrappers forward batches within their snapshot");
+  rdapp_store_close(store); [library shutdown]; [library release]; [pool drain];
+}
+
 static void testSharedVideoRows(NSString *base) {
+  testBatchedVideoRows([base stringByAppendingPathComponent:@"Batch"]);
   NSAutoreleasePool *pool=[[NSAutoreleasePool alloc] init];
   NSArray *formats=[RDLPLibrary qualityFormats];
   NSArray *labels=[NSArray arrayWithObjects:@"Low",@"Med",@"High",nil];

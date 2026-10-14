@@ -19,6 +19,9 @@
 }
 - (NSArray *)identities;
 - (NSArray *)jobsForPlaylist:(NSString *)playlist video:(NSString *)video;
+/* Page-local batch, at most 32 IDs/128 jobs. nil means use per-video reads;
+   a read failure also records readError. Missing keys mean no matching jobs. */
+- (NSDictionary *)jobsByVideoForPlaylist:(NSString *)playlist videos:(NSArray *)videos;
 - (NSUInteger)rowsSinceDate:(NSDate *)date;
 - (NSUInteger)indexForIdentity:(NSString *)identity;
 /* Resolve a playlist within this list's snapshot, preserving sidebar selection. */

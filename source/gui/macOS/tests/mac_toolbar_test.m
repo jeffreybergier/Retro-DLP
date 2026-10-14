@@ -570,6 +570,11 @@ static void testQueueWindow(RDLPLibrary *library) {
 {
   (void)sender; NSString *report=@"PASS";
   @try {
+    if([[[NSProcessInfo processInfo] environment] objectForKey:@"RDLPTestRowsOnly"]) {
+      testSharedVideoRows(@"/tmp/retrodlp-toolbar-fixture/Rows");
+      [@"PASS: shared video rows and bounded job batches" writeToFile:@"/tmp/retrodlp-toolbar-test.txt" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+      [NSApp terminate:nil]; return;
+    }
     requireCondition([[NSBundle mainBundle] pathForResource:@"cacert" ofType:@"pem"]==nil,@"Test bundle must have no network CA resource");
     if([[[NSBundle mainBundle] objectForInfoDictionaryKey:@"RDLPTestLocalizationOnly"] boolValue]) {
       testSharedLocalization(@"/tmp/retrodlp-localization-fixture");

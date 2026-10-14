@@ -1,0 +1,1083 @@
+{
+  "baseline_commit": "630c7657525e95c7df6f44af14b943d6de672b56",
+  "candidate": "bounded page job batching (this change)",
+  "altivec_commit": "bca419569c1de64ce7c52c10c6bb7aa1ca25099d",
+  "scenario": "native-collection-v1",
+  "optimization": "-O3",
+  "warmup_pairs_excluded": 1,
+  "measured_alternating_pairs": 3,
+  "devices": {
+    "x4-vm": {
+      "runs": {
+        "baseline": [
+          {
+            "checkpoint_result": 0,
+            "concurrent_commits": 469,
+            "initial_display_ms": 2006.9728754460812,
+            "initial_max_main_loop_gap_ms": 2007.806248497218,
+            "initial_sql_statements": 115,
+            "os": "Version 10.4.11 (Build 8S165)",
+            "phases": [
+              {
+                "gaps_over_50ms": 50,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 147.7230149321258,
+                "max_ms": 133.5246697999537,
+                "max_source_cached_rows": 128,
+                "p50_ms": 34.61046703159809,
+                "p95_ms": 91.04668628424406,
+                "peak_sampled_resident_bytes": 16965632,
+                "phase": "sequential",
+                "sql_statements": 957,
+                "sample_count": 120
+              },
+              {
+                "gaps_over_50ms": 80,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 283.77881553024054,
+                "max_ms": 283.6117409169674,
+                "max_source_cached_rows": 128,
+                "p50_ms": 122.97295406460762,
+                "p95_ms": 195.0041432864964,
+                "peak_sampled_resident_bytes": 16658432,
+                "phase": "random_jumps",
+                "sql_statements": 4719,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 80,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 219.89126550033689,
+                "max_ms": 219.6171428076923,
+                "max_source_cached_rows": 128,
+                "p50_ms": 109.56796398386359,
+                "p95_ms": 167.94905345886946,
+                "peak_sampled_resident_bytes": 16961536,
+                "phase": "scroll_during_writes",
+                "sql_statements": 4996,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 41,
+                "max_display_cached_rows": 32,
+                "max_main_loop_gap_ms": 369.2930289544165,
+                "max_ms": 417.1704249456525,
+                "max_source_cached_rows": 32,
+                "p50_ms": 357.42372553795576,
+                "p95_ms": 394.2431793548167,
+                "peak_sampled_resident_bytes": 17707008,
+                "phase": "refresh_during_writes",
+                "sql_statements": 1523,
+                "sample_count": 20
+              }
+            ],
+            "rows": 10000,
+            "scenario": "native-collection-v1",
+            "wal_after_release_bytes": 0,
+            "wal_with_old_snapshot_bytes": 1936432
+          },
+          {
+            "checkpoint_result": 0,
+            "concurrent_commits": 489,
+            "initial_display_ms": 3553.4139489755034,
+            "initial_max_main_loop_gap_ms": 3554.155280813575,
+            "initial_sql_statements": 115,
+            "os": "Version 10.4.11 (Build 8S165)",
+            "phases": [
+              {
+                "gaps_over_50ms": 42,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 85.97742114216089,
+                "max_ms": 95.66975338384509,
+                "max_source_cached_rows": 128,
+                "p50_ms": 33.951171673834324,
+                "p95_ms": 66.84287078678608,
+                "peak_sampled_resident_bytes": 16969728,
+                "phase": "sequential",
+                "sql_statements": 957,
+                "sample_count": 120
+              },
+              {
+                "gaps_over_50ms": 80,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 145.622075535357,
+                "max_ms": 145.76914114877582,
+                "max_source_cached_rows": 128,
+                "p50_ms": 81.77054207772017,
+                "p95_ms": 131.30567781627178,
+                "peak_sampled_resident_bytes": 16662528,
+                "phase": "random_jumps",
+                "sql_statements": 4719,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 80,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 258.6775980889797,
+                "max_ms": 234.87396026030183,
+                "max_source_cached_rows": 128,
+                "p50_ms": 111.07263574376702,
+                "p95_ms": 178.38671756908298,
+                "peak_sampled_resident_bytes": 16965632,
+                "phase": "scroll_during_writes",
+                "sql_statements": 5002,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 43,
+                "max_display_cached_rows": 32,
+                "max_main_loop_gap_ms": 302.35911859199405,
+                "max_ms": 487.188714556396,
+                "max_source_cached_rows": 32,
+                "p50_ms": 365.28523778542876,
+                "p95_ms": 414.0450279228389,
+                "peak_sampled_resident_bytes": 17711104,
+                "phase": "refresh_during_writes",
+                "sql_statements": 1536,
+                "sample_count": 20
+              }
+            ],
+            "rows": 10000,
+            "scenario": "native-collection-v1",
+            "wal_after_release_bytes": 0,
+            "wal_with_old_snapshot_bytes": 2018832
+          },
+          {
+            "checkpoint_result": 0,
+            "concurrent_commits": 517,
+            "initial_display_ms": 2359.5494353212416,
+            "initial_max_main_loop_gap_ms": 2360.325782094151,
+            "initial_sql_statements": 115,
+            "os": "Version 10.4.11 (Build 8S165)",
+            "phases": [
+              {
+                "gaps_over_50ms": 41,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 103.19311544299126,
+                "max_ms": 84.31868068873882,
+                "max_source_cached_rows": 128,
+                "p50_ms": 35.82500945776701,
+                "p95_ms": 65.88044110685587,
+                "peak_sampled_resident_bytes": 16965632,
+                "phase": "sequential",
+                "sql_statements": 957,
+                "sample_count": 120
+              },
+              {
+                "gaps_over_50ms": 80,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 176.57790891826153,
+                "max_ms": 176.50487599894404,
+                "max_source_cached_rows": 128,
+                "p50_ms": 94.43620219826698,
+                "p95_ms": 152.30306051671505,
+                "peak_sampled_resident_bytes": 16658432,
+                "phase": "random_jumps",
+                "sql_statements": 4719,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 80,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 218.89882162213326,
+                "max_ms": 218.59268518164754,
+                "max_source_cached_rows": 128,
+                "p50_ms": 126.15737784653902,
+                "p95_ms": 191.99679931625724,
+                "peak_sampled_resident_bytes": 16961536,
+                "phase": "scroll_during_writes",
+                "sql_statements": 5023,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 42,
+                "max_display_cached_rows": 32,
+                "max_main_loop_gap_ms": 453.14350025728345,
+                "max_ms": 682.9281868413091,
+                "max_source_cached_rows": 32,
+                "p50_ms": 365.12316577136517,
+                "p95_ms": 503.82715044543147,
+                "peak_sampled_resident_bytes": 17707008,
+                "phase": "refresh_during_writes",
+                "sql_statements": 1543,
+                "sample_count": 20
+              }
+            ],
+            "rows": 10000,
+            "scenario": "native-collection-v1",
+            "wal_after_release_bytes": 0,
+            "wal_with_old_snapshot_bytes": 2134192
+          }
+        ],
+        "candidate": [
+          {
+            "checkpoint_result": 0,
+            "concurrent_commits": 494,
+            "initial_display_ms": 1896.4764974080026,
+            "initial_max_main_loop_gap_ms": 1897.291861474514,
+            "initial_sql_statements": 84,
+            "os": "Version 10.4.11 (Build 8S165)",
+            "phases": [
+              {
+                "gaps_over_50ms": 42,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 101.72946099191904,
+                "max_ms": 102.7349098585546,
+                "max_source_cached_rows": 128,
+                "p50_ms": 34.765536431223154,
+                "p95_ms": 66.57175021246076,
+                "peak_sampled_resident_bytes": 16969728,
+                "phase": "sequential",
+                "sql_statements": 58,
+                "sample_count": 120
+              },
+              {
+                "gaps_over_50ms": 80,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 147.7860421873629,
+                "max_ms": 147.62396970763803,
+                "max_source_cached_rows": 128,
+                "p50_ms": 84.0185466222465,
+                "p95_ms": 125.8092219941318,
+                "peak_sampled_resident_bytes": 16666624,
+                "phase": "random_jumps",
+                "sql_statements": 286,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 80,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 354.87358551472425,
+                "max_ms": 358.9854231104255,
+                "max_source_cached_rows": 128,
+                "p50_ms": 110.88155070319772,
+                "p95_ms": 192.40798382088542,
+                "peak_sampled_resident_bytes": 16965632,
+                "phase": "scroll_during_writes",
+                "sql_statements": 579,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 41,
+                "max_display_cached_rows": 32,
+                "max_main_loop_gap_ms": 342.32297725975513,
+                "max_ms": 585.380595177412,
+                "max_source_cached_rows": 32,
+                "p50_ms": 353.8321196101606,
+                "p95_ms": 407.7302059158683,
+                "peak_sampled_resident_bytes": 17711104,
+                "phase": "refresh_during_writes",
+                "sql_statements": 914,
+                "sample_count": 20
+              }
+            ],
+            "rows": 10000,
+            "scenario": "native-collection-v1",
+            "wal_after_release_bytes": 0,
+            "wal_with_old_snapshot_bytes": 2039432
+          },
+          {
+            "checkpoint_result": 0,
+            "concurrent_commits": 466,
+            "initial_display_ms": 1769.0355465747416,
+            "initial_max_main_loop_gap_ms": 1770.8403537981212,
+            "initial_sql_statements": 84,
+            "os": "Version 10.4.11 (Build 8S165)",
+            "phases": [
+              {
+                "gaps_over_50ms": 41,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 243.2777164503932,
+                "max_ms": 242.46935453265905,
+                "max_source_cached_rows": 128,
+                "p50_ms": 34.65748764574528,
+                "p95_ms": 72.65746872872114,
+                "peak_sampled_resident_bytes": 16973824,
+                "phase": "sequential",
+                "sql_statements": 58,
+                "sample_count": 120
+              },
+              {
+                "gaps_over_50ms": 80,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 167.3787976615131,
+                "max_ms": 167.22773108631372,
+                "max_source_cached_rows": 128,
+                "p50_ms": 89.32091621682048,
+                "p95_ms": 134.7392126917839,
+                "peak_sampled_resident_bytes": 16670720,
+                "phase": "random_jumps",
+                "sql_statements": 286,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 80,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 203.61799327656627,
+                "max_ms": 203.45592079684138,
+                "max_source_cached_rows": 128,
+                "p50_ms": 107.39299142733216,
+                "p95_ms": 178.8559267297387,
+                "peak_sampled_resident_bytes": 16969728,
+                "phase": "scroll_during_writes",
+                "sql_statements": 561,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 41,
+                "max_display_cached_rows": 32,
+                "max_main_loop_gap_ms": 286.0108125023544,
+                "max_ms": 435.7677358202636,
+                "max_source_cached_rows": 32,
+                "p50_ms": 343.71259855106473,
+                "p95_ms": 372.2783634439111,
+                "peak_sampled_resident_bytes": 17719296,
+                "phase": "refresh_during_writes",
+                "sql_statements": 902,
+                "sample_count": 20
+              }
+            ],
+            "rows": 10000,
+            "scenario": "native-collection-v1",
+            "wal_after_release_bytes": 0,
+            "wal_with_old_snapshot_bytes": 1924072
+          },
+          {
+            "checkpoint_result": 0,
+            "concurrent_commits": 477,
+            "initial_display_ms": 2345.0319482944906,
+            "initial_max_main_loop_gap_ms": 2346.056405454874,
+            "initial_sql_statements": 84,
+            "os": "Version 10.4.11 (Build 8S165)",
+            "phases": [
+              {
+                "gaps_over_50ms": 45,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 109.2878389172256,
+                "max_ms": 105.94634525477886,
+                "max_source_cached_rows": 128,
+                "p50_ms": 35.00764397904277,
+                "p95_ms": 68.68269294500351,
+                "peak_sampled_resident_bytes": 16977920,
+                "phase": "sequential",
+                "sql_statements": 58,
+                "sample_count": 120
+              },
+              {
+                "gaps_over_50ms": 80,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 177.29923175647855,
+                "max_ms": 177.07713227719069,
+                "max_source_cached_rows": 128,
+                "p50_ms": 91.66596364229918,
+                "p95_ms": 151.7668217420578,
+                "peak_sampled_resident_bytes": 16674816,
+                "phase": "random_jumps",
+                "sql_statements": 286,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 80,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 222.65049861744046,
+                "max_ms": 192.154869902879,
+                "max_source_cached_rows": 128,
+                "p50_ms": 109.67100970447063,
+                "p95_ms": 181.70319963246584,
+                "peak_sampled_resident_bytes": 16973824,
+                "phase": "scroll_during_writes",
+                "sql_statements": 563,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 41,
+                "max_display_cached_rows": 32,
+                "max_main_loop_gap_ms": 313.41205770149827,
+                "max_ms": 423.1761093251407,
+                "max_source_cached_rows": 32,
+                "p50_ms": 354.4794097542763,
+                "p95_ms": 408.35048304870725,
+                "peak_sampled_resident_bytes": 17723392,
+                "phase": "refresh_during_writes",
+                "sql_statements": 912,
+                "sample_count": 20
+              }
+            ],
+            "rows": 10000,
+            "scenario": "native-collection-v1",
+            "wal_after_release_bytes": 0,
+            "wal_with_old_snapshot_bytes": 1969392
+          }
+        ]
+      },
+      "comparisons": {
+        "initial_display_ms": {
+          "baseline_median": 2359.5494353212416,
+          "candidate_median": 1896.4764974080026,
+          "change_percent": -19.625481500038745,
+          "baseline_range": [
+            2006.9728754460812,
+            3553.4139489755034
+          ],
+          "candidate_range": [
+            1769.0355465747416,
+            2345.0319482944906
+          ]
+        },
+        "peak_resident_bytes": {
+          "baseline_median": 17707008,
+          "candidate_median": 17719296,
+          "change_percent": 0.0693962526023606,
+          "baseline_range": [
+            17707008,
+            17711104
+          ],
+          "candidate_range": [
+            17711104,
+            17723392
+          ]
+        },
+        "sequential_p95_ms": {
+          "baseline_median": 66.84287078678608,
+          "candidate_median": 68.68269294500351,
+          "change_percent": 2.752458319879847,
+          "baseline_range": [
+            65.88044110685587,
+            91.04668628424406
+          ],
+          "candidate_range": [
+            66.57175021246076,
+            72.65746872872114
+          ]
+        },
+        "sequential_sql_statements": {
+          "baseline_median": 957,
+          "candidate_median": 58,
+          "change_percent": -93.93939393939394,
+          "baseline_range": [
+            957,
+            957
+          ],
+          "candidate_range": [
+            58,
+            58
+          ]
+        },
+        "random_jumps_p95_ms": {
+          "baseline_median": 152.30306051671505,
+          "candidate_median": 134.7392126917839,
+          "change_percent": -11.53216998092007,
+          "baseline_range": [
+            131.30567781627178,
+            195.0041432864964
+          ],
+          "candidate_range": [
+            125.8092219941318,
+            151.7668217420578
+          ]
+        },
+        "random_jumps_sql_statements": {
+          "baseline_median": 4719,
+          "candidate_median": 286,
+          "change_percent": -93.93939393939394,
+          "baseline_range": [
+            4719,
+            4719
+          ],
+          "candidate_range": [
+            286,
+            286
+          ]
+        },
+        "scroll_during_writes_p95_ms": {
+          "baseline_median": 178.38671756908298,
+          "candidate_median": 181.70319963246584,
+          "change_percent": 1.8591530292038083,
+          "baseline_range": [
+            167.94905345886946,
+            191.99679931625724
+          ],
+          "candidate_range": [
+            178.8559267297387,
+            192.40798382088542
+          ]
+        },
+        "scroll_during_writes_sql_statements": {
+          "baseline_median": 5002,
+          "candidate_median": 563,
+          "change_percent": -88.74450219912036,
+          "baseline_range": [
+            4996,
+            5023
+          ],
+          "candidate_range": [
+            561,
+            579
+          ]
+        },
+        "refresh_during_writes_p95_ms": {
+          "baseline_median": 414.0450279228389,
+          "candidate_median": 407.7302059158683,
+          "change_percent": -1.5251534449406523,
+          "baseline_range": [
+            394.2431793548167,
+            503.82715044543147
+          ],
+          "candidate_range": [
+            372.2783634439111,
+            408.35048304870725
+          ]
+        },
+        "refresh_during_writes_sql_statements": {
+          "baseline_median": 1536,
+          "candidate_median": 912,
+          "change_percent": -40.625,
+          "baseline_range": [
+            1523,
+            1543
+          ],
+          "candidate_range": [
+            902,
+            914
+          ]
+        }
+      }
+    },
+    "koolphone5": {
+      "runs": {
+        "baseline": [
+          {
+            "checkpoint_result": 0,
+            "concurrent_commits": 154,
+            "initial_display_ms": 222.85324999984368,
+            "initial_max_main_loop_gap_ms": 222.1671666666225,
+            "initial_sql_statements": 68,
+            "os": "Version 8.4.1 (Build 12H321)",
+            "phases": [
+              {
+                "gaps_over_50ms": 2,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 53.57083333319679,
+                "max_ms": 33.73874999988402,
+                "max_source_cached_rows": 128,
+                "p50_ms": 17.172791666325793,
+                "p95_ms": 31.12816666634899,
+                "peak_sampled_resident_bytes": 15482880,
+                "phase": "sequential",
+                "sql_statements": 990,
+                "sample_count": 120
+              },
+              {
+                "gaps_over_50ms": 40,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 117.46412500042425,
+                "max_ms": 61.375791666250734,
+                "max_source_cached_rows": 128,
+                "p50_ms": 42.31870833382345,
+                "p95_ms": 56.15904166643304,
+                "peak_sampled_resident_bytes": 15618048,
+                "phase": "random_jumps",
+                "sql_statements": 3729,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 41,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 117.38741666658825,
+                "max_ms": 61.644375000014406,
+                "max_source_cached_rows": 128,
+                "p50_ms": 42.95799999999872,
+                "p95_ms": 58.21349999996528,
+                "peak_sampled_resident_bytes": 15953920,
+                "phase": "scroll_during_writes",
+                "sql_statements": 3836,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 8,
+                "max_display_cached_rows": 96,
+                "max_main_loop_gap_ms": 98.70429166676331,
+                "max_ms": 108.98941666710016,
+                "max_source_cached_rows": 96,
+                "p50_ms": 64.94933333351582,
+                "p95_ms": 76.67629166689949,
+                "peak_sampled_resident_bytes": 16023552,
+                "phase": "refresh_during_writes",
+                "sql_statements": 984,
+                "sample_count": 20
+              }
+            ],
+            "rows": 10000,
+            "scenario": "native-collection-v1",
+            "wal_after_release_bytes": 0,
+            "wal_with_old_snapshot_bytes": 638632
+          },
+          {
+            "checkpoint_result": 0,
+            "concurrent_commits": 153,
+            "initial_display_ms": 221.6640416663722,
+            "initial_max_main_loop_gap_ms": 221.11945833285063,
+            "initial_sql_statements": 68,
+            "os": "Version 8.4.1 (Build 12H321)",
+            "phases": [
+              {
+                "gaps_over_50ms": 7,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 53.34683333285284,
+                "max_ms": 32.969041667001875,
+                "max_source_cached_rows": 128,
+                "p50_ms": 17.555624999658903,
+                "p95_ms": 31.73654166630513,
+                "peak_sampled_resident_bytes": 15527936,
+                "phase": "sequential",
+                "sql_statements": 990,
+                "sample_count": 120
+              },
+              {
+                "gaps_over_50ms": 40,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 118.42229166722973,
+                "max_ms": 60.62129166639352,
+                "max_source_cached_rows": 128,
+                "p50_ms": 42.551083333819406,
+                "p95_ms": 57.21362499980387,
+                "peak_sampled_resident_bytes": 15618048,
+                "phase": "random_jumps",
+                "sql_statements": 3729,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 41,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 116.07320833309132,
+                "max_ms": 59.51316666642015,
+                "max_source_cached_rows": 128,
+                "p50_ms": 44.35995833364359,
+                "p95_ms": 57.62537499958853,
+                "peak_sampled_resident_bytes": 16060416,
+                "phase": "scroll_during_writes",
+                "sql_statements": 3835,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 5,
+                "max_display_cached_rows": 96,
+                "max_main_loop_gap_ms": 87.64333333328977,
+                "max_ms": 111.76066666666884,
+                "max_source_cached_rows": 96,
+                "p50_ms": 64.47650000018257,
+                "p95_ms": 79.16908333345418,
+                "peak_sampled_resident_bytes": 16072704,
+                "phase": "refresh_during_writes",
+                "sql_statements": 984,
+                "sample_count": 20
+              }
+            ],
+            "rows": 10000,
+            "scenario": "native-collection-v1",
+            "wal_after_release_bytes": 0,
+            "wal_with_old_snapshot_bytes": 634512
+          },
+          {
+            "checkpoint_result": 0,
+            "concurrent_commits": 154,
+            "initial_display_ms": 239.1922916672229,
+            "initial_max_main_loop_gap_ms": 238.71204166653115,
+            "initial_sql_statements": 68,
+            "os": "Version 8.4.1 (Build 12H321)",
+            "phases": [
+              {
+                "gaps_over_50ms": 2,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 51.52116666704387,
+                "max_ms": 35.612083333035116,
+                "max_source_cached_rows": 128,
+                "p50_ms": 17.299333333539835,
+                "p95_ms": 31.31287499991231,
+                "peak_sampled_resident_bytes": 15478784,
+                "phase": "sequential",
+                "sql_statements": 990,
+                "sample_count": 120
+              },
+              {
+                "gaps_over_50ms": 40,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 119.30412499987142,
+                "max_ms": 60.29483333304597,
+                "max_source_cached_rows": 128,
+                "p50_ms": 42.18366666646034,
+                "p95_ms": 57.16149999989284,
+                "peak_sampled_resident_bytes": 15572992,
+                "phase": "random_jumps",
+                "sql_statements": 3729,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 41,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 115.86837499999092,
+                "max_ms": 59.591125000224565,
+                "max_source_cached_rows": 128,
+                "p50_ms": 43.634375000237924,
+                "p95_ms": 58.012500000131695,
+                "peak_sampled_resident_bytes": 15872000,
+                "phase": "scroll_during_writes",
+                "sql_statements": 3836,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 7,
+                "max_display_cached_rows": 96,
+                "max_main_loop_gap_ms": 99.82300000001487,
+                "max_ms": 110.08662499989441,
+                "max_source_cached_rows": 96,
+                "p50_ms": 66.27449999996315,
+                "p95_ms": 78.91762500003097,
+                "peak_sampled_resident_bytes": 15880192,
+                "phase": "refresh_during_writes",
+                "sql_statements": 984,
+                "sample_count": 20
+              }
+            ],
+            "rows": 10000,
+            "scenario": "native-collection-v1",
+            "wal_after_release_bytes": 0,
+            "wal_with_old_snapshot_bytes": 638632
+          }
+        ],
+        "candidate": [
+          {
+            "checkpoint_result": 0,
+            "concurrent_commits": 158,
+            "initial_display_ms": 220.84237499984738,
+            "initial_max_main_loop_gap_ms": 220.2420416665518,
+            "initial_sql_statements": 37,
+            "os": "Version 8.4.1 (Build 12H321)",
+            "phases": [
+              {
+                "gaps_over_50ms": 18,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 55.83316666616156,
+                "max_ms": 35.191124999983,
+                "max_source_cached_rows": 128,
+                "p50_ms": 18.425375000333588,
+                "p95_ms": 33.289958332716196,
+                "peak_sampled_resident_bytes": 15454208,
+                "phase": "sequential",
+                "sql_statements": 60,
+                "sample_count": 120
+              },
+              {
+                "gaps_over_50ms": 40,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 132.87462500011316,
+                "max_ms": 61.3562083335637,
+                "max_source_cached_rows": 128,
+                "p50_ms": 44.509500000003754,
+                "p95_ms": 58.150666666278994,
+                "peak_sampled_resident_bytes": 15589376,
+                "phase": "random_jumps",
+                "sql_statements": 226,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 41,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 122.62354166614386,
+                "max_ms": 61.51116666660528,
+                "max_source_cached_rows": 128,
+                "p50_ms": 44.81675000033647,
+                "p95_ms": 59.44833333342103,
+                "peak_sampled_resident_bytes": 15880192,
+                "phase": "scroll_during_writes",
+                "sql_statements": 339,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 1,
+                "max_display_cached_rows": 96,
+                "max_main_loop_gap_ms": 105.22729166632416,
+                "max_ms": 115.53612499983501,
+                "max_source_cached_rows": 96,
+                "p50_ms": 59.677916667169484,
+                "p95_ms": 65.80687499990745,
+                "peak_sampled_resident_bytes": 15888384,
+                "phase": "refresh_during_writes",
+                "sql_statements": 300,
+                "sample_count": 20
+              }
+            ],
+            "rows": 10000,
+            "scenario": "native-collection-v1",
+            "wal_after_release_bytes": 0,
+            "wal_with_old_snapshot_bytes": 655112
+          },
+          {
+            "checkpoint_result": 0,
+            "concurrent_commits": 150,
+            "initial_display_ms": 215.27925000009418,
+            "initial_max_main_loop_gap_ms": 214.57837500020105,
+            "initial_sql_statements": 37,
+            "os": "Version 8.4.1 (Build 12H321)",
+            "phases": [
+              {
+                "gaps_over_50ms": 2,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 53.17212499994639,
+                "max_ms": 33.39191666691477,
+                "max_source_cached_rows": 128,
+                "p50_ms": 17.177375000301254,
+                "p95_ms": 30.30262499987657,
+                "peak_sampled_resident_bytes": 15679488,
+                "phase": "sequential",
+                "sql_statements": 60,
+                "sample_count": 120
+              },
+              {
+                "gaps_over_50ms": 40,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 119.62816666618892,
+                "max_ms": 60.985708332736976,
+                "max_source_cached_rows": 128,
+                "p50_ms": 41.958750000048894,
+                "p95_ms": 56.214083333543385,
+                "peak_sampled_resident_bytes": 15757312,
+                "phase": "random_jumps",
+                "sql_statements": 226,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 41,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 115.22370833336026,
+                "max_ms": 58.952041666543664,
+                "max_source_cached_rows": 128,
+                "p50_ms": 42.57466666649634,
+                "p95_ms": 56.46324999997887,
+                "peak_sampled_resident_bytes": 16039936,
+                "phase": "scroll_during_writes",
+                "sql_statements": 330,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 2,
+                "max_display_cached_rows": 96,
+                "max_main_loop_gap_ms": 98.2323749999523,
+                "max_ms": 108.5611250000511,
+                "max_source_cached_rows": 96,
+                "p50_ms": 64.16370833312612,
+                "p95_ms": 70.95399999980145,
+                "peak_sampled_resident_bytes": 16056320,
+                "phase": "refresh_during_writes",
+                "sql_statements": 301,
+                "sample_count": 20
+              }
+            ],
+            "rows": 10000,
+            "scenario": "native-collection-v1",
+            "wal_after_release_bytes": 0,
+            "wal_with_old_snapshot_bytes": 622152
+          },
+          {
+            "checkpoint_result": 0,
+            "concurrent_commits": 149,
+            "initial_display_ms": 215.4107500000464,
+            "initial_max_main_loop_gap_ms": 214.9303333330863,
+            "initial_sql_statements": 37,
+            "os": "Version 8.4.1 (Build 12H321)",
+            "phases": [
+              {
+                "gaps_over_50ms": 3,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 53.21645833328148,
+                "max_ms": 36.35008333321821,
+                "max_source_cached_rows": 128,
+                "p50_ms": 17.177166666442645,
+                "p95_ms": 30.518541666879173,
+                "peak_sampled_resident_bytes": 15503360,
+                "phase": "sequential",
+                "sql_statements": 60,
+                "sample_count": 120
+              },
+              {
+                "gaps_over_50ms": 40,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 120.04324999998062,
+                "max_ms": 59.88016666651674,
+                "max_source_cached_rows": 128,
+                "p50_ms": 41.42041666636942,
+                "p95_ms": 55.02729166619247,
+                "peak_sampled_resident_bytes": 15654912,
+                "phase": "random_jumps",
+                "sql_statements": 226,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 41,
+                "max_display_cached_rows": 128,
+                "max_main_loop_gap_ms": 114.26475000007486,
+                "max_ms": 58.32258333384743,
+                "max_source_cached_rows": 128,
+                "p50_ms": 42.667791667099664,
+                "p95_ms": 56.564708333553426,
+                "peak_sampled_resident_bytes": 15994880,
+                "phase": "scroll_during_writes",
+                "sql_statements": 329,
+                "sample_count": 80
+              },
+              {
+                "gaps_over_50ms": 2,
+                "max_display_cached_rows": 96,
+                "max_main_loop_gap_ms": 96.9023333327641,
+                "max_ms": 107.28258333347185,
+                "max_source_cached_rows": 96,
+                "p50_ms": 61.808083333744435,
+                "p95_ms": 70.15345833360698,
+                "peak_sampled_resident_bytes": 16023552,
+                "phase": "refresh_during_writes",
+                "sql_statements": 301,
+                "sample_count": 20
+              }
+            ],
+            "rows": 10000,
+            "scenario": "native-collection-v1",
+            "wal_after_release_bytes": 0,
+            "wal_with_old_snapshot_bytes": 618032
+          }
+        ]
+      },
+      "comparisons": {
+        "initial_display_ms": {
+          "baseline_median": 222.85324999984368,
+          "candidate_median": 215.4107500000464,
+          "change_percent": -3.339641669934146,
+          "baseline_range": [
+            221.6640416663722,
+            239.1922916672229
+          ],
+          "candidate_range": [
+            215.27925000009418,
+            220.84237499984738
+          ]
+        },
+        "peak_resident_bytes": {
+          "baseline_median": 16023552,
+          "candidate_median": 16023552,
+          "change_percent": 0.0,
+          "baseline_range": [
+            15880192,
+            16072704
+          ],
+          "candidate_range": [
+            15888384,
+            16056320
+          ]
+        },
+        "sequential_p95_ms": {
+          "baseline_median": 31.31287499991231,
+          "candidate_median": 30.518541666879173,
+          "change_percent": -2.5367626991624426,
+          "baseline_range": [
+            31.12816666634899,
+            31.73654166630513
+          ],
+          "candidate_range": [
+            30.30262499987657,
+            33.289958332716196
+          ]
+        },
+        "sequential_sql_statements": {
+          "baseline_median": 990,
+          "candidate_median": 60,
+          "change_percent": -93.93939393939394,
+          "baseline_range": [
+            990,
+            990
+          ],
+          "candidate_range": [
+            60,
+            60
+          ]
+        },
+        "random_jumps_p95_ms": {
+          "baseline_median": 57.16149999989284,
+          "candidate_median": 56.214083333543385,
+          "change_percent": -1.6574384268278952,
+          "baseline_range": [
+            56.15904166643304,
+            57.21362499980387
+          ],
+          "candidate_range": [
+            55.02729166619247,
+            58.150666666278994
+          ]
+        },
+        "random_jumps_sql_statements": {
+          "baseline_median": 3729,
+          "candidate_median": 226,
+          "change_percent": -93.93939393939394,
+          "baseline_range": [
+            3729,
+            3729
+          ],
+          "candidate_range": [
+            226,
+            226
+          ]
+        },
+        "scroll_during_writes_p95_ms": {
+          "baseline_median": 58.012500000131695,
+          "candidate_median": 56.564708333553426,
+          "change_percent": -2.495654671967218,
+          "baseline_range": [
+            57.62537499958853,
+            58.21349999996528
+          ],
+          "candidate_range": [
+            56.46324999997887,
+            59.44833333342103
+          ]
+        },
+        "scroll_during_writes_sql_statements": {
+          "baseline_median": 3836,
+          "candidate_median": 330,
+          "change_percent": -91.39728884254433,
+          "baseline_range": [
+            3835,
+            3836
+          ],
+          "candidate_range": [
+            329,
+            339
+          ]
+        },
+        "refresh_during_writes_p95_ms": {
+          "baseline_median": 78.91762500003097,
+          "candidate_median": 70.15345833360698,
+          "change_percent": -11.105461760184177,
+          "baseline_range": [
+            76.67629166689949,
+            79.16908333345418
+          ],
+          "candidate_range": [
+            65.80687499990745,
+            70.95399999980145
+          ]
+        },
+        "refresh_during_writes_sql_statements": {
+          "baseline_median": 984,
+          "candidate_median": 301,
+          "change_percent": -69.41056910569105,
+          "baseline_range": [
+            984,
+            984
+          ],
+          "candidate_range": [
+            300,
+            301
+          ]
+        }
+      }
+    }
+  }
+}

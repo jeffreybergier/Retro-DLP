@@ -62,6 +62,8 @@
 }
 - (NSArray *)jobsForPlaylist:(NSString *)playlist video:(NSString *)video;
 { return [(RDLPLibraryRows *)source_ jobsForPlaylist:playlist video:video]; }
+- (NSDictionary *)jobsByVideoForPlaylist:(NSString *)playlist videos:(NSArray *)videos;
+{ return [(RDLPLibraryRows *)source_ jobsByVideoForPlaylist:playlist videos:videos]; }
 - (NSError *)readError;
 { return [source_ respondsToSelector:@selector(readError)]?[(AIPagedRows *)source_ readError]:nil; }
 - (void)RDLP_invalidateRows; { [source_ RDLP_invalidateRows]; }

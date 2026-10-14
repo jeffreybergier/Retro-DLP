@@ -18,12 +18,13 @@
 - (id)copyWithZone:(NSZone *)zone; { (void)zone; return [self retain]; }
 - (NSUInteger)indexForIdentity:(NSString *)identity;
 { return [(RDLPLibraryRows *)source_ indexForIdentity:identity]; }
-- (NSDictionary *)displayRow:(NSDictionary *)entry;
+- (NSDictionary *)displayRow:(NSDictionary *)entry jobsByVideo:(NSDictionary *)byVideo;
 {
   if([[entry objectForKey:@"action"] isEqualToString:@"section"]) return entry;
   NSDictionary *file=nil, *job=entry;
   if(playlist_) {
-    NSArray *jobs=[(RDLPLibraryRows *)source_ jobsForPlaylist:playlist_ video:[entry objectForKey:@"video_id"]];
+    NSArray *jobs=byVideo?[byVideo objectForKey:[entry objectForKey:@"video_id"]]:
+      [(RDLPLibraryRows *)source_ jobsForPlaylist:playlist_ video:[entry objectForKey:@"video_id"]];
     job=[policy_ representativeJobForEntry:entry playlist:playlist_ jobs:jobs localFile:&file];
   } else file=[policy_ localFileForJob:job];
   NSString *pid=playlist_?playlist_:[entry objectForKey:@"playlist_id"];
@@ -76,11 +77,18 @@
 {
   NSMutableArray *page=[NSMutableArray array];
   NSUInteger i, end=MIN(offset+32,[self count]);
+  NSMutableArray *entries=[NSMutableArray array], *videos=[NSMutableArray array];
   for(i=offset;i<end;++i) {
     NSDictionary *row=[source_ objectAtIndex:i];
     if([source_ respondsToSelector:@selector(readError)] && [(AIPagedRows *)source_ readError]) break;
-    [page addObject:[self displayRow:row]];
+    [entries addObject:row];
+    if(playlist_ && ![[row objectForKey:@"action"] isEqualToString:@"section"])
+      [videos addObject:[row objectForKey:@"video_id"]];
   }
+  NSDictionary *byVideo=playlist_?[(RDLPLibraryRows *)source_
+      jobsByVideoForPlaylist:playlist_ videos:videos]:nil;
+  for(i=0;i<[entries count];++i)
+    [page addObject:[self displayRow:[entries objectAtIndex:i] jobsByVideo:byVideo]];
   if([source_ respondsToSelector:@selector(readError)] && [(AIPagedRows *)source_ readError]) {
     if(error) *error=[(AIPagedRows *)source_ readError]; return nil;
   }

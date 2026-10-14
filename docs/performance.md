@@ -182,3 +182,88 @@ missing initializers, and possible uninitialized values) and Cocoa
 `AIWebViewController` function-pointer-cast warnings; native performance entry
 points emitted no warnings. Cross-compilation of the existing regression entry
 points is not a claim that their UI/playback suites were run on devices.
+
+### Bounded job lookup comparison
+
+The candidate replaces per-video job counts/reads during page formatting with
+one lookup for the page's (at most 32) video IDs, through the row source's existing
+read-only snapshot. Results retain newest-first order within each video, so the
+representative-job policy and duplicate occurrence text are unchanged. Section
+and slice row sources forward the lookup to that same snapshot.
+
+The batch reads at most 129 jobs: up to 128 is grouped by video for this page;
+the extra row detects overflow. An oversized batch is discarded and uses the
+existing per-video lookup instead of truncating qualities or retaining an
+unbounded page-wide job collection. That fallback retains the existing per-video
+memory behavior. There is no additional persistent cache or schema change.
+The video-first SQL ordering uses the existing playlist/video index; a portable
+execution-step test checks that 10,000 off-page jobs are not scanned.
+
+Paired measurements use the unchanged `native-collection-v1` harness and
+10,000-entry/no-job fixture. Baseline production behavior is the same as
+`630c765`; candidate is this batching change. Both use the same Altivec checkout,
+release build flags, devices, and native table setup. Each device runs baseline,
+candidate as an excluded warm-up pair, then three alternating measured pairs.
+iPhone packages use the same test bundle ID and are installed before each launch;
+installation time is outside measurements. Keep the phone unlocked and the test
+foregrounded throughout. Raw run reports are retained locally under
+`build/tests/performance/batch-paired/` (`*-0.plist` is warm-up).
+
+To repeat, preserve the baseline performance app/IPA before rebuilding the
+candidate, using the build/run commands above. Alternate those exact binaries,
+retrieving each fresh report before the next launch. Compare medians of each
+phase's per-run p95, rather than pooling baseline and candidate samples.
+
+Focused native correctness tests can be run independently of timing:
+
+- Mac: build the ordinary regression runner with a fresh `RDLP_TEST_ROOT` under
+  Desktop, then launch it with `RDLPTestRowsOnly=1`. Read
+  `retrodlp-toolbar-test.txt` in that staging directory.
+- iOS: build the ordinary regression runner with `RDLP_TEST_ROWS_ONLY=1`, install
+  its separate `test.retrodlp.ios` bundle, and launch `retrodlp-offline-test://`.
+  Read that app's `Documents/result.txt`.
+
+Those tests cover batched versus per-video representative jobs, duplicate text,
+empty matches, immutable snapshots during writes, bounded page loading, section
+wrappers, and an older playable quality beyond the overflow limit. Portable
+store tests additionally cover parameter binding, input limits, callback failure,
+query-plan work bounds, and the 129-row overflow sentinel.
+
+#### Paired results
+
+[Per-run summaries and comparisons](performance-job-batching.json) record all six
+measured runs per device. Negative percentages mean less time/work; latency
+comparisons use the median of three per-run values (p95 for each phase).
+
+| Metric | x4-vm change | koolphone5 change |
+| --- | ---: | ---: |
+| Initial display | -19.6% | -3.3% |
+| Sequential scroll p95 | +2.8% | -2.5% |
+| Random jump p95 | -11.5% | -1.7% |
+| Scroll during writes p95 | +1.9% | -2.5% |
+| Refresh during writes p95 | -1.5% | -11.1% |
+| Sequential/random-jump SQL statements | -93.9% | -93.9% |
+| Peak sampled resident memory | +0.07% | 0.0% |
+
+The query reduction is repeatable: all three Tiger random-jump runs changed from
+4,719 to 286 statements; all three iPhone runs changed from 3,729 to 226.
+Both caches stayed within 128 rows and every run released its WAL to zero bytes.
+
+Latency evidence is more modest. Tiger random-jump p95 ranges overlap
+(baseline 131.3–195.0 ms, candidate 125.8–151.8 ms), and its other scrolling
+changes are within observed variation. These runs do not establish a reliable
+11.5% Tiger scrolling speedup. iPhone refresh ranges do not overlap in this
+sample (baseline 76.7–79.2 ms, candidate 65.8–71.0 ms), while scrolling stays
+roughly unchanged. Fewer SQL statements therefore do not translate into a
+comparable percentage reduction in native UI latency. This fixture has no jobs;
+job-heavy list timing remains unmeasured, although representative-job correctness
+and overflow handling are covered by native tests with actual jobs/files.
+
+Validation for the batching change: 65 portable store tests, the shared app test
+suite, `make sanitize`, an AddressSanitizer/UndefinedBehaviorSanitizer run of the
+C translation/store fixture including the new batch API, all Apple architecture
+builds and package validation, and focused shared-row tests on both devices.
+The final focused tests include older playable-file precedence beyond the batch
+cap and both section-wrapper forms. Changed production/native test compilation
+emitted no warnings. No persistent cache limits or synchronous cell-text behavior
+were changed.
